@@ -11,6 +11,7 @@ import { resolveTimetableTermForDate } from '../lib/timetableCalendar';
 import { buildTimetableImportCandidates } from '../lib/timetableImport';
 import type {
   MonthEvent,
+  MonthEventColor,
   Plan,
   PlanSourceType,
   ScheduleTemplate,
@@ -44,6 +45,7 @@ export interface ScheduleOccurrenceSource {
 }
 
 export interface ScheduleOccurrence {
+  color?: MonthEventColor;
   id: string;
   ownerId: string;
   title: string;
@@ -303,6 +305,7 @@ function monthEventOccurrences(params: {
           id: occurrenceId(source, start),
           ownerId: params.ownerId,
           title: event.title,
+          ...(event.color ? { color: event.color } : {}),
           subject: '主要予定',
           category: 'other',
           // Legacy MonthEvent omits busy and therefore remains occupied. Canonical

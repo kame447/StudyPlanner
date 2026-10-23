@@ -1,3 +1,4 @@
+import { getEntryDurationMinutes, resolveEntryEndTime } from '../lib/entryTimeRange';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -21,6 +22,7 @@ interface TimeRangeFieldsProps {
   startTime: string;
   endTime: string;
   mode: TimeRangeMode;
+  allowOvernight?: boolean;
   onChange: (range: { startTime: string; endTime: string }) => void;
   startLabel?: string;
   endLabel?: string;
@@ -538,6 +540,7 @@ export function TimeRangeFields({
   endTime,
   mode,
   onChange,
+  allowOvernight = false,
   startLabel = '開始',
   endLabel = '終了',
   disabled = false,
@@ -553,13 +556,16 @@ export function TimeRangeFields({
 
   function updateStart(nextStartTime: string) {
     const nextStartMinutes = parseTimeToMinutes(nextStartTime, 'start');
-    const nextEndTime =
+    const overnightEnd = allowOvernight
+      ? resolveEntryEndTime(nextStartTime, mode === 'create' ? 60 : getEntryDurationMinutes(startTime, endTime))
+      : null;
+    const nextEndTime = overnightEnd ?? (
       mode === 'create'
         ? calculateAutoEndTimeForCreate(nextStartMinutes)
         : calculateShiftedEndTimeForEdit(
             nextStartMinutes,
             calculateTimeRangeDurationMinutes(startTime, endTime),
-          );
+          ));
 
     onChange({
       startTime: nextStartTime,
@@ -594,7 +600,7 @@ export function TimeRangeFields({
           role="end"
           disabled={disabled}
           inputClassName={inputClassName}
-          minMinutes={Math.min(startMinutes + 1, MINUTES_PER_DAY)}
+          minMinutes={allowOvernight ? undefined : Math.min(startMinutes + 1, MINUTES_PER_DAY)}
           onChange={updateEnd}
         />
       </div>

@@ -1,9 +1,18 @@
 # Issue #305 Unit 0 — contextual paired 評価の事前登録（r2）
 
-Status: active / HOLD — 2本の独立 holdout は凍結済み・未消費。評価は未実行。harness r2 は mock の dry-run まで。実行には harness の監査と承認書が必要
-Updated: 2026-10-05
+Status: historical preregistration / HOLD — r2 は採用評価として未実行。J1 / J4 の評価が後継。旧 holdout は新しい証拠に流用しない
+Updated: 2026-10-13
 Authority: owner の DECISION 2（新しい独立評価。gate は BronzeMaxwell と CopperHopper が実行前に合意する）。[Phase B の採用規則](20261004-issue305-jev-hierarchical-input-interpretation.md#採用規則)
 Technical record: [既存 focused contextual 記録の Unit 0 追記](20260927-issue305-jev-first-focused-contextual.md#phase-b-unit-0--2026-10-04-作業-checkpoint)
+
+## 2026-10-13 — J1 bound target 契約への harness 移行
+
+r2 は採用評価として未実行（HOLD）のまま残す。現在の採用評価は [#305 の Jev 拡張指示](https://github.com/kame447/StudyPlanner/issues/305#issuecomment-6141608494)に従う J1 / J4 が後継であり、以下の凍結した v3・GPT-5.6・料金・holdout・判定規則を、新しい評価の事前登録として読み替えない。
+
+- harness は production の graph validator / public-state builder / contextual projection を通して v2 bound target に移行する。旧形式を Jev として dispatch していた分岐を更新し、親教材・範囲などの宣言値を保持する。表現できない target は Luna に残す。
+- runtime / policy / Worker bundle / この文書の hash は、契約と依存 graph の変更により変わる。新 graph adapter も runtime fingerprint に含める。旧承認書や smoke の hash を新しい bytes へ付け替えず、既存の不一致拒否を維持する。
+- 旧 v3 artifact は歴史的な framing と provenance を保持して読み取る。新しい記録は共有の現行 catalog version を使い、同じ artifact に旧・新 catalog を混ぜることは拒否する。mock の会計・停止・診断の成功は新しい日本語品質や採用 GO ではない。
+- 旧 holdout・旧 model の結果・旧 grant は J1 / J4 の証拠や実行予算に転用しない。新しい評価は親が source / corpus / model / 上限を固定した fresh grant で行う。この移行では実 provider、preview、deploy、holdout ledger の操作は行っていない。
 
 この文書は、runtime の事前登録の正本（`preregistration-draft.md`、§0〜§19e）を、§19e の時点の内容で一本化したものである。追補の途中の規則（旧い分母、「失効した turn を 8 dispatch で補完する」規則、Clopper–Pearson の一般の iid の主張、旧い 100 cases / 50 groups の名簿、撤回された §19 の「予約の上限 USD 10」、cost の判定の2つの方法の切替え、「実 cost だけ」の cost の判定、turn の後だけの停止の判定、「cost が欠けたら予約を保持」、「isolated な `*-eval` Worker」の名前の規則）は、ここでは置き換え済みである。holdout の結果を見る前に固定し、結果を見て変えない。
 

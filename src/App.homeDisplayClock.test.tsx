@@ -11,6 +11,11 @@ import type { PlannerRepository } from './repositories/repositoryContracts';
 
 const boundary = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository,
   weeklyPlanning: vi.fn(() => ({ pendingDraftBlocks: [], canEditDraftBlocks: false })) }));
+// This suite isolates planner/navigation behavior; streak persistence has its own provider integration tests.
+vi.mock('./components/StudyStreakContext', () => ({
+  StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children,
+  useSharedStudyStreak: () => null,
+}));
 vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));
@@ -28,7 +33,7 @@ function Harness() {
   state = usePlannerDataState({ userId: 'owner', showNotice: () => {} });
   const unused = async (): Promise<never> => { throw new Error('outside display-clock test'); };
   const snapshot: PlannerAppSnapshot = {
-    ...state, user: { id: 'owner', username: 'Clock', email: 'clock@example.test', avatar: '', createdAt: '' }, booting: false, notice: null, dismissNotice() {},
+    ...state, user: { id: 'owner', username: 'Clock', email: 'clock@example.test', avatar: '', createdAt: '' }, booting: false, profileRestoreRecovery: null, retryProfileRestore: async () => undefined, notice: null, dismissNotice() {},
     signUpWithPassword: unused, signInWithPassword: unused, signInWithGoogle: unused,
     sendPasswordReset: unused, saveUserProfile: unused, signOut: unused,
     saveWeeklyApprovedPlan: unused, completeWeeklyApprovalOperation: unused,

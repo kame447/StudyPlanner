@@ -182,10 +182,23 @@ test('dark mode and accent palette stay consistent across primary surfaces', asy
     if (!(title instanceof HTMLElement) || !(time instanceof HTMLElement)) {
       throw new Error('Schedule block text is missing');
     }
+    // CSS Color 4 can serialize color-mix as color(srgb 0..1). Sample its
+    // rendered sRGB channels instead of treating fractions as 0..255 RGB.
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d');
+    const rgb = (color) => {
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
+      if (alpha !== 255) throw new Error(`Expected opaque schedule paint: ${color}`);
+      return `rgb(${r}, ${g}, ${b})`;
+    };
     return {
-      background: getComputedStyle(element).backgroundColor,
-      title: getComputedStyle(title).color,
-      time: getComputedStyle(time).color,
+      background: rgb(getComputedStyle(element).backgroundColor),
+      title: rgb(getComputedStyle(title).color),
+      time: rgb(getComputedStyle(time).color),
     };
   });
   expect(relativeLuminance(scheduleBlockColors.background)).toBeGreaterThan(0.75);

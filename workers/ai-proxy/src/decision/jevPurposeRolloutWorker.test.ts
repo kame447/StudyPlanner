@@ -1,3 +1,5 @@
+import { createFocusedContextualBindingSnapshotV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5';
+import { createFocusedContextualBindingInputFixtureV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5.testUtils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker';
 import { choiceRequest } from '../../../../shared/candidateChoiceFixtures.testUtils';
@@ -29,8 +31,7 @@ function context(route: Route): Record<string, unknown> {
   switch (route.purpose) {
     case 'focused_authorization': return { ...base, previousStatus: 'needs_scope', hasTasks: true, hasPendingQuestion: false,
       state: { currentUserText: 'fixture input', lastAssistantMessage: 'fixture draft question' } };
-    case 'focused_contextual_answer': return { ...base, questionCode: 'quantity_role_unresolved',
-      state: { currentUserText: 'fixture input', pendingQuestion: { targetQuantityRole: 'declared', questionBasis: null, hasEstimateTarget: false } } };
+    case 'focused_contextual_answer': return structuredClone(createFocusedContextualBindingSnapshotV5(createFocusedContextualBindingInputFixtureV5())!.context);
     case 'temporal_scope_repair': return { ...base, state: { sourceText: 'fixture input', currentAttachedTask: { title: 'fixture task' },
       interpretedTime: { dateExpression: 'weekday:tuesday', namedTimePeriod: null, startTime: '18:00', endTime: '20:00' } } };
     case 'user_context_routing': return { ...base, state: { currentUserText: 'fixture input' } };
@@ -42,7 +43,7 @@ async function execute(route: Route, overrides: JevRolloutEnv, payloadOverrides 
   const response = await worker.fetch(new Request('https://proxy.fixture/chat/completions', {
     method: 'POST', headers: { Authorization: 'Bearer fixture-session', Origin: 'https://app.fixture', ...requestHeaders },
     body: JSON.stringify({ purpose: route.purpose === 'user_context_routing' ? 'user_context_interpreter' : 'weekly_planning_semantic_normalizer',
-      messages: [{ role: 'user', content: route.purpose === 'candidate_choice' ? choiceRequest().wholeUtterance : 'fixture input' }],
+      messages: [{ role: 'user', content: route.purpose === 'candidate_choice' ? choiceRequest().wholeUtterance : route.purpose === 'focused_contextual_answer' ? JSON.stringify({ currentUserText: createFocusedContextualBindingInputFixtureV5().userText, pendingQuestion: { questionCode: 'quantity_role_unresolved', questionTargetWorkload: createFocusedContextualBindingSnapshotV5(createFocusedContextualBindingInputFixtureV5())!.context.state.pendingQuestion.target.workload } }) : 'fixture input' }],
       decisionContext: context(route), ...payloadOverrides }),
   }), {
     OPENAI_API_KEY: 'fixture-luna', OPENROUTER_API_KEY: 'fixture-jev', FIREBASE_WEB_API_KEY: 'fixture-project',

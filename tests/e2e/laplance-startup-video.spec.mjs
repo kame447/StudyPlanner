@@ -112,11 +112,13 @@ for (const width of [390, 1280]) {
     await expect(page.locator('.home-main:visible')).toHaveCount(0);
     expect(await original.evaluate(node => node.isConnected)).toBe(true);
     expect(await media.evaluate(node => node === document.querySelector('video') && !node.ended)).toBe(true);
-    await testInfo.attach(`laplans-ready-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
     await button.tap();
     await expect(page.locator('.home-main')).toBeVisible();
     await expect(page.locator('.splash-screen:visible')).toHaveCount(0);
     await expectUnloaded(media);
+    // Capture evidence after the real tap: the five-second clip keeps playing
+    // while a screenshot is captured and may otherwise remove the skip button.
+    await testInfo.attach(`laplans-after-skip-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
   });
 }
 
@@ -136,23 +138,27 @@ for (const width of [390, 1280]) {
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.app-access-key'))).toBeNull();
     await page.evaluate(() => window.__startupGateHarness.emitAuth(null));
     await expect(page.getByRole('button', { name: skipName })).toBeEnabled();
-    await expect(page.getByRole('heading', { name: '新規会員登録' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toHaveCount(0);
     const video = page.locator('video');
     await observeEnded(video);
     if (width === 390) await expectRealCompletion(page);
     else await page.getByRole('button', { name: skipName }).click();
 
-    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '限定公開キー' })).toHaveCount(0);
     await expect(page.getByLabel('閲覧キー', { exact: true })).toHaveCount(0);
     await expect(page.locator('.home-main:visible')).toHaveCount(0);
     await expect(page.getByRole('link', { name: '利用規約' })).toHaveAttribute('href', '/terms');
     await expect(page.getByRole('link', { name: 'プライバシーポリシー' })).toHaveAttribute('href', '/privacy');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await testInfo.attach(`auth-entry-signup-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    await testInfo.attach(`auth-entry-default-login-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
 
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('tab', { name: '新規会員登録', exact: true }).click();
+    await expect(page.getByLabel('パスワード確認')).toBeVisible();
+    await testInfo.attach(`auth-entry-signup-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
     await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'ログイン', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
     await expect(page.getByLabel('メールアドレス')).toBeVisible();
     await expect(page.getByLabel('パスワード', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Googleでログイン' })).toBeVisible();
@@ -164,7 +170,7 @@ for (const width of [390, 1280]) {
     await page.waitForFunction(() => Boolean(window.__startupGateHarness));
     await page.evaluate(() => window.__startupGateHarness.emitAuth(null));
     await page.getByRole('button', { name: skipName }).click();
-    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '限定公開キー' })).toHaveCount(0);
     await expect(page.locator('.home-main:visible')).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.app-access-key'))).toBe('obsolete-synthetic-value');
@@ -380,16 +386,103 @@ test('video transfer observer detects a deliberately downloaded MP4 under reduce
   await expectStaticLoading(page);
 });
 
-test('blocked autoplay falls back without trapping startup', async ({ page }) => {
+test('blocked autoplay retains the clip until an explicit playback gesture completes it', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
-    HTMLMediaElement.prototype.play = () => Promise.reject(new DOMException('Blocked autoplay fixture', 'NotAllowedError'));
+    const play = HTMLMediaElement.prototype.play;
+    let playbackGesture = null;
+    const permission = window.__startupPlaybackPermission = { blocked: 0, trustedReplay: 0, nativeCalls: 0 };
+    // Scope the permission fixture to this real replay click, not a browser's
+    // transient userActivation state during automation or initialization.
+    window.addEventListener('click', event => {
+      const button = event.target instanceof Element
+        ? event.target.closest('button.startup-video[aria-label="起動アニメーションを再生"]') : null;
+      if (!event.isTrusted || !button) return;
+      permission.trustedReplay += 1;
+      playbackGesture = { event, button };
+    }, true);
+    HTMLMediaElement.prototype.play = function () {
+      if (!playbackGesture || playbackGesture.event.eventPhase === Event.NONE || !playbackGesture.button.contains(this)) {
+        permission.blocked += 1;
+        this.autoplay = false;
+        this.pause();
+        return Promise.reject(new DOMException('Blocked autoplay fixture', 'NotAllowedError'));
+      }
+      playbackGesture = null;
+      permission.nativeCalls += 1;
+      return play.call(this);
+    };
   });
   await boot(page);
-  await expectStaticLoading(page);
-  await startPlanner(page);
-  await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
+  await expect.poll(() => page.evaluate(() => window.__startupPlaybackPermission.blocked)).toBeGreaterThan(0);
+  const replay = page.getByRole('button', { name: '起動アニメーションを再生', exact: true });
+  await expect(replay).toBeEnabled();
+  await expect(page.getByRole('button', { name: skipName })).toHaveCount(0);
+  await expect(page.locator('.home-main:visible')).toHaveCount(0);
+  const video = page.locator('video');
+  const media = await video.elementHandle();
+  await observeEnded(video);
+  await testInfo.attach('startup-autoplay-permission', { body: await page.screenshot(), contentType: 'image/png' });
+  // The real tap calls native play synchronously even before app readiness.
+  await replay.tap();
+  expect(await page.evaluate(() => ({ trustedReplay: window.__startupPlaybackPermission.trustedReplay,
+    nativeCalls: window.__startupPlaybackPermission.nativeCalls }))).toEqual({ trustedReplay: 1, nativeCalls: 1 });
+  await expect.poll(() => video.evaluate(node => node.currentTime)).toBeGreaterThan(0);
+  expect(await media.evaluate(node => node === document.querySelector('video'))).toBe(true);
+  await readyPlanner(page);
+  await expectRealCompletion(page);
   await expect(page.locator('.home-main')).toBeVisible();
+  await expectUnloaded(media);
 });
+
+for (const width of [390, 1280]) {
+  test(`blocked autoplay permits only an explicit ready skip at ${width}px`, async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      HTMLMediaElement.prototype.play = function () {
+        this.autoplay = false;
+        this.pause();
+        return Promise.reject(new DOMException('Blocked autoplay fixture', 'NotAllowedError'));
+      };
+    });
+    await boot(page, width);
+    await expect(page.getByRole('button', { name: '起動アニメーションを再生', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: skipName })).toHaveCount(0);
+    await readyPlanner(page);
+    const skip = page.getByRole('button', { name: skipName });
+    const box = await skip.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
+    await skip.focus();
+    await expect(skip).toBeFocused();
+    await expect(page.locator('video')).toHaveCount(1);
+    await testInfo.attach(`startup-blocked-ready-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await skip.tap();
+    await expect(page.locator('.home-main')).toBeVisible();
+    await expect(page.locator('video')).toHaveCount(0);
+  });
+}
+
+for (const motion of ['reduced', 'off']) {
+  test(`saved app UI motion ${motion} still autoplays the complete startup clip`, async ({ page }, testInfo) => {
+    await page.addInitScript(motion => localStorage.setItem('study-planner-motion', motion), motion);
+    await boot(page);
+    const video = page.locator('video');
+    await expect(video).toHaveCount(1);
+    await observeEnded(video);
+    await expect.poll(() => video.evaluate(node => node.currentTime)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => ({ saved: localStorage.getItem('study-planner-motion'),
+      systemReduced: matchMedia('(prefers-reduced-motion: reduce)').matches })))
+      .toEqual({ saved: motion, systemReduced: false });
+    await readyPlanner(page);
+    await testInfo.attach(`startup-app-motion-${motion}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await expectRealCompletion(page);
+    await expect(page.locator('.home-main')).toBeVisible();
+  });
+}
+
 
 test('a failed media request falls back without releasing pending startup data', async ({ page }) => {
   let failedMediaRequests = 0;

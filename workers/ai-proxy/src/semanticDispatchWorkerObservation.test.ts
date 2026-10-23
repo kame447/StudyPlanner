@@ -1,3 +1,4 @@
+import { createBoundFocusedContextualContextFixtureV5, focusedContextualSourceMessagesFixtureV5 } from '../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5.testUtils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker from './worker';
 import { createSemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
@@ -26,7 +27,7 @@ function harness(options: { mode?: string; masterMode?: string; domain?: 'weekly
     throw new Error('Unexpected network path.');
   }));
   const purpose = (options.payload?.decisionContext as { purpose?: string } | undefined)?.purpose ?? decisionContext.purpose;
-  const prefix = ({ focused_authorization: 'FOCUSED_AUTHORIZATION', focused_contextual_answer: 'FOCUSED_CONTEXTUAL_ANSWER', temporal_scope_repair: 'TEMPORAL_SCOPE_REPAIR', user_context_routing: 'USER_CONTEXT_ROUTING' } as Record<string, string>)[purpose];
+  const prefix = ({ focused_authorization: 'FOCUSED_AUTHORIZATION', focused_contextual_answer: 'FOCUSED_CONTEXTUAL_ANSWER', focused_contextual_answer_v2: 'FOCUSED_CONTEXTUAL_ANSWER', temporal_scope_repair: 'TEMPORAL_SCOPE_REPAIR', user_context_routing: 'USER_CONTEXT_ROUTING' } as Record<string, string>)[purpose];
   const env = { OPENAI_API_KEY: 'private-api-key', OPENROUTER_API_KEY: 'private-jev-key', FIREBASE_WEB_API_KEY: 'test', JEV_MODE: options.masterMode ?? options.mode ?? 'off', JEV_CANARY_PERCENT: '100',
     [`JEV_${prefix}_MODE`]: options.mode ?? 'off', [`JEV_${prefix}_CANARY_PERCENT`]: '100',
     AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: options.quota !== false, retryAfterSeconds: 1 }) }) } };
@@ -43,7 +44,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe('actual Worker semantic sends (mock network only)', () => {
   it.each([
     { kind: 'authorization', domain: 'weekly-planning', context: decisionContext },
-    { kind: 'contextual', domain: 'weekly-planning', context: { purpose: 'focused_contextual_answer', requestId: 'mixed-contextual', inputRevision: 1, questionCode: 'quantity_role_unresolved', state: { currentUserText: privateText, pendingQuestion: { targetQuantityRole: 'declared', questionBasis: null, hasEstimateTarget: false } } } },
+    { kind: 'contextual', domain: 'weekly-planning', context: createBoundFocusedContextualContextFixtureV5({ requestId: 'mixed-contextual', currentUserText: privateText }) },
     { kind: 'temporal', domain: 'weekly-planning', context: { purpose: 'temporal_scope_repair', requestId: 'mixed-temporal', inputRevision: 1, state: { sourceText: privateText, currentAttachedTask: { title: 'private-title' }, interpretedTime: { dateExpression: 'weekday:tuesday', namedTimePeriod: null, startTime: '18:00', endTime: '20:00' } } } },
     { kind: 'user-context', domain: 'user-context', context: { purpose: 'user_context_routing', requestId: 'mixed-user-context', inputRevision: 0, state: { currentUserText: privateText } } },
   ] as const)('records effective $kind shadow under global canary, never semantic fallback', async ({ domain, context }) => {
@@ -51,7 +52,7 @@ describe('actual Worker semantic sends (mock network only)', () => {
     const late = new Promise<Response>(resolve => { release = resolve; });
     const h = harness({ mode: 'shadow', masterMode: 'canary', domain, jev: () => late,
       payload: { purpose: domain === 'user-context' ? 'user_context_interpreter' : 'weekly_planning_semantic_normalizer',
-        decisionContext: context, messages: [{ role: 'user', content: privateText }] } });
+        decisionContext: context, messages: focusedContextualSourceMessagesFixtureV5(context, privateText) } });
     const response = await h.run;
     expect(await response.json()).toMatchObject({ content: '{"decision":"fallback"}' });
     expect(h.recorder.snapshot().settledAtMs).toBeNull();
@@ -108,11 +109,11 @@ describe('actual Worker semantic sends (mock network only)', () => {
     expect(h.recorder.snapshot().dispatches).toEqual([]);
   });
   it.each(['contextual', 'temporal', 'user-context'])('observes both providers through the existing %s injection port', async (kind) => {
-    const context = kind === 'contextual' ? { purpose: 'focused_contextual_answer', requestId: 'request-contextual-fixture', inputRevision: 1, questionCode: 'quantity_role_unresolved', state: { currentUserText: privateText, pendingQuestion: { targetQuantityRole: 'declared', questionBasis: null, hasEstimateTarget: false } } }
+    const context = kind === 'contextual' ? createBoundFocusedContextualContextFixtureV5({ requestId: 'request-contextual-fixture', currentUserText: privateText })
       : kind === 'temporal' ? { purpose: 'temporal_scope_repair', requestId: 'request-temporal-fixture', inputRevision: 1, state: { sourceText: privateText, currentAttachedTask: { title: 'private-task-title' }, interpretedTime: { dateExpression: 'weekday:tuesday', namedTimePeriod: null, startTime: '18:00', endTime: '20:00' } } }
       : { purpose: 'user_context_routing', requestId: 'request-user-context-fixture', inputRevision: 0, state: { currentUserText: privateText } };
     // Authorization-shaped response is invalid for these catalogs, forcing the existing whole-request fallback.
-    const h = harness({ mode: 'canary', domain: kind === 'user-context' ? 'user-context' : 'weekly-planning', payload: { purpose: kind === 'user-context' ? 'user_context_interpreter' : 'weekly_planning_semantic_normalizer', decisionContext: context, messages: [{ role: 'user', content: privateText }] } });
+    const h = harness({ mode: 'canary', domain: kind === 'user-context' ? 'user-context' : 'weekly-planning', payload: { purpose: kind === 'user-context' ? 'user_context_interpreter' : 'weekly_planning_semantic_normalizer', decisionContext: context, messages: focusedContextualSourceMessagesFixtureV5(context, privateText) } });
     await h.run; expect(await h.summary()).toMatchObject({ status: 'known', lunaDispatches: 1, jevDispatches: 1 });
   });
 });

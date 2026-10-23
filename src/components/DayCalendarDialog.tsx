@@ -16,6 +16,7 @@ import {
   startOfMonth,
   todayIsoDate,
 } from '../lib/date';
+import { allowsSpatialMotion } from '../lib/motionPreference';
 
 interface DayCalendarDialogProps {
   open: boolean;
@@ -45,14 +46,6 @@ function isValidIsoDate(dateString: string): boolean {
 
 function normalizeSelectedDate(dateString: string, fallbackDate: string): string {
   return isValidIsoDate(dateString) ? dateString : fallbackDate;
-}
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
 }
 
 function getSelectionStyle(geometry: SelectionGeometry | null): CSSProperties | undefined {
@@ -161,7 +154,7 @@ export function DayCalendarDialog({
     cancelPendingSelection();
 
     const canAnimate =
-      !prefersReducedMotion() &&
+      allowsSpatialMotion() &&
       date !== visualSelectedDate &&
       dayButtonRefs.current.has(date);
 

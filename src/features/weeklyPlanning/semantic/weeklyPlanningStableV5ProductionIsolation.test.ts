@@ -15,6 +15,17 @@ const STABLE_MODULE_TOKENS = [
 ] as const;
 
 const ALLOWED_PRODUCTION_IMPORTERS = new Set([
+  // Durable turns reuse the same implementation through invocation-local ports.
+  'application/weeklyPlanningIsolatedTurn.ts',
+  'application/weeklyPlanningStableV5ContextFacts.ts',
+  'application/weeklyPlanningStableV5RuntimeExecutorCore.ts',
+  'application/weeklyPlanningStableV5SemanticContextCore.ts',
+  'application/weeklyPlanningStableV5SemanticTurnCore.ts',
+  'application/weeklyPlanningStableV5TurnResultProjectionCore.ts',
+  'dialogue/weeklyPlanningStableV5AiDialogueRendererCore.ts',
+  'dialogue/weeklyPlanningStableV5TurnDialogueCore.ts',
+  // Shared test fixtures are forbidden from production imports below.
+  'application/weeklyPlanningDurableTurn.testUtils.ts',
   'weeklyPlanningTurnExecutor.ts',
   'weeklyPlanningTurnExecutionTypes.ts',
   'weeklyPlanningOwnedStorage.ts',
@@ -29,6 +40,10 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/c5LocalSelection/controlledCommit.ts',
   // C5: typed pure graph replacement and final synchronous Unit 2/domain revalidation.
   'application/c5LocalSelection/selection.ts',
+  // J2c: actual graph/presentation gate and registered producer context; no language interpretation.
+  'application/weeklyPlanningControlledCandidateGates.ts',
+  'application/weeklyPlanningControlledCandidateDomains.ts',
+  'application/weeklyPlanningControlledCandidateRegistry.ts',
   // Test-only: actual controller/runtime/storage fixtures; production imports prohibited by dormantArchitecture.test.
   'application/c5LocalSelection/controller.testUtils.ts',
   // Test-only: isolated paired graph packets; production imports prohibited by dormantArchitecture.test.
@@ -48,6 +63,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningStableV5ResponseRouting.ts',
   'application/weeklyPlanningStableV5ResultProjection.ts',
   'application/weeklyPlanningStableV5RuntimeExecutor.ts',
+  // J2a: selected graph enters the existing deterministic continuation; no new semantic authority.
+  'application/weeklyPlanningStableV5CandidateContinuation.ts',
   'application/weeklyPlanningStableV5RuntimeQuestions.ts',
   'application/weeklyPlanningStableV5RuntimeSession.ts',
   'application/weeklyPlanningStableV5RuntimeTraceLifecycle.ts',
@@ -114,6 +131,10 @@ describe('Stable V5 production connection boundary', () => {
       if ([...source.matchAll(STATIC_IMPORT_EXPRESSION)].some((match) =>
         /(?:^|\/)weeklyPlanningMaterialIdentityFixture(?:\.ts)?$/.test(match[1]))) {
         violations.push(`${relativePath}:test-only-material-identity-fixture`);
+      }
+      if ([...source.matchAll(STATIC_IMPORT_EXPRESSION)].some((match) =>
+        /(?:^|\/)weeklyPlanningDurableTurn\.testUtils(?:\.ts)?$/.test(match[1]))) {
+        violations.push(`${relativePath}:test-only-durable-turn-fixture`);
       }
       if (relativePath.startsWith('semantic/')) continue;
 

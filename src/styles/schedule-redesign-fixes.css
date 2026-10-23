@@ -36,23 +36,6 @@
   width: 100%;
 }
 
-.schedule-app-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  margin: 0 -12px;
-  padding: 0 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
-}
-
-.schedule-app-header h1 {
-  margin: 0;
-  font-size: 1.08rem;
-  line-height: 1;
-  text-align: center;
-}
-
 /* Period navigation ------------------------------------------------------- */
 .schedule-toolbar {
   gap: 8px;
@@ -92,7 +75,7 @@
 }
 
 .schedule-period-step:active {
-  transform: scale(0.94);
+  transform: scale(calc(1 - 0.06 * var(--motion-spatial)));
 }
 
 .schedule-period-picker-trigger {
@@ -482,11 +465,6 @@
     padding: clamp(6px, 1.05dvh, 10px) 12px calc(var(--schedule-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
   }
 
-  .schedule-app-header {
-    margin-inline: -12px;
-    padding-inline: 12px;
-  }
-
   .schedule-toolbar-row {
     gap: 5px;
   }
@@ -574,9 +552,6 @@
 }
 
 @media (max-height: 720px) {
-  .schedule-app-header {
-    min-height: 38px;
-  }
 
   .schedule-toolbar {
     gap: 5px;
@@ -619,11 +594,6 @@
     padding-inline: clamp(16px, 2.4vw, 30px);
   }
 
-  .schedule-app-header {
-    margin-inline: calc(-1 * clamp(16px, 2.4vw, 30px));
-    padding-inline: clamp(16px, 2.4vw, 30px);
-  }
-
   .schedule-bottom-nav.home-bottom-nav {
     width: min(96vw, 1040px);
     max-width: 1040px;
@@ -652,5 +622,17 @@
     --home-nav-height: 112px;
     --home-nav-icon-size: 33px;
     --home-nav-label-size: 0.8rem;
+  }
+}
+
+/* Match day navigation while retaining the narrow weekly grid's native horizontal scroll. */
+.schedule-month-view,
+.week-timeline-toolbar {
+  touch-action: pan-y;
+}
+
+@media (min-width: 351px) {
+  .schedule-week-view {
+    touch-action: pan-y;
   }
 }

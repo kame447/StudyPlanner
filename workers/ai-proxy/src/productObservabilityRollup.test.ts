@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type {
   ObservabilityEnvironment,
   ProductActivityTelemetryDraft,
 } from '../../../shared/productObservabilityContract';
 import { FirestoreTransactionConflictError } from './firestoreServiceAccountClient';
+import { createEmptyDailyRollup } from './productObservabilityReadModelProjection';
 import { ProductObservabilityRollupEngine } from './productObservabilityRollup';
 
 type StoredDocument = Record<string, unknown>;
@@ -116,6 +117,81 @@ function engine(
 }
 
 describe('ProductObservabilityRollupEngine', () => {
+  it('quarantines a stored poison event and advances to normal events without retrying forever', async () => {
+    const firestore = new MemoryRollupFirestore();
+    const planning = (id: string, session: string, outcomeType: string, turnIndex: number, observedAt: string) => ({
+      ...activityEvent({ eventId: id, occurredAt: '2026-08-28T00:00:00.000Z', observedAt }),
+      eventType: 'planning_outcome', source: 'weekly_planning', correlation: { featureSessionId: session },
+      payload: { outcomeType, turnIndex, stateRevision: 1, previewCount: 1, unscheduledCount: 0,
+        fallbackUsed: false, repairUsed: false, staleObserved: false, approvalFailureObserved: false,
+        schedulerVersion: null, promptVersion: null, model: null },
+    });
+    firestore.addEvent('normal-start', planning('normal-start', 'normal', 'session_started', 1, '2026-08-28T00:00:01.000Z'));
+    firestore.addEvent('poison-start', planning('poison-start', 'poison', 'session_started', 1, '2026-08-28T00:00:02.000Z'));
+    firestore.addEvent('normal-preview', planning('normal-preview', 'normal', 'preview_generated', 2, '2026-08-28T00:00:03.000Z'));
+    firestore.addEvent('poison-preview', planning('poison-preview', 'poison', 'preview_generated', Number.MAX_SAFE_INTEGER, '2026-08-28T00:00:04.000Z'));
+    firestore.addEvent('normal-after', activityEvent({ eventId: 'normal-after', actorSubjectId: 'other-actor',
+      occurredAt: '2026-08-28T00:00:05.000Z', observedAt: '2026-08-28T00:00:05.000Z' }));
+
+    const rollup = engine(firestore);
+    const result = await rollup.runBatch();
+    expect(result.checkpoint.cursor?.documentName).toContain('normal-after');
+    expect(result.checkpoint).toMatchObject({ rejectedEventCount: 1,
+      lastRejectedEvent: { reason: 'counter_out_of_domain', documentName: expect.stringContaining('poison-preview') } });
+    expect(firestore.documents.get('observability_daily_rollups/production:2026-08-28'))
+      .toMatchObject({ processedEventCount: 4, productActivity: { eventCount: 1 }, planning: { previewCountSum: 1 } });
+    expect(firestore.documents.get('observability_planning_daily_rollups/production:2026-08-28'))
+      .toMatchObject({ aggregate: { firstPreviewTurnIndexSum: 2, previewReachedCount: 1 } });
+    const next = await rollup.runBatch();
+    expect(next.processed).toBe(0);
+    expect(next.checkpoint).toMatchObject({ rejectedEventCount: 1 });
+  });
+
+  it('excludes an in-domain event when its aggregate would overflow, without partial writes', async () => {
+    const firestore = new MemoryRollupFirestore();
+    const fullDay = createEmptyDailyRollup({ environment: 'production', localDate: '2026-08-28', nowIso: '2026-08-28T00:00:00.000Z' });
+    fullDay.planning.previewCountSum = Number.MAX_SAFE_INTEGER;
+    firestore.documents.set('observability_daily_rollups/production:2026-08-28', fullDay as unknown as StoredDocument);
+    firestore.addEvent('overflow', { ...activityEvent({ eventId: 'overflow-event', occurredAt: '2026-08-28T00:00:00.000Z', observedAt: '2026-08-28T00:00:01.000Z' }),
+      eventType: 'planning_outcome', source: 'weekly_planning', correlation: { featureSessionId: 'overflow-session' },
+      payload: { outcomeType: 'preview_generated', turnIndex: 1, stateRevision: 1, previewCount: 1, unscheduledCount: 0,
+        fallbackUsed: false, repairUsed: false, staleObserved: false, approvalFailureObserved: false,
+        schedulerVersion: null, promptVersion: null, model: null } });
+    firestore.addEvent('normal-after', activityEvent({ eventId: 'normal-event', actorSubjectId: 'other-actor', occurredAt: '2026-08-28T00:00:00.000Z', observedAt: '2026-08-28T00:00:02.000Z' }));
+    firestore.conflictNextCommit = true;
+    const rollup = engine(firestore);
+    const result = await rollup.runBatch();
+    expect(result).toMatchObject({ processed: 1, checkpoint: { processedEventCount: 1, rejectedEventCount: 1,
+      lastRejectedEvent: { reason: 'aggregate_counter_overflow', documentName: expect.stringContaining('/overflow') } } });
+    expect(result.checkpoint.cursor?.documentName).toContain('normal-after');
+    expect(firestore.documents.get('observability_daily_rollups/production:2026-08-28')).toMatchObject({ planning: fullDay.planning, processedEventCount: 1 });
+    expect(firestore.documents.has('observability_actor_day/production:2026-08-28:actor-12345678')).toBe(false);
+    expect(firestore.documents.has('observability_user_summary_production/actor-12345678')).toBe(false);
+    expect(firestore.documents.get('observability_daily_rollups/production:2026-08-28')).toMatchObject({ processedEventCount: 1 });
+    expect((await rollup.runBatch()).checkpoint.rejectedEventCount).toBe(1);
+  });
+
+  it('does not persist quarantine evidence or cursor progress when the store commit fails', async () => {
+    const firestore = new MemoryRollupFirestore();
+    firestore.addEvent('poison', { ...activityEvent({ eventId: 'poison-event', occurredAt: '2026-08-28T00:00:00.000Z', observedAt: '2026-08-28T00:00:01.000Z' }),
+      correlation: { stateRevision: Number.MAX_SAFE_INTEGER } });
+    vi.spyOn(firestore, 'commitTransaction').mockRejectedValueOnce(new Error('store unavailable'));
+    const rollup = engine(firestore);
+    await expect(rollup.runBatch()).rejects.toThrow('store unavailable');
+    expect(await rollup.currentCheckpoint()).toMatchObject({ cursor: null, rejectedEventCount: 0, lastRejectedEvent: null });
+    expect((await rollup.runBatch()).checkpoint).toMatchObject({ rejectedEventCount: 1,
+      lastRejectedEvent: { reason: 'counter_out_of_domain' } });
+  });
+
+  it('propagates genuine commit failure and does not advance the cursor', async () => {
+    const firestore = new MemoryRollupFirestore();
+    firestore.addEvent('normal', activityEvent({ eventId: 'normal-event', occurredAt: '2026-08-28T00:00:00.000Z', observedAt: '2026-08-28T00:00:01.000Z' }));
+    vi.spyOn(firestore, 'commitTransaction').mockRejectedValueOnce(new Error('store unavailable'));
+    await expect(engine(firestore).runBatch()).rejects.toThrow('store unavailable');
+    expect(firestore.documents.get('observability_rollup_state/main')).toMatchObject({ cursor: null, processedEventCount: 0 });
+    expect(firestore.documents.has('observability_daily_rollups/production:2026-08-28')).toBe(false);
+  });
+
   it('advances past census-only pages without changing user/activity/API/planning projections', async () => {
     const firestore = new MemoryRollupFirestore();
     firestore.addEvent('census-only', { eventType: 'semantic_turn_census', occurredAt: '2026-08-28T00:00:00.000Z', observedAt: '2026-08-28T00:00:01.000Z', environment: 'production', actorSubjectId: 'actor-census', payload: {} });

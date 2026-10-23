@@ -155,13 +155,15 @@ describe('recorded workload to effort correction reaches existing early validati
     const requests: Array<{messages: Array<{role:string;content:string}>}> = [];
     const normalizer=createWeeklyPlanningSemanticNormalizerV5({createChatCompletion:async(request) => {
       requests.push(request);
-      if(requests.length===1) return '{"decision":"fallback","effortTarget":null,"effortMeasurement":null,"minutes":null,"precision":null,"quantityRole":null}';
-      if(requests.length===2) return actualRereadRaw;
-      if(requests.length===3){const repair=JSON.parse(request.messages[request.messages.length - 1].content);expect(repair.validationErrors).toEqual(['document.corrections[0].replacementLocalId:kind-mismatch:workload:effort_estimate']);expect(repair.requiredChanges.join(' ')).toContain('same kind');return correctedRaw();}
+      if(requests.length===1) {
+        expect(JSON.stringify(request.responseFormat)).not.toContain('weekly_planning_focused_contextual_answer_v5');
+        return actualRereadRaw;
+      }
+      if(requests.length===2){const repair=JSON.parse(request.messages[request.messages.length - 1].content);expect(repair.validationErrors).toEqual(['document.corrections[0].replacementLocalId:kind-mismatch:workload:effort_estimate']);expect(repair.requiredChanges.join(' ')).toContain('same kind');return correctedRaw();}
       throw new Error('Unexpected additional dispatch');
     }});
     const result=await normalizer.normalize({userText:currentUserText,publicStateSummary:currentSummary,committedGraph:acceptedGraph()});
-    expect(requests).toHaveLength(3);expect(result.status).toBe('accepted');expect(result.diagnostics.repairAttempted).toBe(true);
+    expect(requests).toHaveLength(2);expect(result.status).toBe('accepted');expect(result.diagnostics.repairAttempted).toBe(true);
     expect(result.document?.corrections[0].operation).toBe('remove');expect(result.document?.tasks[0].effortEstimates[0].minutes).toBe(30);
   });
 });
@@ -172,13 +174,12 @@ it('reports wrong-kind reread early and retains the existing bounded final compl
   const requests: Array<{messages: Array<{role:string;content:string}>}> = [];
   const normalizer=createWeeklyPlanningSemanticNormalizerV5({createChatCompletion:async(request) => {
     requests.push(request);
-    if(requests.length===1)return '{"decision":"fallback","effortTarget":null,"effortMeasurement":null,"minutes":null,"precision":null,"quantityRole":null}';
-    if(requests.length===2)return "{\"schemaVersion\":\"weekly-planning-semantic-v5\",\"planningIntent\":\"update_plan\",\"planningWindow\":null,\"tasks\":[],\"relations\":[],\"availabilityDeclarations\":[],\"constraintSourceRequests\":[],\"userContextFacts\":[],\"conversationActs\":[{\"kind\":\"answer_pending_question\",\"targetPublicId\":null}],\"uncertainties\":[],\"corrections\":[],\"decisions\":[] }";
-    if(requests.length===3){expect(request.messages[request.messages.length - 1].content).toContain('The prior response is schema-valid');return actualRereadRaw;}
-    if(requests.length===4){expect(request.messages[request.messages.length - 1].content).toContain('The completeness retry still produced no typed semantic content.');expect(request.messages.filter(m=>m.role==='assistant')).toHaveLength(0);return correctedRaw();}
+    if(requests.length===1)return "{\"schemaVersion\":\"weekly-planning-semantic-v5\",\"planningIntent\":\"update_plan\",\"planningWindow\":null,\"tasks\":[],\"relations\":[],\"availabilityDeclarations\":[],\"constraintSourceRequests\":[],\"userContextFacts\":[],\"conversationActs\":[{\"kind\":\"answer_pending_question\",\"targetPublicId\":null}],\"uncertainties\":[],\"corrections\":[],\"decisions\":[] }";
+    if(requests.length===2){expect(request.messages[request.messages.length - 1].content).toContain('The prior response is schema-valid');return actualRereadRaw;}
+    if(requests.length===3){expect(request.messages[request.messages.length - 1].content).toContain('The completeness retry still produced no typed semantic content.');expect(request.messages.filter(m=>m.role==='assistant')).toHaveLength(0);return correctedRaw();}
     throw new Error('Unexpected additional dispatch');
   }});
   const result=await normalizer.normalize({userText:currentUserText,publicStateSummary:currentSummary,committedGraph:acceptedGraph()});
-  expect(requests).toHaveLength(4);expect(result.status).toBe('accepted');expect(result.diagnostics.repairAttempted).toBe(false);
+  expect(requests).toHaveLength(3);expect(result.status).toBe('accepted');expect(result.diagnostics.repairAttempted).toBe(false);
   expect(result.document?.corrections[0].operation).toBe('remove');
 });

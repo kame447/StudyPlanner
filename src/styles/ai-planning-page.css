@@ -3,7 +3,7 @@
  * Reuse the Home shell's responsive width and bottom-navigation contract while
  * keeping the persistent Home topbar above the chat.
  */
-.app-shell.home-app-shell:has(.ai-planning-view) {
+.app-shell.home-app-shell.ai-planning-active {
   position: fixed;
   top: var(--ai-planning-viewport-top, 0px);
   inset-inline: 0;
@@ -17,11 +17,11 @@
 
 /* The navigation shares the keyboard-safe shell instead of staying at the
  * layout viewport's bottom behind the keyboard. Keep all routes available. */
-.app-shell.home-app-shell:has(.ai-planning-view) > .primary-bottom-nav {
+.app-shell.home-app-shell.ai-planning-active > .primary-bottom-nav {
   position: absolute;
 }
 
-.home-main:has(.ai-planning-view) {
+.ai-planning-active > .home-main {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: clamp(6px, 0.8dvh, 9px);
@@ -183,6 +183,35 @@
   }
 }
 
+/* Keep the 1024px tablet layout and mobile keyboard contract unchanged. The
+ * desktop conversation already fills the shared shell; its choices and proposal
+ * should use that space too, without widening ordinary message prose. */
+@media (min-width: 1100px) {
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-starters {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-starter-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-starter-list button {
+    min-height: 64px;
+    padding: 12px 16px;
+  }
+
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-starter-list button span {
+    font-size: 0.875rem;
+  }
+
+  .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card {
+    width: 100%;
+  }
+}
+
 @media (max-width: 520px) {
   .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-plan-card {
     width: 100%;
@@ -207,11 +236,11 @@
 }
 
 @media (max-height: 760px) {
-  .app-shell.home-app-shell:has(.ai-planning-view) {
+  .app-shell.home-app-shell.ai-planning-active {
     padding-bottom: calc(var(--home-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
   }
 
-  .home-main:has(.ai-planning-view) {
+  .ai-planning-active > .home-main {
     gap: 5px;
   }
 
@@ -222,4 +251,13 @@
   .app-shell.home-app-shell .ai-planning-view.home-dashboard .ai-planning-composer {
     padding-block: 7px;
   }
+}
+
+/* The proposal's preview action and count badge need a readable dark pair too. */
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-card :is(
+  .ai-planning-preview-button,
+  .ai-planning-plan-card-head b
+) {
+  background: var(--surface-selected);
+  color: var(--text-primary);
 }

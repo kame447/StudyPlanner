@@ -10,6 +10,7 @@ import {
   isUserContextRoutingDecisionContext,
   type UserContextRoutingDecisionContext,
 } from './userContextRoutingDecision';
+import { isFocusedContextualTargetBinding, snapshotFocusedContextualTargetBinding, type FocusedContextualTargetBinding } from './focusedContextualTargetBinding';
 
 export const FOCUSED_CONTEXTUAL_QUESTION_CODES = [
   'missing_effort_estimate',
@@ -29,7 +30,7 @@ export type FocusedContextualTargetQuantityRole =
 
 // Provider-neutral, bounded projection. It carries no canonical IDs and grants
 // no scheduler, preview, approval, or save authority.
-export interface FocusedContextualDecisionContext {
+export interface LegacyFocusedContextualDecisionContext {
   purpose: 'focused_contextual_answer';
   requestId: string;
   inputRevision: number;
@@ -43,6 +44,19 @@ export interface FocusedContextualDecisionContext {
     };
   };
 }
+
+/** Wire v2 is unknown to old Workers, which safely retain the original Luna request. */
+export interface BoundFocusedContextualDecisionContext extends Omit<LegacyFocusedContextualDecisionContext, 'purpose' | 'state'> {
+  purpose: 'focused_contextual_answer_v2';
+  targetToken: string;
+  state: {
+    currentUserText: string;
+    pendingQuestion: LegacyFocusedContextualDecisionContext['state']['pendingQuestion'] & {
+      target: FocusedContextualTargetBinding;
+    };
+  };
+}
+export type FocusedContextualDecisionContext = LegacyFocusedContextualDecisionContext | BoundFocusedContextualDecisionContext;
 
 // The envelope owns question identity. Provider input adds it explicitly rather
 // than allowing an independently supplied duplicate in the browser state.
@@ -59,7 +73,10 @@ export function focusedContextualDecisionState(
   return Object.freeze({
     questionCode: context.questionCode,
     currentUserText: context.state.currentUserText,
-    pendingQuestion: Object.freeze({ ...context.state.pendingQuestion }),
+    pendingQuestion: Object.freeze({ ...context.state.pendingQuestion,
+      ...(context.purpose === 'focused_contextual_answer_v2'
+        ? { target: snapshotFocusedContextualTargetBinding(context.state.pendingQuestion.target) } : {}),
+    }),
   });
 }
 
@@ -119,6 +136,7 @@ export function isFocusedContextualDecisionContext(
     'inputRevision',
     'questionCode',
     'state',
+    ...(value.purpose === 'focused_contextual_answer_v2' ? ['targetToken'] : []),
   ])) return false;
   if (!isRecord(value.state) || !hasOnlyKeys(value.state, [
     'currentUserText',
@@ -129,15 +147,16 @@ export function isFocusedContextualDecisionContext(
     'targetQuantityRole',
     'questionBasis',
     'hasEstimateTarget',
+    ...(value.purpose === 'focused_contextual_answer_v2' ? ['target'] : []),
   ])) return false;
 
   if (
-    value.purpose !== 'focused_contextual_answer'
+    (value.purpose !== 'focused_contextual_answer' && value.purpose !== 'focused_contextual_answer_v2')
     || typeof value.requestId !== 'string'
     || value.requestId.trim().length === 0
     || value.requestId.length > 160
-    || !Number.isSafeInteger(value.inputRevision)
-    || Number(value.inputRevision) < 0
+    || typeof value.inputRevision !== 'number' || !Number.isSafeInteger(value.inputRevision)
+    || value.inputRevision < 0
     || !isQuestionCode(value.questionCode)
     || typeof value.state.currentUserText !== 'string'
     || value.state.currentUserText.trim().length === 0
@@ -147,6 +166,13 @@ export function isFocusedContextualDecisionContext(
       && pendingQuestion.questionBasis !== 'completed_workload_total')
     || typeof pendingQuestion.hasEstimateTarget !== 'boolean'
   ) return false;
+
+  if (value.purpose === 'focused_contextual_answer_v2') {
+    const target = pendingQuestion.target;
+    if (!isFocusedContextualTargetBinding(target) || typeof value.targetToken !== 'string'
+      || target.targetToken !== value.targetToken || target.sourceRevision !== value.inputRevision
+      || target.questionCode !== value.questionCode || target.workload.quantityRole !== pendingQuestion.targetQuantityRole) return false;
+  }
 
   if (value.questionCode === 'quantity_role_unresolved') {
     return (pendingQuestion.targetQuantityRole === 'declared'

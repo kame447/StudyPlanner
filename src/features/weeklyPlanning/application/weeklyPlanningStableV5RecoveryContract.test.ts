@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const runtimeSource = readFileSync(
-  new URL('./weeklyPlanningStableV5RuntimeExecutor.ts', import.meta.url),
+  new URL('./weeklyPlanningStableV5RuntimeExecutorCore.ts', import.meta.url),
   'utf8',
 );
 const planningEvaluationSource = readFileSync(
@@ -18,11 +18,11 @@ const responseRoutingSource = readFileSync(
   'utf8',
 );
 const semanticTurnSource = readFileSync(
-  new URL('./weeklyPlanningStableV5SemanticTurn.ts', import.meta.url),
+  new URL('./weeklyPlanningStableV5SemanticTurnCore.ts', import.meta.url),
   'utf8',
 );
 const semanticContextSource = readFileSync(
-  new URL('./weeklyPlanningStableV5SemanticContext.ts', import.meta.url),
+  new URL('./weeklyPlanningStableV5SemanticContextCore.ts', import.meta.url),
   'utf8',
 );
 const runtimeQuestionsSource = readFileSync(

@@ -410,4 +410,32 @@ describe('openAiCompatibleClient model routing', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(init.signal).toMatchObject({ aborted: false });
   });
+  it('rejects non-success proxy responses even when they contain a misleading content field', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(true);
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
+    vi.mocked(getFirebaseAuth).mockReturnValue({ currentUser: { getIdToken: async () => 'id-token' } } as unknown as ReturnType<typeof getFirebaseAuth>);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ content: 'not a successful answer', error: 'upstream unavailable',
+      providerFailure: { kind: 'http_error', httpStatus: 502, upstreamStatus: 429, completion: null, privateDebug: 'omit-this' } }, { status: 502 })));
+    await expect(createOpenAiCompatibleClient(config).createChatCompletion({ messages: [{ role: 'user', content: 'test' }], purpose: 'weekly_planning_renderer' }))
+      .rejects.toMatchObject({ providerFailure: { kind: 'http_error', httpStatus: 502, upstreamStatus: 429, completion: null } });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains the HTTP status of a non-JSON proxy error without persisting its body', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(true);
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
+    vi.mocked(getFirebaseAuth).mockReturnValue({ currentUser: { getIdToken: async () => 'id-token' } } as unknown as ReturnType<typeof getFirebaseAuth>);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('private error body', { status: 503 })));
+    await expect(createOpenAiCompatibleClient(config).createChatCompletion({ messages: [{ role: 'user', content: 'test' }], purpose: 'weekly_planning_renderer' }))
+      .rejects.toMatchObject({ providerFailure: { kind: 'http_error', httpStatus: 503, upstreamStatus: null, completion: null } });
+  });
+
+  it('keeps timeout distinct from an arbitrary local exception', async () => {
+    vi.useFakeTimers(); vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    vi.stubGlobal('fetch', vi.fn(async (_url, init) => stalledJsonResponse(init.signal)));
+    const request = createOpenAiCompatibleClient({ ...config, requestTimeoutMs: 25 }).createChatCompletion({ messages: [{ role: 'user', content: 'test' }] });
+    const assertion = expect(request).rejects.toMatchObject({ providerFailure: { kind: 'timeout', httpStatus: null } });
+    await vi.advanceTimersByTimeAsync(26); await assertion;
+  });
+
 });

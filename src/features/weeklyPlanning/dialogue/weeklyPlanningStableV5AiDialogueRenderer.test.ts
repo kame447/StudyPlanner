@@ -1,3 +1,9 @@
+import { AiProviderError } from '../../../../shared/aiProviderFailure';
+import {
+  WEEKLY_PLANNING_RENDERER_BUDGET_RETRY_MAX_COMPLETION_TOKENS,
+  WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
+  createWeeklyPlanningStableV5DialogueRendererCore,
+} from './weeklyPlanningStableV5AiDialogueRendererCore';
 import { describe, expect, it, vi } from 'vitest';
 import { parseWeeklyPlanningStableV5DialogueRendererResponse } from './weeklyPlanningStableV5DialogueValidation';
 import type { AiConfig } from '../../../lib/aiConfig';
@@ -72,6 +78,59 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
       responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
       purpose: 'weekly_planning_renderer',
     }));
+  });
+
+  it('retries a confirmed exhausted output budget once and records a bounded diagnostic', async () => {
+    const renderInput = input();
+    const call = vi.fn()
+      .mockRejectedValueOnce(new AiProviderError('provider private failure', {
+        kind: 'empty_response', httpStatus: 502, upstreamStatus: 200,
+        completion: { finishReason: 'length', refusalPresent: false,
+          requestedMaxCompletionTokens: null, effectiveMaxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
+          reasoningTokens: 800, textTokens: 0 },
+      }))
+      .mockResolvedValueOnce(response(renderInput, '英単語は1回にどれくらい時間を取れそうですか？'));
+    let prompt: Record<string, unknown> | null = null;
+    const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: call }, {
+      rememberPrompt: (_id, data) => { prompt = data; },
+    });
+    expect(await renderer.render(renderInput)).toMatchObject({ status: 'rendered' });
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call.mock.calls[0][0].maxCompletionTokens).toBe(WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS);
+    expect(call.mock.calls[1][0].maxCompletionTokens).toBe(WEEKLY_PLANNING_RENDERER_BUDGET_RETRY_MAX_COMPLETION_TOKENS);
+    expect(prompt).toMatchObject({ outputBudgetRetry: {
+      maxCompletionTokens: WEEKLY_PLANNING_RENDERER_BUDGET_RETRY_MAX_COMPLETION_TOKENS, result: 'rendered', initialFailure: { kind: 'empty_response' },
+    } });
+    expect(JSON.stringify(prompt)).not.toContain('provider private failure');
+  });
+
+  it.each(['http_error', 'timeout', 'non_length_empty'])('does not retry unrelated provider failure %s', async kind => {
+    const renderInput = input();
+    const reason = kind === 'non_length_empty' ? 'empty_response' : kind;
+    const call = vi.fn().mockRejectedValue(new AiProviderError('failure', {
+      kind: reason as 'http_error' | 'timeout' | 'empty_response', httpStatus: 502,
+      completion: { finishReason: kind === 'non_length_empty' ? 'stop' : 'length',
+        refusalPresent: null, requestedMaxCompletionTokens: null, effectiveMaxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
+        reasoningTokens: 800, textTokens: null },
+    }));
+    expect(await createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion: call }).render(renderInput))
+      .toMatchObject({ status: 'fallback', reason: 'provider_error' });
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not add an output-budget retry inside recovery verification', async () => {
+    const renderInput = input({ actionKind: 'status', questionCode: null,
+      recovery: { planningDetailsNotApplied: true, acceptedStateUnchanged: true, retainedPreviewUnchanged: false } });
+    const call = vi.fn().mockRejectedValue(new AiProviderError('output budget', {
+      kind: 'empty_response', completion: {
+        finishReason: 'length', refusalPresent: null, requestedMaxCompletionTokens: null,
+        effectiveMaxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS, reasoningTokens: 800, textTokens: null,
+      },
+    }));
+    expect(await createAiWeeklyPlanningStableV5DialogueRenderer(config,
+      { createChatCompletion: call }, { canDispatchRecovery: () => true }).render(renderInput))
+      .toMatchObject({ status: 'fallback', reason: 'provider_error' });
+    expect(call).toHaveBeenCalledTimes(1);
   });
 
   it('retries one identical repeated question and keeps the repaired output AI-rendered', async () => {
@@ -270,6 +329,7 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     expect(renderInput).toEqual(before);
     expect(outcome).toEqual({ status: 'resolved', value: {
       status: 'fallback', reason: 'provider_error', rawResponse: null,
+      providerFailure: { kind: 'unknown', httpStatus: null, upstreamStatus: null, completion: null },
     } });
   });
 
@@ -286,6 +346,7 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
       status: 'fallback',
       reason: 'provider_error',
       rawResponse: null,
+      providerFailure: { kind: 'unknown', httpStatus: null, upstreamStatus: null, completion: null },
     });
   });
 });

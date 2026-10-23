@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { useTimelineDragController } from '../hooks/useTimelineDragController';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import {
@@ -19,6 +20,7 @@ import {
   clampAiPlanningPreviewPageIndex,
   getAiPlanningPreviewDateRange,
 } from './aiPlanningPreviewPeriod';
+import { INITIAL_PREVIEW_PROPOSAL, nextPreviewProposal } from './aiPlanningPreviewIdentity';
 
 interface AiPlanningPreviewDialogProps {
   blocks: WeeklyPlanDraftBlock[];
@@ -127,6 +129,17 @@ export function AiPlanningPreviewDialog({
   const [activeActionBlockId, setActiveActionBlockId] = useState<string | null>(null);
   const actionPressRef = useRef<PreviewActionPress | null>(null);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
+  const previewBodyRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLElement | null>(null);
+  // Promotion disables the focused promote button; keep keyboard focus inside the
+  // dialog on an inert target instead of moving it to Save (#751).
+  const promoteHadFocus = useRef(false);
+  useEffect(() => {
+    if (hasLocalPreview || !promoteHadFocus.current) return;
+    promoteHadFocus.current = false;
+    dialogRef.current?.focus({ preventScroll: true });
+  }, [hasLocalPreview]);
+  const previewIdentity = useRef(INITIAL_PREVIEW_PROPOSAL);
   const sourceSignature = useMemo(
     () =>
       blocks
@@ -137,6 +150,13 @@ export function AiPlanningPreviewDialog({
         .join('|'),
     [blocks],
   );
+  // Follows the blocks actually shown, so a new proposal's view and its rows
+  // change in the same commit (the shown blocks catch up with `blocks` one
+  // commit later).
+  const previewGeneration = useMemo(() => {
+    previewIdentity.current = nextPreviewProposal(previewIdentity.current, editableBlocks.map((block) => block.id));
+    return previewIdentity.current.generation;
+  }, [editableBlocks]);
   const dateRange = useMemo(() => getAiPlanningPreviewDateRange(blocks), [blocks]);
   const datePages = useMemo(() => buildAiPlanningPreviewDatePages(blocks), [blocks]);
   const activePageIndex = clampAiPlanningPreviewPageIndex(pageIndex, datePages.length);
@@ -179,6 +199,14 @@ export function AiPlanningPreviewDialog({
     gridTemplateColumns: `46px repeat(${Math.max(groups.length, 1)}, minmax(0, 1fr))`,
   } satisfies CSSProperties;
   const detailTimelineHeight = 24 * DAY_DETAIL_HOUR_HEIGHT;
+  // Moving, restoring (undo/redo) or excluding a proposed block is explained
+  // in place: the block lands at its new time, and the day counts update.
+  // Paging, switching overview/day and a new proposal only show the view.
+  useDataChangeMotion(
+    previewBodyRef,
+    `${mode}:${activePageIndex}:${mode === 'day' ? selectedDate : ''}:${previewGeneration}`,
+    [editableBlocks, plans],
+  );
 
   function clearActionPress() {
     const press = actionPressRef.current;
@@ -330,6 +358,8 @@ export function AiPlanningPreviewDialog({
     <>
       <div className="ai-planning-preview-overlay ai-planning-preview-overlay-v2" onClick={onClose}>
         <section
+          ref={dialogRef}
+          tabIndex={-1}
           className="ai-planning-preview-modal ai-planning-preview-dialog-v2"
           role="dialog"
           aria-modal="true"
@@ -422,7 +452,7 @@ export function AiPlanningPreviewDialog({
               <p className="ai-planning-preview-hint">予定を長押しすると下の操作バーから除外できます。長押ししたまま動かすと日時を調整できます。日付をタップすると日別表示します。</p>
 
               <div className="ai-planning-preview-scroll ai-planning-preview-overview-scroll">
-                <div className="ai-planning-week-grid ai-planning-preview-overview-grid">
+                <div ref={previewBodyRef} className="ai-planning-week-grid ai-planning-preview-overview-grid">
                   <div className="ai-planning-week-header" style={overviewGridStyle}>
                     <span>時間</span>
                     {groups.map((group) => (
@@ -435,7 +465,9 @@ export function AiPlanningPreviewDialog({
                         onKeyDown={(event) => activateByKeyboard(event, () => openDay(group.date))}
                       >
                         <strong>{formatDateLabel(group.date)}</strong>
-                        <small>{group.blocks.length}件</small>
+                        <small data-motion-key={`count:${group.date}`} data-motion-signature={String(group.blocks.length)}>
+                          {group.blocks.length}件
+                        </small>
                       </div>
                     ))}
                   </div>
@@ -489,6 +521,8 @@ export function AiPlanningPreviewDialog({
                             <div
                               className="ai-planning-existing-block ai-planning-preview-overview-block"
                               key={plan.id}
+                              data-motion-key={`plan:${plan.id}`}
+                              data-motion-signature={`${plan.startTime}-${plan.endTime} ${plan.title}`}
                               style={overviewBlockStyle(plan.startTime, plan.endTime)}
                               title={`${plan.title} ${plan.startTime}-${plan.endTime}`}
                             >
@@ -531,6 +565,8 @@ export function AiPlanningPreviewDialog({
                                   .filter(Boolean)
                                   .join(' ')}
                                 data-ai-preview-action-block={block.id}
+                                data-motion-key={`block:${block.id}`}
+                                data-motion-signature={`${block.date} ${block.startTime}-${block.endTime} ${block.title}`}
                                 key={block.id}
                                 style={{
                                   ...overviewBlockStyle(block.startTime, block.endTime),
@@ -651,7 +687,7 @@ export function AiPlanningPreviewDialog({
               </div>
             </>
           ) : (
-            <div className="ai-planning-preview-day-detail">
+            <div ref={previewBodyRef} className="ai-planning-preview-day-detail">
               <div className="ai-planning-preview-day-nav">
                 <button
                   type="button"
@@ -663,7 +699,12 @@ export function AiPlanningPreviewDialog({
                 </button>
                 <div>
                   <strong>{selectedDate ? formatDateLabel(selectedDate) : '日別表示'}</strong>
-                  <small>{selectedGroup?.blocks.length ?? 0}件</small>
+                  <small
+                    data-motion-key={`count:${selectedDate}`}
+                    data-motion-signature={String(selectedGroup?.blocks.length ?? 0)}
+                  >
+                    {selectedGroup?.blocks.length ?? 0}件
+                  </small>
                 </div>
                 <button
                   type="button"
@@ -716,6 +757,8 @@ export function AiPlanningPreviewDialog({
                       <div
                         className="ai-planning-existing-block ai-planning-preview-detail-block"
                         key={plan.id}
+                        data-motion-key={`plan:${plan.id}`}
+                        data-motion-signature={`${plan.startTime}-${plan.endTime} ${plan.title}`}
                         style={detailBlockStyle(plan.startTime, plan.endTime)}
                       >
                         <strong>{plan.title}</strong>
@@ -756,6 +799,8 @@ export function AiPlanningPreviewDialog({
                             .filter(Boolean)
                             .join(' ')}
                           data-ai-preview-action-block={block.id}
+                          data-motion-key={`block:${block.id}`}
+                          data-motion-signature={`${block.date} ${block.startTime}-${block.endTime} ${block.title}`}
                           key={block.id}
                           style={detailBlockStyle(block.startTime, block.endTime)}
                           title={`${block.title} ${block.startTime}-${block.endTime}`}
@@ -874,28 +919,35 @@ export function AiPlanningPreviewDialog({
 
           <footer className="ai-planning-preview-actions">
             {checkpointNotice}
-            <button className="ai-planning-secondary-action" type="button" onClick={onAdjust}>
+            {/* Save keeps its own row before and after promotion, so promoting
+                neither shifts the layout nor puts Save under the pointer (#751). */}
+            <button
+              key="save"
+              className="ai-planning-primary-action ai-planning-preview-save-action"
+              type="button"
+              disabled={hasLocalPreview || isBusy || !canSave}
+              onClick={() => { if (!hasLocalPreview) onSave(editableBlocks); }}
+            >
+              {isSaving ? '保存中...' : 'この内容で保存'}
+            </button>
+            <button key="adjust" className="ai-planning-secondary-action" type="button" onClick={onAdjust}>
               さらに調整
             </button>
-            {hasLocalPreview ? (
-              <button
-                className="ai-planning-primary-action"
-                type="button"
-                disabled={isBusy}
-                onClick={() => onPromote(editableBlocks)}
-              >
-                この内容で仮予定にする
-              </button>
-            ) : (
-              <button
-                className="ai-planning-primary-action"
-                type="button"
-                disabled={isBusy || !canSave}
-                onClick={() => onSave(editableBlocks)}
-              >
-                {isSaving ? '保存中...' : 'この内容で保存'}
-              </button>
-            )}
+            {/* Keep the promotion target/focus in its own bottom-row slot.
+                A second click/tap or held key must never become approval. */}
+            <button
+              key="promote"
+              className="ai-planning-primary-action"
+              type="button"
+              disabled={isBusy || !hasLocalPreview}
+              onClick={(event) => {
+                if (!hasLocalPreview) return;
+                promoteHadFocus.current = document.activeElement === event.currentTarget;
+                onPromote(editableBlocks);
+              }}
+            >
+              {hasLocalPreview ? 'この内容で仮予定にする' : '仮予定にしました'}
+            </button>
           </footer>
         </section>
       </div>

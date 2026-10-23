@@ -39,7 +39,15 @@
 
 .weekly-progress-ring strong {
   color: #25314a;
-  font-size: clamp(0.86rem, 2.8vw, 1rem);
+  font-size: clamp(0.68rem, 2.1vw, 0.8rem);
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekly-progress-ring strong small {
+  font-size: 0.7em;
 }
 
 .weekly-progress-summary {
@@ -74,7 +82,7 @@
 }
 
 .weekly-progress-negative { color: #eb3547; }
-.weekly-progress-positive { color: #1f9a69; }
+.weekly-progress-positive { color: #14754f; }
 
 .weekly-progress-chart {
   min-width: 0;
@@ -173,6 +181,8 @@
 
 .weekly-progress-plan,
 .weekly-progress-actual {
+  /* A changed bar grows from the baseline (playGrowth). */
+  transform-origin: 50% 100%;
   width: clamp(4px, 1.3vw, 6px);
   min-height: 2px;
   border-radius: 2px 2px 0 0;
@@ -234,15 +244,16 @@
 
   .weekly-progress-layout {
     grid-template-columns:
-      clamp(52px, 13%, 58px)
+      clamp(56px, 13%, 58px)
       clamp(76px, 21%, 94px)
       minmax(0, 1fr);
     gap: clamp(4px, 1vw, 7px);
   }
 
   .weekly-progress-ring {
-    width: clamp(52px, 11vw, 56px);
-    height: clamp(52px, 11vw, 56px);
+    /* Keep the enlarged percentage inside the disc without shrinking text. */
+    width: 56px;
+    height: 56px;
   }
 
   .weekly-progress-ring > div {
@@ -270,13 +281,13 @@
 
 @media (max-width: 390px) {
   .weekly-progress-layout {
-    grid-template-columns: 52px 76px minmax(0, 1fr);
+    grid-template-columns: 56px 76px minmax(0, 1fr);
     gap: 4px;
   }
 
   .weekly-progress-ring {
-    width: 52px;
-    height: 52px;
+    width: 56px;
+    height: 56px;
   }
 
   .weekly-progress-summary {

@@ -1,0 +1,9 @@
+.study-streak-flame { transform-origin: 50% 85%; }
+/* The old Home entrance pop must also remain still on a non-study day. */
+.study-streak-flame.home-streak-flame { animation: none; }
+.study-streak-flame.is-studied-today { animation: study-streak-flame-sway 2.4s ease-in-out infinite; }
+@keyframes study-streak-flame-sway {
+  0%, 100% { transform: rotate(-3deg) scale(1, 1); }
+  50% { transform: rotate(3deg) scale(.97, 1.04); }
+}
+:root:is([data-motion='reduced'], [data-motion='off']) .study-streak-flame.is-studied-today { animation: none; }

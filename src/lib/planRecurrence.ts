@@ -32,9 +32,10 @@ const RECURRENCE_WEEKDAY_BY_INDEX: RecurrenceWeekday[] = [
 ];
 
 const RECURRENCE_RULE_PRIORITY: Record<RecurrenceRuleKind, number> = {
-  date: 5,
-  weekday: 4,
-  'day-type': 3,
+  date: 6,
+  weekday: 5,
+  'day-type': 4,
+  yearly: 3,
   monthly: 2,
   daily: 1,
 };
@@ -119,6 +120,7 @@ function inferRuleKind(
   if (
     kind === 'daily' ||
     kind === 'monthly' ||
+    kind === 'yearly' ||
     kind === 'day-type' ||
     kind === 'weekday' ||
     kind === 'date'
@@ -272,6 +274,12 @@ export function doesRecurrenceRuleApplyToDate(
     return toDate(rule.startDate).getDate() === toDate(targetDate).getDate();
   }
 
+  if (rule.kind === 'yearly') {
+    const baseDate = toDate(rule.startDate);
+    const date = toDate(targetDate);
+    return baseDate.getMonth() === date.getMonth() && baseDate.getDate() === date.getDate();
+  }
+
   if (rule.kind === 'day-type') {
     return rule.dayType === 'weekday'
       ? isWeekdayDate(targetDate)
@@ -323,6 +331,10 @@ export function summarizeLegacyRepeatFromRecurrenceRules(
     return 'monthly';
   }
 
+  if (nonDateRules.every((rule) => rule.kind === 'yearly')) {
+    return 'yearly';
+  }
+
   return 'weekly';
 }
 
@@ -330,6 +342,11 @@ export function summarizeLegacyRepeatUntilFromRecurrenceRules(
   rules: RecurrenceRule[],
   fallbackUntil: string | null = null,
 ): string | null {
+  // A one-date override must not become the expiry of an unbounded series.
+  if (rules.some((rule) => rule.kind !== 'date' && rule.until === null)) {
+    return null;
+  }
+
   const untils = rules
     .map((rule) => rule.until)
     .filter((value): value is string => Boolean(value))
@@ -396,8 +413,8 @@ export function buildRecurrenceRulesFromLegacySource(
     );
   }
 
-  if (source.repeat === 'monthly') {
-    return normalizeRecurrenceRules([{ ...baseRule, kind: 'monthly' }], source);
+  if (source.repeat === 'monthly' || source.repeat === 'yearly') {
+    return normalizeRecurrenceRules([{ ...baseRule, kind: source.repeat }], source);
   }
 
   return [];
@@ -477,6 +494,14 @@ export function resolvePlanOccurrence(plan: Plan, occurrenceDate: string): Plan 
     ? selectApplicableRecurrenceRule(plan.recurrenceRules, occurrenceDate)
     : null;
 
+  return projectPlanOccurrence(plan, occurrenceDate, matchingRule);
+}
+
+function projectPlanOccurrence(
+  plan: Plan,
+  occurrenceDate: string,
+  matchingRule: RecurrenceRule | null,
+): Plan {
   return {
     ...plan,
     title: matchingRule?.title ?? plan.title,
@@ -493,9 +518,21 @@ export function resolvePlanOccurrence(plan: Plan, occurrenceDate: string): Plan 
 }
 
 export function expandPlansForDate(plans: Plan[], targetDate: string): Plan[] {
-  return plans
-    .filter((plan) => doesPlanOccurOnDate(plan, targetDate))
-    .map((plan) => resolvePlanOccurrence(plan, targetDate));
+  const occurrences: Plan[] = [];
+
+  for (const plan of plans) {
+    if (plan.excludedDates.includes(targetDate)) continue;
+
+    if (plan.recurrenceRules.length > 0) {
+      // Admission and display use the same selected rule for this occurrence.
+      const matchingRule = selectApplicableRecurrenceRule(plan.recurrenceRules, targetDate);
+      if (matchingRule) occurrences.push(projectPlanOccurrence(plan, targetDate, matchingRule));
+    } else if (doesPlanOccurOnDateLegacy(plan, targetDate)) {
+      occurrences.push(projectPlanOccurrence(plan, targetDate, null));
+    }
+  }
+
+  return occurrences;
 }
 
 export function expandPlansForDateRange(

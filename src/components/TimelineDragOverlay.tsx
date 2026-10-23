@@ -1,15 +1,18 @@
 import { createPortal } from 'react-dom';
+import type { CSSProperties } from 'react';
 import type { TimelineDragVisualState } from '../hooks/useTimelineDragController';
 import '../styles/week-plan-drag.css';
 
 interface TimelineDragOverlayProps {
   visual: TimelineDragVisualState | null;
   placement?: 'schedule' | 'preview';
+  toneStyle?: CSSProperties;
 }
 
 export function TimelineDragOverlay({
   visual,
   placement = 'schedule',
+  toneStyle,
 }: TimelineDragOverlayProps) {
   if (!visual || typeof document === 'undefined') {
     return null;
@@ -19,6 +22,7 @@ export function TimelineDragOverlay({
     <div
       className={`schedule-week-drag-overlay ${visual.toneClass}`.trim()}
       style={{
+        ...toneStyle,
         left: visual.overlayX,
         top: visual.overlayY,
         width: visual.width,

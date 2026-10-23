@@ -62,12 +62,12 @@ function trimRegistry(): void {
   }
 }
 
-export function recordWeeklyPlanningStableV5FailureDiagnostics(params: {
+export function createWeeklyPlanningStableV5FailureDiagnostics(params: {
   turnId: string;
   status: WeeklyPlanningStableV5FailureStatus;
   diagnostics: WeeklyPlanningSemanticNormalizerDiagnosticsV5;
   canonicalizationErrors?: readonly string[];
-}): void {
+}): WeeklyPlanningStableV5RecordedFailure {
   const validationErrorCategories = [...new Set(
     params.diagnostics.validationErrors.map(validationErrorCategory),
   )].sort();
@@ -92,7 +92,7 @@ export function recordWeeklyPlanningStableV5FailureDiagnostics(params: {
   if (providerErrorCategory) {
     traceParts.push(`provider=${providerErrorCategory}`);
   }
-  failuresByTurnId.set(params.turnId, {
+  return {
     status: params.status,
     attemptCount: params.diagnostics.attemptCount,
     repairAttempted: params.diagnostics.repairAttempted,
@@ -103,7 +103,13 @@ export function recordWeeklyPlanningStableV5FailureDiagnostics(params: {
     traceCode: traceParts.join('|'),
     ...(params.diagnostics.providerDispatch
       ? { providerDispatch: { ...params.diagnostics.providerDispatch } } : {}),
-  });
+  };
+}
+
+export function recordWeeklyPlanningStableV5FailureDiagnostics(
+  params: Parameters<typeof createWeeklyPlanningStableV5FailureDiagnostics>[0],
+): void {
+  failuresByTurnId.set(params.turnId, createWeeklyPlanningStableV5FailureDiagnostics(params));
   trimRegistry();
 }
 

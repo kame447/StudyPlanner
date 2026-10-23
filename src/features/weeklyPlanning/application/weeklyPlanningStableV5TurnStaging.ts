@@ -1,8 +1,7 @@
+import { userUtteranceContextFactsV5 } from './weeklyPlanningStableV5ContextFacts';
+export { userUtteranceContextFactsV5 } from './weeklyPlanningStableV5ContextFacts';
 import { stageUserPlanningContextFactsV1 } from '../../userPlanningContext/userPlanningContextSpace';
 import { collectUserPlanningContextFactsV5 } from '../semantic/weeklyPlanningDurableContextSignalsV5';
-import { weeklyPlanningEvidenceChannelForSourceTextV5 } from '../semantic/weeklyPlanningCurrentTurnProvenanceV5';
-import { isUserUtteranceSourcedV5 } from '../semantic/weeklyPlanningFactGraphV5';
-import type { UserPlanningContextSemanticFactV1 } from '../../userPlanningContext/userPlanningContextTypes';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeContracts';
 import type { WeeklyPlanningStableV5SemanticTurnResult } from './weeklyPlanningStableV5SemanticTurn';
@@ -13,23 +12,11 @@ type SuccessfulSemanticTurn = Extract<
   { status: 'success' }
 >;
 
-export function userUtteranceContextFactsV5(params: {
-  facts: UserPlanningContextSemanticFactV1[];
-  userText: string;
-  supplementalContext?: string;
-}): UserPlanningContextSemanticFactV1[] {
-  return params.facts.filter((fact) => isUserUtteranceSourcedV5({
-    channel: weeklyPlanningEvidenceChannelForSourceTextV5(
-      fact.sourceText,
-      params.userText,
-      params.supplementalContext,
-    ),
-  }));
-}
-
 export function stageWeeklyPlanningStableV5Turn(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   semanticTurn: SuccessfulSemanticTurn;
+  /** C5 records its bounded durable outcome separately; its fact-selection evidence is private. */
+  omitCanonicalizationEvidence?: boolean;
 }): void {
   const { input, semanticTurn } = params;
   const { requestContext, runtimeSession, semantic } = semanticTurn;
@@ -74,7 +61,7 @@ export function stageWeeklyPlanningStableV5Turn(params: {
       requestId: input.traceRequestId,
       previousGraphRevision: runtimeSession.graph.revision,
       stagedGraph: semantic.graph,
-      canonicalization: semantic.canonicalization,
+      canonicalization: params.omitCanonicalizationEvidence ? null : semantic.canonicalization,
     },
   });
 }

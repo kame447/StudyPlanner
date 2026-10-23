@@ -13,7 +13,7 @@ let renderer: ReactTestRenderer;
 const save = vi.fn().mockImplementation(async draft => ({ ...user, ...draft }));
 const close = vi.fn();
 function render(open = true, owner = user) {
-  return <MyPageDialog open={open} user={owner} onSaveProfile={save} onSignOut={vi.fn()} onClose={close} />;
+  return <MyPageDialog open={open} user={owner} onSaveProfile={save} onSignOut={vi.fn()} onClose={close} onBeforeOpenAdmin={() => true} />;
 }
 function button(text: string) { return renderer.root.findAllByType('button').find(node => node.props.children === text)!; }
 function expand() { act(() => renderer.root.findByProps({ className: 'collapsible-toggle' }).props.onClick()); }

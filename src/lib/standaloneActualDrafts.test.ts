@@ -28,8 +28,10 @@ describe('standaloneActualDrafts', () => {
     expect(getStandaloneActualDurationMinutes(actual)).toBe(60);
   });
 
-  it('keeps the standalone editor same-day end-time clamp', () => {
-    expect(resolveStandaloneActualEndTime('23:30', 60)).toBe('24:00');
+  it('preserves an overnight duration when the standalone editor saves again', () => {
+    expect(resolveStandaloneActualEndTime('23:30', 60)).toBe('00:30');
+    expect(getStandaloneActualDurationMinutes({ ...actual, actualStartTime: '23:30', actualEndTime: '00:30' })).toBe(60);
+    expect(resolveStandaloneActualEndTime('23:30', 30)).toBe('24:00');
     expect(resolveStandaloneActualEndTime('23:30', 24 * 60)).toBeNull();
   });
 

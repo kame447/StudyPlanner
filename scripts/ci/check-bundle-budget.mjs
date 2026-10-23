@@ -8,32 +8,51 @@ const distDir = path.join(repoRoot, 'dist');
 const reportDir = path.join(repoRoot, 'artifacts', 'quality-gate');
 const reportPath = path.join(reportDir, 'bundle-budget.json');
 
-const budgets = {
+// Fixed reviewed references, never regenerated from the checked build.
+const baselines = {
   javascript: {
-    // Approved #549 → #559 → #558 → #560 → #540 integration on main 4e162408:
-    // 2,263,870 raw / 609,511 gzip, with 28 unchanged chunk families.
-    // Stage attribution: diagnostics +639/+300, deferred DayNotes +3,303/+992,
-    // unplanned start +3,907/+1,165 bytes; paint changes no raw JS.
-    // Same installed dependencies/config; Firebase server-query wrapper adds 148/6.
-    // Bound only aggregate JS growth; preserve both per-chunk and all CSS guards.
-    // Evidence: docs/domains/client-runtime/work/unplanned-study-start-handoff.md.
-    totalRaw: 2_265_000,
-    totalGzip: 610_000,
-    largestRaw: 950_000,
-    largestGzip: 260_000,
+    // Owner decision based on measured main/PR baseline, 2026-10-21 (#305/#826):
+    // main 22e42203 plus PR #826's
+    // measured +18,556 raw / +6,448 gzip bytes, with no added headroom.
+    // Exact written-output baseline c309b457, same dependencies/environment.
+    // History, fingerprints and composition: docs/work/tooling-operations-runbook.md
+    // (bundle-budget section). Reduction remains tracked in #321.
+    // Owner decision based on measured release increment, 2026-10-21 (#305 release)
+    // f1f347c5 -> 408b151d: +435/+219 aggregate raw/gzip and +435/+245
+    // largest raw/gzip bytes, solely D5 v2 policy data; no added headroom.
+    // Owner decision based on measured commit-rejection fallback increment, 2026-10-21 (#305 rejection fallback)
+    // Base 8568c8aa -> guarded fallback: +2425/+608 aggregate raw/gzip,
+    // +2425/+572 largest raw/gzip, including the audited checkpoint facade; no headroom.
+    // Owner decision: measured same-chat ownership fix adds +148 aggregate raw bytes (#305), no headroom.
+    totalRaw: 2_617_120,
+    totalGzip: 711_893,
+    largestRaw: 1_050_074,
+    largestGzip: 289_210,
   },
   css: {
-    // Optional dot appearance: +6,724 raw / +1,709 gzip in a selection-only CSS
-    // chunk. Standard initial CSS is byte-identical and requests no dot font.
-    // Explicit feature baseline: add at most 8 KB to aggregate raw only; preserve
-    // every CSS gzip and largest-chunk guard (JS calibration is documented above). See pixel-appearance handoff.
-    totalRaw: 493_000,
-    totalGzip: 85_000,
+    // Same owner decision: PR #826 changes no CSS. Aggregate limits
+    // equal measured main exactly; largest-chunk and appearance guards stay put.
+    // Owner decision, 2026-10-23 (#841/#842): record-phase scroll inset adds
+    // measured +39 raw / +7 gzip aggregate bytes, with no added headroom.
+    // Largest-chunk and appearance limits remain unchanged.
+    totalRaw: 513_993,
+    totalGzip: 89_918,
     largestRaw: 425_000,
     largestGzip: 70_000,
   },
   appearance: { stylesheetRaw: 8_000, fontRaw: 512_000 },
 };
+
+// Fail only above both the relative allowance and absolute noise floor.
+// Appearance asset caps remain strict. References never ratchet per build/PR.
+const growthPolicy = { relative: 0.05, rawFloor: 16_384, gzipFloor: 4_096 };
+const budgets = { appearance: baselines.appearance };
+for (const kind of ['javascript', 'css']) {
+  budgets[kind] = Object.fromEntries(Object.entries(baselines[kind]).map(([metric, baseline]) => {
+    const floor = metric.endsWith('Raw') ? growthPolicy.rawFloor : growthPolicy.gzipFloor;
+    return [metric, baseline + Math.max(floor, Math.floor(baseline * growthPolicy.relative))];
+  }));
+}
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -78,7 +97,10 @@ const report = {
     stylesheetRaw: fs.statSync(appearanceStylesheets[0]).size,
     fontRaw: fs.statSync(appearanceFont).size,
   },
+  baselines,
+  growthPolicy,
   budgets,
+  growth: [],
   violations: [],
 };
 
@@ -86,6 +108,9 @@ for (const kind of ['javascript', 'css']) {
   for (const metric of ['totalRaw', 'totalGzip', 'largestRaw', 'largestGzip']) {
     const actual = report[kind][metric];
     const limit = budgets[kind][metric];
+    const baseline = baselines[kind][metric];
+    report.growth.push({ kind, metric, actual, baseline, delta: actual - baseline,
+      relative: (actual - baseline) / baseline, allowance: limit - baseline, limit });
     if (actual > limit) {
       report.violations.push({ kind, metric, actual, limit });
     }
@@ -114,6 +139,10 @@ if (process.env.GITHUB_STEP_SUMMARY) {
   const rows = ['| Asset | Total raw | Total gzip | Largest raw | Largest gzip |', '| --- | ---: | ---: | ---: | ---: |'];
   for (const kind of ['javascript', 'css']) {
     rows.push(`| ${kind} | ${formatKiB(report[kind].totalRaw)} | ${formatKiB(report[kind].totalGzip)} | ${formatKiB(report[kind].largestRaw)} | ${formatKiB(report[kind].largestGzip)} |`);
+  }
+  rows.push('', '| Metric | Baseline B | Change B | Allowed growth B | Limit B |', '| --- | ---: | ---: | ---: | ---: |');
+  for (const growth of report.growth) {
+    rows.push(`| ${growth.kind}.${growth.metric} | ${growth.baseline} | ${growth.delta >= 0 ? '+' : ''}${growth.delta} | ${growth.allowance} | ${growth.limit} |`);
   }
   fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Bundle budget\n\n${rows.join('\n')}\n`);
 }

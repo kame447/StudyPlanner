@@ -49,3 +49,57 @@ for (const { appearance, stage } of [
     await info.attach(`cold-${stage}-${appearance}`, { body: await page.screenshot(), contentType: 'image/png' });
   });
 }
+
+test('initial consent legal links retain the document and explicit confirmation', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => {
+    sessionStorage.setItem('consent-navigation-loads', String(Number(sessionStorage.getItem('consent-navigation-loads') || 0) + 1));
+    window.__consentNavigationAcceptCalls = 0;
+  });
+  await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort());
+  await page.route('**/configureWeeklyPlanningTraceRepository.ts*', route => route.fulfill({ contentType: 'application/javascript', body: 'export function isWeeklyPlanningTraceFeatureEnabled() { return true; }' }));
+  // Only the external policy verdict/write is synthetic; the consent screen,
+  // public-page owner, legal pages, history and native clicks are production.
+  await page.route('**/useWeeklyPlanningTracePolicy.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
+    export function useWeeklyPlanningTracePolicy() {
+      const control = window.__startupGateHarness;
+      const status = control.React.useSyncExternalStore(control.subscribePolicy, () => control.policy);
+      return { status, error: '', accept: async () => { window.__consentNavigationAcceptCalls++; return false; }, refresh: async () => {} };
+    }
+  ` }));
+  await page.goto('http://127.0.0.1:4174/startup-gates.html');
+  await page.waitForFunction(() => Boolean(window.__startupGateHarness));
+  await page.evaluate(() => { window.__startupGateHarness.emitAuth(); window.__startupGateHarness.emitPolicy('required'); });
+  const heading = page.getByRole('heading', { name: '初回利用の確認', exact: true });
+  const checkbox = page.getByRole('checkbox', { name: '上記のデータ保存と利用目的を確認し、同意します。', exact: true });
+  const accept = page.getByRole('button', { name: '同意して利用を開始する', exact: true });
+  await expect(heading).toBeVisible();
+  await expect(accept).toBeDisabled();
+  await checkbox.check();
+  const originalCheckbox = await checkbox.elementHandle();
+  const originalDocument = await page.locator('html').elementHandle();
+  const loads = await page.evaluate(() => sessionStorage.getItem('consent-navigation-loads'));
+  for (const [path, title] of [['terms', '利用規約'], ['privacy', 'プライバシーポリシー']]) {
+    await page.getByRole('link', { name: title, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/${path}$`));
+    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+    await expect(heading).toBeHidden();
+    await page.goBack();
+    await expect(heading).toBeVisible();
+    await expect(checkbox).toBeChecked();
+    await page.goForward();
+    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+    await page.getByRole('link', { name: 'Laplanceへ戻る', exact: true }).click();
+    await expect(heading).toBeVisible();
+    await expect(checkbox).toBeChecked();
+    expect(await originalDocument.evaluate(node => node === document.documentElement)).toBe(true);
+    expect(await originalCheckbox.evaluate(node => node.isConnected && node.checked)).toBe(true);
+    expect(await page.evaluate(() => sessionStorage.getItem('consent-navigation-loads'))).toBe(loads);
+    expect(await page.evaluate(() => window.__consentNavigationAcceptCalls)).toBe(0);
+    expect(await page.evaluate(() => window.__startupGateHarness.policy)).toBe('required');
+    await expect(page.locator('.home-main')).toHaveCount(0);
+  }
+  await checkbox.uncheck();
+  await expect(accept).toBeDisabled();
+  await info.attach('initial-consent-after-legal-return', { body: await page.screenshot(), contentType: 'image/png' });
+});

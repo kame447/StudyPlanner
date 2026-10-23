@@ -1,0 +1,50 @@
+/* These elements also use .app-shell or .panel. Keep their original rules
+   before the shared responsive overrides when console-only styles load later. */
+.admin-app-shell {
+  width: 100%;
+  max-width: none;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  display: block;
+  background: color-mix(in srgb, var(--app-background) 88%, var(--surface-soft) 12%);
+}
+
+.admin-app-shell-state {
+  padding: 28px;
+}
+
+.admin-overview-metric {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 116px;
+  padding: 14px;
+}
+
+.admin-overview-card {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.admin-overview-alerts {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+@media screen and (max-width: 820px) {
+  .admin-overview-metric {
+    min-height: 96px;
+  }
+}
+
+@media screen and (max-width: 520px) {
+  .admin-overview-metric {
+    align-items: flex-start;
+    min-height: 106px;
+    padding: 12px;
+  }
+}

@@ -28,6 +28,17 @@ afterEach(() => {
 });
 
 describe('FirestoreServiceAccountTokenProvider', () => {
+  it('keeps the existing datastore-only scope for default callers', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (_input, init) => {
+      const assertion = (init?.body as URLSearchParams).get('assertion')!;
+      const claims = JSON.parse(atob(assertion.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      expect(claims.scope).toBe('https://www.googleapis.com/auth/datastore');
+      return tokenResponse('datastore-token');
+    });
+    await expect(new FirestoreServiceAccountTokenProvider(env, fetcher, cryptoApi()).getToken()).resolves.toBe('datastore-token');
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
   it('shares one OAuth exchange across parallel calls', async () => {
     let exchangeCount = 0;
     const provider = new FirestoreServiceAccountTokenProvider(

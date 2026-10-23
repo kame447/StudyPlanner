@@ -1,11 +1,22 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   AI_CHAT_PURPOSE_MODELS,
   DEFAULT_ALLOWED_CHAT_MODELS,
+  DEFAULT_GEMINI_OCR_MODEL,
   resolveChatModel,
 } from './modelPolicy';
 
 describe('ai-proxy chat model policy', () => {
+  it('keeps the production timetable OCR model in sync with its supported fallback', () => {
+    const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8')) as {
+      vars: { GEMINI_MODEL: string; ALLOWED_GEMINI_MODELS: string };
+    };
+    expect(DEFAULT_GEMINI_OCR_MODEL).toBe('gemini-3.6-flash');
+    expect(config.vars.GEMINI_MODEL).toBe(DEFAULT_GEMINI_OCR_MODEL);
+    expect(config.vars.ALLOWED_GEMINI_MODELS.split(',')).toContain(DEFAULT_GEMINI_OCR_MODEL);
+  });
+
   it('routes every weekly planning OpenAI purpose to Luna', () => {
     for (const purpose of [
       'weekly_planning_interpreter',

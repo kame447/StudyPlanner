@@ -23,7 +23,7 @@ import {
   sumStudyRecordMinutes,
   type NormalizedStudyRecordForDisplay,
 } from './studyRecords';
-import type { Actual, Plan, StudyMaterial, StudySubject } from '../types/domain';
+import type { Actual, MonthEvent, Plan, StudyMaterial, StudySubject } from '../types/domain';
 
 export type LearningReportScope = 'day' | 'week' | 'month';
 
@@ -81,6 +81,7 @@ export interface LearningReportModel {
 interface LearningReportDataInput {
   plans: Plan[];
   actuals: Actual[];
+  monthEvents?: MonthEvent[];
   subjects: StudySubject[];
   materials: StudyMaterial[];
 }
@@ -216,6 +217,7 @@ function getStudyRecordsInRange({
   endDate,
   plans,
   actuals,
+  monthEvents,
   subjects,
   materials,
   materialFilter,
@@ -227,6 +229,7 @@ function getStudyRecordsInRange({
   const materialsByName = buildMaterialsByName(materials);
   const records = normalizeStudyRecordsForDisplay({
     actuals,
+    monthEvents,
     plans,
     subjects,
     materials,
@@ -271,15 +274,18 @@ function getStudyPlansInRange({
 function sumLifetimeStudyMinutes({
   plans,
   actuals,
+  monthEvents,
   subjects,
   materials,
 }: LearningReportDataInput): number {
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
+  const monthEventById = new Map((monthEvents ?? []).map((event) => [event.id, event]));
   const records = dedupeLinkedStudyActuals(actuals)
     .map((actual) =>
       normalizeStudyRecordForDisplay({
         actual,
         plan: actual.planId ? planById.get(actual.planId) : undefined,
+        monthEvent: actual.planId ? monthEventById.get(actual.planId) : undefined,
         subjects,
         materials,
       }),
@@ -460,6 +466,7 @@ function summarizeRange({
   range,
   plans,
   actuals,
+  monthEvents,
   subjects,
   materials,
 }: LearningReportDataInput & { range: LearningReportRange }): {
@@ -470,6 +477,7 @@ function summarizeRange({
     ...range,
     plans,
     actuals,
+    monthEvents,
     subjects,
     materials,
     materialFilter: ALL_MATERIALS_FILTER,
@@ -547,7 +555,7 @@ export function buildLearningReportMaterialOptions(
   materials: StudyMaterial[],
 ): LearningReportMaterialOption[] {
   return [
-    { value: ALL_MATERIALS_FILTER, label: 'すべての教材' },
+    { value: ALL_MATERIALS_FILTER, label: '全教材' },
     ...materials
       .slice()
       .sort((left, right) => left.name.localeCompare(right.name, 'ja'))
@@ -562,6 +570,7 @@ export function buildLearningReportOverview({
   referenceDate,
   plans,
   actuals,
+  monthEvents,
   subjects,
   materials,
 }: BuildLearningReportOverviewInput): LearningReportOverview {
@@ -569,6 +578,7 @@ export function buildLearningReportOverview({
     range: { startDate: referenceDate, endDate: referenceDate },
     plans,
     actuals,
+    monthEvents,
     subjects,
     materials,
   });
@@ -576,6 +586,7 @@ export function buildLearningReportOverview({
     range: getLearningReportRange('week', referenceDate),
     plans,
     actuals,
+    monthEvents,
     subjects,
     materials,
   });
@@ -583,6 +594,7 @@ export function buildLearningReportOverview({
     range: getLearningReportRange('month', referenceDate),
     plans,
     actuals,
+    monthEvents,
     subjects,
     materials,
   });
@@ -597,6 +609,7 @@ export function buildLearningReportOverview({
     lifetimeMinutes: sumLifetimeStudyMinutes({
       plans,
       actuals,
+      monthEvents,
       subjects,
       materials,
     }),
@@ -609,6 +622,7 @@ export function buildLearningReportModel({
   materialFilter,
   plans,
   actuals,
+  monthEvents,
   subjects,
   materials,
 }: BuildLearningReportModelInput): LearningReportModel {
@@ -617,6 +631,7 @@ export function buildLearningReportModel({
     ...range,
     plans,
     actuals,
+    monthEvents,
     subjects,
     materials,
     materialFilter,
@@ -647,6 +662,7 @@ export function buildLearningReportModel({
       ...previousRange,
       plans,
       actuals,
+      monthEvents,
       subjects,
       materials,
       materialFilter,

@@ -1,6 +1,7 @@
+import type { AiProviderFailure } from '../../../../shared/aiProviderFailure';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningFixedEventCommunicationFacts } from '../application/weeklyPlanningFixedEventOnlyInteraction';
-import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
   | 'question'
@@ -36,6 +37,7 @@ export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
   kind: 'schedulable_work_detail';
   mode:
     | 'existing_target_progress'
+    | 'open_ended_session'
     | 'registered_material_target_scope'
     | 'missing_task_identity'
     | 'all_requested_work_complete';
@@ -48,6 +50,7 @@ export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
   knownRemainingUnits?: number | null;
   requestedInformation:
     | readonly ['current_progress']
+    | readonly ['session_allocation']
     | readonly ['plan_target_scope']
     | readonly ['task_identity']
     | readonly ['additional_task_or_constraint'];
@@ -196,6 +199,8 @@ export interface WeeklyPlanningExistingScheduleGrounding {
 }
 
 export interface WeeklyPlanningStableV5DialogueRenderInput {
+  /** Read-only, owner-scoped examples; never a new user request or accepted Fact. */
+  referenceContext?: import('./weeklyPlanningDialogueReferenceContext').WeeklyPlanningDialogueReferenceContext;
   /** Application-selected conversation goal, not a second interpretation of raw text. */
   communication?: {
     goal: 'ask_question' | 'explain_question' | 'acknowledge_aside' | 'resume_question' | 'present_preview' | 'acknowledge';
@@ -252,6 +257,7 @@ export type WeeklyPlanningStableV5DialogueRenderResult =
       status: 'fallback';
       reason: WeeklyPlanningStableV5DialogueFallbackReason;
       rawResponse: string | null;
+      providerFailure?: AiProviderFailure;
     };
 
 export interface WeeklyPlanningStableV5DialogueRenderer {

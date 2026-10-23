@@ -454,7 +454,7 @@ describe('ProductObservabilityAdminAnalysisService', () => {
     });
   });
 
-  it('resolves profile identity only on an explicit bounded exact lookup', async () => {
+  it('resolves identity only on an explicit bounded exact lookup', async () => {
     const firestore = new FakeFirestore();
     const identityStore = new FakeIdentityStore();
     const service = new ProductObservabilityAdminAnalysisService(
@@ -462,6 +462,11 @@ describe('ProductObservabilityAdminAnalysisService', () => {
       firestore as never,
       new FakeReadModel() as never,
       identityStore,
+      undefined,
+      {
+        lookupByEmail: async () => [{ firebaseUid: profile.id, email: profile.email }],
+        lookupByUids: async () => [{ firebaseUid: profile.id, email: profile.email }],
+      },
     );
 
     await expect(service.resolveUserIdentity('us')).rejects.toThrow(
@@ -482,7 +487,7 @@ describe('ProductObservabilityAdminAnalysisService', () => {
 
     const byUid = await service.resolveUserIdentity('firebase-user-1');
     expect(byUid[0]?.actorSubjectId).toBe('actor-aaaaaaaa');
-    expect(firestore.getCallCount).toBe(1);
+    expect(firestore.getCallCount).toBe(2);
   });
 
   it('rejects forged event and profile cursors before storage work', async () => {

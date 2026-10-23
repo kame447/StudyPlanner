@@ -1,3 +1,4 @@
+import { observabilityCountersInDomain } from '../../../shared/productObservabilityContract';
 import {
   PRODUCT_OBSERVABILITY_SCHEMA_VERSION,
   validatePlanningOutcomeTelemetryDraft,
@@ -315,6 +316,9 @@ export class ProductObservabilityStore {
     correlation?: ObservabilityCorrelation;
     payload: AiRequestMetricPayload;
   }): Promise<void> {
+    if (!observabilityCountersInDomain({ eventType: 'ai_request_metric', payload: params.payload, correlation: params.correlation })) {
+      throw new Error('Telemetry AI request counters are invalid.');
+    }
     validateDecisionMetric(params.payload);
     if (params.payload.providerCompletion !== undefined
       && (params.payload.operationKind !== 'chat_completion'

@@ -14,7 +14,7 @@ async function createDraftReadyForApproval(page) {
   const input = page.locator('.ai-planning-composer textarea');
   await expect(input).toBeVisible();
   await input.fill('承認raceを検査する条件');
-  await input.press('Enter');
+  await page.getByRole('button', { name: '送信', exact: true }).click();
 
   await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toBeVisible();
   await page.getByRole('button', { name: '計画プレビューを確認' }).click();

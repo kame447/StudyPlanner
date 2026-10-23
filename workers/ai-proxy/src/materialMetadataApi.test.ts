@@ -44,8 +44,9 @@ const searchXml = `<rss xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><it
 function mockCatalogFlow(options: {
   cache?: 'hit' | 'miss' | 'read-failure';
   writeFailure?: boolean;
-  provider?: 'success' | 'empty' | 'failure';
+  provider?: 'success' | 'empty' | 'failure' | 'network-failure';
   providerXml?: string;
+  details?: 'http-failure' | 'network-failure' | 'body-failure' | 'parse-failure' | 'aborted';
 } = {}) {
   const operations: string[] = [];
   const writes: Array<{ fields: Record<string, unknown> }> = [];
@@ -74,12 +75,22 @@ function mockCatalogFlow(options: {
     }
     if (url.hostname === 'ndlsearch.ndl.go.jp' && url.pathname === '/api/opensearch') {
       operations.push('ndl-search');
+      if (options.provider === 'network-failure') throw new TypeError('Search network failure');
       return new Response(options.provider === 'empty' ? '<rss><channel /></rss>' : options.providerXml ?? searchXml, {
         status: options.provider === 'failure' ? 503 : 200,
       });
     }
     if (url.hostname === 'ndlsearch.ndl.go.jp' && url.pathname === '/api/sru') {
       operations.push('ndl-details');
+      if (options.details === 'http-failure') return new Response(null, { status: 503 });
+      if (options.details === 'network-failure') throw new TypeError('Details network failure');
+      if (options.details === 'aborted') throw new DOMException('Details cancelled', 'AbortError');
+      if (options.details === 'body-failure') {
+        return new Response(new ReadableStream({
+          start(controller) { controller.error(new TypeError('Details body read failure')); },
+        }));
+      }
+      if (options.details === 'parse-failure') return new Response('<edition>&#99999999;</edition>');
       return new Response('<record><edition>改訂版</edition><extent>381p</extent></record>');
     }
     if (url.hostname === 'api.openbd.jp') {
@@ -175,6 +186,90 @@ describe.each(['search', 'details'] as const)('material metadata %s catalog poli
     expect(await response.json()).toEqual({ error: endpoint === 'search'
       ? '教材検索を一時的に利用できません。手入力で教材を登録できます。'
       : '詳しい教材情報を取得できませんでした。基本情報のまま登録できます。' });
+  });
+});
+
+describe.each(['hit', 'miss'] as const)('material detail enrichment with a catalog %s', (cache) => {
+  it.each(['http-failure', 'network-failure', 'body-failure', 'parse-failure'] as const)(
+    'retains the acquired bibliography and continues cover enrichment after %s',
+    async (details) => {
+      const { operations, writes } = mockCatalogFlow({ cache, details });
+      const response = await requestMetadata('details');
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ candidate: { ...catalogCandidate, coverImageUrl } });
+      expect(operations).toEqual([
+        'auth', 'catalog-get',
+        ...(cache === 'miss' ? ['catalog-query', 'ndl-search', 'catalog-write'] : []),
+        'ndl-details', 'catalog-write', 'cover',
+      ]);
+      expect(writes).toHaveLength(cache === 'miss' ? 2 : 1);
+      for (const write of writes) {
+        expect(write.fields.isbn13).toEqual({ stringValue: catalogCandidate.isbn13 });
+        expect(write.fields).not.toHaveProperty('pageCount');
+        expect(write.fields).not.toHaveProperty('edition');
+        expect(write.fields).not.toHaveProperty('coverImageUrl');
+      }
+    },
+  );
+});
+
+describe('material detail enrichment failure boundaries', () => {
+  it('does not treat cancelled enrichment as a successful lookup', async () => {
+    const { operations } = mockCatalogFlow({ cache: 'hit', details: 'aborted' });
+    const response = await requestMetadata('details');
+
+    expect(response.status).toBe(502);
+    expect(operations).toEqual(['auth', 'catalog-get', 'ndl-details']);
+  });
+
+  it('does not suppress an invalid catalog ISBN when building the details query', async () => {
+    const { operations } = mockCatalogFlow({ cache: 'hit' });
+    const originalFetch = fetch;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (new URL(String(input)).hostname === 'firestore.googleapis.com') {
+        return Response.json({
+          ...catalogDocument,
+          fields: { ...catalogDocument.fields, isbn13: { stringValue: 'invalid-isbn' } },
+        });
+      }
+      return originalFetch(input, init);
+    }));
+    const response = await requestMetadata('details');
+
+    expect(response.status).toBe(502);
+    expect(operations).toEqual(['auth']);
+  });
+
+  it.each(['search', 'details'] as const)('preserves the %s error when initial NDL search fails', async (endpoint) => {
+    const { operations } = mockCatalogFlow({ provider: 'network-failure' });
+    const response = await requestMetadata(endpoint);
+
+    expect(response.status).toBe(502);
+    expect(operations).toEqual(['auth', 'catalog-get', 'catalog-query', 'ndl-search']);
+    expect(await response.json()).toEqual({ error: endpoint === 'search'
+      ? '教材検索を一時的に利用できません。手入力で教材を登録できます。'
+      : '詳しい教材情報を取得できませんでした。基本情報のまま登録できます。' });
+  });
+
+  it.each(['search', 'details'] as const)('rejects an invalid %s query before provider access', async (endpoint) => {
+    const { operations } = mockCatalogFlow();
+    const response = await requestMetadata(endpoint, '');
+
+    expect(response.status).toBe(400);
+    expect(operations).toEqual(['auth']);
+  });
+
+  it.each([401, 403])('preserves authentication rejection %s before provider access', async (status) => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => status === 401
+      ? new Response(null, { status: 401 })
+      : Response.json({ users: [{ localId: 'user-1', emailVerified: false }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await requestMetadata('details');
+
+    expect(response.status).toBe(status);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('identitytoolkit.googleapis.com');
   });
 });
 

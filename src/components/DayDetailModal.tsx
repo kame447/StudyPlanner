@@ -9,6 +9,12 @@ import type { Actual, ActualDraft, MonthEvent, Plan } from '../types/domain';
 
 interface DayDetailModalProps {
   detailPlan: Plan | null;
+  openRecordInitially?: boolean;
+  historyOnly?: boolean;
+  showWholePlanDelete?: boolean;
+  deleteOccurrenceLabel?: string;
+  deleteOccurrenceDescription?: string;
+  onDeleteOccurrence?: () => Promise<void>;
   monthEvent: MonthEvent | null;
   detailActual?: Actual;
   standaloneActual: Actual | null;
@@ -33,6 +39,12 @@ export function DayDetailModal(props: DayDetailModalProps) {
 }
 
 function DayDetailSession({
+  historyOnly = false,
+  showWholePlanDelete = true,
+  openRecordInitially = false,
+  deleteOccurrenceLabel = '予定を削除',
+  deleteOccurrenceDescription,
+  onDeleteOccurrence,
   detailPlan,
   monthEvent,
   detailActual,
@@ -48,7 +60,7 @@ function DayDetailSession({
   onDeleteActual,
   onClose,
 }: DayDetailModalProps) {
-  const [recordSession, setRecordSession] = useState<RecordSession | null>(null);
+  const [recordSession, setRecordSession] = useState<RecordSession | null>(() => openRecordInitially && detailPlan ? structuredClone({ plan: detailPlan, actual: detailActual }) : null);
   const { isExiting, requestExit } = useExitMotion(onClose);
   const sheetMotionClassName = isExiting ? 'is-closing' : 'is-open';
 
@@ -67,14 +79,15 @@ function DayDetailSession({
     requestExit();
   };
 
-  async function deleteFromMenu() {
+  async function deleteFromMenu(single = false) {
     if (!detailPlan || menuBlocked()) return;
     const attempt = {};
     pendingDelete.current = attempt;
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await onDeletePlan(detailPlan);
+      if (single && onDeleteOccurrence) await onDeleteOccurrence();
+      else await onDeletePlan(detailPlan);
     } catch (error) {
       if (pendingDelete.current === attempt) {
         pendingDelete.current = null;
@@ -114,8 +127,9 @@ function DayDetailSession({
               </div>
             </div>
 
+            {historyOnly ? <p>この日の予定は削除済みです。記録は残っています。</p> : null}
             <div className="schedule-action-list">
-              {!monthEvent ? (
+              {!monthEvent && !historyOnly ? (
                 <button
                   className="schedule-action-item"
                   disabled={isDeleting || isExiting}
@@ -154,7 +168,14 @@ function DayDetailSession({
                 <ChevronRight aria-hidden="true" size={22} />
               </button>
 
-              {!monthEvent ? (
+              {onDeleteOccurrence ? <button className="schedule-action-item danger" type="button"
+                disabled={isDeleting || isExiting} onClick={() => void deleteFromMenu(true)}>
+                <span className="schedule-action-icon"><Trash2 aria-hidden="true" size={24} /></span>
+                <span className="schedule-action-copy"><strong>{deleteOccurrenceLabel}</strong>
+                  {deleteOccurrenceDescription ? <span>{deleteOccurrenceDescription}</span> : null}</span>
+                <ChevronRight aria-hidden="true" size={22} />
+              </button> : null}
+              {!monthEvent && !historyOnly && showWholePlanDelete ? (
                 <button
                   className="schedule-action-item danger"
                   disabled={isDeleting || isExiting}
@@ -264,7 +285,7 @@ function PlannedActualDetail({ session, plans, actuals, onEditPlan, onDeletePlan
       onClick={requestClose}
     >
       <div
-        className="modal-card daily-detail-modal schedule-record-sheet"
+        className="modal-card daily-detail-modal schedule-record-sheet linked-actual-record-sheet"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="schedule-action-handle" aria-hidden="true" />
@@ -274,9 +295,6 @@ function PlannedActualDetail({ session, plans, actuals, onEditPlan, onDeletePlan
           </button>
           <div className="daily-detail-modal-heading">
             <h2>{session.actual ? '記録を編集' : '記録を保存'}</h2>
-            <p>
-              {session.plan.startTime} - {session.plan.endTime} / {session.plan.title}
-            </p>
           </div>
           <button className="schedule-action-close" onClick={requestClose} disabled={isPending} type="button" aria-label="閉じる">
             <X aria-hidden="true" size={21} />

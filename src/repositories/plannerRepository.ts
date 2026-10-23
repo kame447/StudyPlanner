@@ -1,3 +1,5 @@
+import { preserveMonthEventActualSources } from '../domain/actualProgressSource';
+import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import type {
   PlannerRepository,
@@ -486,6 +488,13 @@ mutation.planDeletes,
       await storageGateway.writeDayNotes(nextDayNotes);
       return dayNote;
     },
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      assertRecurringMonthEventWrite(userId, monthEvents);
+      const current = await storageGateway.readMonthEvents();
+      const ids = new Set(monthEvents.map((event) => event.id));
+      assertOwnedRecords(userId, current.filter((event) => ids.has(event.id)), '繰り返し予定更新');
+      await storageGateway.writeMonthEvents(upsertMany(current, monthEvents));
+    },
     async upsertMonthEvent(monthEvent) {
       const nextMonthEvents = replaceById(
         await storageGateway.readMonthEvents(),
@@ -496,11 +505,23 @@ mutation.planDeletes,
       return monthEvent;
     },
     async deleteMonthEvent(userId, monthEventId) {
-      const monthEvents = (await storageGateway.readMonthEvents()).filter(
-        (monthEvent) => !(monthEvent.userId === userId && monthEvent.id === monthEventId),
+      const previousEvents = await storageGateway.readMonthEvents();
+      const source = previousEvents.find(event => event.userId === userId && event.id === monthEventId);
+      if (!source) return;
+      const previousActuals = await storageGateway.readActuals();
+      const nextActuals = preserveMonthEventActualSources(previousActuals, source);
+      const nextEvents = previousEvents.filter(event => !(event.userId === userId && event.id === monthEventId));
+      await runRecoverableMutation(
+        async () => {
+          await storageGateway.writeActuals(nextActuals);
+          await storageGateway.writeMonthEvents(nextEvents);
+        },
+        async () => {
+          await storageGateway.writeMonthEvents(previousEvents);
+          await storageGateway.writeActuals(previousActuals);
+        },
+        '主要予定削除',
       );
-
-      await storageGateway.writeMonthEvents(monthEvents);
     },
     async upsertTodo(todo) {
       const nextTodos = replaceById(await storageGateway.readTodos(), todo);

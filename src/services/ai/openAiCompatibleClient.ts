@@ -1,12 +1,13 @@
+import { AiProviderError, projectAiProviderFailure } from '../../../shared/aiProviderFailure';
+import type { ChatMessage, JsonSchemaResponseFormat, OpenAiCompatibleClient } from './openAiCompatibleClientTypes';
+export type { ChatMessage, JsonSchemaResponseFormat, OpenAiCompatibleClient } from './openAiCompatibleClientTypes';
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
-import { parseSemanticCensusJoin, type SemanticCensusJoin, type SemanticCensusRequestObserver } from '../../../shared/semanticTurnCensus';
-import type { SemanticDispatchStage } from '../../../shared/semanticDispatchLedger';
+import { parseSemanticCensusJoin } from '../../../shared/semanticTurnCensus';
 import {
   getCloudflareAiProxyUrl,
   usesCloudflareOpenAiProxy,
 } from '../../lib/aiConfig';
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
-import type { FocusedDecisionContext } from '../../../shared/focusedContextualDecision';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
 import {
   projectOpenAiCompletionMetadata,
@@ -18,11 +19,6 @@ import {
   utf8ByteLength,
 } from './openAiCompatibleClientMetrics';
 
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
 export interface OpenAiCompatibleClientConfig {
   provider?: 'openai' | 'rules';
   baseUrl: string;
@@ -31,15 +27,6 @@ export interface OpenAiCompatibleClientConfig {
   requestTimeoutMs?: number;
   /** Explicit per-request evaluation hook; never serialized to proxy/provider or trace. */
   dispatchRecorder?: SemanticRequestRecorder;
-}
-
-export interface JsonSchemaResponseFormat {
-  type: 'json_schema';
-  json_schema: {
-    name: string;
-    schema: Record<string, unknown>;
-    strict?: boolean;
-  };
 }
 
 interface ChatCompletionRequest {
@@ -77,6 +64,7 @@ interface AiProxyResponse {
   decisionContext?: { requestId: string; inputRevision: number };
   content?: string;
   error?: string;
+  providerFailure?: unknown;
   usage?: ChatCompletionUsage;
 }
 
@@ -283,33 +271,22 @@ async function runFetchWithTimeout<T>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(new DOMException('Provider timeout.', 'TimeoutError')), timeoutMs);
   try {
-    const response = await transport(input, { ...init, signal: controller.signal });
+    let response: Response;
+    try {
+      response = await transport(input, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (error instanceof AiProviderError) throw error;
+      throw new AiProviderError(extractUnknownErrorMessage(error, 'AI transport failed.'), { kind: 'network_error' });
+    }
     return await handleResponse(response);
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error(`AI request timed out after ${timeoutMs} ms.`);
+      throw new AiProviderError(`AI request timed out after ${timeoutMs} ms.`, { kind: 'timeout' });
     }
     throw error;
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-export interface OpenAiCompatibleClient {
-  /** Invocation-local capability, present only on a census-wrapped client. */
-  semanticCensusEnabled?: boolean;
-  semanticCensusObserver?: SemanticCensusRequestObserver;
-  createChatCompletion(input: {
-    /** Telemetry only; injected after semantic trace capture and sent only to our proxy. */
-    semanticCensus?: SemanticCensusJoin;
-    semanticCensusStage?: SemanticDispatchStage;
-    decisionContext?: FocusedDecisionContext;
-    messages: ChatMessage[];
-    temperature?: number;
-    responseFormat?: JsonSchemaResponseFormat;
-    purpose?: AiChatPurpose;
-    maxCompletionTokens?: number;
-  }): Promise<string>;
 }
 
 export function createOpenAiCompatibleClient(
@@ -379,13 +356,30 @@ export function createOpenAiCompatibleClient(
                 body: requestBody,
               },
               requestTimeoutMs,
-              async (response) => (await response.json()) as AiProxyResponse,
+              async (response) => {
+                let payload: AiProxyResponse;
+                try {
+                  payload = await response.json() as AiProxyResponse;
+                } catch {
+                  throw new AiProviderError(`AI proxy response could not be parsed (status ${response.status}).`, {
+                    kind: response.ok ? 'invalid_response' : 'http_error', httpStatus: response.status,
+                  });
+                }
+                if (!response.ok) {
+                  const detail = projectAiProviderFailure(payload?.providerFailure);
+                  throw new AiProviderError(typeof payload?.error === 'string' ? payload.error : `AI proxy request failed with status ${response.status}.`, {
+                    ...detail, kind: detail.kind === 'unknown' ? 'http_error' : detail.kind, httpStatus: response.status,
+                  });
+                }
+                if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) throw new AiProviderError('AI proxy response was not an object.', { kind: 'invalid_response', httpStatus: response.status });
+                return payload;
+              },
             );
             const proxiedContent = result.content?.trim();
             if (result.decisionContext && (
               result.decisionContext.requestId !== capturedDecisionContext?.requestId
               || result.decisionContext.inputRevision !== capturedDecisionContext?.inputRevision
-            )) throw new Error('Decision response context did not match the active request.');
+            )) throw new AiProviderError('Decision response context did not match the active request.', { kind: 'context_mismatch' });
 
             if (!proxiedContent) {
               const responseMessage =
@@ -395,7 +389,7 @@ export function createOpenAiCompatibleClient(
                 responseMessage,
                 model: logModel,
               });
-              throw new Error(responseMessage);
+              throw new AiProviderError(responseMessage, { kind: 'empty_response', httpStatus: 200 });
             }
 
             recordRequestMetric({
@@ -434,7 +428,8 @@ export function createOpenAiCompatibleClient(
             model: logModel,
           });
 
-          throw new Error(responseMessage);
+          if (error instanceof AiProviderError) throw error;
+          throw new AiProviderError(responseMessage, { kind: 'unknown' });
         }
       }
 
@@ -471,10 +466,13 @@ export function createOpenAiCompatibleClient(
           requestTimeoutMs,
           async (response) => {
             if (!response.ok) {
-              throw new Error(await directProviderErrorMessage(response));
+              throw new AiProviderError(await directProviderErrorMessage(response), { kind: 'http_error', httpStatus: response.status, upstreamStatus: response.status });
             }
 
-            const data = (await response.json()) as ChatCompletionResponse;
+            let data: ChatCompletionResponse;
+            try { data = await response.json() as ChatCompletionResponse; }
+            catch { throw new AiProviderError('AI response could not be parsed.', { kind: 'invalid_response', httpStatus: response.status }); }
+            if (data === null || typeof data !== 'object' || Array.isArray(data)) throw new AiProviderError('AI response was not an object.', { kind: 'invalid_response', httpStatus: response.status });
             providerCompletion = projectOpenAiCompletionMetadata({
               response: data,
               requestedMaxCompletionTokens: maxCompletionTokens,
@@ -483,7 +481,7 @@ export function createOpenAiCompatibleClient(
             const content = data.choices?.[0]?.message?.content?.trim();
 
             if (!content) {
-              throw new Error(emptyDirectResponseMessage(data));
+              throw new AiProviderError(emptyDirectResponseMessage(data), { kind: 'empty_response', httpStatus: response.status, upstreamStatus: response.status, completion: providerCompletion });
             }
 
             return { content, usage: data.usage ?? null };

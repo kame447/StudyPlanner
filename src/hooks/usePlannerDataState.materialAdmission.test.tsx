@@ -132,6 +132,34 @@ async function expectStored(fixture: Awaited<ReturnType<typeof mount>>, owner = 
 }
 
 
+describe('material study status persistence', () => {
+  it('roundtrips completed and studying without archiving, losing progress or study records', async () => {
+    const fixture = await mount([ONE], [STANDALONE]);
+    for (const studyStatus of ['completed', 'studying'] as const) {
+      await act(async () => { await edit(current(), { studyStatus }); });
+      await act(async () => { await state.loadPlannerData('owner'); });
+      expect(current()).toMatchObject({ studyStatus, status: 'active', currentUnit: 10, totalUnits: 100 });
+      expect(state.actuals).toEqual([STANDALONE]);
+      await expectStored(fixture);
+    }
+  });
+
+  it('defaults legacy/new records to studying and preserves explicit status through progress edits', async () => {
+    await mount([{ ...ONE, currentUnit: 100 }]);
+    expect(current().studyStatus).toBeUndefined();
+    await act(async () => { await edit(); });
+    expect(current()).toMatchObject({ studyStatus: 'studying', currentUnit: 100 });
+    await act(async () => { await edit(current(), { studyStatus: 'completed' }); });
+    const { studyStatus: _ignored, ...withoutStatus } = current();
+    await act(async () => {
+      await state.saveStudyMaterial({ ...withoutStatus, currentUnit: 80 }, ONE.id, state.captureStudyMaterialBaseline(current()));
+    });
+    expect(current()).toMatchObject({ studyStatus: 'completed', currentUnit: 80 });
+    await act(async () => { await state.saveStudyMaterial({ ...ONE, name: 'New book' }); });
+    expect(state.studyMaterials.find(item => item.name === 'New book')?.studyStatus).toBe('studying');
+  });
+});
+
 describe('material writes require a canonical same-owner projection', () => {
   it.each(['progress-actual', 'subject', 'material'] as const)('rejects pre-load %s creation before dispatch', async action => {
     const fixture = await mount(undefined, [], false);

@@ -2,7 +2,7 @@
 .app-shell[hidden] { display: none !important; }
 /* Only these existing planner-owned body portals follow the retained screen.
    Keep independent live regions, notifications and settings portals untouched. */
-body:has(.app-settings-page) > :is(.home-add-overlay, .home-title-overlay, .month-event-dialog-motion,
+body:has(.app-settings-page, .public-page-surface) > :is(.home-add-overlay, .home-title-overlay, .month-event-dialog-motion,
   .quick-entry-overlay, .daily-detail-modal-overlay, .schedule-week-drag-overlay,
   .drag-undo-redo-controls, .time-picker-overlay) { display: none !important; }
 .app-settings-page {
@@ -84,6 +84,12 @@ body:has(.app-settings-page) > :is(.home-add-overlay, .home-title-overlay, .mont
 .app-settings-page .support-link-row { background: transparent; border-radius: 0; border-bottom: 1px solid var(--settings-border); padding: 14px 0; min-height: 56px; }
 .app-settings-page .faq-item p,
 .app-settings-page .support-copyright { color: var(--settings-muted); }
+.app-settings-page .faq-group + .faq-group { margin-top: 24px; }
+.app-settings-page .faq-group > h3 { margin: 0 0 12px; color: var(--settings-text); font-size: 1rem; }
+.app-settings-page .faq-item { display: block; padding: 0 14px; background: var(--settings-card); border-color: var(--settings-border); }
+.app-settings-page .faq-item summary { min-height: 44px; padding: 12px 0; color: var(--settings-text); font-size: 1rem; font-weight: 600; line-height: 1.5; cursor: pointer; overflow-wrap: anywhere; }
+.app-settings-page .faq-item[open] summary { padding-bottom: 8px; }
+.app-settings-page .faq-item p { padding-bottom: 14px; overflow-wrap: anywhere; }
 .app-settings-page .theme-palette-button { background: var(--settings-card); color: var(--settings-text); }
 .app-settings-page :is(button, a, input, textarea, summary, [tabindex]):focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .app-settings-page .app-settings-content:focus-visible { outline-offset: -4px; }

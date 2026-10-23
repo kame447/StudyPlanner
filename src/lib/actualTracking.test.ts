@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildMeasuredRange,
+  createInitialTracker,
+  startTracker,
+  pauseTracker,
+  resumeTracker,
   clampTimerMinutes,
   formatDurationDisplay,
   formatTimerInputValue,
@@ -59,5 +63,38 @@ describe('actualTracking', () => {
       startTime: '10:05',
       endTime: '11:10',
     });
+  });
+});
+
+
+describe('study timer transitions', () => {
+  it('starts only once and ignores a resume or pause before starting', () => {
+    const idle = createInitialTracker();
+    expect(pauseTracker(idle, 1000)).toBe(idle);
+    expect(resumeTracker(idle, 1000)).toBe(idle);
+    const started = startTracker(idle, 1000);
+    expect(started).toEqual({ anchorMs: 1000, runningFromMs: 1000, elapsedBeforeMs: 0 });
+    expect(startTracker(started, 9000)).toBe(started);
+  });
+
+  it('repeated pause and resume exclude pauses without losing a running segment', () => {
+    let tracker = startTracker(createInitialTracker(), 1000);
+    tracker = pauseTracker(tracker, 11000);
+    expect(pauseTracker(tracker, 21000)).toBe(tracker);
+    tracker = resumeTracker(tracker, 31000);
+    expect(resumeTracker(tracker, 41000)).toBe(tracker);
+    expect(getElapsedMs(tracker, 51000)).toBe(30000);
+    tracker = pauseTracker(tracker, 51000);
+    tracker = resumeTracker(tracker, 71000);
+    expect(getElapsedMs(tracker, 81000)).toBe(40000);
+    expect(tracker.anchorMs).toBe(1000);
+  });
+
+  it('counts the full delayed running span and starts a fresh session on reset', () => {
+    const running = startTracker(createInitialTracker(), 1000);
+    expect(getElapsedMs(pauseTracker(running, 7201000), 9999999)).toBe(7200000);
+    const reset = createInitialTracker();
+    expect(reset).toEqual({ anchorMs: null, runningFromMs: null, elapsedBeforeMs: 0 });
+    expect(startTracker(reset, 9000000)).toEqual({ anchorMs: 9000000, runningFromMs: 9000000, elapsedBeforeMs: 0 });
   });
 });

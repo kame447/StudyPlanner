@@ -1,3 +1,5 @@
+import { observabilityCountersInDomain } from '../../../shared/productObservabilityContract';
+import { assertObservabilityAggregateCounters, ObservabilityAggregateOverflowError } from './productObservabilityCounterSafety';
 import type {
   ObservabilityEnvironment,
   PlanningOutcomeMetricPayload,
@@ -5,10 +7,12 @@ import type {
 } from '../../../shared/productObservabilityContract';
 import {
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
+  readObservabilityRejectionEvidence,
   type ObservabilityActiveUserDirtySource,
   type ObservabilityActorDay,
   type ObservabilityDailyRollup,
   type ObservabilityRollupCheckpoint,
+  type ObservabilityRejectedEvent,
   type ObservabilityRollupCursor,
   type ObservabilityUserSummary,
 } from '../../../shared/productObservabilityReadModel';
@@ -163,6 +167,8 @@ function emptyCheckpoint(nowIso: string): ObservabilityRollupCheckpoint {
     schemaVersion: PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
     cursor: null,
     processedEventCount: 0,
+    rejectedEventCount: 0,
+    lastRejectedEvent: null,
     activeUserDirtySources: [],
     lastRunStartedAt: null,
     lastSuccessfulRunAt: null,
@@ -191,6 +197,7 @@ function readCheckpoint(
     processedEventCount: Number.isSafeInteger(value.processedEventCount)
       ? Math.max(0, Number(value.processedEventCount))
       : 0,
+    ...readObservabilityRejectionEvidence(value),
     activeUserDirtySources: readDirtySources(value.activeUserDirtySources),
     lastRunStartedAt: typeof value.lastRunStartedAt === 'string' ? value.lastRunStartedAt : null,
     lastSuccessfulRunAt: typeof value.lastSuccessfulRunAt === 'string'
@@ -424,6 +431,7 @@ export class ProductObservabilityRollupEngine {
           id: ROLLUP_STATE_ID,
         }];
         for (const { event } of eventRows) {
+          if (!observabilityCountersInDomain(event)) continue;
           firstReadKeys.push(
             { collection: ACTOR_DAY_COLLECTION, id: actorDayId(event) },
             { collection: DAILY_ROLLUP_COLLECTION, id: dailyRollupId(event) },
@@ -476,33 +484,25 @@ export class ProductObservabilityRollupEngine {
           return { processed: 0, hasMore: false, checkpoint };
         }
 
-        const planningSessionPreview = new Map<string, ObservabilityPlanningSessionSummary | null>();
         const cohortReadKeys: FirestoreTransactionDocumentKey[] = [];
         for (const { event } of eventRows) {
-          if (event.eventType !== 'planning_outcome') continue;
+          if (event.eventType !== 'planning_outcome' || !observabilityCountersInDomain(event)) continue;
           const planningEvent = event as StoredObservabilityEvent<PlanningOutcomeMetricPayload>;
-          const featureSessionId = planningEvent.correlation.featureSessionId?.trim() ?? '';
-          const sessionId = planningSessionDocumentId(event.environment, featureSessionId);
-          const sessionKey = cacheKey(
-            PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION,
-            sessionId,
-          );
-          const current = planningSessionPreview.has(sessionKey)
-            ? planningSessionPreview.get(sessionKey) ?? null
-            : withoutStorageId<ObservabilityPlanningSessionSummary>(cache.get(sessionKey) ?? null);
-          const next = projectPlanningSessionSummary({
-            current,
-            event: planningEvent,
-            nowIso: runStartedAt,
-          });
+          const sessionId = planningSessionDocumentId(event.environment, planningEvent.correlation.featureSessionId!.trim());
+          const current = withoutStorageId<ObservabilityPlanningSessionSummary>(cache.get(cacheKey(
+            PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION, sessionId,
+          )) ?? null);
+          // A session's cohort only moves on session_started. Prefetch every
+          // possible cohort before projecting, without mutating a preview state.
           const cohortDates = new Set<string>();
           if (current?.startedDate) cohortDates.add(current.startedDate);
-          if (next.startedDate) cohortDates.add(next.startedDate);
+          if (planningEvent.payload.outcomeType === 'session_started') {
+            cohortDates.add(observabilityReportingDate(event.occurredAt));
+          }
           cohortDates.forEach((cohortDate) => cohortReadKeys.push({
             collection: PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
             id: planningDailyCohortDocumentId(event.environment, cohortDate),
           }));
-          planningSessionPreview.set(sessionKey, next);
         }
         await load(cohortReadKeys);
 
@@ -513,113 +513,134 @@ export class ProductObservabilityRollupEngine {
           if (!cache.has(key)) throw new Error('observability_rollup_prefetch_incomplete');
           return cache.get(key) ?? null;
         };
-        const stage = (
-          collection: string,
-          id: string,
-          value: Record<string, unknown>,
-        ) => {
-          const key = cacheKey(collection, id);
-          cache.set(key, value);
-          writes.set(key, { collection, id, value });
+        let rejectedEventCount = transactionalCheckpoint.rejectedEventCount ?? 0;
+        let lastRejectedEvent = transactionalCheckpoint.lastRejectedEvent ?? null;
+        let projectedEventCount = 0;
+        const reject = (document: FirestoreOrderedDocument, event: StoredProductObservabilityEvent,
+          reason: ObservabilityRejectedEvent['reason']) => {
+          rejectedEventCount += 1;
+          lastRejectedEvent = { documentName: document.documentName, observedAt: event.observedAt,
+            environment: event.environment, reason };
         };
 
-        for (const { event } of eventRows) {
-          const dayId = actorDayId(event);
-          const actorDayBefore = withoutStorageId<ObservabilityActorDay>(
-            await read(ACTOR_DAY_COLLECTION, dayId),
-          );
-          if (actorDayBefore === null) {
-            const source: ActiveUserDirtySourceKey = {
-              environment: event.environment,
-              localDate: observabilityReportingDate(event.occurredAt),
-            };
-            changedActorSources.set(dirtySourceKey(source), source);
+        for (const { event, document } of eventRows) {
+          if (!observabilityCountersInDomain(event)) {
+            reject(document, event, 'counter_out_of_domain');
+            continue;
           }
-          const nextActorDay = projectActorDay({
-            current: actorDayBefore,
-            event,
-            nowIso: runStartedAt,
-          });
-          stage(
-            ACTOR_DAY_COLLECTION,
-            dayId,
-            nextActorDay as unknown as Record<string, unknown>,
-          );
-
-          const rollupId = dailyRollupId(event);
-          const dailyBefore = withoutStorageId<ObservabilityDailyRollup>(
-            await read(DAILY_ROLLUP_COLLECTION, rollupId),
-          );
-          const nextDaily = projectDailyRollup({
-            current: dailyBefore,
-            event,
-            actorDayWasNew: actorDayBefore === null,
-            nowIso: runStartedAt,
-          });
-          stage(
-            DAILY_ROLLUP_COLLECTION,
-            rollupId,
-            nextDaily as unknown as Record<string, unknown>,
-          );
-
-          if (event.eventType === 'planning_outcome') {
-            const planningEvent = event as StoredObservabilityEvent<PlanningOutcomeMetricPayload>;
-            const featureSessionId = planningEvent.correlation.featureSessionId?.trim() ?? '';
-            if (!featureSessionId) throw new Error('invalid_planning_session_event');
-            const sessionId = planningSessionDocumentId(event.environment, featureSessionId);
-            const sessionBefore = withoutStorageId<ObservabilityPlanningSessionSummary>(
-              await read(PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION, sessionId),
+          // An event contributes to all projections or none. Keep candidates
+          // out of the shared cache until every numeric invariant has passed.
+          const eventWrites = new Map<string, FirestoreTransactionDocumentWrite>();
+          const stage = (collection: string, id: string, value: Record<string, unknown>) => {
+            assertObservabilityAggregateCounters(value);
+            eventWrites.set(cacheKey(collection, id), { collection, id, value });
+          };
+          try {
+            const dayId = actorDayId(event);
+            const actorDayBefore = withoutStorageId<ObservabilityActorDay>(
+              await read(ACTOR_DAY_COLLECTION, dayId),
             );
-            const nextSession = projectPlanningSessionSummary({
-              current: sessionBefore,
-              event: planningEvent,
+            const nextActorDay = projectActorDay({
+              current: actorDayBefore,
+              event,
               nowIso: runStartedAt,
             });
-            const cohortDates = new Set<string>();
-            if (sessionBefore?.startedDate) cohortDates.add(sessionBefore.startedDate);
-            if (nextSession.startedDate) cohortDates.add(nextSession.startedDate);
-            for (const cohortDate of cohortDates) {
-              const cohortId = planningDailyCohortDocumentId(event.environment, cohortDate);
-              const cohortBefore = withoutStorageId<ObservabilityPlanningDailyCohort>(
-                await read(PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION, cohortId),
+            stage(
+              ACTOR_DAY_COLLECTION,
+              dayId,
+              nextActorDay as unknown as Record<string, unknown>,
+            );
+
+            const rollupId = dailyRollupId(event);
+            const dailyBefore = withoutStorageId<ObservabilityDailyRollup>(
+              await read(DAILY_ROLLUP_COLLECTION, rollupId),
+            );
+            const nextDaily = projectDailyRollup({
+              current: dailyBefore,
+              event,
+              actorDayWasNew: actorDayBefore === null,
+              nowIso: runStartedAt,
+            });
+            stage(
+              DAILY_ROLLUP_COLLECTION,
+              rollupId,
+              nextDaily as unknown as Record<string, unknown>,
+            );
+
+            if (event.eventType === 'planning_outcome') {
+              const planningEvent = event as StoredObservabilityEvent<PlanningOutcomeMetricPayload>;
+              const featureSessionId = planningEvent.correlation.featureSessionId?.trim() ?? '';
+              if (!featureSessionId) throw new Error('invalid_planning_session_event');
+              const sessionId = planningSessionDocumentId(event.environment, featureSessionId);
+              const sessionBefore = withoutStorageId<ObservabilityPlanningSessionSummary>(
+                await read(PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION, sessionId),
               );
-              const nextCohort = projectPlanningDailyCohort({
-                current: cohortBefore,
-                previousSession: sessionBefore,
-                nextSession,
-                environment: event.environment,
-                cohortDate,
+              const nextSession = projectPlanningSessionSummary({
+                current: sessionBefore,
+                event: planningEvent,
                 nowIso: runStartedAt,
               });
+              const cohortDates = new Set<string>();
+              if (sessionBefore?.startedDate) cohortDates.add(sessionBefore.startedDate);
+              if (nextSession.startedDate) cohortDates.add(nextSession.startedDate);
+              for (const cohortDate of cohortDates) {
+                const cohortId = planningDailyCohortDocumentId(event.environment, cohortDate);
+                const cohortBefore = withoutStorageId<ObservabilityPlanningDailyCohort>(
+                  await read(PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION, cohortId),
+                );
+                const nextCohort = projectPlanningDailyCohort({
+                  current: cohortBefore,
+                  previousSession: sessionBefore,
+                  nextSession,
+                  environment: event.environment,
+                  cohortDate,
+                  nowIso: runStartedAt,
+                });
+                stage(
+                  PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
+                  cohortId,
+                  nextCohort as unknown as Record<string, unknown>,
+                );
+              }
               stage(
-                PRODUCT_OBSERVABILITY_PLANNING_DAILY_COLLECTION,
-                cohortId,
-                nextCohort as unknown as Record<string, unknown>,
+                PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION,
+                sessionId,
+                nextSession as unknown as Record<string, unknown>,
               );
             }
-            stage(
-              PRODUCT_OBSERVABILITY_PLANNING_SESSION_COLLECTION,
-              sessionId,
-              nextSession as unknown as Record<string, unknown>,
-            );
-          }
 
-          const summaryCollection = userSummaryCollection(event);
-          const userBefore = withoutStorageId<ObservabilityUserSummary>(await read(
-            summaryCollection,
-            event.actorSubjectId,
-          ));
-          const nextUser = projectUserSummary({
-            current: userBefore,
-            event,
-            actorDayWasNew: actorDayBefore === null,
-            nowIso: runStartedAt,
-          });
-          stage(
-            summaryCollection,
-            event.actorSubjectId,
-            nextUser as unknown as Record<string, unknown>,
-          );
+            const summaryCollection = userSummaryCollection(event);
+            const userBefore = withoutStorageId<ObservabilityUserSummary>(await read(
+              summaryCollection,
+              event.actorSubjectId,
+            ));
+            const nextUser = projectUserSummary({
+              current: userBefore,
+              event,
+              actorDayWasNew: actorDayBefore === null,
+              nowIso: runStartedAt,
+            });
+            stage(
+              summaryCollection,
+              event.actorSubjectId,
+              nextUser as unknown as Record<string, unknown>,
+            );
+            if (!Number.isSafeInteger(transactionalCheckpoint.processedEventCount + projectedEventCount + 1)) {
+              throw new ObservabilityAggregateOverflowError();
+            }
+            for (const [key, write] of eventWrites) {
+              cache.set(key, write.value);
+              writes.set(key, write);
+            }
+            if (actorDayBefore === null) {
+              const source = { environment: event.environment, localDate: observabilityReportingDate(event.occurredAt) };
+              changedActorSources.set(dirtySourceKey(source), source);
+            }
+            projectedEventCount += 1;
+          } catch (error) {
+            if (!(error instanceof ObservabilityAggregateOverflowError)) throw error;
+            reject(document, event, 'aggregate_counter_overflow');
+          }
         }
 
         const changedSources = [...changedActorSources.values()].sort((left, right) =>
@@ -631,7 +652,9 @@ export class ProductObservabilityRollupEngine {
             observedAt: last.observedAt as string,
             documentName: last.documentName,
           },
-          processedEventCount: transactionalCheckpoint.processedEventCount + eventRows.length,
+          processedEventCount: transactionalCheckpoint.processedEventCount + projectedEventCount,
+          rejectedEventCount,
+          lastRejectedEvent,
           activeUserDirtySources: mergeDirtySources(
             transactionalCheckpoint.activeUserDirtySources,
             changedSources,
@@ -650,7 +673,7 @@ export class ProductObservabilityRollupEngine {
         await this.firestore.commitTransaction(transaction, [...writes.values()]);
         const hasFreshTail = settledEvents.length < orderedEvents.length;
         return {
-          processed: eventRows.length,
+          processed: projectedEventCount,
           hasMore: !hasFreshTail && orderedEvents.length >= pageSize,
           checkpoint,
         };

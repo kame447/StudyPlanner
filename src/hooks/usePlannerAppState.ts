@@ -1,6 +1,9 @@
+import type { MonthEventEditRequest } from '../domain/recurringMonthEvent';
+import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
+import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import type { MaterialEditBaseline } from './useActualMutationAdmission';
 import type { ActualActionTarget } from './useActualMutationAdmission';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { createPlanFromDraft } from '../domain/planner';
 import type { PlannerDataAvailability, PlannerDataRecovery } from '../domain/plannerDataReadAuthority';
@@ -10,7 +13,7 @@ import {
   getWeeklyPlanningApprovalPlanRepository,
 } from '../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository';
 import type { WeeklyDraftApprovalOperation } from '../features/weeklyPlanning/planning/weeklyPlanningApprovalTypes';
-import { useAuthSessionState } from './useAuthSessionState';
+import { useAuthSessionState, type ProfileRestoreRecovery } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
 import { usePlannerDataState } from './usePlannerDataState';
 import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
@@ -44,6 +47,8 @@ import type {
 interface PlannerAppState {
   booting: boolean;
   user: User | null;
+  profileRestoreRecovery: ProfileRestoreRecovery;
+  retryProfileRestore: () => Promise<void>;
   plans: Plan[];
   actuals: Actual[];
   dayNotes: DayNote[] | null;
@@ -81,11 +86,16 @@ interface PlannerAppState {
   signOut: () => Promise<void>;
   openCreatePlan: () => void;
   openEditPlan: (plan: Plan) => void;
+  openDuplicatePlan: (plan: Plan) => void;
   closePlanEditor: () => void;
+  createPlanDraft: (draft: PlanDraft) => Promise<void>;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
+  deleteDayOccurrence: (occurrence: ScheduleOccurrence) => Promise<void>;
+  prepareDayTimetableRecord: (occurrence: ScheduleOccurrence) => Promise<Plan>;
+  changeDayTimetableTime: (occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -96,7 +106,7 @@ interface PlannerAppState {
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
   loadDayNotes: () => Promise<void>;
-  saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
+  saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string, edit?: MonthEventEditRequest) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
   scheduleTodoAsPlan: (todo: TodoTask, draft: PlanDraft) => Promise<Plan>;
@@ -134,7 +144,7 @@ interface PlannerAppState {
   currentDayNote: DayNote | DayNoteDraft | null;
 }
 
-export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, onBootstrapSettled }: { noticeAutoDismiss?: boolean; expectedUserId?: string; onBootstrapSettled?: () => void } = {}): PlannerAppState {
+export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, onBootstrapSettled, isSessionCurrent }: { noticeAutoDismiss?: boolean; expectedUserId?: string; onBootstrapSettled?: () => void; isSessionCurrent?: () => boolean } = {}): PlannerAppState {
   const { notice, showNotice, dismissNotice } = useNoticeState(noticeAutoDismiss);
   const weeklyPlanningApprovalPlanRepository =
     getWeeklyPlanningApprovalPlanRepository();
@@ -142,13 +152,15 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     booting,
     user,
     bootstrapSession,
+    profileRestoreRecovery,
+    retryProfileRestore: retryProfileSession,
     signUpWithPassword: registerWithPassword,
     signInWithPassword: loginWithPassword,
     signInWithGoogle: loginWithGoogle,
     sendPasswordReset,
     saveUserProfile,
     signOut: signOutSession,
-  } = useAuthSessionState({ showNotice, expectedUserId, onBootstrapSettled });
+  } = useAuthSessionState({ showNotice, expectedUserId, onBootstrapSettled, isSessionCurrent });
   const {
     plans: storedPlans,
     actuals,
@@ -179,9 +191,14 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     setViewMode,
     openCreatePlan,
     openEditPlan,
+    openDuplicatePlan,
     closePlanEditor,
     savePlanDraft,
+    createPlanDraft,
     movePlanOccurrence,
+    deleteDayOccurrence,
+    changeDayTimetableTime,
+    prepareDayTimetableRecord,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -235,6 +252,8 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
   useEffect(() => {
     clearWeeklyApprovedPlanOverlay([]);
   }, [clearWeeklyApprovedPlanOverlay, user?.id]);
+
+  const retryProfileRestore = useCallback(() => retryProfileSession(bootstrapPlannerData), [retryProfileSession, bootstrapPlannerData]);
 
   useEffect(() => {
     void bootstrapSession(bootstrapPlannerData);
@@ -337,6 +356,8 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
   return {
     booting,
     user,
+    profileRestoreRecovery,
+    retryProfileRestore,
     plans,
     actuals,
     dayNotes,
@@ -370,11 +391,16 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     signOut,
     openCreatePlan,
     openEditPlan,
+    openDuplicatePlan,
     closePlanEditor,
     savePlanDraft,
+    createPlanDraft,
     movePlanOccurrence,
     saveWeeklyApprovedPlan: approvalScope.bindMutation(saveWeeklyApprovedPlan),
     completeWeeklyApprovalOperation: approvalScope.bindMutation(completeWeeklyApprovalOperation),
+    deleteDayOccurrence,
+    changeDayTimetableTime,
+    prepareDayTimetableRecord,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,

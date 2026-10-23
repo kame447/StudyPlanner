@@ -16,6 +16,11 @@ import type { PlannerRepository } from './repositories/repositoryContracts';
 import type { StudyMaterial, User } from './types/domain';
 
 const boundary = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository }));
+// This suite isolates planner/navigation behavior; streak persistence has its own provider integration tests.
+vi.mock('./components/StudyStreakContext', () => ({
+  StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children,
+  useSharedStudyStreak: () => null,
+}));
 vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));
@@ -44,7 +49,7 @@ function Harness({ owner = 'owner-a' }: { owner?: string }) {
   state = usePlannerDataState({ userId: owner, showNotice });
   const unused = async (): Promise<never> => { throw new Error('outside material handoff'); };
   const snapshot: PlannerAppSnapshot = {
-    ...state, user: { id: owner } as User, booting: false, notice: null, dismissNotice() {},
+    ...state, user: { id: owner } as User, booting: false, profileRestoreRecovery: null, retryProfileRestore: async () => undefined, notice: null, dismissNotice() {},
     signUpWithPassword: unused, signInWithPassword: unused, signInWithGoogle: unused,
     sendPasswordReset: unused, saveUserProfile: unused, signOut: unused,
     saveWeeklyApprovedPlan: unused, completeWeeklyApprovalOperation: unused,
@@ -53,9 +58,13 @@ function Harness({ owner = 'owner-a' }: { owner?: string }) {
 }
 beforeEach(() => {
   const storage = new MemoryStorage();
-  vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: storage });
+  vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: storage,
+    requestAnimationFrame: vi.fn(() => 1), cancelAnimationFrame: vi.fn(),
+    addEventListener: vi.fn(), removeEventListener: vi.fn(),
+  });
+  vi.stubGlobal('HTMLElement', class {});
   vi.stubGlobal('localStorage', storage);
-  vi.stubGlobal('document', { documentElement: { dataset: {} }, body: { style: { overflow: '', overscrollBehavior: '' } } });
+  vi.stubGlobal('document', { activeElement: null, documentElement: { dataset: {} }, body: { style: { overflow: '', overscrollBehavior: '' } } });
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden'); }));
   showNotice.mockClear();
 });

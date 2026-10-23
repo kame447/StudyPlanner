@@ -1,10 +1,26 @@
+import { CONTEXTUAL_CATALOG_VERSION } from '../shared/focusedContextualCatalog.ts';
 import assert from 'node:assert/strict';
 import { observedTotal } from './jev-contextual-eval-metrics.mjs';
 import { isEvalDispatchDiagnostics } from './jev-contextual-eval-diagnostics.mjs';
 
 export const PAIRED_ARTIFACT_SCHEMA = 'jev-contextual-paired-v1';
 const ARMS = ['jevFirst', 'lunaOnly'];
-const CATALOG = 'focused-contextual-answer-2026-10-04-v3';
+// Historical v3 framing stays readable; it is never relabeled as bound J1 evidence.
+export const HISTORICAL_CONTEXTUAL_CATALOG = 'focused-contextual-answer-2026-10-04-v3';
+export const BOUND_CONTEXTUAL_CATALOG = CONTEXTUAL_CATALOG_VERSION;
+const CATALOGS = [HISTORICAL_CONTEXTUAL_CATALOG, BOUND_CONTEXTUAL_CATALOG];
+
+export function contextualArtifactCatalogVersion(pairs) {
+  assert.ok(Array.isArray(pairs));
+  const versions = new Set();
+  for (const pair of pairs) for (const arm of ['jevFirst', 'lunaOnly']) {
+    if (isRecord(pair) && Object.hasOwn(pair, arm)) versions.add(pair[arm]?.catalogVersion);
+  }
+  assert.ok(versions.size <= 1, 'Mixed contextual catalog versions in one artifact.');
+  const catalog = versions.size ? [...versions][0] : BOUND_CONTEXTUAL_CATALOG;
+  assert.ok(CATALOGS.includes(catalog), 'Unknown contextual artifact catalog.');
+  return catalog;
+}
 const GATE = 'contextual-conservative-v2-calibrated';
 // r2 independent labels are joined by jev-contextual-unit0-review.mjs with
 // required reviewer/model/viewed-scope provenance, never through this v1 path.
@@ -111,7 +127,7 @@ function validatePreSend(preSend, record) {
 
 // preSend=true is the Unit 0 r2 record: attempt outcomes and pre-send
 // reservations are part of the measurement, not optional diagnostics.
-export function validateArm(record, item, arm, { preSend = false } = {}) {
+export function validateArm(record, item, arm, { preSend = false, catalogVersion = CONTEXTUAL_CATALOG_VERSION } = {}) {
   fields(record, ['caseId', 'group', 'arm', 'questionCode', 'catalogVersion', 'gateVersion',
     'observationComplete', 'dispatches', 'lunaDispatches', 'elapsedMs', 'inputTokens', 'outputTokens',
     'actualCostUsd', 'directRoleAccepted', 'selectedRole', 'jointCorrect', 'semanticResult', 'labelSource',
@@ -120,7 +136,8 @@ export function validateArm(record, item, arm, { preSend = false } = {}) {
   assert.equal(record.group, item.group);
   assert.equal(record.arm, arm);
   assert.equal(record.questionCode, item.questionCode);
-  assert.equal(record.catalogVersion, CATALOG);
+  assert.ok(CATALOGS.includes(catalogVersion), 'Unknown contextual artifact catalog.');
+  assert.equal(record.catalogVersion, catalogVersion);
   assert.equal(record.gateVersion, GATE);
   assert.equal(record.labelSource, item.labelSource);
   assert.equal(typeof record.observationComplete, 'boolean');
@@ -186,6 +203,7 @@ export function validatePairedArtifact(artifact, { corpus, corpusHash, split, ca
   assert.equal(artifact.expectedTurns, cases.length);
   assert.ok(isRecord(artifact.summary)); // cached summary is untrusted and always recomputed
   assert.ok(Array.isArray(artifact.pairs));
+  const catalogVersion = contextualArtifactCatalogVersion(artifact.pairs);
   const index = new Map(cases.map((item) => [item.id, item]));
   const seen = new Set();
   for (const pair of artifact.pairs) {
@@ -197,7 +215,7 @@ export function validatePairedArtifact(artifact, { corpus, corpusHash, split, ca
     assert.equal(pair.labelSource, item.labelSource);
     assert.ok(Array.isArray(pair.order) && pair.order.length === 2
       && pair.order.every((arm) => ARMS.includes(arm)) && new Set(pair.order).size === 2);
-    for (const arm of ARMS) if (Object.hasOwn(pair, arm)) validateArm(pair[arm], item, arm);
+    for (const arm of ARMS) if (Object.hasOwn(pair, arm)) validateArm(pair[arm], item, arm, { catalogVersion });
   }
   const complete = artifact.pairs.length === cases.length
     && artifact.pairs.every((pair) => ARMS.every((arm) => pair[arm]?.observationComplete === true));

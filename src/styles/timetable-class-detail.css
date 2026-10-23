@@ -1,0 +1,63 @@
+/* Lesson dialogs own the viewport; the timetable's old drawer keeps nav space. */
+.section-stack > .timetable-view:has(> .timetable-class-overlay) {
+  /* Finish the route fade before its opacity can trap the fixed dialog below
+     navigation. Keep the animation name/timeline so closing does not restart it. */
+  animation-duration: 0s;
+}
+.timetable-modal-overlay.timetable-class-overlay {
+  display: flex; align-items: stretch; justify-content: flex-end;
+  z-index: var(--z-modal-overlay); padding: 0; scrollbar-gutter: auto;
+}
+:root .timetable-class-overlay > .modal-card.timetable-editor-modal {
+  width: min(460px, 100%); height: 100dvh; max-height: 100dvh;
+  margin: 0; border-radius: 0; background: #fff;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+}
+:root[data-theme='dark'] .timetable-class-overlay > .modal-card.timetable-editor-modal { background: #181f23; }
+/* Lesson detail and editor density belong to this surface only. */
+.timetable-class-detail .timetable-editor-heading h2 { overflow-wrap: anywhere; line-height: 1.35; }
+.timetable-class-detail .class-detail-body { display: flex; flex-direction: column; gap: 16px; }
+.class-detail-summary { display: grid; gap: 4px; padding: 4px 2px; }
+.class-detail-summary strong { font-size: .88rem; }
+.class-detail-summary p { margin: 0; color: var(--text-muted); font-size: .82rem; }
+.class-detail-section { min-width: 0; padding-top: 12px; border-top: 1px solid var(--border); }
+.class-detail-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.class-detail-section-heading h3 { margin: 0; font-size: .95rem; }
+.timetable-class-detail button { min-height: 40px; }
+.class-attendance-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.class-attendance-counts > div { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 4px; border-radius: 10px; background: var(--surface-soft); }
+.class-attendance-counts dt { color: var(--text-muted); font-size: .72rem; }
+.class-attendance-counts dd { margin: 0; font-weight: 800; font-size: 1.15rem; }
+.class-detail-form { display: grid; gap: 12px; margin-block: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
+.class-detail-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.class-detail-form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.class-detail-form [role='alert'] { margin: 0; color: var(--danger); font-size: .8rem; }
+.class-attendance-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.class-attendance-options .segment { padding: 9px 4px; font-size: .78rem; }
+.class-detail-history { margin-top: 10px; }
+.class-detail-history summary, .class-detail-memo summary, .timetable-editor-options > summary { cursor: pointer; min-height: 40px; padding-block: 10px; color: var(--text-muted); font-size: .82rem; font-weight: 700; }
+.class-detail-history ul, .class-schedule-list { list-style: none; padding: 0; margin: 0; }
+.class-detail-history li + li, .class-schedule-list li + li { border-top: 1px solid var(--border); }
+.class-detail-history li > button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; color: var(--text); padding: 10px 2px; text-align: left; }
+.class-detail-history li > button time { flex: 1; }
+.class-schedule-list li { display: flex; align-items: center; gap: 10px; padding: 10px 2px; }
+.class-schedule-list li > div { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.class-schedule-list strong { overflow-wrap: anywhere; font-size: .85rem; }
+.class-schedule-list span { color: var(--text-muted); font-size: .75rem; }
+.class-schedule-kind { flex-shrink: 0; padding: 4px 7px; border-radius: 7px; background: var(--surface-soft); }
+.class-detail-empty { margin: 8px 0; color: var(--text-muted); font-size: .8rem; }
+.class-detail-memo p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; line-height: 1.6; }
+.modal-card.timetable-compact-editor .timetable-editor-body { align-content: start; gap: 12px; }
+.modal-card.timetable-compact-editor .timetable-editor-card { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.modal-card.timetable-compact-editor .timetable-schedule-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.modal-card.timetable-compact-editor .timetable-editor-options { border-top: 1px solid var(--border); }
+.timetable-editor-options > .timetable-editor-card { margin-top: 12px; }
+.modal-card.timetable-compact-editor .timetable-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.modal-card.timetable-compact-editor .timetable-editor-actions { border-top: 1px solid var(--border); padding-top: 8px; }
+.modal-card.timetable-class-detail .field input, .modal-card.timetable-class-detail .field select,
+.modal-card.timetable-class-detail .field textarea, .modal-card.timetable-compact-editor .field input,
+.modal-card.timetable-compact-editor .field select, .modal-card.timetable-compact-editor .field textarea { min-width: 0; width: 100%; min-height: 42px; font-size: 16px; box-sizing: border-box; }
+@media (max-width: 359px) {
+  .class-attendance-counts > div { flex-direction: column-reverse; gap: 2px; }
+  .class-detail-form { padding: 10px; }
+}

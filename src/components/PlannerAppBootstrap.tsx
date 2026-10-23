@@ -17,7 +17,14 @@ export function PlannerAppBootstrap({ ownerId, children, startupScope, authSessi
 }) {
   const [surfaceReady, setSurfaceReady] = useState(false);
   const onBootstrapSettled = useStartupMarkerObservation({ ownerId, scope: startupScope, authSession, allowed: startupObservationAllowed });
-  const state = usePlannerAppState({ noticeAutoDismiss: surfaceReady, expectedUserId: ownerId, onBootstrapSettled });
+  const isSessionCurrent = useCallback(() => {
+    if (!startupScope?.isCurrent() || !authSession) return false;
+    try {
+      const user = authSession.getCurrentUser();
+      return Boolean(user && user.id === ownerId && !user.requiresEmailVerification);
+    } catch { return false; }
+  }, [authSession, ownerId, startupScope]);
+  const state = usePlannerAppState({ noticeAutoDismiss: surfaceReady, expectedUserId: ownerId, onBootstrapSettled, isSessionCurrent: startupScope && authSession ? isSessionCurrent : undefined });
   const onReady = useCallback(() => setSurfaceReady(true), []);
   return children(state, onReady);
 }

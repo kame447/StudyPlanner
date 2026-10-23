@@ -1,3 +1,4 @@
+import { CONTEXTUAL_CATALOG_VERSION } from '../shared/focusedContextualCatalog.ts';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -15,7 +16,7 @@ const item = { id: 'synthetic-cleanup-1', group: 'synthetic-group', stratum: 'B'
 // Zero observed sends is intentional: these synthetic transport lifecycle
 // tests exercise no provider, renderer, scheduler or semantic correctness.
 const recordFor = (item, arm) => ({ caseId: item.id, group: item.group, arm, questionCode: item.questionCode,
-  catalogVersion: 'focused-contextual-answer-2026-10-04-v3', gateVersion: 'contextual-conservative-v2-calibrated',
+  catalogVersion: CONTEXTUAL_CATALOG_VERSION, gateVersion: 'contextual-conservative-v2-calibrated',
   observationComplete: true, dispatches: [], lunaDispatches: 0, elapsedMs: 0, inputTokens: 0, outputTokens: 0, actualCostUsd: 0,
   directRoleAccepted: false, selectedRole: null, jointCorrect: null, labelSource: item.labelSource, providerStatus: null,
   semanticResult: { status: 'provider_failure', document: null, contextualDirective: null, validationErrors: [] },

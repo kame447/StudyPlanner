@@ -37,3 +37,14 @@ describe('generic Choice envelope', () => {
     }
   });
 });
+
+
+it('requires the strict bound question field for C5 and bounds UTF8 bytes without truncation',()=>{
+  const original=choiceRequest();const request={...original,context:{...original.context,question:{id:'q',code:'ambiguous_effort_estimate'}}};
+  expect(isCandidateChoiceDecisionContext({purpose:'candidate_choice',request})).toBe(false);
+  const text='大'.repeat(1333)+'x';expect(new TextEncoder().encode(text).length).toBe(4000);
+  const withText={...request,context:{...request.context,presentedQuestion:text}};
+  expect(isCandidateChoiceDecisionContext({purpose:'candidate_choice',request:withText})).toBe(true);
+  for(const shown of [text+'x','',42,{text:'wrong shape'}])expect(isCandidateChoiceDecisionContext({purpose:'candidate_choice',request:{...withText,context:{...withText.context,presentedQuestion:shown}}})).toBe(false);
+  expect(isCandidateChoiceDecisionContext({purpose:'candidate_choice',request:{...withText,context:{...withText.context,extra:'not allowed'}}})).toBe(false);
+});

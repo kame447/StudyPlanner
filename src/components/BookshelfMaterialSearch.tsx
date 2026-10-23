@@ -9,6 +9,8 @@ import '../styles/material-metadata.css';
 
 interface BookshelfMaterialSearchProps {
   onSelect: (candidate: MaterialMetadataCandidate) => void;
+  compact?: boolean;
+  onSelectionFocusReturn?: () => void;
   onSelectionPendingChange?: (pending: boolean) => void;
 }
 
@@ -29,6 +31,8 @@ function candidateMeta(candidate: MaterialMetadataCandidate): string {
 
 export function BookshelfMaterialSearch({
   onSelect,
+  compact = false,
+  onSelectionFocusReturn,
   onSelectionPendingChange,
 }: BookshelfMaterialSearchProps) {
   const [query, setQuery] = useState('');
@@ -37,13 +41,24 @@ export function BookshelfMaterialSearch({
   const [isSearching, setIsSearching] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const selection = useRef<object | null>(null);
+  // State drives the button; this synchronous guard also covers same-turn Enter/clicks.
+  const search = useRef<object | null>(null);
+  const resolveSelection = useRef(resolveMaterialMetadataCandidate);
+  const selectionFocusCleanup = useRef<(() => void) | null>(null);
   const mounted = useRef(false);
   useLayoutEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; selection.current = null; };
+    return () => {
+      mounted.current = false;
+      selection.current = null;
+      search.current = null;
+      resolveSelection.current = resolveMaterialMetadataCandidate;
+      selectionFocusCleanup.current?.();
+    };
   }, []);
 
   function cancelSelection() {
+    selectionFocusCleanup.current?.();
     selection.current = null;
     setResolvingId(null);
     onSelectionPendingChange?.(false);
@@ -52,13 +67,19 @@ export function BookshelfMaterialSearch({
 
   async function handleSearch() {
     const trimmed = query.trim();
-    if (!trimmed || isSearching) return;
+    if (!mounted.current || !trimmed || search.current || selection.current) return;
+    const operation = {};
+    search.current = operation;
+    resolveSelection.current = resolveMaterialMetadataCandidate;
+    const current = () => mounted.current && search.current === operation;
 
     setIsSearching(true);
     setStatus('教材と表紙を検索しています...');
     setResults([]);
     try {
       const response = await searchMaterialMetadata(trimmed);
+      if (!current()) return;
+      resolveSelection.current = response.resolveSelection ?? resolveMaterialMetadataCandidate;
       setResults(response.results);
       const coverCount = response.results.filter((candidate) => Boolean(candidate.coverImageUrl)).length;
       setStatus(
@@ -67,27 +88,47 @@ export function BookshelfMaterialSearch({
           : '候補が見つかりませんでした。下の教材名から手入力できます。',
       );
     } catch (error) {
+      if (!current()) return;
       setStatus(
         error instanceof Error
           ? error.message
           : '教材検索を利用できません。下の教材名から手入力できます。',
       );
     } finally {
-      setIsSearching(false);
+      if (current()) {
+        search.current = null;
+        setIsSearching(false);
+      }
     }
   }
 
-  async function handleSelect(candidate: MaterialMetadataCandidate) {
+  async function handleSelect(candidate: MaterialMetadataCandidate, button?: HTMLButtonElement) {
     if (!mounted.current || selection.current) return;
     const operation = {};
+    // Disabling/removing the selected result can otherwise send keyboard focus
+    // to the page. A later deliberate focus change always wins this handoff.
+    let returnFocus = compact && Boolean(button) && typeof document !== 'undefined'
+      && document.activeElement === button;
+    if (returnFocus) {
+      const observeFocus = (event: FocusEvent) => {
+        if (event.target !== button && event.target !== document.body) returnFocus = false;
+      };
+      document.addEventListener('focusin', observeFocus);
+      selectionFocusCleanup.current = () => {
+        document.removeEventListener('focusin', observeFocus);
+        selectionFocusCleanup.current = null;
+      };
+    }
     selection.current = operation;
     onSelectionPendingChange?.(true);
     setResolvingId(candidate.catalogEntryId);
     setStatus('教材の表紙・ページ数・版・目次を確認しています...');
     try {
-      const resolved = await resolveMaterialMetadataCandidate(candidate);
+      const resolved = await resolveSelection.current(candidate);
       if (!mounted.current || selection.current !== operation) return;
       onSelect(resolved);
+      if (compact) setResults([]);
+      if (returnFocus) onSelectionFocusReturn?.();
       const detailCount = [
         resolved.coverImageUrl,
         resolved.pageCount,
@@ -95,9 +136,11 @@ export function BookshelfMaterialSearch({
         resolved.tableOfContents?.length,
       ].filter(Boolean).length;
       setStatus(
-        detailCount > 0
-          ? '教材の詳しい情報を反映しました。内容を確認して保存してください。'
-          : '教材名を反映しました。詳しい情報がない項目は手入力できます。',
+        compact
+          ? '反映しました。内容を確認して保存してください。'
+          : detailCount > 0
+            ? '教材の詳しい情報を反映しました。内容を確認して保存してください。'
+            : '教材名を反映しました。詳しい情報がない項目は手入力できます。',
       );
     } catch {
       if (mounted.current && selection.current === operation) {
@@ -105,6 +148,7 @@ export function BookshelfMaterialSearch({
       }
     } finally {
       if (mounted.current && selection.current === operation) {
+        selectionFocusCleanup.current?.();
         selection.current = null;
         setResolvingId(null);
         onSelectionPendingChange?.(false);
@@ -127,12 +171,8 @@ export function BookshelfMaterialSearch({
   return (
     <section className="material-metadata-search" aria-label="教材検索">
       <div className="material-metadata-search-heading">
-        <div>
-          <strong>教材を検索</strong>
-          <p className="detail-note">
-            1000件以上の初期検索インデックスから探し、主要教材は表紙も確認します。版やISBNが必要な候補は選択後に外部書誌で確認します。
-          </p>
-        </div>
+        <strong>{compact ? '検索して入力（任意）' : '教材を検索'}</strong>
+        {compact ? <span>教材名から手入力もできます</span> : null}
       </div>
 
       <div className="material-metadata-search-form">
@@ -183,7 +223,7 @@ export function BookshelfMaterialSearch({
                 key={candidate.catalogEntryId}
                 className="material-metadata-result"
                 disabled={Boolean(resolvingId)}
-                onClick={() => void handleSelect(candidate)}
+                onClick={(event) => void handleSelect(candidate, event.currentTarget)}
                 type="button"
               >
                 <span className="material-metadata-result-cover" aria-hidden="true">
@@ -209,13 +249,24 @@ export function BookshelfMaterialSearch({
         </div>
       ) : null}
 
-      <p className="detail-note material-metadata-attribution">
-        書誌・目次情報には
-        <a href="https://ndlsearch.ndl.go.jp/" target="_blank" rel="noreferrer">
-          国立国会図書館全国書誌情報
-        </a>
-        （CC BY 4.0）を利用します。取得できる場合のみopenBDの書影を表示します。
-      </p>
+      {compact ? (
+        <details className="material-create-attribution">
+          <summary>
+            出典: <a href="https://ndlsearch.ndl.go.jp/" target="_blank" rel="noreferrer">国立国会図書館</a>
+            {' · '}<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>
+          </summary>
+          <p className="detail-note">
+            書誌・目次情報は国立国会図書館全国書誌情報を加工して表示しています。
+            取得できる場合のみ<a href="https://openbd.jp/" target="_blank" rel="noreferrer">openBD</a>の書影を表示します。
+          </p>
+        </details>
+      ) : (
+        <p className="detail-note material-metadata-attribution">
+          書誌・目次情報には
+          <a href="https://ndlsearch.ndl.go.jp/" target="_blank" rel="noreferrer">国立国会図書館全国書誌情報</a>
+          （<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>）を利用します。取得できる場合のみopenBDの書影を表示します。
+        </p>
+      )}
     </section>
   );
 }

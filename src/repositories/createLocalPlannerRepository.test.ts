@@ -76,6 +76,9 @@ describe('local planner shared storage access', () => {
     for (const kind of ['actual', 'todo'] as const) {
         it(`preserves a newer same-target ${kind} including linked-Actual occurrence identity`, async () => {
             const f = createLocalFixture();
+            // A later linked save must retain a real source after compensation;
+            // creating a new orphan is now rejected by provenance admission.
+            await f.repository.upsertPlan(plan());
             const pause = pauseActualWrite(f.gateway);
             const restore = f.repository.restorePlanWithDependents(mutation()).catch(error => error);
             await pause.entered.promise;

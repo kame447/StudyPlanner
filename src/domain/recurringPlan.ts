@@ -276,6 +276,7 @@ export function supportsScopedRecurringPlanEdits(plan: Plan): boolean {
     rules.every((rule) =>
       rule.kind === 'daily' ||
       rule.kind === 'monthly' ||
+      rule.kind === 'yearly' ||
       rule.kind === 'day-type' ||
       rule.kind === 'weekday' ||
       rule.kind === 'date',
@@ -393,8 +394,11 @@ export function applyRecurringPlanDeleteScope(
   const baseRules = resolveWorkingRules(plan);
 
   if (scope === 'single') {
+    const remainingRules = removeOccurrenceFromDateRules(baseRules, occurrenceDate);
     return finalizePlan(plan, baseDraft, {
-      recurrenceRules: removeOccurrenceFromDateRules(baseRules, occurrenceDate),
+      // An empty rule set becomes a legacy one-off and loses its exclusions.
+      // Keep the final explicit rule as the source of the excluded occurrence.
+      recurrenceRules: remainingRules.length > 0 ? remainingRules : baseRules,
       excludedDates: [...new Set([...baseDraft.excludedDates, occurrenceDate])].sort((left, right) =>
         left.localeCompare(right),
       ),

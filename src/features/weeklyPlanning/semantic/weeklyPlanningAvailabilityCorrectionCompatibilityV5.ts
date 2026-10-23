@@ -11,6 +11,7 @@ import type {
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   parseWeeklyPlanningSemanticDocumentV5,
+  validateWeeklyPlanningSemanticValueV5,
   type WeeklyPlanningSemanticReferenceContextV5,
 } from './weeklyPlanningSemanticValidatorV5';
 
@@ -91,6 +92,27 @@ export function parseWeeklyPlanningSemanticDocumentWithAvailabilityCorrectionsV5
     ...parsed,
     document: restoreDocumentCorrectionKinds({
       document: parsed.document,
+      transformedIndexes: compatibility.transformedIndexes,
+    }),
+  };
+}
+
+/** Value-level counterpart of the parser above, for documents that already passed it. */
+export function validateWeeklyPlanningSemanticValueWithAvailabilityCorrectionsV5(
+  value: unknown,
+  context: WeeklyPlanningSemanticReferenceContextV5 = {},
+): ReturnType<typeof validateWeeklyPlanningSemanticValueV5> {
+  const compatibility = transformCorrectionTargets(
+    value,
+    AVAILABILITY_REFERENCE_KIND,
+    BASE_COMPATIBILITY_REFERENCE_KIND,
+  );
+  const validated = validateWeeklyPlanningSemanticValueV5(compatibility.value, context);
+  if (!validated.document) return validated;
+  return {
+    ...validated,
+    document: restoreDocumentCorrectionKinds({
+      document: validated.document,
       transformedIndexes: compatibility.transformedIndexes,
     }),
   };

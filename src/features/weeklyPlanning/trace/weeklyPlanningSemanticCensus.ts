@@ -1,8 +1,11 @@
-import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
 import { createSemanticTurnCensusScope, productionSemanticCensusOptions } from '../../productObservability/semanticTurnCensus';
 import { projectSemanticCensusMetadata } from '../../../../shared/semanticTurnCensus';
 import { readWeeklyPlanningPendingQuestionV5 } from '../semantic/weeklyPlanningPendingQuestionV5';
 import type { WeeklyPlanningSemanticNormalizerV5, WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weeklyPlanningSemanticNormalizerContractsV5';
+
+import type { WeeklyPlanningSemanticTurnObservation } from './weeklyPlanningSemanticCensusTypes';
+export type { WeeklyPlanningSemanticTurnObservation } from './weeklyPlanningSemanticCensusTypes';
 
 /** Only machine-state metadata; never reads utterance, graph labels or generated semantic content. */
 export function weeklyPlanningSemanticCensusMetadata(input: WeeklyPlanningSemanticNormalizerInputV5) {
@@ -17,10 +20,11 @@ export function weeklyPlanningSemanticCensusMetadata(input: WeeklyPlanningSemant
 export function createCensusObservedWeeklyPlanningNormalizer(
   client: OpenAiCompatibleClient,
   createNormalizer: (observedClient: OpenAiCompatibleClient) => WeeklyPlanningSemanticNormalizerV5,
+  suppliedScope?: WeeklyPlanningSemanticTurnObservation,
 ): WeeklyPlanningSemanticNormalizerV5 {
   return {
     async normalize(input) {
-      const scope = createSemanticTurnCensusScope({ client, domain: 'weekly-planning', metadata: weeklyPlanningSemanticCensusMetadata(input), ...productionSemanticCensusOptions() });
+      const scope = suppliedScope ?? createSemanticTurnCensusScope({ client, domain: 'weekly-planning', metadata: weeklyPlanningSemanticCensusMetadata(input), ...productionSemanticCensusOptions() });
       let resolution: 'success' | 'failure' = 'failure';
       try {
         const result = await createNormalizer(scope.client).normalize(input);

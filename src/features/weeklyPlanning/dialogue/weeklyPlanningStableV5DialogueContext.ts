@@ -457,14 +457,16 @@ export function questionIntentForStableV5Dialogue(params: {
       });
       return {
         kind: 'schedulable_work_detail',
-        mode: 'existing_target_progress',
+        mode: boundedWorkload || (params.questionTarget.collection === 'components' && fact.role === 'material')
+          ? 'existing_target_progress' : 'open_ended_session',
         targetFactId: fact.id,
         progressBasis: boundedWorkload
           ? 'known_bounded_quantity'
           : 'completion_progress_without_known_unit',
         knownUnitCode: typeof boundedWorkload?.unitCode === 'string' ? boundedWorkload.unitCode : null,
         knownUnitLabel: typeof boundedWorkload?.unitLabel === 'string' ? boundedWorkload.unitLabel : null,
-        requestedInformation: ['current_progress'],
+        requestedInformation: boundedWorkload || (params.questionTarget.collection === 'components' && fact.role === 'material')
+          ? ['current_progress'] as const : ['session_allocation'] as const,
       } as const;
     }
     if (params.questionTarget === null) {

@@ -5,8 +5,8 @@ import {
 } from './weeklyPlanningStableV5PlanningEvaluation';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeContracts';
 import { stableV5BlockingIssueCode } from './weeklyPlanningStableV5RuntimeQuestions';
-import { activeStableV5PlanningWindows } from './weeklyPlanningStableV5SemanticContext';
-import type { WeeklyPlanningStableV5SemanticTurnResult } from './weeklyPlanningStableV5SemanticTurn';
+import { activeStableV5PlanningWindows } from './weeklyPlanningStableV5SemanticContextCore';
+import type { WeeklyPlanningStableV5SemanticTurnResult } from './weeklyPlanningStableV5SemanticTurnCore';
 
 type SuccessfulSemanticTurn = Extract<
   WeeklyPlanningStableV5SemanticTurnResult,

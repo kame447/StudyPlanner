@@ -16,7 +16,8 @@ vi.mock('../repositories', () => ({ plannerRepository: new Proxy({}, {
 const A = makePlan({ id: 'plan-a', seriesId: 'plan-a' });
 const B = makePlan({ id: 'plan-b', seriesId: 'plan-b' });
 const STANDALONE = makeActual({ id: 'standalone', planId: null });
-const LINKED = makeActual({ id: 'linked', planId: A.id });
+const LINKED = makeActual({ id: 'linked', planId: A.id,
+  progressSource: { kind: 'study', planType: 'study', sourceId: A.id } });
 const NEXT_DATE = '2026-10-05';
 const showNotice = vi.fn<ShowNotice>();
 let state: UsePlannerDataStateResult;

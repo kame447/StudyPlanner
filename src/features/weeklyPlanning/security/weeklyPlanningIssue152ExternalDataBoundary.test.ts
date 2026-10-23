@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const semanticTurnSource = readFileSync(
-  new URL('../application/weeklyPlanningStableV5SemanticTurn.ts', import.meta.url),
+  new URL('../application/weeklyPlanningStableV5SemanticTurnCore.ts', import.meta.url),
   'utf8',
 );
 const semanticContextSource = readFileSync(

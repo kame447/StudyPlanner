@@ -188,6 +188,7 @@ describe('Firebase planner material write payloads', () => {
       const material: StudyMaterial = {
         id: 'material-1', userId: 'user-1', name: 'Math', subjectId: 'math', subjectName: 'Math',
         createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
+        studyStatus: 'completed', status: 'active',
         paceEnabled, coverImageUrl: undefined, progressUnit: 'page', progressUnitLabel: 'pages',
         totalUnits: 100, currentUnit: 20, targetDate: '2026-10-01',
         estimatedMinutesPerUnit: 5, maxUnitsPerDay: 10,

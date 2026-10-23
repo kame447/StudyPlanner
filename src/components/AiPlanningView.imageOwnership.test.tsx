@@ -32,18 +32,18 @@ vi.mock('../features/weeklyPlanning/weeklyPlanningTurnExecutor', async () => ({
 }));
 let app: WeeklyPlanningApplication;
 interface HarnessProps {
-  owner?: string; completion?: Promise<void>; visible?: boolean;
+  owner?: string; completion?: Promise<void>; visible?: boolean; active?: boolean;
   availability?: PlannerDataAvailability; isSnapshotCurrent?: () => boolean;
   actuals?: Actual[]; materials?: StudyMaterial[];
 }
-function Harness({ owner = 'user-1', completion, visible = true, availability, isSnapshotCurrent = () => true, actuals = [], materials = [] }: HarnessProps) {
+function Harness({ owner = 'user-1', completion, visible = true, active = true, availability, isSnapshotCurrent = () => true, actuals = [], materials = [] }: HarnessProps) {
   app = useWeeklyPlanningApplication({ userId: owner, selectedDate: '2026-07-14', plans: [], scheduleTemplates: [],
     actuals, studyMaterials: materials, isPlannerDataSnapshotCurrent: isSnapshotCurrent,
     plannerDataAvailability: availability ?? createReadyPlannerDataAvailability(owner), saveWeeklyApprovedPlan: vi.fn() });
   const application = completion ? { ...app, submitTurn: async (...args: Parameters<WeeklyPlanningApplication['submitTurn']>) => {
     const result = await app.submitTurn(...args); await completion; return result;
   } } : app;
-  return visible ? <AiPlanningView application={application} userId={owner} selectedDate="2026-07-14" plans={[]} /> : null;
+  return visible ? <AiPlanningView active={active} application={application} userId={owner} selectedDate="2026-07-14" plans={[]} /> : null;
 }
 let renderer: ReactTestRenderer | undefined;
 let storage: ReturnType<typeof createMemoryStorageHarness>;
@@ -422,4 +422,77 @@ it('blocks send and OCR while planner data is pending without disabling chat his
   expect(mocks.ocr).not.toHaveBeenCalled(); expect(mocks.execute).not.toHaveBeenCalled();
   expect(renderer!.root.findByType('textarea').props.value).toBe('送信待ち');
   expect(renderer!.root.findAllByProps({ src: 'blob:synthetic' })).toHaveLength(1);
+});
+
+
+it.each([false, true])('revokes OCR admission while retained inactive and does not revive it on return (reject=%s)', async reject => {
+  const pending = createDeferred<{ text: string }>(); mocks.ocr.mockReturnValue(pending.promise);
+  await mount(); await attach();
+  await act(async () => { send().props.onClick(); });
+  const before = new Map(storage.values);
+  const staleSend = send().props.onClick;
+  await act(async () => { renderer!.update(<Harness active={false} />); });
+  await act(async () => { staleSend(); });
+  expect(mocks.ocr).toHaveBeenCalledTimes(1);
+  await act(async () => { renderer!.update(<Harness active />); });
+  await settle(pending, reject);
+  expect(mocks.execute).not.toHaveBeenCalled(); expect(storage.values).toEqual(before);
+  expect(renderer!.root.findByProps({ 'aria-label': '添付画像 image.png' })).toBeDefined();
+  expect(sidebar().props.disabled).toBe(false);
+});
+
+it('settles an already admitted turn while hidden without resubmitting the retained attachment', async () => {
+  const completion = createDeferred<void>();
+  mocks.ocr.mockResolvedValue({ text: 'synthetic image evidence' });
+  await act(async () => { renderer = create(<Harness completion={completion.promise} />); });
+  await attach(); await act(async () => { send().props.onClick(); });
+  expect(mocks.execute).toHaveBeenCalledTimes(1);
+  await act(async () => { renderer!.update(<Harness active={false} completion={completion.promise} />); });
+  await act(async () => { completion.resolve(); });
+  await act(async () => { renderer!.update(<Harness active completion={completion.promise} />); });
+  expect(renderer!.root.findAllByProps({ 'aria-label': '添付画像 image.png' })).toHaveLength(0);
+  expect(renderer!.root.findByType('textarea').props.value).toBe('');
+  expect(app.state.messages.map(message => message.role)).toEqual(['user', 'assistant']);
+  expect(mocks.execute).toHaveBeenCalledTimes(1);
+  expect(sidebar().props.disabled).toBe(false);
+});
+
+it('stops microphone callbacks on navigation and rejects a retained start callback while hidden', async () => {
+  const start = vi.fn(), abort = vi.fn();
+  let recognition: { onresult: unknown; onerror: unknown; onend: unknown };
+  class SpeechRecognition {
+    onresult = null; onerror = null; onend = null;
+    start = start; abort = abort; stop() {}
+    constructor() { recognition = this; }
+  }
+  Object.assign(window, { SpeechRecognition });
+  await mount();
+  const microphone = renderer!.root.findByProps({ 'aria-label': '音声入力' });
+  const staleStart = microphone.props.onClick;
+  await act(async () => { staleStart(); });
+  expect(start).toHaveBeenCalledOnce();
+  await act(async () => { renderer!.update(<Harness active={false} />); });
+  expect(abort).toHaveBeenCalledOnce();
+  expect(recognition!.onresult).toBeNull(); expect(recognition!.onerror).toBeNull(); expect(recognition!.onend).toBeNull();
+  await act(async () => { staleStart(); }); expect(start).toHaveBeenCalledOnce();
+  await act(async () => { renderer!.update(<Harness active />); });
+  expect(renderer!.root.findByProps({ 'aria-label': '音声入力' }).props.disabled).toBe(false);
+});
+
+
+it('settles a provider-pending turn after navigation without resubmitting or losing its answer', async () => {
+  const result = { state: createInitialPlanningIntakeState(), message: 'background answer', draftCandidates: [] };
+  const pending = createDeferred<typeof result>();
+  mocks.execute.mockReturnValueOnce(pending.promise);
+  mocks.ocr.mockResolvedValue({ text: 'synthetic image evidence' });
+  await mount(); await attach(); await act(async () => { send().props.onClick(); });
+  expect(app.state.pendingTurn).toBeDefined();
+  await act(async () => { renderer!.update(<Harness active={false} />); });
+  await act(async () => { pending.resolve(result); });
+  expect(app.state.pendingTurn).toBeUndefined();
+  await act(async () => { renderer!.update(<Harness active />); });
+  expect(app.state.messages.map(message => message.content)).toContain('background answer');
+  expect(renderer!.root.findAllByProps({ 'aria-label': '添付画像 image.png' })).toHaveLength(0);
+  expect(mocks.execute).toHaveBeenCalledOnce(); expect(mocks.ocr).toHaveBeenCalledOnce();
+  expect(sidebar().props.disabled).toBe(false);
 });

@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createPlanDraftFromPlan } from '../domain/planner';
+import { expandPlansForDate } from '../lib/planRecurrence';
 import { PlanEditorPanel } from '../components/PlanEditorPanel';
 import { RecurringPlanScopeDialog } from '../components/RecurringPlanScopeDialog';
 import { createLocalFixture, deferred, plan as makePlan } from '../repositories/localPersistenceConcurrency.testUtils';
@@ -157,3 +158,20 @@ it.each([false, true].flatMap(firstSuccess => [false, true].flatMap(secondSucces
     else { await finishSecond(); await finishFirst(); }
     expect(state.selectedDate).toBe(secondSuccess ? secondDate : firstSuccess ? A.date : LATER);
   });
+
+it('keeps the final explicit date deleted after scope confirmation and a fresh read', async () => {
+  const fixture = await mount();
+  const only = { ...A, repeat: 'none' as const, repeatUntil: null,
+    recurrenceRules: [{ id: 'only-date', kind: 'date' as const, dates: [A.date], startDate: A.date,
+      until: A.date, weekdays: [], dayType: null, isOverride: false, startTime: A.startTime, endTime: A.endTime }] };
+  await fixture.repository.upsertPlan(only);
+  await act(async () => { await state.loadPlannerData('owner'); });
+  await stage('delete', expandPlansForDate([only], A.date)[0]);
+  expect(state.pendingRecurringPlanAction?.kind).toBe('delete');
+  await act(async () => { await renderer.root.findByType(RecurringPlanScopeDialog).props.onSelect('single'); });
+  expect(state.pendingRecurringPlanAction).toBeNull();
+  expect(expandPlansForDate(state.plans, A.date).some(plan => plan.id === A.id)).toBe(false);
+  await act(async () => { await state.loadPlannerData('owner'); });
+  expect(expandPlansForDate(state.plans, A.date).some(plan => plan.id === A.id)).toBe(false);
+  expect((await fixture.repository.getPlans('owner')).find(plan => plan.id === A.id)?.id).toBe(A.id);
+});

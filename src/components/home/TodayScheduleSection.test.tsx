@@ -17,7 +17,7 @@ it('offers an accessible plus without the empty explanation and separates viewin
   const add = renderer.root.findByProps({ 'aria-label': '今日の予定に追加' });
   act(() => add.props.onClick());
   expect(onAddEntry).not.toHaveBeenCalled();
-  act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-schedule'))!.props.onClick());
+  act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-schedule'))!.props.onClick({ currentTarget: { focus: vi.fn() } }));
   expect(onAddEntry).toHaveBeenCalledWith({ kind: 'schedule', date: dashboard.today });
   expect(onOpenDay).not.toHaveBeenCalled();
   const all = renderer.root.findAllByType('button').find(button => button.children.includes('すべて見る '))!;
@@ -62,12 +62,12 @@ it.each([0, 1, 2, 3, 4, 5])('renders only today with %i current-day plans, witho
     const add = renderer.root.findByProps({ 'aria-label': '今日の予定に追加' });
     act(() => add.props.onClick());
     expect(onAddEntry).not.toHaveBeenCalled();
-    act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-study'))!.props.onClick());
+    act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-study'))!.props.onClick({ currentTarget: { focus: vi.fn() } }));
     expect(onAddEntry).toHaveBeenCalledWith({ kind: 'study', date: today });
     const all = renderer.root.findAllByType('button').find(button => button.children.includes('すべて見る '))!;
     act(() => all.props.onClick());
     expect(onOpenDay).toHaveBeenLastCalledWith(today);
-    expect(renderer.root.findAllByProps({ className: 'home-scroll-hint' })).toHaveLength(count > 4 ? 1 : 0);
+    expect(renderer.root.findAllByProps({ className: 'home-scroll-hint' })).toHaveLength(0);
     expect(JSON.stringify(plans)).toBe(original);
   } finally {
     act(() => renderer.unmount());
@@ -98,6 +98,8 @@ it('keeps only today’s recurring occurrence and its matching completion mark',
     expect(rows).toHaveLength(1);
     expect(rows[0].findByType('strong').children).toEqual(['daily']);
     expect(rows[0].findAllByProps({ className: 'home-time-dot completed' })).toHaveLength(1);
+    // Completion keeps its own indicator without replacing the schedule accent.
+    expect(rows[0].props.style['--schedule-event-color']).toBe('#2f78e3');
   } finally {
     act(() => renderer.unmount());
   }

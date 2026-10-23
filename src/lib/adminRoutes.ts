@@ -6,6 +6,8 @@ export type AdminRoute =
   | { type: 'planning' }
   | { type: 'logs' }
   | { type: 'system' }
+  | { type: 'inquiries' }
+  | { type: 'announcements' }
   | { type: 'not-found' };
 
 export function resolveAdminRoute(path: string): AdminRoute {
@@ -27,6 +29,14 @@ export function resolveAdminRoute(path: string): AdminRoute {
 
   if (path === '/admin/logs') {
     return { type: 'logs' };
+  }
+
+  if (path === '/admin/inquiries') {
+    return { type: 'inquiries' };
+  }
+
+  if (path === '/admin/announcements') {
+    return { type: 'announcements' };
   }
 
   if (path === '/admin/system') {

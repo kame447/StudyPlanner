@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useEditorMutation } from '../hooks/useEditorMutation';
 import { timetableTimeToMinutes } from '../lib/timetableTime';
 import {
   inferSubjectFromTitle,
@@ -118,7 +119,14 @@ function getTemplateTermId(template: ScheduleTemplate): string {
   return template.termId || 'default';
 }
 
-export function TimetableOcrImportDialog({
+export function TimetableOcrImportDialog(props: TimetableOcrImportDialogProps) {
+  return <TimetableOcrImportDialogSession
+    key={JSON.stringify([props.userId, props.termId, props.fileName])}
+    {...props}
+  />;
+}
+
+function TimetableOcrImportDialogSession({
   userId,
   termId,
   fileName,
@@ -129,6 +137,8 @@ export function TimetableOcrImportDialog({
   onSaveTimetablePeriod,
   onSaveScheduleTemplate,
 }: TimetableOcrImportDialogProps) {
+  const beginMutation = useEditorMutation();
+  const pendingOperation = useRef<ReturnType<typeof beginMutation>>(null);
   const [periods, setPeriods] = useState<EditablePeriod[]>(() =>
     result.periods.map(createEditablePeriod),
   );
@@ -162,11 +172,16 @@ export function TimetableOcrImportDialog({
   const hasBlockingErrors = hasInvalidPeriod || items.some(hasBlockingItemError);
   const canSave = importableItems.length > 0 && !hasBlockingErrors && !isSaving;
 
+  function closeDialog() {
+    if (!pendingOperation.current) onClose();
+  }
+
   function updatePeriod(
     periodId: string,
     key: 'startTime' | 'endTime',
     value: string,
   ) {
+    if (pendingOperation.current) return;
     const nextValue = value || null;
     const currentPeriod = periods.find((period) => period.id === periodId);
 
@@ -194,6 +209,7 @@ export function TimetableOcrImportDialog({
     key: K,
     value: EditableItem[K],
   ) {
+    if (pendingOperation.current) return;
     setItems((current) =>
       current.map((item) => {
         if (item.id !== itemId) {
@@ -231,11 +247,15 @@ export function TimetableOcrImportDialog({
       return;
     }
 
+    const operation = beginMutation();
+    if (!operation) return;
+    pendingOperation.current = operation;
     setIsSaving(true);
     setSaveError(null);
 
     try {
       for (const period of periods) {
+        if (!operation.isCurrent()) return;
         const existingPeriod = existingPeriods.find(
           (candidate) =>
             candidate.termId === termId &&
@@ -256,6 +276,7 @@ export function TimetableOcrImportDialog({
       }
 
       for (const item of importableItems) {
+        if (!operation.isCurrent()) return;
         const existingTemplate = getExistingTemplate(item);
 
         await onSaveScheduleTemplate(
@@ -277,20 +298,24 @@ export function TimetableOcrImportDialog({
         );
       }
 
-      onClose();
+      if (operation.isCurrent()) onClose();
     } catch (error) {
+      if (!operation.isCurrent()) return;
       setSaveError(
         error instanceof Error
           ? error.message
           : '時間割候補の保存に失敗しました。',
       );
     } finally {
-      setIsSaving(false);
+      if (operation.finish()) {
+        pendingOperation.current = null;
+        setIsSaving(false);
+      }
     }
   }
 
   return (
-    <div className="overlay modal-overlay timetable-ocr-overlay" onClick={onClose}>
+    <div className="overlay modal-overlay timetable-ocr-overlay" onClick={closeDialog}>
       <div
         className="modal-card timetable-ocr-modal"
         onClick={(event) => event.stopPropagation()}
@@ -299,7 +324,7 @@ export function TimetableOcrImportDialog({
           <button
             className="ghost-button"
             disabled={isSaving}
-            onClick={onClose}
+            onClick={closeDialog}
             type="button"
           >
             閉じる
@@ -332,6 +357,7 @@ export function TimetableOcrImportDialog({
                   <label className="field">
                     <span>開始</span>
                     <input
+                      disabled={isSaving}
                       type="time"
                       value={period.startTime ?? ''}
                       onChange={(event) =>
@@ -342,6 +368,7 @@ export function TimetableOcrImportDialog({
                   <label className="field">
                     <span>終了</span>
                     <input
+                      disabled={isSaving}
                       type="time"
                       value={period.endTime ?? ''}
                       onChange={(event) =>
@@ -364,7 +391,10 @@ export function TimetableOcrImportDialog({
               </div>
               <button
                 className="ghost-button"
-                onClick={() => setItems((current) => [...current, createEmptyItem(current.length)])}
+                disabled={isSaving}
+                onClick={() => {
+                  if (!pendingOperation.current) setItems((current) => [...current, createEmptyItem(current.length)]);
+                }}
                 type="button"
               >
                 候補を追加
@@ -404,6 +434,7 @@ export function TimetableOcrImportDialog({
                       <label className="field">
                         <span>曜日</span>
                         <select
+                          disabled={isSaving}
                           value={item.weekday}
                           onChange={(event) =>
                             updateItem(
@@ -425,6 +456,7 @@ export function TimetableOcrImportDialog({
                       <label className="field">
                         <span>時限</span>
                         <select
+                          disabled={isSaving}
                           value={item.periodNumber ?? ''}
                           onChange={(event) =>
                             updateItem(
@@ -446,6 +478,7 @@ export function TimetableOcrImportDialog({
                       <label className="field">
                         <span>開始</span>
                         <input
+                          disabled={isSaving}
                           type="time"
                           value={item.startTime ?? ''}
                           onChange={(event) =>
@@ -457,6 +490,7 @@ export function TimetableOcrImportDialog({
                       <label className="field">
                         <span>終了</span>
                         <input
+                          disabled={isSaving}
                           type="time"
                           value={item.endTime ?? ''}
                           onChange={(event) =>
@@ -468,6 +502,7 @@ export function TimetableOcrImportDialog({
                       <label className="field timetable-ocr-title-field">
                         <span>授業名</span>
                         <input
+                          disabled={isSaving}
                           value={item.title}
                           onChange={(event) =>
                             updateItem(item.id, 'title', event.target.value)
@@ -479,6 +514,7 @@ export function TimetableOcrImportDialog({
                       <label className="field">
                         <span>教科</span>
                         <input
+                          disabled={isSaving}
                           value={item.subject}
                           onChange={(event) =>
                             updateItem(item.id, 'subject', event.target.value)
@@ -490,6 +526,7 @@ export function TimetableOcrImportDialog({
                       <label className="field">
                         <span>教室</span>
                         <input
+                          disabled={isSaving}
                           value={item.classroom}
                           onChange={(event) =>
                             updateItem(item.id, 'classroom', event.target.value)
@@ -501,6 +538,7 @@ export function TimetableOcrImportDialog({
                       <label className="field timetable-ocr-memo-field">
                         <span>メモ</span>
                         <input
+                          disabled={isSaving}
                           value={item.memo}
                           onChange={(event) =>
                             updateItem(item.id, 'memo', event.target.value)
@@ -517,11 +555,12 @@ export function TimetableOcrImportDialog({
                       ) : null}
                       <button
                         className="ghost-button timetable-delete-button"
-                        onClick={() =>
-                          setItems((current) =>
+                        disabled={isSaving}
+                        onClick={() => {
+                          if (!pendingOperation.current) setItems((current) =>
                             current.filter((candidate) => candidate.id !== item.id),
-                          )
-                        }
+                          );
+                        }}
                         type="button"
                       >
                         削除

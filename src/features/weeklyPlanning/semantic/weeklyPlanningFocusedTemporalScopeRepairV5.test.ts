@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../shared/aiProxyContract';
 import type {
   OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
@@ -154,7 +155,7 @@ const errors = [
 
 describe('Stable V5 focused temporal-scope repair', () => {
   it('reserves reasoning headroom before Luna emits the strict decision', () => {
-    expect(FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS).toBe(320);
+    expect(FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS).toBe(AI_PROXY_CHAT_REQUEST_LIMITS.defaultOutputTokens);
   });
 
   it('extracts only the exact invalid temporal fact selected by validation', () => {
@@ -353,7 +354,7 @@ describe('Stable V5 focused temporal-scope repair', () => {
     expect(calls[1].responseFormat?.json_schema.name).toBe(
       'weekly_planning_focused_temporal_scope_repair_v5',
     );
-    expect(calls[1].maxCompletionTokens).toBe(320);
+    expect(calls[1].maxCompletionTokens).toBe(FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS);
     expect(calls[1].decisionContext).toMatchObject({
       purpose: 'temporal_scope_repair',
       requestId: 'temporal-route-request',

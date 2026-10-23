@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
+import type { ChatMessage } from '../../../services/ai/openAiCompatibleClientTypes';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningSemanticNormalizerResultV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
 import { tryWeeklyPlanningSemanticNoOpCompletenessRetryV5 } from './weeklyPlanningSemanticNoOpCompletenessRetryV5';

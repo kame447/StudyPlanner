@@ -81,6 +81,21 @@ describe('H0560 exact sibling workload representation', () => {
     expect(result.parsedDocument!.tasks[0].workloads).toHaveLength(2);
     expect(result.algorithmicRepairs.some(r => r.startsWith('same-container-workload-'))).toBe(false);
   });
+  it('does not compact an original workload with an invalid typed amount', () => {
+    const input = document(); input.tasks[0].workloads.forEach(item => { item.amount = -1; });
+    const result = validate(input);
+    expect(result.document).toBeNull(); expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.algorithmicRepairs.some(r => r.startsWith('same-container-workload-'))).toBe(false);
+  });
+  it('does not compact when the original document contains a dangling reference', () => {
+    const input = document(); input.uncertainties = [{ localId: 'need', targetLocalId: 'missing-workload',
+      field: 'opaque', reason: 'opaque', sourceText: 'work20' }];
+    const result = validate(input);
+    expect(result.document).toBeNull(); expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.parsedDocument).toBeNull();
+    expect(input.tasks[0].workloads).toEqual([workload('first'), workload('copy')]);
+    expect(result.algorithmicRepairs.some(r => r.startsWith('same-container-workload-'))).toBe(false);
+  });
   it('does not alter agreeing effort estimates while compacting workloads', () => {
     const input = document(); input.tasks[0].effortEstimates = ['a', 'b'].map(localId => ({ localId, targetLocalId: 'task', kind: 'total_duration',
       minutes: 3, unitCode: null, precision: 'exact', sourceText: '3分' }));

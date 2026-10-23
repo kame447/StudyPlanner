@@ -90,6 +90,7 @@ function configureDelays({ token = 0, policy = 0, preferences = 0, profile = 0, 
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(0); vi.clearAllMocks(); requests = [];
   vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: new MemoryStorage(), setTimeout, clearTimeout });
+  vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn(), hidden: false, documentElement: { dataset: {}, style: { setProperty: vi.fn() } } });
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1)); vi.stubGlobal('cancelAnimationFrame', vi.fn());
   vi.stubGlobal('fetch', fixture.fetch);
   fixture.clock = createStartupTimingRecorder(true, () => Date.now());

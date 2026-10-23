@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 
+import { systemPrefersReducedMotion, subscribeMotion } from '../lib/motionPreference';
 import type { StartupIntroOutcome } from '../lib/startupTiming';
 
 const MEDIA_WAIT_LIMIT_MS = 4_000;
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 export type StartupVideoOutcome = StartupIntroOutcome;
 const isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
-const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.(REDUCED_MOTION_QUERY).matches === true;
+// The startup clip is separate from in-app UI effects; keep the OS accessibility opt-out.
+const reducedMotion = systemPrefersReducedMotion;
 
 /** Owns media outcomes, never application readiness. Hidden playback is paused, not completed. */
 export function StartupVideo({ src, poster, canSkip = false, onComplete, children }: PropsWithChildren<{
@@ -19,6 +20,8 @@ export function StartupVideo({ src, poster, canSkip = false, onComplete, childre
   reportOutcome.current = onComplete;
   const [hasBeenVisible, setHasBeenVisible] = useState(() => !isHidden());
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [needsGesture, setNeedsGesture] = useState(false);
+  const retryPlayback = useRef<(() => void) | null>(null);
   const waitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const watching = useRef(false);
   const lastProgress = useRef(0);
@@ -52,13 +55,12 @@ export function StartupVideo({ src, poster, canSkip = false, onComplete, childre
 
   useEffect(() => { if (initialReducedMotion) reportOutcome.current?.('reduced-motion'); }, [initialReducedMotion]);
   useEffect(() => {
-    const motion = typeof window !== 'undefined' ? window.matchMedia?.(REDUCED_MOTION_QUERY) : undefined;
     const page = typeof document !== 'undefined' ? document : undefined;
-    const onMotion = (event: MediaQueryListEvent) => { if (event.matches) finish('reduced-motion'); };
+    const onMotion = () => { if (reducedMotion()) finish('reduced-motion'); };
     const onVisible = () => { if (!isHidden()) setHasBeenVisible(true); };
-    motion?.addEventListener?.('change', onMotion);
+    const stopMotion = subscribeMotion(onMotion);
     page?.addEventListener('visibilitychange', onVisible);
-    return () => { motion?.removeEventListener?.('change', onMotion); page?.removeEventListener('visibilitychange', onVisible); };
+    return () => { stopMotion(); page?.removeEventListener('visibilitychange', onVisible); };
   }, [finish]);
 
   useEffect(() => {
@@ -66,19 +68,26 @@ export function StartupVideo({ src, poster, canSkip = false, onComplete, childre
     if (outcome || !hasBeenVisible || !video) return;
     let active = true;
     let attempt = 0;
+    const onPlaybackFailure = (error: unknown, currentAttempt: number) => {
+      if (!active || currentAttempt !== attempt || isHidden() || outcomeNow.current) return;
+      if (error && typeof error === 'object' && 'name' in error && error.name === 'NotAllowedError') {
+        watching.current = false;
+        clearWait();
+        setNeedsGesture(true);
+      } else finish('autoplay-blocked');
+    };
     const play = () => {
+      if (!active || outcomeNow.current || isHidden()) return;
       const currentAttempt = ++attempt;
-      if (isHidden()) return;
+      setNeedsGesture(false);
       watching.current = true;
       lastProgress.current = video.currentTime || 0;
       allowMediaWait();
       video.muted = true;
       if (video.getAttribute('src') !== src) video.setAttribute('src', src);
       try {
-        void video.play()?.catch(() => {
-          if (active && currentAttempt === attempt && !isHidden()) finish('autoplay-blocked');
-        });
-      } catch { if (active && currentAttempt === attempt) finish('autoplay-blocked'); }
+        void video.play()?.catch(error => onPlaybackFailure(error, currentAttempt));
+      } catch (error) { onPlaybackFailure(error, currentAttempt); }
     };
     const onVisibility = () => {
       if (isHidden()) {
@@ -89,8 +98,10 @@ export function StartupVideo({ src, poster, canSkip = false, onComplete, childre
       } else play();
     };
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
+    retryPlayback.current = play;
     play();
     return () => {
+      retryPlayback.current = null;
       active = false; ++attempt;
       watching.current = false;
       clearWait();
@@ -100,14 +111,17 @@ export function StartupVideo({ src, poster, canSkip = false, onComplete, childre
   }, [allowMediaWait, clearWait, finish, hasBeenVisible, outcome, src]);
 
   if (outcome || !hasBeenVisible) return <>{children}</>;
-  return <button type="button" className="startup-video" disabled={!canSkip}
-    aria-label={canSkip ? '起動アニメーションをスキップ' : '起動アニメーション'}
-    style={!canSkip ? { opacity: 1, cursor: 'default' } : undefined}
-    onClick={skip} onKeyDown={event => { if (event.key === 'Escape' && skipAllowed.current) { event.preventDefault(); skip(); } }}>
+  return <><button type="button" className="startup-video" disabled={!canSkip && !needsGesture}
+    aria-label={needsGesture ? '起動アニメーションを再生' : canSkip ? '起動アニメーションをスキップ' : '起動アニメーション'}
+    style={!canSkip && !needsGesture ? { opacity: 1, cursor: 'default' } : undefined}
+    onClick={() => { if (needsGesture) retryPlayback.current?.(); else skip(); }} onKeyDown={event => { if (event.key === 'Escape' && skipAllowed.current) { event.preventDefault(); skip(); } }}>
     <video ref={videoRef} src={src} poster={poster} className="startup-video__media"
       autoPlay muted playsInline preload="auto" aria-hidden="true" tabIndex={-1}
       onEnded={() => finish('ended')} onError={() => finish('media-error')}
       onPlaying={observeProgress} onTimeUpdate={observeProgress} onWaiting={allowMediaWait} onStalled={allowMediaWait} onPause={allowMediaWait} />
-    {canSkip ? <span className="startup-video__hint" aria-hidden="true">タップしてスキップ</span> : null}
-  </button>;
+    {needsGesture || canSkip ? <span className="startup-video__hint" aria-hidden="true">{needsGesture ? 'タップして再生' : 'タップしてスキップ'}</span> : null}
+  </button>
+    {needsGesture && canSkip ? <button type="button" className="startup-video startup-video__skip"
+      aria-label="起動アニメーションをスキップ" onClick={skip}>スキップ</button> : null}
+  </>;
 }

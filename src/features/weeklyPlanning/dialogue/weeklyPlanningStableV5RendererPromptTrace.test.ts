@@ -147,6 +147,7 @@ describe('Stable V5 renderer prompt trace', () => {
       status: 'fallback',
       reason: 'provider_error',
       rawResponse: null,
+      providerFailure: { kind: 'unknown', httpStatus: null, upstreamStatus: null, completion: null },
     });
     const actualRequest = vi.mocked(client.createChatCompletion).mock.calls[0][0];
     const promptContext = tracePromptContext();

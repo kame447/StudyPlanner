@@ -7,3 +7,18 @@
 - [`spec/learning-report.md`](spec/learning-report.md): 学習レポートの情報設計、集計不変条件、UI/UX、ナビゲーション、受け入れ条件
 
 本ドメインは、週間計画の意味解釈・スケジューリングや、client/server authority を所有しない。レポートは既存データを決定論的に集計して表示する二次画面であり、AI を集計や評価の正本として利用しない。
+
+進行中の作業:
+
+- [自動お休み券の反復計算削減と復元検証](work/study-rest-calculation-handoff.md)
+
+- [連続学習カレンダーとお休みチケット](work/20261014-study-streak-calendar-handoff.md)
+
+- [連続学習の1画面化・自動お休み券・今日の炎](work/20261014-study-streak-auto-rest-handoff.md)
+
+- [連続学習カレンダーと下部表示の読みやすさ](work/20261014-study-streak-readability-handoff.md)
+
+- [ホーム学習進捗の集計対象設定](work/20261014-home-progress-inclusion-handoff.md)
+- [学習レポートの概要1画面化](work/20261014-compact-learning-report-handoff.md)
+
+- [デスクトップ学習レポートの幅・可読性](work/20261017-desktop-report-readability-handoff.md)

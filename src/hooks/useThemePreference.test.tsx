@@ -15,7 +15,7 @@ const PALETTES: Array<{ id: ThemePalette; light: string; dark: string }> = [
 
 let current: ReturnType<typeof useThemePreference>;
 let renderer: ReactTestRenderer | undefined;
-function Probe() { current = useThemePreference(); return null; }
+function Probe() { current = useThemePreference(); return <span>app content</span>; }
 function mount() { act(() => { renderer = create(<Probe />); }); }
 
 function browser(palette: string | null = null, mode: string | null = null) {
@@ -39,6 +39,7 @@ afterEach(() => {
   act(() => renderer?.unmount());
   renderer = undefined;
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('theme preference stored-value contract', () => {
@@ -102,4 +103,127 @@ describe('theme preference stored-value contract', () => {
     expect(dataset.theme).toBe('light');
     expect(values.get(MODE_KEY)).toBe('light');
   });
+});
+
+
+describe('theme preference storage failure containment', () => {
+  it.each([MODE_KEY, PALETTE_KEY])('uses a safe default only for the denied read of %s', deniedKey => {
+    const { values, getItem, dataset, css } = browser('ocean', 'dark');
+    getItem.mockImplementation(key => {
+      if (key === deniedKey) throw new DOMException('Access denied', 'SecurityError');
+      return values.get(key) ?? null;
+    });
+    mount();
+    expect(renderer?.toJSON()).not.toBeNull();
+    expect(current.themeMode).toBe(deniedKey === MODE_KEY ? 'light' : 'dark');
+    expect(current.themePalette).toBe(deniedKey === PALETTE_KEY ? 'forest' : 'ocean');
+    expect(dataset.theme).toBe(current.themeMode);
+    expect(css.get('--accent')).toBe(deniedKey === MODE_KEY ? '#2f6fc2' : '#59b7ab');
+    expect(current.error).toContain('読み込めませんでした');
+    expect(values.get(deniedKey)).toBe(deniedKey === MODE_KEY ? 'dark' : 'ocean');
+    // Changing the other preference must not overwrite the unread saved value.
+    if (deniedKey === MODE_KEY) act(() => current.setThemePalette('sakura'));
+    else act(() => current.setThemeMode('light'));
+    expect(values.get(deniedKey)).toBe(deniedKey === MODE_KEY ? 'dark' : 'ocean');
+    // Choosing even the current fallback explicitly permits persistence.
+    if (deniedKey === MODE_KEY) act(() => current.setThemeMode('light'));
+    else act(() => current.setThemePalette('forest'));
+    expect(values.get(deniedKey)).toBe(deniedKey === MODE_KEY ? 'light' : 'forest');
+    expect(current.error).toBeNull();
+  });
+
+  it('keeps the app usable when access to localStorage itself is denied', () => {
+    const { dataset, css } = browser();
+    vi.stubGlobal('window', { get localStorage() { throw new DOMException('Access denied', 'SecurityError'); } });
+    mount();
+    expect(current.themeMode).toBe('light');
+    expect(current.themePalette).toBe('forest');
+    expect(current.error).toContain('読み込めませんでした');
+    act(() => current.setThemeMode(mode => mode === 'light' ? 'dark' : 'light'));
+    act(() => current.setThemePalette(palette => palette === 'forest' ? 'ocean' : 'forest'));
+    expect(renderer?.toJSON()).not.toBeNull();
+    expect(dataset.theme).toBe('dark');
+    expect(css.get('--accent')).toBe('#6fb2ff');
+    expect(current.error).toContain('保存できませんでした');
+  });
+
+  it.each([MODE_KEY, PALETTE_KEY])('contains a mount write failure for %s without losing the saved choice', deniedKey => {
+    const { values, setItem, dataset, css } = browser('ocean', 'dark');
+    setItem.mockImplementation((key, value) => {
+      if (key === deniedKey) throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      values.set(key, value);
+    });
+    mount();
+    expect(renderer?.toJSON()).not.toBeNull();
+    expect(current.themeMode).toBe('dark');
+    expect(current.themePalette).toBe('ocean');
+    expect(dataset.theme).toBe('dark');
+    expect(css.get('--accent')).toBe('#6fb2ff');
+    expect(current.error).toContain('保存できませんでした');
+  });
+
+  it.each([MODE_KEY, PALETTE_KEY])('keeps the failed %s change local and reports it until that key is saved', deniedKey => {
+    const { values, setItem, dataset, css } = browser('forest', 'light');
+    mount();
+    let failing = true;
+    setItem.mockImplementation((key, value) => {
+      if (failing && key === deniedKey) throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      values.set(key, value);
+    });
+    act(() => current.setThemeMode(mode => mode === 'light' ? 'dark' : 'light'));
+    act(() => current.setThemePalette(palette => palette === 'forest' ? 'ocean' : 'forest'));
+    expect(renderer?.toJSON()).not.toBeNull();
+    expect(dataset.theme).toBe('dark');
+    expect(css.get('--accent')).toBe('#6fb2ff');
+    expect(values.get(deniedKey)).toBe(deniedKey === MODE_KEY ? 'light' : 'forest');
+    expect(current.error).toContain('保存できませんでした');
+    failing = false;
+    // A palette-only save cannot clear a still-unsaved mode.
+    act(() => current.setThemePalette('sakura'));
+    expect(current.error === null).toBe(deniedKey === PALETTE_KEY);
+    act(() => current.setThemeMode('light'));
+    act(() => current.setThemeMode('dark'));
+    expect(current.error).toBeNull();
+    expect(values.get(MODE_KEY)).toBe('dark');
+    expect(values.get(PALETTE_KEY)).toBe('sakura');
+    act(() => renderer?.unmount());
+    mount();
+    expect(current.themeMode).toBe('dark');
+    expect(current.themePalette).toBe('sakura');
+    expect(current.error).toBeNull();
+  });
+
+  it('does not clear the alert when only one of two failing keys recovers', () => {
+    const { values, setItem } = browser();
+    let deniedKeys = new Set([MODE_KEY, PALETTE_KEY]);
+    setItem.mockImplementation((key, value) => {
+      if (deniedKeys.has(key)) throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      values.set(key, value);
+    });
+    mount();
+    expect(current.error).toContain('保存できませんでした');
+    deniedKeys = new Set([MODE_KEY]);
+    act(() => current.setThemePalette('ocean'));
+    expect(current.error).toContain('保存できませんでした');
+    deniedKeys.clear();
+    act(() => current.setThemeMode('dark'));
+    expect(current.error).toBeNull();
+  });
+});
+
+
+it('retries an unsuccessful save when the same value is explicitly selected again', () => {
+  const { values, setItem } = browser('forest', 'light');
+  mount();
+  setItem.mockImplementation(() => { throw new DOMException('Quota exceeded', 'QuotaExceededError'); });
+  act(() => current.setThemeMode('dark'));
+  act(() => current.setThemePalette('ocean'));
+  expect(current.error).toContain('保存できませんでした');
+  setItem.mockImplementation((key, value) => { values.set(key, value); });
+  act(() => current.setThemePalette('ocean'));
+  expect(current.error).toContain('保存できませんでした');
+  act(() => current.setThemeMode('dark'));
+  expect(current.error).toBeNull();
+  expect(values.get(MODE_KEY)).toBe('dark');
+  expect(values.get(PALETTE_KEY)).toBe('ocean');
 });

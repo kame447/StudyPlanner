@@ -16,22 +16,34 @@ export function useTodoMutationAdmission(
     let currentProjection: PlannerDataProjectionLease | null = null;
     let revision = 0;
     const claims = new Map<string, { settledAt?: number }>();
+    function currentTarget(id: string, targetOwner: string) {
+      if (!scope.isCurrent() || targetOwner !== ownerId) throw new PlannerMutationScopeExpiredError();
+      if (claims.has(id)) throw new Error('このTodoは保存・更新中です。完了してから開き直してください。');
+      if (!currentProjection || !authority.canAdmitMutationFromProjection(currentProjection, ['plans-todos'])) {
+        throw new Error('Todoの最新状態を確認できていません。再読み込みしてから開き直してください。');
+      }
+      return current.find(item => item.id === id && item.userId === ownerId);
+    }
+    function reserve(todo: TodoTask) {
+      const ticket: { settledAt?: number } = {};
+      claims.set(todo.id, ticket);
+      return { todo, settle() {
+        if (!scope.isCurrent() || ticket.settledAt !== undefined) return;
+        ticket.settledAt = ++revision;
+        setPublication({ scope, revision });
+      } };
+    }
     return {
       begin(id: string, targetOwner: string) {
-        if (!scope.isCurrent() || targetOwner !== ownerId) throw new PlannerMutationScopeExpiredError();
-        if (claims.has(id)) throw new Error('このTodoは保存・更新中です。完了してから開き直してください。');
-        if (!currentProjection || !authority.canAdmitMutationFromProjection(currentProjection, ['plans-todos'])) {
-          throw new Error('Todoの最新状態を確認できていません。再読み込みしてから開き直してください。');
-        }
-        const todo = current.find(item => item.id === id && item.userId === ownerId);
+        const todo = currentTarget(id, targetOwner);
         if (!todo) throw new Error('このTodoは削除または更新されています。現在の一覧を確認して開き直してください。');
-        const ticket: { settledAt?: number } = {};
-        claims.set(id, ticket);
-        return { todo, settle() {
-          if (!scope.isCurrent() || ticket.settledAt !== undefined) return;
-          ticket.settledAt = ++revision;
-          setPublication({ scope, revision });
-        } };
+        return reserve(todo);
+      },
+      beginLinkedPlanDelete(id: string, targetOwner: string, planId: string) {
+        const todo = currentTarget(id, targetOwner);
+        // A settled deletion or reassignment leaves no dependent Todo to write.
+        // Check claims first: an optimistic removal is not a settled deletion.
+        return todo?.scheduledPlanId === planId ? reserve(todo) : null;
       },
       publish(rows: TodoTask[], committedProjection: PlannerDataProjectionLease | null, committedRevision: number) {
         current = rows;

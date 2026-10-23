@@ -1,6 +1,14 @@
+import { subscribeAppHistory } from '../lib/appHistory';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const SETTINGS_HISTORY_KEY = 'studyPlannerSettings';
+
+export function withoutSettingsHistory(state: unknown): unknown {
+  if (!state || typeof state !== 'object') return state;
+  const next = { ...state } as Record<string, unknown>;
+  delete next[SETTINGS_HISTORY_KEY];
+  return next;
+}
 function isSettingsEntry(): boolean {
   return typeof window !== 'undefined' && window.history?.state?.[SETTINGS_HISTORY_KEY] === true;
 }
@@ -29,8 +37,7 @@ export function useSettingsNavigation() {
       closingRef.current = false;
       setIsOpen(nextOpen);
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    return subscribeAppHistory(handlePopState);
   }, [rememberOrigin]);
 
   useEffect(() => {
@@ -56,9 +63,7 @@ export function useSettingsNavigation() {
       window.history.back();
     } else {
       if (isSettingsEntry()) {
-        const nextState = { ...window.history.state };
-        delete nextState[SETTINGS_HISTORY_KEY];
-        window.history.replaceState(nextState, '');
+        window.history.replaceState(withoutSettingsHistory(window.history.state), '');
       }
       openRef.current = false;
       setIsOpen(false);

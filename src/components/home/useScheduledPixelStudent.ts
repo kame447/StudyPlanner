@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { allowsSpatialMotion, subscribeMotion } from '../../lib/motionPreference';
 import type { Plan } from '../../types/domain';
 
 export type PixelStudentState = 'empty' | 'entering' | 'studying';
@@ -20,7 +21,7 @@ export function useScheduledPixelStudent(
   useLayoutEffect(() => {
     const prior = previous.current;
     previous.current = enabled ? { key, instant, end, owner: plan?.userId, animated } : null;
-    const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const reduced = !allowsSpatialMotion();
     // Only animate a witnessed, timely boundary, never an already-active mount,
     // a hidden-page catch-up, an arbitrary replacement, or a settings preview.
     if (active && animated && !reduced && prior?.animated && prior.owner === plan?.userId
@@ -43,15 +44,14 @@ export function useScheduledPixelStudent(
     if (!enabled || typeof window === 'undefined' || typeof document === 'undefined') return;
     const reset = () => { previous.current = null; setEntryKey(null); };
     const onVisibility = () => { if (document.visibilityState === 'hidden') reset(); };
-    const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    const onMotion = () => { if (motion?.matches) reset(); };
+    const onMotion = () => { if (!allowsSpatialMotion()) reset(); };
     document.addEventListener?.('visibilitychange', onVisibility);
     window.addEventListener?.('pagehide', reset);
-    motion?.addEventListener?.('change', onMotion);
+    const stopMotion = subscribeMotion(onMotion);
     return () => {
       document.removeEventListener?.('visibilitychange', onVisibility);
       window.removeEventListener?.('pagehide', reset);
-      motion?.removeEventListener?.('change', onMotion);
+      stopMotion();
     };
   }, [enabled]);
 

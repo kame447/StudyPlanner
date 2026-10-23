@@ -104,7 +104,7 @@ describe('MonthDaySheet', () => {
     expect(serialized).not.toContain('数学');
 
     const eventButton = renderer.root.findAllByProps({
-      className: 'month-day-sheet-event mint',
+      className: 'month-day-sheet-event',
     })[0];
     expect(eventButton).toBeTruthy();
 

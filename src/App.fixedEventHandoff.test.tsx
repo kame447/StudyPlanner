@@ -22,6 +22,11 @@ import type { User } from './types/domain';
 
 const boundary = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository,
   provider: vi.fn<OpenAiCompatibleClient['createChatCompletion']>() }));
+// This suite isolates planner/navigation behavior; streak persistence has its own provider integration tests.
+vi.mock('./components/StudyStreakContext', () => ({
+  StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children,
+  useSharedStudyStreak: () => null,
+}));
 vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));
@@ -65,7 +70,7 @@ function Harness() {
   state = usePlannerDataState({ userId: 'owner-handoff', showNotice });
   const unused = async (): Promise<never> => { throw new Error('outside fixed-event handoff'); };
   const snapshot: PlannerAppSnapshot = {
-    ...state, user: { id: 'owner-handoff' } as User, booting: false, notice: null, dismissNotice() {},
+    ...state, user: { id: 'owner-handoff' } as User, booting: false, profileRestoreRecovery: null, retryProfileRestore: async () => undefined, notice: null, dismissNotice() {},
     signUpWithPassword: unused, signInWithPassword: unused, signInWithGoogle: unused,
     sendPasswordReset: unused, saveUserProfile: unused, signOut: unused,
     saveWeeklyApprovedPlan, completeWeeklyApprovalOperation,
@@ -79,6 +84,7 @@ const click = async (node: ReactTestInstance) => { await act(async () => { node.
 async function openManualEntry() {
   await click(renderer!.root.findByProps({ 'aria-label': 'クイック追加メニューを開く' }));
   await click(button('予定を追加'));
+  await act(async () => { await vi.dynamicImportSettled(); });
   expect(renderer!.root.findAllByType(MonthEventDialog)).toHaveLength(1);
   expect(renderer!.root.findByProps({ 'aria-label': 'タイトル' }).props.value).toBe('');
 }

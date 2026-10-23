@@ -19,6 +19,7 @@ import type {
 } from './types';
 import { decodeWeeklyPlanningQuestionPresentation } from './intake/weeklyPlanningQuestionPresentation';
 import { readWeeklyPlanningProvisionalTimeboxStateV5 } from './intake/weeklyPlanningProvisionalTimeboxStateV5';
+import { validControlledCandidateSessionRecords } from './application/weeklyPlanningControlledCandidateQuestion';
 import { validC5SessionRecords } from './application/c5LocalSelection/basis';
 
 
@@ -625,7 +626,7 @@ function isQuestionContext(value: unknown, format: WeeklyPlanningPersistedStateF
   if (!isRecord(value)
     || !hasOnlyKeys(value, ['kind', 'targetSlot', 'intent', 'topicId', 'actionId',
       ...(format.kind === 'stable_v5_session_v1'
-        ? ['estimateForWorkloadFactId', 'questionBasis', 'presentation', 'c5'] : [])])) {
+        ? ['estimateForWorkloadFactId', 'questionBasis', 'presentation', 'c5', 'controlledCandidate'] : [])])) {
     return false;
   }
   return (typeof value.kind === 'string' && QUESTION_CONTEXT_KINDS.has(value.kind))
@@ -648,7 +649,7 @@ function isPlanningIntakeState(value: unknown, format: WeeklyPlanningPersistedSt
       'shouldCreateDraft', 'shouldSavePlan', 'draftGenerationIntent',
       'draftGenerationAuthorizedAtRevision', 'sourceTurns',
       ...(format.kind === 'stable_v5_session_v1'
-        ? ['groundingRecords', 'repairAgenda', 'learningStrategyProposalRecords', 'c5SelectionLedger', 'provisionalTimebox'] : []),
+        ? ['groundingRecords', 'repairAgenda', 'learningStrategyProposalRecords', 'c5SelectionLedger', 'controlledCandidateProtocolVersion', 'provisionalTimebox'] : []),
     ])) {
     return false;
   }
@@ -706,7 +707,8 @@ function isPlanningIntakeState(value: unknown, format: WeeklyPlanningPersistedSt
         && isNonNegativeInteger(value.provisionalTimebox.authorizedAtGraphRevision)
         && readWeeklyPlanningProvisionalTimeboxStateV5(value.provisionalTimebox) !== null))
     && (format.kind !== 'stable_v5_session_v1'
-      || validC5SessionRecords(value as unknown as PlanningIntakeState, format.ownerId, format.conversationId));
+      || (validC5SessionRecords(value as unknown as PlanningIntakeState, format.ownerId, format.conversationId)
+        && validControlledCandidateSessionRecords(value as unknown as PlanningIntakeState, format.ownerId, format.conversationId)));
 }
 
 

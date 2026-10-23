@@ -1,5 +1,5 @@
 import { WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 } from './weeklyPlanningConversationActsV5';
-import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 import { USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 } from '../../userPlanningContext/userPlanningContextTypes';
 import {
   SEMANTIC_AVAILABILITY_KINDS_V5,

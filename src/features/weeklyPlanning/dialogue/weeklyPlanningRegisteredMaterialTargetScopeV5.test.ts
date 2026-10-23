@@ -3,7 +3,7 @@ import {
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
-import { fallbackTextForStableV5TypedIntent } from './weeklyPlanningStableV5TurnDialogue';
+import { createWeeklyPlanningStableV5DialoguePrompt } from './weeklyPlanningStableV5DialoguePrompt';
 
 function planningInformation(registeredMaterials: Array<Record<string, unknown>>) {
   return {
@@ -67,15 +67,27 @@ describe('Stable V5 registered material target-scope dialogue context', () => {
       requestedInformation: ['plan_target_scope'],
     }));
 
-    const text = fallbackTextForStableV5TypedIntent({
-      applicationText: '旧質問',
+    const prompt = createWeeklyPlanningStableV5DialoguePrompt({
+      actionId: 'registered-material-scope',
+      currentUserMessage: '金フレの学習を進めたい',
+      recentConversation: [],
+      planningInformation: information,
+      actionKind: 'question',
+      questionCode: 'semantic_uncertainty',
+      questionTarget,
       questionIntent: intent,
+      requiredLabels: [],
+      fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。',
+      previewCount: 0,
     });
-    expect(text).toContain('全1000語');
-    expect(text).toContain('200語まで');
-    expect(text).toContain('残りは800語');
-    expect(text).toContain('今回の計画');
-    expect(text).not.toContain('今どこまで');
+    const decision = JSON.parse(prompt.userPrompt).applicationDecision;
+    expect(decision.questionIntent).toEqual(intent);
+    expect(decision.questionIntent).toMatchObject({
+      knownTotalUnits: 1000,
+      knownCurrentUnits: 200,
+      knownRemainingUnits: 800,
+      requestedInformation: ['plan_target_scope'],
+    });
   });
 
   it('uses the same known context when missing schedulable work targets the material component', () => {

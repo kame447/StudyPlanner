@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { loadWrangler } from './jev-contextual-cloud-eval.mjs';
 import { createPairedWorkerSource } from './jev-contextual-paired-runtime.mjs';
 import { summarizePairs } from './jev-contextual-eval-metrics.mjs';
-import { PAIRED_ARTIFACT_SCHEMA, validatePairedArtifact } from './jev-contextual-paired-artifact.mjs';
+import { PAIRED_ARTIFACT_SCHEMA, contextualArtifactCatalogVersion, validatePairedArtifact } from './jev-contextual-paired-artifact.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const REQUIRED_OWNER_THRESHOLDS = [
@@ -111,7 +111,7 @@ export async function runtimeFingerprint() {
     }
   };
   for (const path of ['shared', 'src', 'workers/ai-proxy/src']) await walk(path);
-  files.push('scripts/jev-contextual-paired-runtime.mjs', 'scripts/jev-contextual-paired-eval.mjs', 'scripts/jev-contextual-paired-artifact.mjs', 'scripts/jev-contextual-eval-metrics.mjs',
+  files.push('scripts/jev-contextual-paired-input.ts', 'scripts/jev-contextual-paired-runtime.mjs', 'scripts/jev-contextual-paired-eval.mjs', 'scripts/jev-contextual-paired-artifact.mjs', 'scripts/jev-contextual-eval-metrics.mjs',
     'scripts/jev-contextual-eval-diagnostics.mjs',
     'scripts/jev-contextual-cloud-eval.mjs', 'scripts/jev-contextual-corpus.mjs',
     'scripts/jev-contextual-unit0-eval.mjs', 'scripts/jev-contextual-unit0-budget.mjs', 'scripts/jev-contextual-unit0-random.mjs',
@@ -144,6 +144,7 @@ async function main() {
     }
     console.info(JSON.stringify({ ...summarizePairs(applyJointLabels(pairs, labels), { cases }),
       artifact: { schemaVersion: artifact.schemaVersion ?? 'legacy_unversioned_v0',
+        catalogVersion: contextualArtifactCatalogVersion(pairs),
         corpusVersion: artifact.corpusVersion, corpusHash: artifact.corpusHash,
         runtimeSha256: artifact.runtimeSha256, policySha256: artifact.policySha256,
         split: artifact.split, attemptedAt: artifact.attemptedAt, status: artifact.status } }, null, 2));

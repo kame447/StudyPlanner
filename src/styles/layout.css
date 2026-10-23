@@ -104,10 +104,6 @@
   color: #fff;
 }
 
-.app-action-toolbar {
-  justify-content: flex-end;
-}
-
 .daily-add-fab {
   position: fixed;
   right: max(18px, calc((100vw - 1440px) / 2 + 24px));
@@ -146,7 +142,7 @@
 }
 
 .daily-add-fab:hover {
-  transform: translateY(-2px);
+  transform: translateY(calc(-2px * var(--motion-spatial)));
   border-color: color-mix(in srgb, var(--accent) 34%, var(--border) 66%);
   background: color-mix(in srgb, var(--surface-strong) 82%, var(--accent) 18%);
   box-shadow: 0 12px 24px rgba(22, 29, 33, 0.12);
@@ -154,7 +150,7 @@
 }
 
 .daily-add-fab:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(calc(1 - 0.02 * var(--motion-spatial)));
   opacity: 1;
 }
 
@@ -207,7 +203,7 @@
 }
 
 .nav-icon-button:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(calc(1 - 0.02 * var(--motion-spatial)));
 }
 
 .nav-icon-button:focus-visible {
@@ -226,11 +222,6 @@
   align-items: center;
 }
 
-.app-header .header-actions {
-  gap: 10px;
-  flex-wrap: nowrap;
-}
-
 .brand-lockup {
   display: flex;
   align-items: center;
@@ -240,25 +231,6 @@
   width: 100%;
 }
 
-.brand-logo-image {
-  display: block;
-  height: 114px;
-  width: auto;
-  max-width: min(520px, 100%);
-  flex-shrink: 0;
-}
-
-.app-header .brand-lockup {
-  justify-content: flex-start;
-  width: auto;
-  flex: 1 1 auto;
-}
-
-.app-header .brand-logo-image {
-  height: 91px;
-  max-width: min(416px, 100%);
-}
-
 .brand-mark {
   width: 76px;
   height: 76px;
@@ -266,35 +238,10 @@
   filter: drop-shadow(0 12px 24px var(--accent-shadow));
 }
 
-.brand-mark svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.brand-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.brand-kicker {
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
 .brand-name {
   font-size: clamp(1.85rem, 4vw, 2.9rem);
   line-height: 1;
   letter-spacing: 0.01em;
-}
-
-.brand-tagline {
-  color: var(--text-muted);
-  font-size: 0.94rem;
 }
 
 .user-badge,
@@ -314,97 +261,9 @@
   font-size: 0.86rem;
 }
 
-.header-profile-name.user-badge {
-  max-width: 180px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  font-weight: 800;
-  line-height: 1.25;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.summary-chip {
-  min-width: 140px;
-  justify-content: space-between;
-}
-
 .week-range-chip {
   font-size: 0.84rem;
   white-space: nowrap;
-}
-
-.date-picker-trigger {
-  border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.date-picker-trigger:hover {
-  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent-strong);
-}
-
-.my-page-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  padding: 3px;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
-.header-settings-button {
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border-color: transparent;
-  border-radius: 14px;
-  background: transparent;
-  box-shadow: none;
-  line-height: 1;
-}
-
-.header-settings-button span {
-  display: block;
-  transform: translateY(-1px);
-  font-size: 1.08rem;
-  line-height: 1;
-}
-
-.header-settings-button svg {
-  color: var(--text-muted);
-  transition: color 0.18s ease;
-}
-
-.header-settings-button:hover,
-.header-settings-button:focus-visible {
-  border-color: color-mix(in srgb, var(--accent) 14%, transparent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  box-shadow: none;
-}
-
-.header-settings-button:active {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  transform: translateY(0) scale(0.98);
-}
-
-.header-settings-button:hover svg,
-.header-settings-button:focus-visible svg {
-  color: var(--accent);
 }
 
 .user-avatar {
@@ -435,18 +294,6 @@
   height: 46px;
   font-size: 1.15rem;
   box-shadow: none;
-}
-
-.assistant-runtime {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.assistant-runtime-help {
-  font-size: 0.82rem;
-  color: var(--text-muted);
 }
 
 .assistant-settings-card {
@@ -519,12 +366,6 @@
 .assistant-feedback-card.warning {
   background: var(--assistant-warning-background);
   border-color: var(--assistant-warning-border);
-}
-
-.assistant-feedback-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-muted);
 }
 
 .tracking-tools-card {
@@ -660,24 +501,8 @@
   align-items: start;
 }
 
-.view-header-stack {
-  display: grid;
-  gap: 14px;
-}
-
 .swipe-view {
   touch-action: pan-y;
-}
-
-.view-titlebar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.view-titlebar h2 {
-  margin-bottom: 0;
 }
 
 .view-title-actions {

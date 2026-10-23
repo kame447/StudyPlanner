@@ -39,13 +39,17 @@ describe('AI proxy request observer', () => {
       model: 'gpt-test-transcribe',
     });
     expect(describeAiProxyOperation('/timetable-ocr', null, {
-      GEMINI_MODEL: 'gemini-3.5-flash',
+      GEMINI_MODEL: 'gemini-3.6-flash',
     })).toEqual({
       operationKind: 'timetable_ocr',
       provider: 'gemini',
       purpose: 'timetable_ocr',
       phase: 'single',
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
+    });
+    expect(describeAiProxyOperation('/timetable-ocr', null, {})).toMatchObject({
+      provider: 'gemini',
+      model: 'gemini-3.6-flash',
     });
   });
 

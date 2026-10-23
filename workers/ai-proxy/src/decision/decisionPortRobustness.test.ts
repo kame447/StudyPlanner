@@ -1,3 +1,4 @@
+import { createBoundFocusedContextualContextFixtureV5, focusedContextualSourceMessagesFixtureV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5.testUtils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DecisionEvaluation, DecisionMetadata, DecisionQuestionCatalog } from './decisionProvider';
 import { AUTHORIZATION_QUESTIONS, gateDecision, JEV_MODEL, JEV_TIMEOUT_MS } from './decisionPolicy';
@@ -207,13 +208,7 @@ const authorizationContext = {
   previousStatus: 'needs_scope', hasTasks: true, hasPendingQuestion: false,
   state: { currentUserText: 'private-current-text', lastAssistantMessage: 'private-assistant-text' },
 } as const;
-const contextualContext = {
-  purpose: 'focused_contextual_answer', requestId: 'request-robustness', inputRevision: 7,
-  questionCode: 'quantity_role_unresolved',
-  state: { currentUserText: 'private-current-text', pendingQuestion: {
-    targetQuantityRole: 'declared', questionBasis: null, hasEstimateTarget: false,
-  } },
-} as const;
+const contextualContext = createBoundFocusedContextualContextFixtureV5({ requestId: 'request-robustness', currentUserText: 'private-current-text' });
 const temporalContext = {
   purpose: 'temporal_scope_repair', requestId: 'request-robustness', inputRevision: 7,
   state: { sourceText: 'private-current-text', currentAttachedTask: { title: 'private-task-title' },

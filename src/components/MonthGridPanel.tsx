@@ -1,3 +1,4 @@
+import { scheduleEventColorStyle } from '../lib/scheduleEventColor';
 import { useMemo, type CSSProperties } from 'react';
 import {
   addDays,
@@ -50,16 +51,6 @@ function getHolidayLabelLengthClass(holidayName: string): string {
 
 function isMultiDayMonthEvent(monthEvent: MonthEvent): boolean {
   return getMonthEventEndDate(monthEvent).localeCompare(monthEvent.date) > 0;
-}
-
-function getMonthEventToneIndex(monthEvent: MonthEvent): number {
-  let hash = 0;
-
-  for (const character of monthEvent.id) {
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  }
-
-  return hash % 5;
 }
 
 interface MonthRangeSegment {
@@ -174,8 +165,9 @@ function buildMonthRangeSegments(week: ProjectedMonthCell[]): MonthRangeSegment[
   return segments;
 }
 
-function getRangeSegmentStyle(segment: MonthRangeSegment): CSSProperties {
+function getRangeSegmentStyle(segment: MonthRangeSegment, color: string): CSSProperties {
   return {
+    ...scheduleEventColorStyle(color),
     '--month-range-span-days': segment.endIndex - segment.startIndex + 1,
     '--month-range-lane': segment.lane,
   } as CSSProperties;
@@ -365,7 +357,6 @@ export function MonthGridPanel({
                     type="button"
                   >
                     {startingRangeSegments.map((segment) => {
-                      const toneIndex = getMonthEventToneIndex(segment.monthEvent);
                       const timeLabel = formatMonthEventTimeRangeForDate(
                         segment.monthEvent,
                         cell.date,
@@ -374,15 +365,16 @@ export function MonthGridPanel({
                       return (
                         <span
                           key={`${segment.monthEvent.id}-${week[0]?.date ?? weekIndex}-${segment.startIndex}`}
+                          data-motion-key={`range:${segment.monthEvent.id}:${week[0]?.date ?? weekIndex}`}
+                          data-motion-signature={`${segment.startIndex}-${segment.endIndex} ${timeLabel} ${segment.monthEvent.title}`}
                           className={[
                             'month-range-segment',
-                            `tone-${toneIndex}`,
                             segment.continuesBefore ? 'continues-before' : '',
                             segment.continuesAfter ? 'continues-after' : '',
                           ]
                             .filter(Boolean)
                             .join(' ')}
-                          style={getRangeSegmentStyle(segment)}
+                          style={getRangeSegmentStyle(segment, projection.eventColors.get(segment.monthEvent.id)!)}
                           title={`${timeLabel} ${segment.monthEvent.title}`}
                         >
                           <span>{segment.monthEvent.title}</span>
@@ -417,7 +409,11 @@ export function MonthGridPanel({
                       ) : null}
                     </div>
 
-                    <p className="month-study-summary">
+                    <p
+                      className="month-study-summary"
+                      data-motion-key={`summary:${cell.date}`}
+                      data-motion-signature={`${cell.targetMinutes} ${cell.actualMinutes}`}
+                    >
                       <span>目標 {formatCompactMinutes(cell.targetMinutes)}</span>
                       <span>記録 {formatCompactMinutes(cell.actualMinutes)}</span>
                     </p>
@@ -438,7 +434,10 @@ export function MonthGridPanel({
                         return (
                           <span
                             key={monthEvent.id}
+                            data-motion-key={`event:${cell.date}:${monthEvent.id}`}
+                            data-motion-signature={`${timeLabel} ${monthEvent.title}`}
                             className="event-pill month-major-event-pill"
+                            style={scheduleEventColorStyle(projection.eventColors.get(monthEvent.id)!)}
                             title={`${timeLabel} ${monthEvent.title}`}
                           >
                             <span className="month-major-event-full">
@@ -450,7 +449,11 @@ export function MonthGridPanel({
                       })}
 
                       {hiddenEventCount > 0 ? (
-                        <span className="month-event-more">+{hiddenEventCount}件</span>
+                        <span
+                          className="month-event-more"
+                          data-motion-key={`more:${cell.date}`}
+                          data-motion-signature={String(hiddenEventCount)}
+                        >+{hiddenEventCount}件</span>
                       ) : null}
                     </div>
                   </button>

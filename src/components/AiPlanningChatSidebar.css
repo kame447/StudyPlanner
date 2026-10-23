@@ -29,7 +29,7 @@
 }
 
 .ai-chat-week-reset-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
   border-color: color-mix(in srgb, #ef4444 48%, var(--border, #dce4ee));
   background: color-mix(in srgb, #ef4444 9%, transparent);
 }
@@ -188,13 +188,11 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .ai-chat-week-reset-button,
-  .ai-week-reset-confirm-layer,
-  .ai-week-reset-confirm-sheet,
-  .ai-week-reset-confirm {
-    animation-duration: 1ms !important;
-    animation-delay: 0ms !important;
-    transition-duration: 1ms !important;
-  }
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-chat-week-reset-button,
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-week-reset-confirm-layer,
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-week-reset-confirm-sheet,
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-week-reset-confirm {
+  animation-duration: 0s !important;
+  animation-delay: 0ms !important;
+  transition-duration: 0s !important;
 }

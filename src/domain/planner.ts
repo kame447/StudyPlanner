@@ -94,6 +94,7 @@ export function createMonthEventDraftFromEvent(event: MonthEvent): MonthEventDra
     memo: event.memo,
     checklist: event.checklist.map((item) => ({ ...item })),
     locationTags: [...event.locationTags],
+    ...(event.color ? { color: event.color } : {}),
   };
 }
 
@@ -109,6 +110,7 @@ export function createPlanDraftFromPlan(plan: Plan): PlanDraft {
 
   return {
     userId: plan.userId,
+    ...(plan.classTemplateId ? { classTemplateId: plan.classTemplateId } : {}),
     title: plan.title,
     subject: plan.subject,
     date: plan.occurrenceDate ?? plan.date,
@@ -242,6 +244,7 @@ export function createActualFromDraft(
     id: existingActual?.id ?? createId('actual'),
     userId,
     planId: draft.planId,
+    ...(existingActual?.progressSource ? { progressSource: { ...existingActual.progressSource } } : {}),
     occurrenceDate: draft.occurrenceDate,
     actualStartTime: draft.actualStartTime,
     actualEndTime: draft.actualEndTime,

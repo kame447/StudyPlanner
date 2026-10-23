@@ -3,12 +3,13 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { ScheduleTemplate, TimetableTerm } from '../types/domain';
 import { deferred, STAMP } from '../repositories/localPersistenceConcurrency.testUtils';
 import { TimetableView } from './TimetableView';
+vi.mock('../repositories', () => ({ classAttendanceRepository: { list: vi.fn(async () => []), save: vi.fn() } }));
 const term: TimetableTerm = { id: 'term', userId: 'owner', year: 2026, kind: 'custom', label: 'Term', isActive: true, createdAt: STAMP, updatedAt: STAMP };
 const classes: ScheduleTemplate[] = ['A', 'B'].map((title, index) => ({ id: title, userId: 'owner', title, subject: 'Math', type: 'study', weekday: index === 0 ? 'mon' : 'tue', startTime: '12:00', endTime: '13:00', termId: 'term', periodNumber: 1, memo: '', active: true, createdAt: STAMP, updatedAt: STAMP }));
 let renderer: ReactTestRenderer;
 afterEach(() => { act(() => renderer?.unmount()); vi.restoreAllMocks(); });
 function mount(termOverrides: Partial<TimetableTerm> = {}) { const activeTerm = { ...term, ...termOverrides }; const gate = deferred(); const save = vi.fn(() => gate.promise); const remove = vi.fn(() => gate.promise); act(() => { renderer = create(<TimetableView userId="owner" activeTerm={activeTerm} timetableTerms={[activeTerm]} timetablePeriods={[{ id: 'period', userId: 'owner', termId: 'term', periodNumber: 1, label: '1', startTime: '12:00', endTime: '13:00', createdAt: STAMP, updatedAt: STAMP }]} scheduleTemplates={classes} onActivateTerm={async () => term} onDeleteTerm={async () => { }} onClearTermData={async () => { }} onSaveTimetablePeriod={vi.fn()} onDeleteTimetablePeriod={async () => { }} onSaveScheduleTemplate={save} onDeleteScheduleTemplate={remove}/>); }); return { gate, save, remove }; }
-function open(title: string) { act(() => renderer.root.findByProps({ 'aria-label': `${title === 'A' ? '月' : '火'}曜 1限 ${title}を編集` }).props.onClick({ detail: 0 })); }
+function open(title: string) { act(() => renderer.root.findByProps({ 'aria-label': `${title === 'A' ? '月' : '火'}曜 1限 ${title}の詳細` }).props.onClick({ detail: 0 })); act(() => renderer.root.findAllByType('button').find(node => node.children.includes('編集'))!.props.onClick()); }
 function titleInput() { return renderer.root.findAllByType('input').find(node => node.props.autoComplete === 'off')!; }
 it('an earlier save cannot dismiss the newer editor draft', async () => { const { gate } = mount(); open('A'); let saving!: Promise<void>; await act(async () => { saving = renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); }); act(() => renderer.root.findAllByType('button').find(node => node.children.includes('閉じる'))!.props.onClick()); open('B'); act(() => titleInput().props.onChange({ target: { value: 'New unsaved B' } })); await act(async () => { gate.resolve(); await saving; }); expect(renderer.root.findAllByType('form')).toHaveLength(1); expect(titleInput().props.value).toBe('New unsaved B'); });
 it.each(['A', 'B'])('late save keeps a reopened %s editor, including the same target', async (target) => {
@@ -17,7 +18,7 @@ it.each(['A', 'B'])('late save keeps a reopened %s editor, including the same ta
     let saving!: Promise<void>;
     await act(async () => { saving = renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ title: 'A' }), 'A');
-    act(() => renderer.root.findByProps({ className: 'overlay modal-overlay timetable-modal-overlay' }).props.onClick());
+    act(() => renderer.root.findByProps({ className: 'overlay modal-overlay timetable-modal-overlay timetable-class-overlay' }).props.onClick());
     open(target);
     if (target === 'B') act(() => titleInput().props.onChange({ target: { value: 'New draft' } }));
     await act(async () => { gate.resolve(); await saving; });
@@ -168,11 +169,27 @@ it('locks the deleting session without locking a reopened draft', async () => {
   });
   expect(editorControls().every(node => node.props.disabled === true)).toBe(true);
   expect(titleInput().props.value).toBe('A');
-  act(() => renderer.root.findByProps({ className: 'overlay modal-overlay timetable-modal-overlay' }).props.onClick());
+  act(() => renderer.root.findByProps({ className: 'overlay modal-overlay timetable-modal-overlay timetable-class-overlay' }).props.onClick());
   open('B');
   expect(editorControls().every(node => node.props.disabled !== true)).toBe(true);
   act(() => titleInput().props.onChange({ target: { value: 'Reopened B' } }));
   await act(async () => { gate.resolve(); });
   expect(titleInput().props.value).toBe('Reopened B');
   expect(remove).toHaveBeenCalledTimes(1);
+});
+
+it('keeps period controls and meaningful state while omitting redundant descriptions', () => {
+  mount();
+  act(() => renderer.root.findAllByType('button').find(node => node.children.includes('期間'))!.props.onClick());
+  const sheet = renderer.root.findByProps({ className: 'timetable-term-sheet timetable-period-sheet' });
+  const text = JSON.stringify(sheet.findAllByType('p').map(node => node.children));
+  expect(text).not.toContain('実際に使う日付で管理');
+  expect(sheet.findAllByType('small').map(node => node.children.join('')).join('')).not.toContain('時間割全体の内容');
+  expect(sheet.findAllByType('span').some(node => node.children.includes('期間未設定'))).toBe(true);
+  expect(sheet.findAllByType('input').filter(node => node.props.type === 'date')).toHaveLength(2);
+  const checkbox = sheet.findByProps({ type: 'checkbox' });
+  act(() => checkbox.props.onChange({ target: { checked: true } }));
+  expect(sheet.findAllByType('input').filter(node => node.props.type === 'date')).toHaveLength(3);
+  expect(sheet.findByType('small').children.join('')).toContain('この日を含む週をA週');
+  expect(sheet.findAllByType('button').some(node => node.children.includes('保存して使用'))).toBe(true);
 });

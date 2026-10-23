@@ -1,3 +1,5 @@
+import { createFocusedContextualBindingSnapshotV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5';
+import { createFocusedContextualBindingInputFixtureV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5.testUtils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FocusedContextualDecisionContext, FocusedContextualDecisionState } from '../../../../shared/focusedContextualDecision';
 import type { DecisionEvaluation, DecisionMetadata, DecisionProvider } from './decisionProvider';
@@ -21,24 +23,15 @@ const metadata: DecisionMetadata = {
 
 function context(
   questionCode: FocusedContextualDecisionContext['questionCode'] = 'quantity_role_unresolved',
-): FocusedContextualDecisionContext {
-  const effort = questionCode === 'missing_effort_estimate';
-  return {
-    purpose: 'focused_contextual_answer',
-    requestId: 'request-contextual-dispatch',
-    inputRevision: 12,
-    questionCode,
-    state: {
-      currentUserText: effort
-        ? '時間は分からないので空き時間で暫定的に進めて'
-        : 'これは残りです。',
-      pendingQuestion: {
-        targetQuantityRole: effort ? 'remaining' : 'declared',
-        questionBasis: null,
-        hasEstimateTarget: false,
-      },
-    },
-  };
+) {
+  const result = structuredClone(createFocusedContextualBindingSnapshotV5(createFocusedContextualBindingInputFixtureV5())!.context);
+  result.requestId = 'request-contextual-dispatch'; result.inputRevision = 12; result.questionCode = questionCode;
+  result.state.currentUserText = questionCode === 'missing_effort_estimate' ? '時間は分からないので空き時間で暫定的に進めて' : 'これは残りです。';
+  result.state.pendingQuestion.targetQuantityRole = questionCode === 'missing_effort_estimate' ? 'remaining' : 'declared';
+  const target = result.state.pendingQuestion.target;
+  target.sourceRevision = 12; target.questionCode = questionCode;
+  target.workload.quantityRole = result.state.pendingQuestion.targetQuantityRole;
+  return result;
 }
 
 function evaluated(
@@ -107,9 +100,9 @@ describe('focused contextual dispatch', () => {
         respond: structuredResponse,
         provider: injected,
       });
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(200);
       expect(injected.evaluate).not.toHaveBeenCalled();
-      expect(fallback).not.toHaveBeenCalled();
+      expect(fallback).toHaveBeenCalledTimes(1);
     },
   );
   it('keeps off mode byte-for-byte on the existing Luna fallback path', async () => {

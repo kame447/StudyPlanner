@@ -346,6 +346,7 @@ export interface WeeklyPlanningQuestionContext {
   presentation?: WeeklyPlanningQuestionPresentation;
   /** Immutable question-time payload. Missing on old sessions; never re-enumerate on answer. */
   c5?: import('../application/c5LocalSelection/contracts').C5QuestionSnapshot;
+  controlledCandidate?: import('../application/weeklyPlanningControlledCandidateDomains').ControlledCandidateQuestionSnapshot;
 }
 
 /**
@@ -402,6 +403,7 @@ export interface PlanningIntakeState {
   uncertainties: PlanningIntakeUncertainty[];
   questions: string[];
   lastQuestionContext?: WeeklyPlanningQuestionContext;
+  controlledCandidateProtocolVersion?: 1;
   c5SelectionLedger?: import('../application/c5LocalSelection/contracts').C5SelectionLedger;
   shouldCreateDraft: boolean;
   shouldSavePlan: false;

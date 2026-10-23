@@ -1,8 +1,10 @@
-import { minutesBetween, sortByDateTime } from './date';
+import { getEntryDurationMinutes } from './entryTimeRange';
+import { sortByDateTime } from './date';
 import {
   buildPlanOccurrenceKey,
   expandPlansForDateRange,
   getActualOccurrenceKey,
+  resolvePlanOccurrence,
 } from './planRecurrence';
 import {
   resolveTimelineSubjectDisplay,
@@ -10,6 +12,7 @@ import {
 } from './timelineSubject';
 import type {
   Actual,
+  MonthEvent,
   Plan,
   PlanSourceType,
   PlanType,
@@ -17,7 +20,7 @@ import type {
   StudySubject,
 } from '../types/domain';
 
-export type StudyRecordLinkKind = 'planned' | 'standalone' | 'orphaned';
+export type StudyRecordLinkKind = 'planned' | 'month-event' | 'standalone' | 'orphaned';
 
 export interface NormalizedStudyRecordForDisplay {
   id: string;
@@ -28,6 +31,7 @@ export interface NormalizedStudyRecordForDisplay {
   isLinkedToPlan: boolean;
   actual: Actual;
   plan?: Plan;
+  monthEvent?: MonthEvent;
   date: string;
   startTime: string;
   endTime: string;
@@ -47,6 +51,7 @@ export interface NormalizedStudyRecordForDisplay {
 export interface NormalizeStudyRecordsInput {
   actuals: Actual[];
   plans: Plan[];
+  monthEvents?: MonthEvent[];
   subjects?: StudySubject[];
   materials?: StudyMaterial[];
   startDate?: string;
@@ -145,16 +150,17 @@ function resolveActualPlan(
     return undefined;
   }
 
-  return (
-    expandedPlanByOccurrenceKey.get(getActualOccurrenceKey(actual)) ??
-    planById.get(actual.planId)
-  );
+  const expanded = expandedPlanByOccurrenceKey.get(`${actual.userId}\u0000${getActualOccurrenceKey(actual)}`);
+  if (expanded) return expanded;
+  const source = planById.get(`${actual.userId}\u0000${actual.planId}`);
+  return source ? resolvePlanOccurrence(source, actual.occurrenceDate) : undefined;
 }
 
-function resolveRecordTitle(actual: Actual, plan?: Plan): string {
+function resolveRecordTitle(actual: Actual, plan?: Plan, monthEvent?: MonthEvent): string {
   return (
     actual.title?.trim() ||
     plan?.title.trim() ||
+    monthEvent?.title.trim() ||
     actual.materialName?.trim() ||
     plan?.materialName?.trim() ||
     '記録'
@@ -176,20 +182,27 @@ function resolveRecordMaterialId(actual: Actual, plan?: Plan): string | null {
 export function normalizeStudyRecordForDisplay({
   actual,
   plan,
+  monthEvent,
   subjects = [],
   materials = [],
 }: {
   actual: Actual;
   plan?: Plan;
+  monthEvent?: MonthEvent;
   subjects?: StudySubject[];
   materials?: StudyMaterial[];
 }): NormalizedStudyRecordForDisplay {
-  const title = resolveRecordTitle(actual, plan);
-  const subject = resolveRecordSubject(actual, plan);
+  plan = plan?.userId === actual.userId ? plan : undefined;
+  // A known general-event link is not an unknown/deleted study source.
+  const linkedMonthEvent = !plan && monthEvent && actual.planId === monthEvent.id && actual.userId === monthEvent.userId
+    ? monthEvent : undefined;
+  const title = resolveRecordTitle(actual, plan, linkedMonthEvent);
+  const subject = resolveRecordSubject(actual, plan) || (linkedMonthEvent ? '主要予定' : '');
   const materialId = resolveRecordMaterialId(actual, plan);
   const materialName = resolveRecordMaterialName(actual, plan);
-  const type = plan?.type ?? 'study';
-  const sourceType = plan?.sourceType;
+  const type = plan?.type ?? (linkedMonthEvent ? 'other'
+    : actual.progressSource?.planType ?? (actual.progressSource?.kind === 'general-event' ? 'other' : 'study'));
+  const sourceType = plan?.sourceType ?? (linkedMonthEvent ? 'manual' : undefined);
   const materialsById = new Map(materials.map((material) => [material.id, material]));
   const subjectsById = new Map(subjects.map((subjectItem) => [subjectItem.id, subjectItem]));
   const subjectsByName = new Map(
@@ -211,7 +224,7 @@ export function normalizeStudyRecordForDisplay({
   const linkKind: StudyRecordLinkKind = actual.planId
     ? plan
       ? 'planned'
-      : 'orphaned'
+      : linkedMonthEvent ? 'month-event' : 'orphaned'
     : 'standalone';
 
   return {
@@ -223,10 +236,11 @@ export function normalizeStudyRecordForDisplay({
     isLinkedToPlan: linkKind === 'planned',
     actual,
     plan,
+    ...(linkedMonthEvent ? { monthEvent: linkedMonthEvent } : {}),
     date: actual.occurrenceDate,
     startTime: actual.actualStartTime,
     endTime: actual.actualEndTime,
-    durationMinutes: minutesBetween(actual.actualStartTime, actual.actualEndTime),
+    durationMinutes: getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime),
     title,
     label: title,
     subject,
@@ -243,6 +257,7 @@ export function normalizeStudyRecordForDisplay({
 export function normalizeStudyRecordsForDisplay({
   actuals,
   plans,
+  monthEvents = [],
   subjects = [],
   materials = [],
   startDate,
@@ -258,15 +273,17 @@ export function normalizeStudyRecordsForDisplay({
     endDate,
   });
   const expandedPlanByOccurrenceKey = new Map(
-    expandedPlans.map((plan) => [buildPlanOccurrenceKey(plan.id, plan.date), plan]),
+    expandedPlans.map((plan) => [`${plan.userId}\u0000${buildPlanOccurrenceKey(plan.id, plan.date)}`, plan]),
   );
-  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+  const planById = new Map(plans.map((plan) => [`${plan.userId}\u0000${plan.id}`, plan]));
+  const monthEventById = new Map(monthEvents.map((event) => [`${event.userId}\u0000${event.id}`, event]));
 
   return sortByDateTime(
     dedupedActuals.map((actual) =>
       normalizeStudyRecordForDisplay({
         actual,
         plan: resolveActualPlan(actual, expandedPlanByOccurrenceKey, planById),
+        monthEvent: actual.planId ? monthEventById.get(`${actual.userId}\u0000${actual.planId}`) : undefined,
         subjects,
         materials,
       }),
@@ -281,8 +298,11 @@ export function sumStudyRecordMinutes(
 }
 
 export function isStudyRecordForDisplay(record: NormalizedStudyRecordForDisplay): boolean {
+  if (!record.plan && !record.monthEvent && record.actual.progressSource) {
+    return record.type === 'study' || record.type === 'mock-exam' || record.type === 'cram-school';
+  }
   return (
-    record.linkKind !== 'planned' ||
+    record.linkKind === 'standalone' || record.linkKind === 'orphaned' ||
     record.type === 'study' ||
     record.type === 'mock-exam' ||
     record.type === 'cram-school'

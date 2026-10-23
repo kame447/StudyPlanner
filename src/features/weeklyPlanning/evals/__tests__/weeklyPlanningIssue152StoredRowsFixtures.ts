@@ -1,3 +1,4 @@
+import { withWeeklyPlanningEffortAcknowledgement } from '../../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { vi } from 'vitest';
 import type { StudyMaterial } from '../../../../types/domain';
@@ -741,18 +742,15 @@ function semanticDocument(text: string): WeeklyPlanningSemanticDocumentV5 {
 }
 
 function rendererResponse(messages: Array<{ role: string; content: string }>): string {
-  const prompt = messages[messages.length - 1]?.content ?? '';
-  const actionIdMatch = prompt.match(/stable_v5:[^"\\s]+/);
-  const actionId = actionIdMatch?.[0] ?? 'stable_v5:fixture:status';
-  const actionKind = prompt.includes('preview_ready') ? 'preview_ready' : 'question';
-  const questionCodeMatch = prompt.match(/missing_[a-z_]+/);
-  return JSON.stringify({
-    actionId,
-    actionKind,
-    questionCode: questionCodeMatch?.[0] ?? null,
+  const prompt = JSON.parse(messages[1].content);
+  const decision = prompt.applicationDecision;
+  return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(prompt, {
+    actionId: prompt.actionId,
+    actionKind: decision.actionKind,
+    questionCode: decision.questionCode,
     groundingAcknowledgement: null,
-    text: 'fixture response',
-  });
+    text: `fixture response${decision.previewPromotionControlLabel ?? ''}`,
+  }));
 }
 
 /**
@@ -819,13 +817,14 @@ export function completeScopeFixtureProviderResponse(input: {
     return JSON.stringify(semanticDocument(scriptedSemanticSource(input.messages)));
   }
   if (input.purpose === 'weekly_planning_renderer') {
-    return JSON.stringify({
-      actionId: 'stable_v5:fixture:status',
-      actionKind: 'status',
-      questionCode: null,
+    const prompt = JSON.parse(input.messages[1].content);
+    return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(prompt, {
+      actionId: prompt.actionId,
+      actionKind: prompt.applicationDecision.actionKind,
+      questionCode: prompt.applicationDecision.questionCode,
       groundingAcknowledgement: null,
-      text: 'この計画を作成します。確認してください。',
-    });
+      text: '内容を確認してください。',
+    }));
   }
   return defaultFixtureProviderResponse(input);
 }

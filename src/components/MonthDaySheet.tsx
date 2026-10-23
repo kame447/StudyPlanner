@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { getMonthEventColor, getScheduleOccurrenceColor, scheduleEventColorStyle } from '../lib/scheduleEventColor';
 import { Plus, X } from 'lucide-react';
 import {
   createScheduleOccurrenceProjection,
   type ScheduleOccurrence,
 } from '../domain/scheduleOccurrence';
 import { addDays } from '../lib/date';
+import { getMotionLevel, resolveExitDurationMs, STANDARD_EXIT_MS } from '../lib/motionPreference';
 import {
   doesMonthEventOccurOnDate,
   formatMonthEventTimeRangeForDate,
@@ -17,9 +19,8 @@ import type {
   TimetableTerm,
 } from '../types/domain';
 
-const ACCENT_CLASSES = ['mint', 'violet', 'blue', 'amber', 'pink'];
 const WEEKDAY_LABELS = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
-const CLOSE_ANIMATION_MS = 280;
+const CLOSE_ANIMATION_MS = STANDARD_EXIT_MS;
 
 function formatHeading(dateString: string): string {
   const date = new Date(`${dateString}T00:00:00`);
@@ -47,6 +48,7 @@ interface MonthDaySheetEntry {
   id: string;
   title: string;
   timeLabel: string;
+  color: string;
   monthEvent: MonthEvent | null;
   openDayBacked: boolean;
 }
@@ -91,6 +93,7 @@ function buildEntries(params: {
       ),
     ).map((event) => ({
       id: event.id,
+      color: getMonthEventColor(event.id, event.color),
       title: event.title,
       timeLabel: formatMonthEventTimeRangeForDate(event, params.renderedDate),
       monthEvent: event,
@@ -124,6 +127,7 @@ function buildEntries(params: {
         if (!monthEvent) return null;
         return {
           id: occurrence.id,
+          color: getScheduleOccurrenceColor(occurrence),
           title: occurrence.title,
           timeLabel: formatOccurrenceTimeForDate(occurrence, params.renderedDate),
           monthEvent,
@@ -137,6 +141,7 @@ function buildEntries(params: {
       ) {
         return {
           id: occurrence.id,
+          color: getScheduleOccurrenceColor(occurrence),
           title: occurrence.title,
           timeLabel: formatOccurrenceTimeForDate(occurrence, params.renderedDate),
           monthEvent: null,
@@ -180,11 +185,17 @@ export function MonthDaySheet({
 
     if (!renderedDate) return;
 
+    const exitMs = resolveExitDurationMs(getMotionLevel(), CLOSE_ANIMATION_MS);
+    if (exitMs <= 0) {
+      setRenderedDate(null);
+      return;
+    }
+
     setIsClosing(true);
     const closeTimer = setTimeout(() => {
       setRenderedDate(null);
       setIsClosing(false);
-    }, CLOSE_ANIMATION_MS);
+    }, exitMs);
 
     return () => clearTimeout(closeTimer);
   }, [openDate, renderedDate]);
@@ -259,9 +270,10 @@ export function MonthDaySheet({
 
         <div className="month-day-sheet-list">
           {entries.length > 0 ? (
-            entries.map((entry, index) => (
+            entries.map((entry) => (
               <button
-                className={`month-day-sheet-event ${ACCENT_CLASSES[index % ACCENT_CLASSES.length]}`}
+                className="month-day-sheet-event"
+                style={scheduleEventColorStyle(entry.color)}
                 key={entry.id}
                 onClick={() => {
                   if (entry.monthEvent) {

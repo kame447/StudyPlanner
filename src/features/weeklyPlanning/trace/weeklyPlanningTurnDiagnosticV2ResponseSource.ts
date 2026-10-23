@@ -1,3 +1,4 @@
+import { projectAiProviderFailure } from '../../../../shared/aiProviderFailure';
 import {
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
   measureWeeklyPlanningTraceJsonBytes,
@@ -179,6 +180,7 @@ function boundedDialogueRendererTrace(
     response: {
       status: trace.response.status,
       reason: boundedNullableText(trace.response.reason, limits.reasonBytes),
+      ...(trace.response.providerFailure ? { providerFailure: projectAiProviderFailure(trace.response.providerFailure) } : {}),
       rawResponse: limits.includeRawResponse
         ? boundedNullableText(trace.response.rawResponse, limits.rawResponseBytes)
         : null,

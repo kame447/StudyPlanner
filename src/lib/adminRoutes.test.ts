@@ -10,6 +10,8 @@ describe('admin route resolution', () => {
     expect(resolveAdminRoute('/admin/ai')).toEqual({ type: 'ai-api' });
     expect(resolveAdminRoute('/admin/planning')).toEqual({ type: 'planning' });
     expect(resolveAdminRoute('/admin/logs')).toEqual({ type: 'logs' });
+    expect(resolveAdminRoute('/admin/inquiries')).toEqual({ type: 'inquiries' });
+    expect(resolveAdminRoute('/admin/announcements')).toEqual({ type: 'announcements' });
     expect(resolveAdminRoute('/admin/system')).toEqual({ type: 'system' });
   });
 
