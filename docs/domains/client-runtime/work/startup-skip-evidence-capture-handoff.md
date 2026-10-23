@@ -1,8 +1,10 @@
 # Startup skip evidence capture
 
 Status: native verification passed on the published original head; current-main
-integration verification in progress.
-Branch: `test/startup-skip-capture-order`, based on main `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
+local integration verification passed. Native integration gates remain pending.
+Branch: `test/startup-skip-capture-order`, PR #809. Original base was
+`22e42203a4df82b5432d4290b7b5ea3a4246b8c9`; the current local integration base is
+`df675184f72b2717f68cd71eb89bb6b2a83a2394`.
 Scope: diagnose the ready touch-skip failure observed on PR #801 without changing
 startup product behavior or the separate complete-playback acceptance tests.
 
@@ -78,3 +80,41 @@ native spec byte-for-byte. Fresh focused/type/native integration evidence is
 still required; prior green checks are bound to the published original head.
 Keep this separate from #801's dependency correction. The coordinator owns
 publication and the final integration gates; no main merge is claimed here.
+
+
+## 2026-10-23 current-main local integration checkpoint
+
+- Reused PR #809 and its existing branch; no new Issue, branch or PR. The
+  coordinator owns publication and final integration. No remote write, main
+  merge, branch deletion or browser CI launch occurred in this preparation.
+- Fresh remote head: `7121431ce4bb51260129053d7248ae6f6bca91b7`.
+  Current main: `df675184f72b2717f68cd71eb89bb6b2a83a2394`.
+  Conflict-free local merge: `dd990eae744848a0ef15fbeba4ea51e17acc0f91`;
+  verified tree: `0a902fe10df6c28a08d5cde58227c0d78ffa1f19`.
+- The startup spec is byte-identical to the remote PR head. Independent review
+  confirmed that only the screenshot position/name/comment differ from main;
+  all native touch, keyboard, playback, readiness, original-node, `!ended`,
+  unload and full-completion assertions remain unchanged.
+- `npm run verify` exited 0: fresh application and Worker typechecks, 1,067
+  passing test files / 11,197 passing tests, 12 skipped files / 67 skipped tests
+  and one todo; production build passed in 13.76 seconds. The command environment
+  set `DEV_LAN_HOST=127.0.0.1`, `WRANGLER_SEND_METRICS=false`, and a temporary
+  `WRANGLER_LOG_PATH`. Node was 22.23.4 and npm was 10.9.9. No lint script exists.
+- All 242 installed package versions matched the lockfile. Lockfile SHA-256:
+  `01cc6c380a2797653d6e9a9dca8e5afe835a2278cb990d21dc6b220ca8aa466f`.
+  Installed content SHA-256 before and after verification was unchanged:
+  `f651d45b4369315f5719fe678deca3860509f7bb89bdfb251263d297dad198c6`.
+  This covers 19,392 files, hashing sorted relative path, NUL, file SHA-256 and
+  newline, excluding generated `.cache`, `.vite` and `.vite-temp` directories.
+- Verify log SHA-256:
+  `70b05b4b2396b05d7ff5c88fe08af1e751b427a3fbc7cf6a93369c13ee84b43a`.
+  Tracked verification inputs remained clean throughout the run; the only
+  untracked output was `.cache/`. This checkpoint update is documentation-only.
+  `node --check tests/e2e/laplance-startup-video.spec.mjs` and `git diff --check`
+  passed separately.
+- The historical UI Regression Matrix run 39849315723 on `7121431c` was
+  cancelled, not a passing integration gate. Native browsers were not run for
+  this new integration snapshot. Next: coordinator reconciles any later main
+  change, publishes only when authorized, and follows all applicable exact-head
+  CI/native-browser gates to terminal results. Do not call the PR merge-ready
+  based only on the local aggregate or historical original-head browser pass.
