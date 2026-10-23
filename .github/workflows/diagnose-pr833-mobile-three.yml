@@ -1,4 +1,4 @@
-name: Diagnose PR833 three mobile cases
+name: Diagnose PR815 Day1280 ABBA
 on:
   push:
     branches:
@@ -6,66 +6,84 @@ on:
 permissions:
   contents: read
 jobs:
-  isolated-three:
+  day1280-abba:
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.64.0-noble
       options: --user 1001
-    timeout-minutes: 35
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      UI_RETRY_CAPTURE: '1'
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 1
+          ref: a1a0b0ed9f8ead1af03db2f75465bf0e362a1f06
+          path: control
           persist-credentials: false
-
+      - uses: actions/checkout@v7
+        with:
+          ref: 4ab467561ab75d4a81a63c28252c6f63f31dc87c
+          path: candidate
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .node-version
-          cache: npm
-
-      - name: Install application dependencies
-        run: npm ci
-
-      - name: Snapshot application manifests before isolated test-runner install
-        shell: bash
-        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
-
-      - name: Install isolated Playwright test runner
-        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
-
-      - name: Verify isolated test-runner install did not mutate application manifests
-        shell: bash
-        run: sha256sum -c /tmp/studyplanner-manifests.sha256
-
-      - name: Build production bundle
-        run: npm run build
-
-      - name: Verify approved three cases using ordinary configuration
+          node-version-file: control/.node-version
+      - name: Record fixed source and runner conditions
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/ci/check-node-security-version.mjs
-          node scripts/ci/playwright-shard.mjs test --config=tests/e2e/playwright.cross-browser.config.mjs --project=webkit-mobile --grep 'material long text 1920x1080 (saves the last chapter and preserves it after full reload at (100|200)%|keeps full detail text and cancels unsaved chapter edits at 200%)$'
-
-      - name: Upload complete functional test artifacts
+          mkdir -p observations
+          {
+            date -u; uname -a; node --version; npm --version; nproc; free -m; lscpu
+            git -C control rev-parse HEAD HEAD^{tree}
+            git -C candidate rev-parse HEAD HEAD^{tree}
+            sha256sum control/package.json control/package-lock.json candidate/package.json candidate/package-lock.json
+            cmp control/package.json candidate/package.json
+            cmp control/package-lock.json candidate/package-lock.json
+            cmp control/tests/e2e/day-timetable-occurrence-controls.spec.mjs candidate/tests/e2e/day-timetable-occurrence-controls.spec.mjs
+            cmp control/tests/e2e/playwright.cross-browser.config.mjs candidate/tests/e2e/playwright.cross-browser.config.mjs
+            cmp control/tests/e2e/support/startup-ready.mjs candidate/tests/e2e/support/startup-ready.mjs
+          } | tee observations/identity.txt
+      - name: Install and build both fixed inputs once
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$PWD"
+          for side in control candidate; do
+            cd "$root/$side"
+            npm ci
+            sha256sum package.json package-lock.json > "$root/observations/$side-manifests.sha256"
+            npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+            sha256sum -c "$root/observations/$side-manifests.sha256"
+            npm run build > "$root/observations/$side-build.log" 2>&1
+          done
+      - name: Run original Day1280 case in A B B A order without weakening gates
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="$PWD"
+          failed=0
+          for trial in A1 B1 B2 A2; do
+            side=control
+            if [[ "$trial" == B* ]]; then side=candidate; fi
+            cd "$root/$side"
+            mkdir -p "$root/observations/$trial"
+            { date -u; cat /proc/loadavg; free -m; } > "$root/observations/$trial/conditions.txt"
+            node scripts/ci/playwright-shard.mjs test --config=tests/e2e/playwright.cross-browser.config.mjs --project=webkit-mobile tests/e2e/day-timetable-occurrence-controls.spec.mjs --grep='day visibility and single-occurrence cancellation preserve recorded history at 1280px' 2>&1 | tee "$root/observations/$trial/run.log"
+            status=${PIPESTATUS[0]}
+            printf '%s\n' "$status" > "$root/observations/$trial/exit.txt"
+            if [[ "$status" != 0 ]]; then failed=1; fi
+            for artifact in playwright-cross-browser-results.json playwright-cross-browser-results playwright-cross-browser-report; do
+              if [[ -e "artifacts/$artifact" ]]; then cp -a "artifacts/$artifact" "$root/observations/$trial/"; fi
+            done
+          done
+          exit "$failed"
+      - name: Upload all four observations including failed attempts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr833-mobile-functional-full-${{ github.sha }}
-          path: |
-            artifacts/playwright-cross-browser-results/
-            artifacts/playwright-cross-browser-report/
-            artifacts/playwright-cross-browser-results.json
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload compact functional results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: pr833-mobile-functional-results-${{ github.sha }}
-          path: |
-            artifacts/playwright-cross-browser-results.json
-            artifacts/playwright-cross-browser-results/**/error-context.md
-          if-no-files-found: warn
+          name: pr815-day1280-abba-${{ github.sha }}
+          path: observations/
+          if-no-files-found: error
           retention-days: 14
