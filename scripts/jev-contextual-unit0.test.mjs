@@ -877,7 +877,7 @@ describe('holdout consumption order and the development smoke (in-process, no pr
       files[stratum] = join(directory, stratum + '.json');
       await writeFile(files[stratum], JSON.stringify(sets[stratum].corpus));
     }
-    const pricing = structuredClone(DRY_RUN_PRICING);
+    const pricing = { ...structuredClone(PREREGISTERED_PRICING), source: 'historical preregistration fixture (non-evidence)' };
     const code = await buildWorkerBundle({ cases: [], preSend: preSendFor(pricing), dispatchesPerTurn: 8 });
     const corpusSha256 = { B: sha256(await readFile(files.B)), C: sha256(await readFile(files.C)) };
     base = { files, pricing, corpusSha256, workerCodeSha256: code.templateSha256,
