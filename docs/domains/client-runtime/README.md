@@ -110,3 +110,5 @@ Client-first does not imply client-authoritative shared state. Authentication, o
 - [Administrator console style loading](work/admin-console-style-loading-handoff.md): Issue #542; local-only deferral of administrator-specific CSS, preserving shared shell cascade and all media/theme behavior.
 
 - [Optional delivery native acceptance](work/delivery-acceptance-ci-handoff.md): PR #729 fixture, emitted-asset and browser-transport corrections; native rerun tracked separately.
+
+- [Mobile WebKit paint investigation and retry recording](work/mobile-retry-recording-handoff.md): bounded retry capture; root-paint candidates rejected, with #805 still unresolved.
