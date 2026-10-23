@@ -1,9 +1,9 @@
 # Radial input capture ownership
 
-Status: actual main integration passed local final verification and bundle budget. Native CI for the updated head remains pending.
+Status: latest-main integration passed local final verification and bundle budget. Native gates must pass again after the necessary normal branch integration. See the latest checkpoint below; older entries are historical.
 Branch: `refactor/radial-input-capture-on-keyboard`.
-PR base: `main`. Current integration base: `2ea267f41ba62c154ac83c260e19ad1fff4578a1`.
-Dependency: PR #808, head `22caa220d19f33100b7a0211ee33649ee1885ef1`.
+PR base: `main`. Current integration base: `3cefe1b7b67c70eaa06c433b62b6c9f435ba5407`.
+Dependency: PR #808 is merged as `18562bcf885502f5a6a85caf06a3c37b3dfc86ce`.
 
 Day and Week independently implement the same pointer/touch ownership checks,
 armed-move admission, target lookup and click suppression. This duplicates the
@@ -25,10 +25,7 @@ to preserve its behavior and avoid duplicate changes in this PR diff. Production
 files merged cleanly; the sole test append conflict was resolved by retaining both
 complete, unchanged groups of added tests.
 
-Next: obtain current native browser/UI/quality evidence through the integration
-owner after publishing the verified actual-main integration. Preserve #808-before-#815 dependency order. No main merge is authorized.
-The older verification below is historical evidence, not proof for the current
-integration content.
+Next: publish the verified normal integration to the existing branch and follow all new native gates to terminal acceptance. Merge is user-authorized after acceptance, with timing coordinated by the integration owner. No product, timeout, assertion or retry-policy change was added.
 
 ## Verification checkpoint
 
@@ -151,3 +148,45 @@ Publication reuses existing #815 and its branch, preserving old head `4a30bd47`
 as first parent and actual main as another parent. Native CI remains pending on
 that new head. The user's batch approval permits merge after all applicable gates
 pass; the integration coordinator retains merge timing, with #808 before #815.
+
+
+### Necessary latest-main integration (2026-10-23)
+
+All six native workflows passed on head `4ab467561ab75d4a81a63c28252c6f63f31dc87c`:
+CI 39971113125, Admin 39971113108, Agentic 39971112929, Quality 39971113045,
+Browser 39971112995, and Matrix 39971112932 attempt 2. Matrix attempt 1 had a
+Day1280 timeout/retry pass (31.651s/30.897s), correctly rejected as flaky.
+An incomplete diagnostic 39976514912 reproduced the same flake on unchanged
+#808 control, then stopped because of diagnostic-shell errexit. It is not a
+complete comparison. Corrected same-runner ABBA 39977172866 passed all original
+assertions first try: control24.5s, candidate18.0s, candidate18.6s, control19.2s.
+The unchanged 30s timeout, retry1 and fail-on-flaky policy were retained.
+Based on this new controlled evidence, exactly one failed-jobs-only Matrix
+recheck was authorized: mobile1 job120497305387 passed257 tests, including
+Day1280 first attempt24.5s, and aggregate120508251173 passed. Earlier failures
+remain evidence; this does not establish a performance fix or rule out runner
+sensitivity. No physical iPhone validation is claimed.
+
+GitHub subsequently rejected a normal merge with HTTP405 conflict despite a
+clean local merge-tree. After refreshing and confirming the same backend state,
+the coordinator authorized normal latest-main integration, not bypass or force.
+Main `3cefe1b7b67c70eaa06c433b62b6c9f435ba5407` includes the already merged
+#808 dependency and disjoint reporting, material persistence, startup, legal
+notice and Worker changes. It merges cleanly. All four radial code/test files
+remain byte-identical to head4ab46756; the net patch over main is still five files.
+
+The exact integration tree `a4ae0f02c7c884d826dcdc932980c4b124eff880` passed
+`npm run verify`, exit0, under pinned Node22.23.4: fresh non-incremental
+App/Worker types, **1,072 test files / 11,234 tests passed**, 12 files /67 tests
+skipped and one todo, production build15.16s. Bundle budget passed: JavaScript
+2434.6KiB raw/692.1KiB gzip, CSS502.1/87.8KiB. No thresholds were changed.
+The supported local environment overrides above were retained. Actual installed
+versions remain Vite6.4.4, Vitest3.2.7, TypeScript5.9.3 and React18.3.1.
+All3,047 tracked files were unchanged across verification, manifest SHA256
+`cb29c82b69aa2a535dfc1aaa373fd9724045780afaea98c866513e624b6d3ace`;
+all19,392 installed files excluding disposable caches were unchanged, manifest
+SHA256 `7b7175fe339d6868dab9520a011028a3c86b8610a08a7de06e709ffcb7ff6c0c`.
+The checkout HEAD was4ab46756 with staged main integration; the stated tree
+captures its exact inputs. This checkpoint update is documentation-only.
+Fresh exact-head native gates are pending after publication. Prior green gates
+are historical acceptance, not a claim that the new head has already passed.
