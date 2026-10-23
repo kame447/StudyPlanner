@@ -29,7 +29,8 @@ beforeEach(() => {
     if (String(url).endsWith('/api/alpha/decisions')) {
       jevBodies.push(body);
       if (failJev) return new Response('', { status: 503 });
-      return Response.json({ model: JEV_MODEL.responses[1], answers: {
+      // The immutable old Worker needs the historical snapshot it validated.
+      return Response.json({ model: body.model === JEV_MODEL.request ? JEV_MODEL.responses[1] : 'typesafe/jev-1.13-20260917', answers: {
         contextual_answer: { type: 'choice', choice: 'remaining', confidence: .999,
           probabilities: { target: .0001, remaining: .9996, completed: .0001, focused_luna: .0001, fallback: .0001 } },
         condition_change: { type: 'noul', noul: .001 }, independent_meaning: { type: 'noul', noul: .001 },
