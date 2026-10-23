@@ -1,10 +1,10 @@
 # Material preferences boundary
 
-Status: active local implementation, not published
-Updated: 2026-10-20
+Status: PR #812 current-main integration verified locally; native CI pending
+Updated: 2026-10-23
 Branch: `refactor/material-persistence-boundary`
 Base: `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`
-PR: none
+PR: https://github.com/kame447/StudyPlanner/pull/812
 
 ## Scope and decision
 
@@ -29,3 +29,22 @@ Next: characterize storage boundary on original code, move the persistence imple
 - Verification input: base above plus the staged 13-file candidate; staged diff SHA256 `d38ef4894cf2485fd1b4e0a72fbce497dc241b6372415d0ee9a71e321bfbfdb8`. Only this documentation checkpoint changed after verification.
 - Environment: Node24.19.0, Vitest3.2.7, Vite6.4.3, TypeScript5.9.3, Wrangler4.151.0. Final dependency installation checked against all242 installed manifest versions in lockfile (no required package missing), separate from the initial focused-only install using Wrangler4.151.1. Historical test fixture commit `070d25cbe14796aebb8168ac5425c93e3506df1c` fetched before full verification. Supported DEV_LAN_HOST overrides only dev URL discovery in the constrained shell, not test assertions or browser timing.
 - Browser/native CI, publication and merge not performed. This is behavior-preserving storage responsibility separation, not a fix for Issue805's native frame delays or the existing read-denial asymmetry. Parent owns publication and applicable external gates.
+
+
+## Current closure-readiness checkpoint (2026-10-23)
+
+- Reused PR #812 and its remote branch `refactor/material-persistence-boundary`; remote head `580ca45cb2ca2cba26eb4c5f0a91b67f63ae6e67`. No new remote branch/PR, publication, CI trigger, merge, or deletion. Current-main integration parent is `2ea267f41ba62c154ac83c260e19ad1fff4578a1`.
+- Fresh PR metadata, comments, review threads and actual diff inspected. No unresolved review threads or new human ownership claim; the PR has 13 changed files and preserves the original extraction. Only merge conflict was the client-runtime domain index: retain both the material-preferences link and main's mobile-retry link. No production implementation adjustment was needed.
+- Current native Browser Regression run 39848133871 has shard 2 success and shard 1 cancelled. Aggregate job 120084118094 fails because `SHARD_RESULT=cancelled`; shard 1 job 120066803651 reports cancellation after test 450, with no observed assertion failure. This is missing Chromium acceptance, not proof of an inventory defect or success.
+- UI Regression Matrix run 39848133872 fails three WebKit-mobile 1920x1080 material long-text cases: save/reload at 100%, cancel at 200%, save/reload at 200%, each exceeding 30s. Current main already contains the exact three-case 60s functional-budget decision; it is retained unchanged, not a rendering-performance fix. Exact integrated native rerun is still required.
+- Bundle job 120066801885 reports JavaScript totalGzip 695.2 KiB greater than 695.2 KiB (rounded log values). Current main's fixed reviewed baseline/growth policy is retained. A new build and gate on the integrated tree remain required; source policy inspection does not prove a new green build.
+- Local focused command: `DEV_LAN_HOST=127.0.0.1 npm run test:run -- src/lib/bookshelfMaterialDetails.boundary.test.ts src/lib/bookshelfMaterialDetails.test.ts src/repositories/materialDetailPreferencesRepository.test.ts src/components/BookshelfDialogs.test.tsx src/components/BookshelfView.nestedStructure.test.tsx src/components/BookshelfView.structureEditor.test.tsx src/components/BookshelfView.structurePersistence.test.tsx`. Exit 0: 7 files / 36 tests passed. Node 24.19.0 and Vitest 3.2.7; existing sibling dependency installation reused read-only through a node_modules symlink. No dependency-install or final aggregate proof is claimed.
+- PR #845's separate Month changes are not needed to address these observed failures and were not imported. Next integration owner action: exact-content review, dependency identity check and full `npm run verify`, then authorized publication/native gates. Full suite/build and native reruns were deliberately not launched in this scoped local preparation. Completion is not claimed.
+
+## Minimal merge continuation (2026-10-23)
+
+- Existing PR/branch resumed under explicit merge authorization. Current base `355b870a07dc06360f4f3b5418b150629a6dfad1` merged without conflicts; integration HEAD `1a0a7dd06ef5ea883e40cadbe48c95aa23428bad`, tree `e5826a5cd5418cd4d8678f9ea74d26746ecb1b30`. No new feature, PR or branch. Historical authorization/status statements above describe earlier checkpoints.
+- Original extraction retained. Persistence function bodies and remaining pure domain are byte-identical to the corresponding current-main code; component changes remain imports only. No unresolved review threads.
+- Focused seven files / 36 tests pass. Final `DEV_LAN_HOST=127.0.0.1 CLOUDFLARE_CF_FETCH_ENABLED=false npm run verify` exits 0: fresh app/Worker types, 1,072 files and 11,225 tests pass; 12 files/67 tests skipped and one todo; production build 15.67s. No lint script configured. Only this documentation checkpoint changes afterward.
+- Node 22.23.4; shared fresh dependency installation from the month-budget integration, with all 242 installed locked manifest versions matching and no missing required package. Lock SHA256 `01cc6c380a2797653d6e9a9dca8e5afe835a2278cb990d21dc6b220ca8aa466f`; installed lock SHA256 `e39a9cc4979b9c10b158be8d619db1c52645b8844b74016152d4514ff6241997`. No tracked/generated source drift after verification; untracked `.cache/` is tooling output and excluded.
+- Next: normal non-force publication to this existing branch, exact-head native CI, serialized merge and post-merge verification. Old failed/cancelled native results are not reused as acceptance.

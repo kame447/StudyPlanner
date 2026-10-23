@@ -143,5 +143,8 @@ test('only two original click sites are wrapped and persistence/screenshot order
   assert.ok(body.includes("'month-edit-end-picker', () => input.click()"));
   assert.ok(body.includes('await expect(minute).toHaveClass(/\\bactive\\b/)'));
   assert.ok(body.includes('toHaveText(`${hour}:00`)'));
-  assert.doesNotMatch(body, /setTimeout|force:\s*true|trial:\s*true|test\.skip/);
+  // Permit exactly the approved test-local budget, never timer waits or bypasses.
+  const budget = "if (width === 1280 && testInfo.project.name === 'webkit-mobile') test.setTimeout(60_000);";
+  assert.ok(body.includes(budget));
+  assert.doesNotMatch(body.replace(budget, ''), /setTimeout|force:\s*true|trial:\s*true|test\.skip/);
 });
