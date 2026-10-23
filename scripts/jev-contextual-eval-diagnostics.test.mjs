@@ -7,7 +7,7 @@ import { ERROR_BODY_BYTE_CAP, ERROR_BODY_TIMEOUT_MS, REQUEST_ID_LENGTH_CAP, empt
 import { validateArm } from './jev-contextual-paired-artifact.mjs';
 import { createPairedWorkerSource } from './jev-contextual-paired-runtime.mjs';
 import { buildWorkerBundle, loadBundleInProcess, preSendFor } from './jev-contextual-unit0-eval.mjs';
-import { PREREGISTERED_PRICING, callCostFields, classifyAttempt, settlementUsd } from './jev-contextual-unit0-budget.mjs';
+import { PREREGISTERED_PRICING, CURRENT_JEV_DRY_RUN_PRICING, callCostFields, classifyAttempt, settlementUsd } from './jev-contextual-unit0-budget.mjs';
 import { createBlindPacket } from './jev-contextual-unit0-review.mjs';
 import { dispatchFocusedContextual } from '../workers/ai-proxy/src/decision/focusedContextualDispatch.ts';
 import * as policy from '../workers/ai-proxy/src/decision/contextualDecisionPolicy.ts';
@@ -105,12 +105,12 @@ describe('eval error privacy and bounded reading', () => {
   });
 });
 
-const metadata = { provider: 'openrouter', requestedModel: 'typesafe/jev-1.13', servedModel: 'typesafe/jev-1.13',
+const metadata = { provider: 'openrouter', requestedModel: 'typesafe/jev-1.14', servedModel: 'typesafe/jev-1.14',
   latencyMs: 0, inputTokens: 1, outputTokens: 1, costUsd: 0.000001, requestBytes: 1, responseBytes: 1 };
 const evaluated = (choice = 'target', overrides = {}) => ({ status: 'evaluated', decision: choice, confidence: 0.999,
   probabilities: Object.fromEntries(['target', 'remaining', 'completed', 'focused_luna', 'fallback'].map(key => [key, key === choice ? 0.9996 : 0.0001])),
   conditionChange: 0.001, independentMeaning: 0.001, metadata, ...overrides });
-const wireJev = (result) => Response.json({ model: 'typesafe/jev-1.13', answers: {
+const wireJev = (result) => Response.json({ model: 'typesafe/jev-1.14', answers: {
   contextual_answer: { type: 'choice', choice: result.decision, confidence: result.confidence, probabilities: result.probabilities },
   condition_change: { type: 'noul', noul: result.conditionChange }, independent_meaning: { type: 'noul', noul: result.independentMeaning } },
   usage: { input_tokens: 1, output_tokens: 1, cost: 0.000001 } }, { headers: { 'x-generation-id': 'gen-synthetic_1' } });
@@ -178,7 +178,7 @@ const install = (provider) => {
 
 describe('eval-only dispatch records through the Unit 0 bundle', () => {
   beforeAll(async () => {
-    const bundle = await buildWorkerBundle({ cases: [item], preSend: preSendFor({ ...PREREGISTERED_PRICING, source: 'offline synthetic frozen tariff' }) });
+    const bundle = await buildWorkerBundle({ cases: [item], preSend: preSendFor({ ...CURRENT_JEV_DRY_RUN_PRICING, source: 'offline synthetic 1.14 tariff (non-evidence)' }) });
     ({ module: runtime } = await loadBundleInProcess(bundle, { digest: 'a'.repeat(64), expiresAt: 0 }));
   });
   it.each(['lunaOnly', 'jevFirst'])('records sanitized HTTP errors without changing latch/accounting for %s', async (arm) => {
@@ -293,7 +293,7 @@ describe('eval-only dispatch records through the Unit 0 bundle', () => {
     const request = { messages: [{ role: 'user', content: 'synthetic' }], maxCompletionTokens: 320,
       responseFormat: { type: 'json_schema', json_schema: { name: 'synthetic', schema: {} } } };
     const source = createPairedWorkerSource({ root: resolve('.'), cases: [], digest: 'a'.repeat(64), expiresAt: 0,
-      preSend: preSendFor({ ...PREREGISTERED_PRICING, source: 'offline synthetic frozen tariff' }) })
+      preSend: preSendFor({ ...CURRENT_JEV_DRY_RUN_PRICING, source: 'offline synthetic 1.14 tariff (non-evidence)' }) })
       .replace('const dispatches = [];', 'const dispatches = globalThis.__p1ThrowDispatches;');
     const bundled = await build({ stdin: { contents: source, resolveDir: resolve('.'), loader: 'ts' }, bundle: true,
       platform: 'node', format: 'esm', write: false, logLevel: 'silent', plugins: [{ name: 'synthetic-throw', setup(builder) {
