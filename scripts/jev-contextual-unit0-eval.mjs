@@ -9,7 +9,7 @@ import { createPairedWorkerSource } from './jev-contextual-paired-runtime.mjs';
 import { contextualArtifactCatalogVersion, validateArm } from './jev-contextual-paired-artifact.mjs';
 import { runtimeFingerprint, sha256, validateCorpus } from './jev-contextual-paired-eval.mjs';
 import { ARM_TOKEN_RESERVE_MS, ConsumptionLedger, PREREGISTERED_LIMITS, PREREGISTERED_PRICING, SEGMENT_TOKEN_LIFETIME_MS,
-  EARLY_CONSECUTIVE_INFRA_FAILURES, FAILURE_RATE_MINIMUM_ATTEMPTS, TURN_TIMEOUT_MS, reservePerCallUsd, segmentCanHost, validateLimits,
+  CURRENT_JEV_DRY_RUN_PRICING, EARLY_CONSECUTIVE_INFRA_FAILURES, FAILURE_RATE_MINIMUM_ATTEMPTS, TURN_TIMEOUT_MS, reservePerCallUsd, segmentCanHost, validateLimits,
   validatePricing, workerRates } from './jev-contextual-unit0-budget.mjs';
 import { DECISION_RULES, evaluateUnit0 } from './jev-contextual-unit0-decision.mjs';
 import { codePointCompare, executionOrder } from './jev-contextual-unit0-random.mjs';
@@ -397,7 +397,8 @@ export function decideFromArtifacts({ roster, artifactBytes, spendLedgerBytes, p
   assert.ok(Buffer.isBuffer(artifactBytes), 'The decision needs the actual result bytes.');
   const artifact = JSON.parse(artifactBytes.toString('utf8'));
   const pairs = validateR2Artifact(artifact, roster);
-  assert.equal(artifact.pricingVersion, PREREGISTERED_PRICING.version, 'Results were produced under another tariff contract.');
+  assert.equal(artifact.pricingVersion, roster.dryRun ? CURRENT_JEV_DRY_RUN_PRICING.version : PREREGISTERED_PRICING.version,
+    'Results were produced under another tariff contract.');
   if (!roster.dryRun) {
     assert.ok(approval, 'A real decision needs the approval the run was executed under.');
     for (const field of ['runtimeSha256', 'policySha256', 'corpusSha256', 'rubricSha256']) {
