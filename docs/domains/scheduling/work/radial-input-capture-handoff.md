@@ -1,8 +1,9 @@
 # Radial input capture ownership
 
-Status: stacked local verification and independent review passed; native CI pending.
+Status: actual main integration passed local final verification and bundle budget. Native CI for the updated head remains pending.
 Branch: `refactor/radial-input-capture-on-keyboard`.
-Base: `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
+PR base: `main`. Current integration base: `2ea267f41ba62c154ac83c260e19ad1fff4578a1`.
+Dependency: PR #808, head `22caa220d19f33100b7a0211ee33649ee1885ef1`.
 
 Day and Week independently implement the same pointer/touch ownership checks,
 armed-move admission, target lookup and click suppression. This duplicates the
@@ -24,9 +25,10 @@ to preserve its behavior and avoid duplicate changes in this PR diff. Production
 files merged cleanly; the sole test append conflict was resolved by retaining both
 complete, unchanged groups of added tests.
 
-Next: follow native browser CI on draft #815 to its terminal result. Combined
-verification and independent integration review passed. Publication is authorized;
-no main merge is authorized.
+Next: obtain current native browser/UI/quality evidence through the integration
+owner after publishing the verified actual-main integration. Preserve #808-before-#815 dependency order. No main merge is authorized.
+The older verification below is historical evidence, not proof for the current
+integration content.
 
 ## Verification checkpoint
 
@@ -61,3 +63,91 @@ no main merge is authorized.
   retargeted to main for the repository's main-only PR workflow filters. The
   cumulative PR diff includes that dependency; the radial commit remains isolated
   to five files relative to corrected #808. No main merge is authorized.
+
+
+## Current-main integration checkpoint (2026-10-23)
+
+- Existing draft #815 remains the sole PR for this responsibility. Remote head
+  `4a30bd47d0cd38e25abcade007825ec6bd096955` already includes #808's native
+  spanning-button consolidation at `22caa220`. Current main `2ea267f4` merges
+  cleanly without production or test changes to the radial delta.
+- Before this documentation correction, integrated tree
+  `91eb539a52644f1b258bae62959048888b22ae21` differs from #808's integrated tree
+  `cf83f77fcdc71ef4150a8152ba78417480262cae` by exactly the original five-file
+  patch, byte-for-byte. Day/Week cancellation, drag/swipe ordering, keyboard and
+  context ownership, pointer identity and multitouch admission are preserved.
+- Seven focused test files passed, **212 tests**: press controller, consumer
+  actions, flick integration, radial menu, action policy, gesture and menu layout.
+  This run used managed Node **24.19.0**, Vitest 3.2.7, Vite 6.4.4,
+  TypeScript 5.9.3 and React 18.3.1. It is implementation feedback only, not the
+  required final verification under repository-pinned Node **22.23.4**.
+- The first attempt stopped before running tests because development LAN-address
+  discovery was unavailable in the sandbox. The successful focused run used the
+  existing `DEV_LAN_HOST=127.0.0.1` setting; no test or source was altered.
+  All 242 installed package manifests matched lockfile versions, with no missing
+  required package. This manifest check is not a complete installed-byte identity
+  proof; final verification must record the actual installation and exact inputs.
+- Current remote-head Browser Regression **39851072369 passed**. UI Regression
+  Matrix **39851072605 failed both WebKit-mobile shards**; desktop and visual
+  jobs passed. UI Quality **39851072346 failed bundle-budget**, while browser
+  quality passed. Earlier single-mobile-shard descriptions do not describe this
+  head. These failures remain acceptance blockers, not waived baseline failures.
+- At preparation time, full verification was queued after #808; the completed
+  result is recorded below. No new browser run or physical iPhone validation is
+  claimed. This local preparation made no remote
+  update, replacement PR, CI dispatch, threshold relaxation or merge.
+- Exit criteria: exact integrated-content full `npm run verify`, relevant native
+  browser/UI/quality gates with failures resolved, dependency order respected,
+  and a current exact-diff review. Publication and merge remain separate actions
+  owned by the integration coordinator under the user's authorization.
+
+### Prospective #845 baseline
+
+Before final verification, published #845 head
+`b9629718d1dfcdab02d842bd98534cbc2a491c93` was merged into the local integration
+without conflict. It carries the separately approved reduced-motion/1280px
+WebKit-mobile overnight budget change and its scoped probes/tests. This is not a
+new change owned by #815. Its actual main merge is still pending; do not publish
+this prospective integration before the coordinator reconciles that merge.
+Local verification can be reused only if the eventual actual merged inputs match
+this exact reviewed content, with documentation-only changes separately checked.
+The radial production/test delta remains untouched.
+
+
+### Final local verification (2026-10-23)
+
+- Exact pre-checkpoint tree `0102baadf6a07a2323ccc7b406fe1cc51aabb031`
+  passed `npm run verify`, exit 0: fresh non-incremental app/Worker typechecks,
+  **1,070 test files / 11,211 tests passed**, 12 files / 67 tests skipped and
+  one todo, then production build in **14.63 seconds**. Those skips/todo are
+  reported, not counted as executed passes.
+- Runtime was repository-pinned **Node 22.23.4**, with Vitest 3.2.7,
+  Vite 6.4.4, TypeScript 5.9.3 and React 18.3.1. The supported LAN override and
+  telemetry/CF-metadata opt-outs listed above were used. No checks were removed.
+- All **3,038 tracked files** were byte-identical before and after verification:
+  sorted-path/SHA256 JSON manifest digest
+  `664266e7110cde6e4f2791b74918fc3a27f3e82a3ffa183131ca9bb580f8bf0a`.
+  All **19,392 installed files** excluding disposable `.cache`, `.vite` and
+  `.vite-temp` caches were also unchanged: manifest digest
+  `7b7175fe339d6868dab9520a011028a3c86b8610a08a7de06e709ffcb7ff6c0c`.
+  HEAD was `eb714596`, with staged #845 merge and checkpoint inputs represented
+  by the exact verified tree above. This subsequent checkpoint edit is docs-only.
+- The existing `scripts/ci/check-bundle-budget.mjs` passed on that production
+  build: JavaScript 2555.3 KiB raw / 695.3 KiB gzip; CSS 502.1 KiB raw /
+  87.8 KiB gzip. No budget, policy, test or assertion was changed by this PR.
+- This closes final local verification only. Native current-content browser,
+  visual, security and quality gates, actual-main reconciliation, and #808
+  dependency ordering remain required before the coordinator's merge decision.
+
+
+### Actual-main reconciliation (2026-10-23)
+
+PR #845 is merged as main `ae833f7ac4d7af1d09a66da586f96276cdf085f4`,
+whose tree `13b9d719fbc01e748fccb5346dd226f8c57cf2b8` is identical to the
+prevalidated #845 head `b9629718`. The actual-main integration therefore changes
+no production, test, build, configuration or dependency input relative to the
+successful local verification. Only this checkpoint has changed afterward.
+Publication reuses existing #815 and its branch, preserving old head `4a30bd47`
+as first parent and actual main as another parent. Native CI remains pending on
+that new head. The user's batch approval permits merge after all applicable gates
+pass; the integration coordinator retains merge timing, with #808 before #815.
