@@ -699,3 +699,7 @@
 .study-session-page[data-phase="settings"] {
   scroll-padding-bottom: 16px;
 }
+
+.study-session-page[data-phase="record"] {
+  scroll-padding-bottom: 16px;
+}
