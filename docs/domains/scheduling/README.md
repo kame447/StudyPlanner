@@ -38,6 +38,8 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 
 ## Active work
 
+- [Planner projection transition boundary](work/planner-projection-boundary-handoff.md) — move pure accepted-mutation collection rules out of React orchestration without changing persistence or read/admission authority.
+
 - [Restore the accepted major event on Undo](work/month-event-undo-latest-handoff.md) — local two-reference correction with real-Local persistence and progress regression coverage; publication/native pending.
 
 - [Calendar recurrence evaluation](work/calendar-recurrence-evaluation-handoff.md) — reuse the selected occurrence rule; exact-content publication verification in progress.
