@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ConsumptionLedger, PREREGISTERED_LIMITS, PREREGISTERED_PRICING, SEGMENT_TOKEN_LIFETIME_MS, reservePerCallUsd,
+import { ConsumptionLedger, PREREGISTERED_LIMITS, CURRENT_JEV_DRY_RUN_PRICING, SEGMENT_TOKEN_LIFETIME_MS, reservePerCallUsd,
   validateLimits } from './jev-contextual-unit0-budget.mjs';
 import { DRY_RUN_STATUS, R2_ARTIFACT_SCHEMA, buildRoster, buildWorkerBundle, decideFromArtifacts, loadBundleInProcess, preSendFor,
   runSerialEvaluation, workerCases } from './jev-contextual-unit0-eval.mjs';
@@ -17,8 +17,8 @@ import { DRY_RUN_LABEL_SOURCE, REVIEW_SCHEMA, canonicalJson, createBlindPacket, 
 // produced here is evidence, and fixture labels carry a fixture-only source.
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-// The preregistration §19a values, used here only to exercise the arithmetic.
-export const DRY_RUN_PRICING = Object.freeze({ ...PREREGISTERED_PRICING, source: 'dry-run copy of preregistration §19a values' });
+// Current Jev 1.14 fixtures only; historical preregistration is unchanged.
+export const DRY_RUN_PRICING = Object.freeze({ ...CURRENT_JEV_DRY_RUN_PRICING, source: 'dry-run 1.14 tariff (not approved holdout evidence)' });
 
 export async function buildMockSets() {
   const development = JSON.parse(await readFile(join(ROOT, 'scripts/jev-contextual-development-corpus.json'), 'utf8'));
@@ -44,7 +44,7 @@ export async function buildMockSets() {
   return { B: make('B', 30), C: make('C', 35) };
 }
 
-const jevResponse = (choice, cost = 0.00001) => Response.json({ model: 'typesafe/jev-1.13',
+const jevResponse = (choice, cost = 0.00001) => Response.json({ model: 'typesafe/jev-1.14',
   answers: { contextual_answer: { type: 'choice', choice, confidence: 0.999,
     probabilities: Object.fromEntries(['target', 'remaining', 'completed', 'focused_luna', 'fallback']
       .map((key) => [key, key === choice ? 0.9996 : 0.0001])) },
@@ -179,7 +179,7 @@ export async function runDryRun({ scenario: name, outputDir, replicates = 20_000
     transport: createInProcessTransport({ bundle, scenario, clock, counters }),
     verifyFrozenInputs: async () => ({ workerBundleSha256: bundle.templateSha256, dryRun: true }) });
   const artifact = { schemaVersion: R2_ARTIFACT_SCHEMA, dryRun: true, runId: 'dry-run-' + name, corpusSha256: roster.corpusSha256,
-    pricingVersion: PREREGISTERED_PRICING.version,
+    pricingVersion: pricing.version,
     runtimeSha256: 'd'.repeat(64), policySha256: 'e'.repeat(64), workerBundleSha256: bundle.templateSha256,
     attemptedAt: new Date(now).toISOString(), expectedTurns: roster.cases.length * 2, spendLedgerPath: ledgerPath, ...result };
   const artifactBytes = Buffer.from(JSON.stringify(artifact, null, 2));
