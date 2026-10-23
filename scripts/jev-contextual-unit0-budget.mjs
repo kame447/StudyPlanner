@@ -37,6 +37,23 @@ export const PREREGISTERED_PRICING = Object.freeze({
     sources: Object.freeze(['https://openrouter.ai/typesafe/jev-1.13/api',
       'https://openrouter.ai/api/v1/models/typesafe/jev-1.13/endpoints']), verifiedAt: '2026-10-04' }),
 });
+
+// Current-model dry-run contract. The 2026-10-05 preregistration remains
+// immutable, so past approvals/evidence cannot be retroactively reinterpreted.
+export const CURRENT_JEV_DRY_RUN_PRICING = Object.freeze({
+  ...PREREGISTERED_PRICING,
+  version: 'unit0-r2-dry-run-jev114-2026-10-23',
+  jev: Object.freeze({
+    ...PREREGISTERED_PRICING.jev,
+    model: 'typesafe/jev-1.14',
+    servedModels: Object.freeze(['typesafe/jev-1.14', 'typesafe/jev-1.14-20261014']),
+    sources: Object.freeze([
+      'https://openrouter.ai/typesafe/jev-1.14',
+      'https://openrouter.ai/api/v1/models/typesafe/jev-1.14/endpoints',
+    ]),
+    verifiedAt: '2026-10-23',
+  }),
+});
 // Served-condition check on a provider response. null = no response to judge
 // (the call's usage is then missing anyway). false voids the bounds and stops
 // the run. Luna conforms only when it reports service_tier "default" (the
@@ -146,7 +163,7 @@ export function callCostFields(dispatch, pricing) {
   }
   return { providerReportedCostUsd: reported, costUpperBoundUsd: upper, costLowerBoundUsd: lower,
     usageComplete, tariffConforms: conforms, pricingVersion: pricing.version,
-    basis: dispatch.provider === 'jev' ? 'openrouter typesafe/jev-1.13 input rate; reported cost same call' : 'openai standard text gpt-5.6-luna; input cache-write upper / cached-input lower' };
+    basis: dispatch.provider === 'jev' ? 'openrouter ' + pricing.jev.model + ' input rate; reported cost same call' : 'openai standard text gpt-5.6-luna; input cache-write upper / cached-input lower' };
 }
 // Budget settlement uses the reported cost or the sound upper bound, never a
 // lower bound; otherwise the reservation stays open.
