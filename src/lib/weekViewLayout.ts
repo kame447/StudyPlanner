@@ -1,5 +1,4 @@
-import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
-import { addDays, minutesBetween, minutesFromTime } from './date';
+import { minutesBetween, minutesFromTime } from './date';
 
 interface WeekViewTimeRange {
   startTime: string;
@@ -9,27 +8,6 @@ interface WeekViewTimeRange {
 export interface WeekViewLane {
   lane: number;
   laneCount: number;
-}
-
-export function scheduleOccurrenceCoversDate(
-  occurrence: ScheduleOccurrence,
-  date: string,
-): boolean {
-  const dayStart = `${date}T00:00`;
-  const dayEnd = `${addDays(date, 1)}T00:00`;
-  const occurrenceStart = `${occurrence.start.date}T${occurrence.start.time}`;
-  const occurrenceEnd = `${occurrence.end.date}T${occurrence.end.time}`;
-  return occurrenceEnd > dayStart && occurrenceStart < dayEnd;
-}
-
-export function scheduleOccurrenceTimesForDate(
-  occurrence: ScheduleOccurrence,
-  date: string,
-): { startTime: string; endTime: string } {
-  return {
-    startTime: occurrence.start.date === date ? occurrence.start.time : '00:00',
-    endTime: occurrence.end.date === date ? occurrence.end.time : '24:00',
-  };
 }
 
 export function buildLanes<T extends WeekViewTimeRange>(items: T[]): Array<T & WeekViewLane> {

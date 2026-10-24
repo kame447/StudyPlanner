@@ -85,7 +85,7 @@ describe('Issue #335 temporal-scope Worker routing / response-envelope containme
             ? 'plan_unavailable'
             : 'uncertain';
           return Response.json({
-            model: 'typesafe/jev-1.13',
+            model: 'typesafe/jev-1.14',
             answers: {
               temporal_scope: {
                 type: 'choice',
@@ -173,7 +173,7 @@ describe('Issue #335 temporal-scope Worker routing / response-envelope containme
       }
       if (url === 'https://openrouter.ai/api/alpha/decisions') {
         return Response.json({
-          model: 'typesafe/jev-1.13',
+          model: 'typesafe/jev-1.14',
           answers: {
             temporal_scope: {
               type: 'choice',
@@ -278,7 +278,7 @@ describe('Issue #335 temporal-scope Worker routing / response-envelope containme
         providerCalls.push(url);
         if (url === 'https://openrouter.ai/api/alpha/decisions') {
           expect(JSON.parse(String(init?.body)).state).toEqual(state);
-          return Response.json({ model: 'typesafe/jev-1.13', answers: {
+          return Response.json({ model: 'typesafe/jev-1.14', answers: {
             temporal_scope: { type: 'choice', choice: 'plan_unavailable', confidence: 0.99, probabilities: { plan_unavailable: 0.99, uncertain: 0.01 } },
             condition_change: { type: 'noul', noul: 0.99 }, independent_meaning: { type: 'noul', noul: 0.99 },
           } });

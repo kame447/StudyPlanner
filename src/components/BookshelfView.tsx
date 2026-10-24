@@ -31,9 +31,11 @@ import {
   groupMaterialsBySubjectId,
 } from '../lib/bookshelfMaterials';
 import {
-  getDefaultMaterialDetailPreferences,
   loadMaterialDetailPreferences,
   saveMaterialDetailPreferences,
+} from '../repositories/materialDetailPreferencesRepository';
+import {
+  getDefaultMaterialDetailPreferences,
   type MaterialDetailPreferences,
 } from '../lib/bookshelfMaterialDetails';
 import {

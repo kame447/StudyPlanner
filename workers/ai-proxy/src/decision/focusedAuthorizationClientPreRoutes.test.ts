@@ -67,7 +67,7 @@ describe('focused authorization client → Worker → semantic builder', () => {
           expect(body.state).toEqual({ currentUserText: userInput.userText, lastAssistantMessage: userInput.publicStateSummary?.lastAssistantMessage });
           expect(JSON.stringify(body)).not.toContain('private-task-id');
           if (kind === 'unavailable' || kind === 'dual failure') return Response.json({}, { status: 503 });
-          return Response.json({ model: 'typesafe/jev-1.13', answers: {
+          return Response.json({ model: 'typesafe/jev-1.14', answers: {
             authorization: { type: 'choice', choice: kind === 'accepted fallback' ? 'fallback' : 'create_plan', confidence: kind === 'abstain' || kind === 'luna fallback' ? 0.5 : 0.99, probabilities: kind === 'accepted fallback' ? { create_plan: 0.01, fallback: 0.99 } : { create_plan: 0.99, fallback: 0.01 } },
             condition_change: { type: 'noul', noul: 0 },
             independent_meaning: { type: 'noul', noul: kind === 'mixed' ? 0.99 : 0 },

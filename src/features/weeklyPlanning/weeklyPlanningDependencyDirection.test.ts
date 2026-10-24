@@ -38,7 +38,19 @@ const planningPersistence = new Set([
   `${weekly}application/weeklyPlanningApprovalMemoryRepository.ts`,
 ]);
 
-type Rule = 'semantic-provider' | 'semantic-dialogue-persistence' | 'legacy-parser';
+// Keep dormant legacy callers and erased migration/trace types inspectable without
+// promoting them into the current semantic runtime. These are the live facades.
+const liveApplications = new Set([
+  `${weekly}application/weeklyPlanningTurnApplication.ts`,
+  `${weekly}application/weeklyPlanningApprovalApplication.ts`,
+]);
+const legacySemanticRuntime = new Set([
+  'src/services/naturalLanguageRules.ts',
+  `${weekly}pipeline/weeklyPlanningIntakePipeline.ts`,
+  `${weekly}pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts`,
+]);
+
+type Rule = 'semantic-provider' | 'semantic-dialogue-persistence' | 'legacy-parser' | 'live-legacy-runtime';
 interface Edge { from: string; line: number; specifier: string | null; to: string | null }
 interface Violation { entry: string; rule: Rule; path: Edge[] }
 
@@ -125,7 +137,7 @@ function checkDirections(root: string, entries: string[], options: ts.CompilerOp
     emitDeclarationOnly: false, sourceMap: false, inlineSourceMap: false };
   type ResolvedEdge = Edge & { resolved?: ts.ResolvedModuleFull };
   const modules = new Map<string, { source: string; raw: ResolvedEdge[]; exact?: ResolvedEdge[] }>();
-  const rules: Rule[] = ['semantic-provider', 'semantic-dialogue-persistence', 'legacy-parser'];
+  const rules: Rule[] = ['semantic-provider', 'semantic-dialogue-persistence', 'legacy-parser', 'live-legacy-runtime'];
   const candidatePaths = new Map(rules.map(rule => [rule, new Set<string>()]));
   const inspectionCandidates = new Set<string>();
   const reverse = new Map<string, Set<string>>();
@@ -137,6 +149,7 @@ function checkDirections(root: string, entries: string[], options: ts.CompilerOp
     if (rule === 'semantic-provider') return providerImplementations.has(to)
       || /(?:^|\/)node_modules\/(?:firebase|@firebase)\//.test(to);
     if (rule === 'semantic-dialogue-persistence') return to.startsWith('src/repositories/') || planningPersistence.has(to);
+    if (rule === 'live-legacy-runtime') return legacySemanticRuntime.has(to);
     // PROJECT_MAP.md:147; current-contract-v5.md:32,42,52 forbid legacy fallback.
     return to.startsWith('src/services/natural-language/') || to === 'src/services/naturalLanguagePlanner.ts';
   }
@@ -194,8 +207,10 @@ function checkDirections(root: string, entries: string[], options: ts.CompilerOp
 
   for (const entry of entries) {
     const entryPath = portable(relative(root, entry));
-    const relevant = rules.filter(rule => rule === 'legacy-parser' || entryPath.startsWith(semantic)
-      || (rule === 'semantic-dialogue-persistence' && entryPath.startsWith(dialogue)));
+    const relevant = rules.filter(rule => rule === 'live-legacy-runtime'
+      ? liveApplications.has(entryPath)
+      : rule === 'legacy-parser' || entryPath.startsWith(semantic)
+        || (rule === 'semantic-dialogue-persistence' && entryPath.startsWith(dialogue)));
     // Every source is already scanned. An emitted subset cannot create a route
     // absent from the syntactic graph, so safe origins need no second traversal.
     if (!inspectionCandidates.has(entryPath) && !relevant.some(rule => candidatePaths.get(rule)!.has(entryPath))) continue;
@@ -260,6 +275,8 @@ describe('weekly planning module dependency directions', () => {
     expect(config.error).toBeUndefined();
     expect(compilerConfig.errors).toEqual([]);
     const entries = productionFiles(join(repository, weekly));
+    expect(entries.map(file => portable(relative(repository, file))))
+      .toEqual(expect.arrayContaining([...liveApplications]));
     expect(entries.filter(file => portable(file).includes('/semantic/')).length).toBeGreaterThan(100);
     expect(entries.filter(file => portable(file).includes('/dialogue/')).length).toBeGreaterThan(10);
     const result = checkDirections(repository, entries, compilerConfig.options, ts.sys);
@@ -332,6 +349,51 @@ describe('weekly planning module dependency directions', () => {
       expect(() => assertDirections(result)).toThrow();
     },
   );
+
+  describe.each([
+    `${weekly}application/weeklyPlanningTurnApplication.ts`,
+    `${weekly}application/weeklyPlanningApprovalApplication.ts`,
+  ])('live application semantic boundary: %s', entry => {
+    it.each([
+      'src/services/naturalLanguageRules.ts',
+      `${weekly}pipeline/weeklyPlanningIntakePipeline.ts`,
+      `${weekly}pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts`,
+    ])('rejects direct, re-exported and dynamic runtime access to %s', implementation => {
+      const specifier = `@fixture/${implementation.slice('src/'.length, -3)}`;
+      for (const source of [
+        `import '${specifier}';`,
+        `export * from '${specifier}';`,
+        `export const load = () => import('${specifier}');`,
+      ]) {
+        for (const indirect of [false, true]) {
+          const result = fixture(indirect ? "export * from '../../../../shared/bridge';" : source, entry, {
+            'shared/bridge.ts': source,
+            [implementation]: 'export const interpret = () => {};',
+          });
+          expect(result.incomplete).toEqual([]);
+          expect(result.violations.map(hit => hit.rule)).toEqual(['live-legacy-runtime']);
+          expect(result.violations[0].path.map(edge => edge.to))
+            .toEqual(indirect ? ['shared/bridge.ts', implementation] : [implementation]);
+          expect(() => assertDirections(result)).toThrow();
+        }
+      }
+    });
+
+    it('allows erased trace/migration types without executing the legacy pipeline', () => {
+      assertDirections(fixture(`
+        import type { LegacyShape } from '@fixture/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline';
+        export type TraceShape = LegacyShape;
+      `, entry, {
+        [`${weekly}pipeline/weeklyPlanningIntakePipeline.ts`]: 'export interface LegacyShape {}',
+      }));
+    });
+  });
+
+  it('does not classify dormant legacy callers as live application execution', () => {
+    assertDirections(fixture("import '@fixture/services/naturalLanguageRules';", `${weekly}parsing/legacy.ts`, {
+      'src/services/naturalLanguageRules.ts': 'export const interpret = () => {};',
+    }));
+  });
 
   it('allows typed contracts/domain values without treating comments or strings as dependencies', () => {
     assertDirections(fixture(`

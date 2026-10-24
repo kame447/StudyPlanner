@@ -1,6 +1,6 @@
 # Class schedule commit lifetime
 
-Status: active local fix; full local verification passed, native/integration acceptance pending
+Status: active PR #821; current-main integration verification in progress
 Branch: `fix/class-schedule-commit-lifetime`
 Base: `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`
 
@@ -35,3 +35,16 @@ Verified implementation commit `9b71504a81254b79e691f72690e799ce0682d084`, tree 
 Environment used `TZ=UTC`, explicit `DEV_LAN_HOST=127.0.0.1`, telemetry/optional network disabled with `DO_NOT_TRACK=1`, `WRANGLER_SEND_METRICS=false`, `WRANGLER_SEND_ERROR_REPORTS=false`, `WRANGLER_HIDE_BANNER=true`, `WRANGLER_NO_SKILLS_UPDATE_PROMPTS=true`, `CLOUDFLARE_CF_FETCH_ENABLED=false`, and a temporary Wrangler log path. Tracked input bytes remained unchanged. Verification generated only an untracked `.cache/` directory. All 19,392 installed dependency files were inventoried before and after (excluding disposable `.cache`, `.vite` and `.vite-temp` directories): no differences; canonical sorted inventory SHA-256 `f3337a266db7d5caef79631673be639556310492a97b7bb8bae0e751547edbd1`.
 
 Both independent reviews found no blocker. This checkpoint addition is documentation-only and does not invalidate implementation evidence. Remaining gates are integration/publication authorization and applicable browser/CI acceptance; full local verification is not native-browser or Firestore Rules execution. No publication, main edit or merge performed.
+
+
+## Resumed integration — 2026-10-24
+
+The owner authorized normal publication to the existing branch and merge after verification. Continuing remote head `845dbb8b578acdf36660d717d76e059a3bd3ce30` on `fix/class-schedule-commit-lifetime`, PR #821, after checking current PR discussion and competing branches. Main `aaac18833d2565d23bd7d5e68ffe0c962887c91b` is integrated normally; the only conflict is a documentation-index union retaining both links. Production remains the two-line layout-effect change, with original three regression tests unchanged. No replacement PR or expanded admission policy.
+
+The previous local worktree and dependency seed are unavailable in the restored execution environment. Historical local verification therefore is not reused. Next: fresh dependency identity, focused regressions, one coordinated final full verification, exact-head native gates and serialized merge. Retained post-unmount submission admission remains outside this fix; pending persistence is preserved, while unmounted UI continuations are retired. Layout setup reactivates the mounted flag for effect re-setup, and actual parent detail identity is keyed by owner and lesson. This source review is not a claim of native StrictMode timing reproduction.
+
+### Exact-content final local verification
+
+`npm run verify` exited 0 on `15f0955a95b6c3d21d262585d742dff2b75162b8`, tree `8bf6f2b0e8eadcffbbb8a3a4cbfe634a2e8aa6a2`, integrated with main `aaac18833d2565d23bd7d5e68ffe0c962887c91b`: fresh app/Worker checks and runtime-type regeneration; 11,312 passing tests across 1,078 passing files; production build 13.58s. The 67 skips, 12 skipped files and 1 todo remain separate. The focused three files also passed 23/23. Local supplied Node 24.22.1/npm 11.9.0 passes the repository runtime guard; native CI pins Node 22.23.4.
+
+Fresh npm-ci dependency seed matched package/lock hashes and all 19,392 installed entries before use, copied without shared hardlinks. All 3,061 tracked inputs, installed entries and Node bytes remained unchanged across verification; generated `.cache/` is untracked and excluded. Verification used UTC, loopback DEV_LAN_HOST, telemetry disabled and a per-worktree Wrangler log. The source diff remains the original two-line production correction and unchanged three regressions; this result addition is documentation only. Remote native CI and merge acceptance remain pending, not inferred from local verification.

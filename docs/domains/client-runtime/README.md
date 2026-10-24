@@ -23,6 +23,8 @@ Execution tracking:
 
 - [Class-schedule commit lifetime](work/class-schedule-commit-lifetime-handoff.md) — retire old schedule-save completion before it can dismiss a replacement attendance form.
 
+- [Study-session finish measurement boundary](work/study-session-finish-boundary-handoff.md) — pure temporal projection with preserved Pomodoro/date contracts; integration verification pending.
+
 - [Existing linked-Actual write read](work/actual-existing-write-read-handoff.md) — Issue #542; reuse save-attempt existence evidence while retaining transaction rereads and fail-closed deletion handling.
 
 - [Non-spatial data motion geometry](work/nonspatial-data-motion-layout-handoff.md) — skip unused rectangle measurements while preserving motion baselines and reduced feedback.
@@ -112,3 +114,7 @@ Client-first does not imply client-authoritative shared state. Authentication, o
 - [Administrator console style loading](work/admin-console-style-loading-handoff.md): Issue #542; local-only deferral of administrator-specific CSS, preserving shared shell cascade and all media/theme behavior.
 
 - [Optional delivery native acceptance](work/delivery-acceptance-ci-handoff.md): PR #729 fixture, emitted-asset and browser-transport corrections; native rerun tracked separately.
+
+- [Material record preparation](work/material-record-preparation-handoff.md) — pure record construction separated from admitted persistence.
+- [Material preferences boundary](work/material-preferences-boundary-handoff.md) — local behavior-preserving separation of material domain rules from browser persistence.
+- [Mobile WebKit paint investigation and retry recording](work/mobile-retry-recording-handoff.md): bounded retry capture; root-paint candidates rejected, with #805 still unresolved.
