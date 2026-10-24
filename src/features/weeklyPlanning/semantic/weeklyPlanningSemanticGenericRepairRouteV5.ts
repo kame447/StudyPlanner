@@ -83,6 +83,49 @@ export async function runGenericSemanticRepairRouteV5(params: {
       committedGraph: params.run.input.committedGraph,
     },
   );
+  // An empty repair must not erase a separate, valid update from a compound
+  // answer. Recover only independently validated updates to already-bound tasks;
+  // cross-task operations and new identities still require the whole-document path.
+  const initial = params.initialValidation.providerDocument;
+  const repaired = repairedValidation.document;
+  const pending = params.run.input.publicStateSummary?.pendingQuestion as { questionCode?: unknown } | undefined;
+  if (pending?.questionCode === 'missing_effort_estimate'
+    && initial?.planningIntent === 'update_plan' && initial.planningWindow === null
+    && initial.tasks.length > 1 && repaired && repaired.tasks.length === 0
+    && repaired.planningIntent === initial.planningIntent
+    && [initial, repaired].every(document => document.planningWindow === null
+      && document.relations.length === 0 && document.availabilityDeclarations.length === 0
+      && document.constraintSourceRequests.length === 0 && (document.userContextFacts?.length ?? 0) === 0
+      && document.uncertainties.length === 0 && document.corrections.length === 0
+      && document.decisions.length === 0 && (document.conversationActs?.length ?? 0) === 0)) {
+    const tasks = initial.tasks.flatMap(task => {
+      if (!task?.existingPublicId) return [];
+      const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify({ ...initial, tasks: [task] }), {
+        currentUserText: params.run.input.userText,
+        supplementalContext: params.run.input.supplementalContext,
+        selectedStarterTarget: params.run.input.selectedStarterTarget,
+        recentConversation: params.run.input.recentConversation,
+        publicStateSummary: params.run.input.publicStateSummary,
+        committedGraph: params.run.input.committedGraph,
+      });
+      return validation.document?.tasks.filter(value => value.effortEstimates.length > 0
+        || value.temporalConstraints.length > 0) ?? [];
+    });
+    if (tasks.length > 0) {
+      const recovered = validateWeeklyPlanningSemanticResponseV5(JSON.stringify({ ...repaired, tasks }), {
+        currentUserText: params.run.input.userText,
+        supplementalContext: params.run.input.supplementalContext,
+        selectedStarterTarget: params.run.input.selectedStarterTarget,
+        recentConversation: params.run.input.recentConversation,
+        publicStateSummary: params.run.input.publicStateSummary,
+        committedGraph: params.run.input.committedGraph,
+      });
+      if (recovered.document) {
+        recovered.algorithmicRepairs.push('semantic-repair:retained-independently-validated-task-updates');
+        Object.assign(repairedValidation, recovered);
+      }
+    }
+  }
   params.run.addAlgorithmicRepairs(repairedValidation.algorithmicRepairs);
   // Compare provider shapes only as a pair. Legacy omitted optional fields can
   // prevent raw reading; retain the existing parsed/validated guard in that case.
