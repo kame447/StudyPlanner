@@ -1,11 +1,31 @@
 import { resolveJevPurposeRollout, jevPurposeCanarySelected, type JevRolloutEnv } from './jevPurposeRollout';
 import type { DecisionEvaluation } from './decisionProvider';
 
-// Update the request ID and the verified response allowlist together on model upgrade.
+// The OpenRouter alias follows new stable Jev releases without a Worker code change.
+// Keep the known IDs as test fixtures; do not mistake them for a runtime allowlist.
 export const JEV_MODEL = {
-  request: 'typesafe/jev-1.14',
+  request: '~typesafe/jev-latest',
   responses: ['typesafe/jev-1.14', 'typesafe/jev-1.14-20261014'] as readonly string[],
 } as const;
+
+// Fail closed on older Jev, another model family, or an unknown major release.
+// Validate dated snapshots rather than accepting arbitrary provider model strings.
+export function isSupportedJevServedModel(model: unknown): model is string {
+  if (typeof model !== 'string') return false;
+  const match = /^typesafe\/jev-([1-9]\d*)\.([1-9]\d*)(?:-(\d{8}))?$/.exec(model);
+  const minor = Number(match?.[2]);
+  if (!match || Number(match[1]) !== 1 || !Number.isSafeInteger(minor) || minor < 14) return false;
+  const date = match[3];
+  if (!date) return true;
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(4, 6));
+  const day = Number(date.slice(6, 8));
+  const timestamp = Date.UTC(year, month - 1, day);
+  return timestamp >= Date.UTC(2026, 9, 14)
+    && timestamp <= Date.now() + 86_400_000
+    && new Date(timestamp).toISOString().slice(0, 10)
+      === `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+}
 export const JEV_CATALOG_VERSION = 'focused-authorization-2026-09-27';
 export const JEV_GATE_VERSION = 'authorization-conservative-v2-tuning81';
 export const JEV_TIMEOUT_MS = 1_500;
