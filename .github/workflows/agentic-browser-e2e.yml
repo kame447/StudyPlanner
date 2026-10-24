@@ -1,5 +1,8 @@
 name: Agentic Browser E2E
 
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+
 on:
   pull_request:
     branches:

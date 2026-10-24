@@ -50,6 +50,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
   MUTATION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:

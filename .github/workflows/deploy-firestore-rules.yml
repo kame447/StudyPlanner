@@ -1,5 +1,8 @@
 name: Deploy Firestore Rules
 
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+
 on:
   push:
     branches:
