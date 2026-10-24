@@ -19,7 +19,7 @@ async function composer(page) {
 async function submitWeekly(page, text) {
   const input = await composer(page);
   await input.fill(text);
-  await input.press('Enter');
+  await page.getByRole('button', { name: '送信', exact: true }).click();
 }
 
 async function createDraftReadyForApproval(page) {

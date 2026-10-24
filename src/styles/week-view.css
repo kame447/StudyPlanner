@@ -74,23 +74,10 @@
   gap: 8px;
 }
 
-.comparison-card {
-  padding: 14px;
-  display: grid;
-  gap: 10px;
-}
-
 .week-comparison-card {
   padding: 10px;
   gap: 8px;
   border-radius: 16px;
-}
-
-.comparison-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
 }
 
 .week-comparison-head {
@@ -128,21 +115,6 @@
   border-radius: 999px;
   overflow: hidden;
   background: var(--comparison-track-bg);
-}
-
-.comparison-plan-bar,
-.comparison-actual-bar {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-}
-
-.comparison-plan-bar {
-  background: linear-gradient(90deg, var(--comparison-plan-start), var(--comparison-plan-end));
-}
-
-.comparison-actual-bar {
-  background: linear-gradient(90deg, var(--comparison-actual-start), var(--comparison-actual-end));
 }
 
 .week-timeline-toolbar {
@@ -315,7 +287,7 @@
 }
 
 .week-timeline-block:hover {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
 }
 
 .week-timeline-entry-line,

@@ -1,4 +1,5 @@
-import { addDays, minutesBetween } from '../lib/date';
+import { getEntryDurationMinutes } from '../lib/entryTimeRange';
+import { addDays } from '../lib/date';
 import {
   buildPlanOccurrenceKey,
   expandPlansForDate,
@@ -12,11 +13,11 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function getPlanMinutes(plan: Plan): number {
-  return minutesBetween(plan.startTime, plan.endTime);
+  return getEntryDurationMinutes(plan.startTime, plan.endTime);
 }
 
 function getActualMinutes(actual: Actual): number {
-  return minutesBetween(actual.actualStartTime, actual.actualEndTime);
+  return getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime);
 }
 
 function calculateAchievement(

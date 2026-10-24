@@ -3,7 +3,6 @@ import { createPlanDraftFromWeeklyDraftBlock } from './application/weeklyPlannin
 import {
   applyWeeklyPlanningConditionOverride,
   assessWeeklyPlanningRequest,
-  createAvailabilityAwareWeeklyDraftBlocksFromText,
   createFallbackWeeklyDraftBlock,
   createSimpleWeeklyDraftBlocksFromText,
   createWeeklyDraftBlockFromPlanDraft,
@@ -402,46 +401,6 @@ describe('weeklyPlanningTransforms.integration', () => {
     ]);
   });
 
-  it('creates drafts from updated pending conditions instead of default conditions', () => {
-    const sourceText =
-      '来週、英語10時間、計算理論10時間、線形代数8時間、確率統計6時間、卒研8時間、Java実装6時間、レポート作成4時間、Obsidian整理3時間やりたい';
-    const assessment = assessWeeklyPlanningRequest({
-      selectedDate: '2026-06-19',
-      text: sourceText,
-    });
-    let pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
-
-    for (const reply of ['7日間で', '1回90分で', '9時から24時で']) {
-      const override = applyWeeklyPlanningConditionOverride({
-        config: pendingConfig,
-        text: reply,
-      });
-      expect(override.kind).toBe('updated');
-      if (override.kind !== 'updated') return;
-      pendingConfig = override.config;
-    }
-
-    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
-      userId: 'user-1',
-      selectedDate: '2026-06-19',
-      text: sourceText,
-      pendingConfig,
-      existingPlans: [],
-    });
-
-    expect(result.defaults).toMatchObject({ dayCount: 7, maxSessionMinutes: 90 });
-    expect(result.unplacedMinutes).toBe(0);
-    expect(totalDraftMinutes(result.blocks)).toBe(3300);
-    expect(
-      result.blocks.every(
-        (block) =>
-          minutesBetween(block.startTime, block.endTime) <= 90 &&
-          minutesFromClock(block.startTime) >= minutesFromClock('09:00') &&
-          minutesFromClock(block.endTime) <= minutesFromClock('24:00'),
-      ),
-    ).toBe(true);
-  });
-
   it('does not treat short condition replies as weekly planning requests without pending state', () => {
     ['7日間で', '1回90分で', '13時から22時で', '休憩15分で'].forEach((reply) => {
       expect(looksLikeWeeklyPlanningRequest(reply)).toBe(false);
@@ -474,37 +433,6 @@ describe('weeklyPlanningTransforms.integration', () => {
       breakMinutes: 15,
     });
     expect(revision.kind).toBe('needs_time_estimate');
-  });
-
-  it('respects explicit max session and wake/sleep settings during placement', () => {
-    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
-      userId: 'user-1',
-      selectedDate: '2026-06-19',
-      text: '来週、英語を3時間やりたい。7時起床、23時就寝、最大90分、休憩15分でおまかせ',
-      existingPlans: [],
-    });
-
-    expect(totalDraftMinutes(result.blocks)).toBe(180);
-    expect(result.blocks.length).toBeGreaterThanOrEqual(2);
-    expect(
-      result.blocks.every(
-        (block) =>
-          minutesBetween(block.startTime, block.endTime) >= result.defaults.minStudyBlockMinutes &&
-          minutesBetween(block.startTime, block.endTime) <= 90,
-      ),
-    ).toBe(true);
-    expect(
-      result.blocks.some(
-        (block) => minutesBetween(block.startTime, block.endTime) > 0 && minutesBetween(block.startTime, block.endTime) < 30,
-      ),
-    ).toBe(false);
-    expect(
-      result.blocks.every(
-        (block) =>
-          minutesFromClock(block.startTime) >= minutesFromClock('07:00') &&
-          minutesFromClock(block.endTime) <= minutesFromClock('23:00'),
-      ),
-    ).toBe(true);
   });
 
   it('parses natural weekly condition replies into operations', () => {

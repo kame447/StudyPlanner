@@ -54,3 +54,23 @@ export function acquireTimelineDragInteractionLock(): () => void {
     releaseGlobalLock = null;
   };
 }
+
+/**
+ * Keeps a non-passive touchmove listener on a timeline for as long as it is
+ * mounted, cancelling moves only while a drag lock is held.
+ *
+ * iOS WebKit decides at touchstart whether a gesture's touchmoves may be
+ * cancelled, from the non-passive listeners already covering the touched
+ * element. The window listener above is only added once the hold arms (or the
+ * armed move touch starts), so on iPhone the first moves of that same gesture
+ * can already be scrolling an inner container. Registering ahead of time makes
+ * the gesture cancellable from its first move; ordinary scrolling is untouched
+ * because nothing is prevented while unlocked.
+ */
+export function installTimelineTouchMoveGuard(element: HTMLElement): () => void {
+  const guard = (event: TouchEvent) => {
+    if (event.cancelable && isTimelineDragInteractionLocked()) event.preventDefault();
+  };
+  element.addEventListener('touchmove', guard, { passive: false });
+  return () => element.removeEventListener('touchmove', guard);
+}

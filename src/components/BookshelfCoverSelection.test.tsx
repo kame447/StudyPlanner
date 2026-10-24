@@ -28,7 +28,7 @@ function selectPhoto() {
 async function startCatalog() {
   act(() => renderer.root.findByProps({ placeholder: '例: 金フレ / 青チャート / 東京大学 赤本' }).props.onChange({ target: { value: 'Book' } }));
   await act(async () => { renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.onClick(); });
-  act(() => renderer.root.findByProps({ className: 'material-metadata-result' }).props.onClick());
+  act(() => renderer.root.findByProps({ className: 'material-metadata-result' }).props.onClick({ currentTarget: undefined }));
 }
 async function submit(save: ReturnType<typeof vi.fn>) {
   await act(async () => { await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });

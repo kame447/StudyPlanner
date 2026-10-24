@@ -1,0 +1,78 @@
+{
+  "base": "819d5bac3791b0d0aac2a6b1fd977fe73256edf6",
+  "currentMainInspected": "780bec4a14b1b5edc584a2eb348ba0af8bbeeb25",
+  "currentMainRelevantContractDiff": "No changes to client service, Users component, Worker admin API or read model since base.",
+  "source": {
+    "src/services/adminObservabilityService.ts": "e9de37d3cc120295c7b4f6ed41768edefe12cc6c35a822ea33e7fd6bb32244c2",
+    "src/services/adminObservabilityService.usersPage.test.ts": "98a040c4aff3e020c83576529dbd60854f05e4031e9704ad3a25875336442490"
+  },
+  "measurement": {
+    "boundary": "Mock HTTP, real client service; no production Firestore",
+    "scenario": "Initial Users load followed by one additional users page",
+    "legacy": {
+      "before": {
+        "users": 2,
+        "overview": 2,
+        "total": 4
+      },
+      "after": {
+        "users": 2,
+        "overview": 1,
+        "total": 3
+      }
+    },
+    "current": {
+      "before": {
+        "users": 2,
+        "overview": 0,
+        "total": 2
+      },
+      "after": {
+        "users": 2,
+        "overview": 0,
+        "total": 2
+      }
+    }
+  },
+  "focused": {
+    "command": "npm run test:run -- src/services/adminObservabilityService.usersPage.test.ts src/components/AdminUsersPage.test.tsx src/services/adminObservabilityTraceEvidence.test.ts",
+    "exit": 0,
+    "testsPassed": 37,
+    "filesPassed": 3
+  },
+  "typecheck": {
+    "command": "npm run typecheck:app:full",
+    "exit": 0
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "inputs": 2368,
+    "installedPackageEntries": 235,
+    "verificationInputsUnchanged": true,
+    "packageIdentitySha256": "1405eb0d5d7377ee0b93381c092bffba3d582ec2bbaa3b8e28a29cd4f958097c",
+    "tools": {
+      "node_modules/typescript/lib/tsc.js": "2cffde0b8c6760dfb0b5b0382bbb7e00ba6a8b2d981b9205b256a700a481d983",
+      "node_modules/vitest/vitest.mjs": "39db22f579acf5639bbb17a261408debbde03f4692c0c439e77e7f13aeba74d6",
+      "node_modules/vite/bin/vite.js": "8498a58e0d311572c409038515df0e5d707bdc6ab5927153f487e36ef1c9052c",
+      "node_modules/wrangler/bin/wrangler.js": "780661a508810f3b65786895b1ca9aacbc4f55d329ae6b8c1e49ec8433569f77"
+    }
+  },
+  "pending": [
+    "Integration owner connects only AdminUsersPage loadMore to the explicit page-only API.",
+    "Integrated component pagination regression and final full verification on current main."
+  ],
+  "limits": [
+    "This standalone service commit has no production caller yet.",
+    "No remote push, production request, Firestore billing measurement, Worker deployment or main edit.",
+    "Current Worker still includes its integrated trend; those reads are unchanged."
+  ],
+  "mutation": {
+    "change": "Reintroduce initial-loading API (and legacy Overview fallback) into page-only API",
+    "exit": 1,
+    "failed": 4,
+    "passed": 25,
+    "restoredFocusedExit": 0,
+    "restoredFocusedPassed": 37,
+    "restoredServiceHashMatches": true
+  }
+}

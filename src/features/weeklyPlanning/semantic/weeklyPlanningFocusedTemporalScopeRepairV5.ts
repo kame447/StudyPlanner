@@ -1,17 +1,18 @@
 import type {
   ChatMessage,
   JsonSchemaResponseFormat,
-} from '../../../services/ai/openAiCompatibleClient';
+} from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   isTemporalScopeRepairDecisionContext,
   type TemporalScopeRepairDecisionContext,
 } from '../../../../shared/temporalScopeRepairDecision';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../shared/aiProxyContract';
 
 // GPT-5.6 Luna uses completion tokens for reasoning before emitting the tiny
 // structured answer. Sixty tokens can therefore return HTTP 200 with no
 // content. This matches the established focused contextual-repair budget and
 // remains well below the Worker-wide output ceiling.
-export const FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS = 320;
+export const FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS = AI_PROXY_CHAT_REQUEST_LIMITS.defaultOutputTokens;
 
 export const FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',

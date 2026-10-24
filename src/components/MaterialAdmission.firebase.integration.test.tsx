@@ -4,7 +4,7 @@ import { BookshelfSubjectDialog } from './BookshelfSubjectDialog';
 import { HomeView } from './HomeView';
 import { createActualDraftForPlan } from '../lib/actualDrafts';
 import { createLocalFixture, actual, deferred, microtasks } from '../repositories/localPersistenceConcurrency.testUtils';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, create, type ReactTestRenderer, type ReactTestInstance } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
@@ -17,14 +17,32 @@ vi.mock('../repositories',()=>({plannerRepository:new Proxy({},{get:(_t,k)=>boun
 // Portal placement is presentation-only; production Home, Bookshelf, editors and adapters remain intact.
 vi.mock('react-dom',async(importOriginal)=>({...await importOriginal<typeof import('react-dom')>(),createPortal:(children:unknown)=>children}));
 vi.mock('firebase/firestore',()=>({
+  documentId:()=> '__name__',
   collection:(_db:any,name:string)=>({name}), doc:(_db:any,collectionName:string,id:string)=>({collectionName,id}),
   where:(field:string,_op:string,value:any)=>({field,value}), query:(collection:any,...conditions:any[])=>({...collection,conditions}), deleteField:()=>null,
   getDocs:async(q:any)=>{if(q.name==='actuals' && q.conditions.some((c:any)=>c.field==='occurrenceDate') && sdk.gate){const g=sdk.gate;sdk.gate=null;sdk.entered=true;sdk.log.push('query-pending');await g;sdk.log.push('query-finished');}
-    const values=[...(sdk.rows.get(q.name)?.values()??[])].filter(row=>q.conditions.every((c:any)=>row[c.field]===c.value));
+    const values=[...(sdk.rows.get(q.name)?.values()??[])].filter(row=>q.conditions.every((c:any)=>(c.field==='__name__'?row.id:row[c.field])===c.value));
     return {docs:values.map(row=>({id:row.id,data:()=>structuredClone(row)}))};},
   deleteDoc:async(ref:any)=>{sdk.log.push('delete:'+ref.id);sdk.rows.get(ref.collectionName)?.delete(ref.id);},
   setDoc:async(ref:any,value:any)=>{let rows=sdk.rows.get(ref.collectionName);if(!rows)sdk.rows.set(ref.collectionName,rows=new Map());rows.set(ref.id,structuredClone(value));},
   writeBatch:()=>{const ops:any[]=[];return {set:(ref:any,value:any)=>ops.push({ref,value}),delete:(ref:any)=>ops.push({ref}),commit:async()=>{for(const {ref,value} of ops){let rows=sdk.rows.get(ref.collectionName);if(!rows)sdk.rows.set(ref.collectionName,rows=new Map());if(value){sdk.log.push('set:'+ref.id);rows.set(ref.id,structuredClone(value));}else rows.delete(ref.id);}}};},
+  runTransaction: async (_db:any, callback:any) => {
+    const ops:any[]=[];
+    const result = await callback({
+      get:async(ref:any)=>{
+        if(ops.length) throw Error('transaction read after write');
+        const value=sdk.rows.get(ref.collectionName)?.get(ref.id);
+        if(!value) throw Error('permission-denied');
+        return {id:ref.id,exists:()=>true,data:()=>structuredClone(value)};
+      },
+      set:(ref:any,value:any,options:any)=>ops.push({ref,value,options}), delete:(ref:any)=>ops.push({ref}),
+    });
+    for(const {ref,value,options} of ops){
+      let rows=sdk.rows.get(ref.collectionName);if(!rows)sdk.rows.set(ref.collectionName,rows=new Map());
+      if(value){sdk.log.push('set:'+ref.id);rows.set(ref.id,structuredClone(options?.merge?{...rows.get(ref.id),...value}:value));}else rows.delete(ref.id);
+    }
+    return result;
+  },
 }));
 import {createFirebasePlannerRepository} from '../repositories/firebasePlannerRepository';
 let renderer:ReactTestRenderer|undefined,state:UsePlannerDataStateResult;
@@ -32,9 +50,24 @@ const p=plan({title:'Math',startTime:'19:00',endTime:'20:00'}), noop=()=>{};
 const notices=vi.fn();
 const firstPlan={...p,materialId:'material',materialName:'Book'};
 const secondPlan={...firstPlan,id:'other-plan',seriesId:'other-plan',title:'Math second',startTime:'20:00',endTime:'21:00'};
-function Harness(){state=usePlannerDataState({userId:'owner',showNotice:notices});return <StudySessionProvider userId="owner" materials={state.studyMaterials} onSaveActual={state.saveActual} onSaveStandaloneActual={state.saveStandaloneActual}><HomeView plans={state.plans} actuals={state.actuals} todos={state.todos} studyMaterials={state.studyMaterials} primaryHeaderRef={{current:null}} primaryBottomNavRef={{current:null}} onOpenAiPlanning={noop} onOpenSchedule={noop} onAddEntry={noop} onOpenDay={noop} onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop}/></StudySessionProvider>}
-function button(label:string){return renderer!.root.findAllByType('button').find(b=>b.children.includes(label))!;}
-async function click(label:string){await act(async()=>{button(label).props.onClick()});}
+function Harness({ secondarySession = false }: { secondarySession?: boolean }) {
+  state = usePlannerDataState({ userId: 'owner', showNotice: notices });
+  const home = <HomeView plans={state.plans} actuals={state.actuals} todos={state.todos} studyMaterials={state.studyMaterials} primaryHeaderRef={{current:null}} primaryBottomNavRef={{current:null}} onOpenAiPlanning={noop} onOpenSchedule={noop} onAddEntry={noop} onOpenDay={noop} onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop}/>;
+  const callbacks = { userId: 'owner', materials: state.studyMaterials, onSaveActual: state.saveActual, onSaveStandaloneActual: state.saveStandaloneActual };
+  // Two independent public launch surfaces share the same material admission owner.
+  // A minimized pending session remains alive when the second surface opens.
+  return <><StudySessionProvider {...callbacks}>{secondarySession ? null : home}</StudySessionProvider>
+    {secondarySession ? <StudySessionProvider {...callbacks}>{home}</StudySessionProvider> : null}</>;
+}
+function visible(node: ReactTestInstance): boolean {
+  for (let current: ReactTestInstance | null = node; current; current = current.parent) {
+    if (current.props.hidden || current.props.style?.display === 'none') return false;
+  }
+  return true;
+}
+function button(label:string){return renderer!.root.findAllByType('button').find(b=>visible(b) && b.children.includes(label))!;}
+function currentProgress(){return renderer!.root.findAllByProps({id:'study-session-progress'}).find(visible)!;}
+async function click(label:string){const target=button(label);expect(target, `Missing visible button: ${label}`).toBeDefined();await act(async()=>{target.props.onClick()});}
 beforeEach(()=>{sdk.rows.clear();sdk.rows.set('plans',new Map([[p.id,p]]));sdk.log=[];sdk.gate=null;sdk.entered=false;notices.mockClear();
   vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-04T19:59:00'));
   vi.stubGlobal('window',{requestAnimationFrame:()=>0,cancelAnimationFrame:noop,addEventListener:noop,removeEventListener:noop,setTimeout,clearTimeout,setInterval,clearInterval,matchMedia:()=>({matches:true}),confirm:()=>true});
@@ -42,8 +75,8 @@ beforeEach(()=>{sdk.rows.clear();sdk.rows.set('plans',new Map([[p.id,p]]));sdk.l
   boundary.repository=createFirebasePlannerRepository({} as Firestore);
 });
 afterEach(()=>{act(()=>renderer?.unmount());renderer=undefined;vi.unstubAllGlobals();vi.useRealTimers()});
-async function inputProgress(value:string){await act(async()=>{renderer!.root.findByProps({id:'study-session-progress'}).props.onChange({target:{value}});});}
-async function back(){await act(async()=>{renderer!.root.findByProps({'aria-label':'戻る'}).props.onClick();});}
+async function inputProgress(value:string){await act(async()=>{currentProgress().props.onChange({target:{value}});});}
+async function back(){await act(async()=>{renderer!.root.findAllByProps({'aria-label':'戻る'}).find(visible)!.props.onClick();});}
 const material={id:'material',userId:'owner',name:'Book',subjectId:'math',subjectName:'Math',paceEnabled:true,progressUnit:'page' as const,currentUnit:10,totalUnits:100,createdAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z'};
 async function mount(){
  sdk.rows.set('plans',new Map([[firstPlan.id,firstPlan],[secondPlan.id,secondPlan]]));
@@ -61,14 +94,18 @@ it('public Home next-plan busy rejection preserves B progress through A completi
  await back();await back();
  expect(renderer!.root.findAllByProps({role:'dialog'})).toHaveLength(0);
  expect(renderer!.root.findByProps({'data-home-section':'next-plan'}).findByProps({ className: 'home-plan-title' }).findByType('span').children).toEqual(['Math second']);
+ await homeStart();
+ expect(button('スタート')).toBeUndefined(); // Home resumes A instead of silently replacing it.
+ await back();
+ await act(async () => { renderer!.update(<Harness secondarySession />); });
  await homeStart();await click('スタート');await click('終了する');await inputProgress('7');await click('記録を保存');
  expect((await boundary.repository.getStudyMaterials('owner'))[0].currentUnit).toBe(10);
  expect(await boundary.repository.getActuals('owner')).toHaveLength(0);
- expect(renderer!.root.findByProps({id:'study-session-progress'}).props.value).toBe('7');
+ expect(currentProgress().props.value).toBe('7');
  expect(renderer!.root.findAll(node=>node.type==='p' && node.children.some(child=>typeof child==='string' && child.includes('保存・更新中'))).length).toBeGreaterThan(0);
  await act(async()=>{release();});
  expect((await boundary.repository.getStudyMaterials('owner'))[0].currentUnit).toBe(15);
- expect(renderer!.root.findByProps({id:'study-session-progress'}).props.value).toBe('7');
+ expect(currentProgress().props.value).toBe('7');
  await click('記録を保存');
  expect(await boundary.repository.getActuals('owner')).toHaveLength(2);
  expect((await boundary.repository.getStudyMaterials('owner'))[0].currentUnit).toBe(22);
@@ -127,10 +164,14 @@ it('each Study Session launch fences old success and exit callbacks even for the
   await click('スタート'); await click('終了する'); await inputProgress('5'); await click('記録を保存');
   await back(); await back();
   await act(async () => { launch({ kind: 'planned', plan: firstPlan }); });
+  expect(button('スタート')).toBeUndefined(); // Reopening retains the active session.
+  // Exercise the existing lifecycle callback seam explicitly; Back now minimizes.
+  await act(async () => { oldExit(); });
+  await act(async () => { launch({ kind: 'planned', plan: firstPlan }); });
   await click('スタート'); await click('終了する'); await inputProgress('7');
   await act(async () => { oldExit(); complete(); });
   expect(save).toHaveBeenCalledTimes(1);
-  expect(renderer!.root.findByProps({ id: 'study-session-progress' }).props.value).toBe('7');
+  expect(currentProgress().props.value).toBe('7');
   expect(renderer!.root.findAllByProps({ role: 'dialog' })).toHaveLength(1);
 });
 
@@ -143,7 +184,7 @@ it('Study Session keeps original uncertain-write error and progress input, and r
   await homeStart(); await click('スタート'); await click('終了する'); await inputProgress('5'); await click('記録を保存');
   expect(await boundary.repository.getActuals('owner')).toHaveLength(1);
   expect(state.studyMaterials[0].currentUnit).toBe(15);
-  expect(renderer!.root.findByProps({ id: 'study-session-progress' }).props.value).toBe('5');
+  expect(currentProgress().props.value).toBe('5');
   const error = renderer!.root.findByProps({ role: 'alert' }).children.join('');
   expect(error).toContain(failure.message);
   expect(error).toContain('開き直');

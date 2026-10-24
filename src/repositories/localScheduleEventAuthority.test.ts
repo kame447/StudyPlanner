@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { deferred } from './localPersistenceConcurrency.testUtils';
 import type { Actual, MonthEvent, Plan } from '../types/domain';
 import { createLocalPlannerStorageGateway } from './localStorageGateway';
 import { createLocalScheduleEventAuthority } from './localScheduleEventAuthority';
@@ -114,6 +115,38 @@ function createRepository(storage: Storage) {
 }
 
 describe('local ScheduleEvent authority', () => {
+  it('shares a delayed A migration across B so the returned A write cannot be overwritten', async () => {
+    const storage = new MemoryStorage();
+    const gateway = createLocalPlannerStorageGateway(storage);
+    const legacy = createPlannerRepository(gateway);
+    const authority = createLocalScheduleEventAuthority(gateway, storage);
+    const ensure = vi.spyOn(authority, 'ensureMigrated');
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    const legacyA = plan({ userId: 'a', title: 'old legacy snapshot' });
+    await gateway.writePlans([legacyA]);
+    const getPlans = legacy.getPlans.bind(legacy);
+    const gate = deferred<Plan[]>();
+    const read = vi.spyOn(legacy, 'getPlans').mockImplementationOnce(() => gate.promise)
+      .mockImplementation(getPlans);
+    const firstA = repository.getScheduleSnapshot('a');
+    await repository.getScheduleSnapshot('b');
+    const returnedA = repository.getPlans('a');
+    const editedA = { ...legacyA, title: 'canonical edit after return' };
+    let written = false;
+    const write = repository.upsertPlan(editedA).then(() => { written = true; });
+    await Promise.resolve();
+    expect(ensure.mock.calls.map(([owner]) => owner)).toEqual(['a', 'b']);
+    expect(written).toBe(false);
+    gate.resolve([legacyA]);
+    await Promise.all([firstA, returnedA, write]);
+    expect(written).toBe(true);
+    // Reconfirmation must observe the local marker, not import stale legacy again.
+    await repository.getScheduleSnapshot('b');
+    expect((await repository.getPlans('a'))[0].title).toBe(editedA.title);
+    expect(read.mock.calls.map(([owner]) => owner)).toEqual(['a', 'b']);
+    expect((await gateway.readPlans())[0].title).toBe(legacyA.title);
+  });
+
   it('migrates Plan and MonthEvent with colliding legacy ids into one canonical store', async () => {
     const storage = new MemoryStorage();
     const { gateway, repository } = createRepository(storage);

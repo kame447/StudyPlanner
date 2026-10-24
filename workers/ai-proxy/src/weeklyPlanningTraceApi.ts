@@ -14,7 +14,7 @@ import {
   isWeeklyPlanningLegacyTraceSessionHandle,
   isWeeklyPlanningTracePolicyAccepted,
   isWeeklyPlanningTraceSessionId,
-  parseWeeklyPlanningTraceHmacSecrets,
+  resolveWeeklyPlanningTraceHmacSecretRing,
   prepareWeeklyPlanningTraceServerWrite,
   redactWeeklyPlanningTraceValue,
   resolveWeeklyPlanningTraceEpoch,
@@ -30,6 +30,7 @@ import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
 
 export interface WeeklyPlanningTraceApiEnv extends WeeklyPlanningTraceFirestoreEnv {
   WEEKLY_PLANNING_TRACE_HMAC_SECRETS: string;
+  WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION?: string;
   WEEKLY_PLANNING_TRACE_WORKER_REVISION?: string;
 }
 
@@ -148,8 +149,15 @@ async function parseJsonBody(request: Request): Promise<Record<string, unknown>>
   return parsed;
 }
 
-function currentSecretRing(env: WeeklyPlanningTraceApiEnv) {
-  return parseWeeklyPlanningTraceHmacSecrets(env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS);
+async function currentSecretRing(
+  env: WeeklyPlanningTraceApiEnv,
+  now: Date = new Date(),
+) {
+  return resolveWeeklyPlanningTraceHmacSecretRing({
+    raw: env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS,
+    extension: env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION,
+    now,
+  });
 }
 
 async function currentSubject(
@@ -158,14 +166,14 @@ async function currentSubject(
   now = new Date(),
 ) {
   const epoch = resolveWeeklyPlanningTraceEpoch(now);
-  return await createWeeklyPlanningTraceSubject(uid, epoch, currentSecretRing(env));
+  return await createWeeklyPlanningTraceSubject(uid, epoch, await currentSecretRing(env, now));
 }
 
 async function retainedSubjectTokens(
   uid: string,
   env: WeeklyPlanningTraceApiEnv,
 ): Promise<Set<string>> {
-  const ring = currentSecretRing(env);
+  const ring = await currentSecretRing(env);
   const subjects = await Promise.all(
     Object.keys(ring).map((epoch) => createWeeklyPlanningTraceSubject(uid, epoch, ring)),
   );
@@ -373,7 +381,7 @@ async function handleSessionStart(
   }
   const now = new Date();
   const epoch = resolveWeeklyPlanningTraceEpoch(now);
-  const ring = currentSecretRing(env);
+  const ring = await currentSecretRing(env, now);
   const canonicalIds = await createWeeklyPlanningTraceCanonicalIds({
     uid: session.uid,
     epoch,
@@ -575,7 +583,7 @@ async function handleDelete(
   env: WeeklyPlanningTraceApiEnv,
   session: WeeklyPlanningTraceApiSession,
 ): Promise<WeeklyPlanningTraceApiResult> {
-  const ring = currentSecretRing(env);
+  const ring = await currentSecretRing(env);
   const subjects = await Promise.all(
     traceSubjectEpochsForDeletion(ring).map((epoch) =>
       createWeeklyPlanningTraceSubject(session.uid, epoch, ring)),

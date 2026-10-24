@@ -5,3 +5,11 @@ html.is-timeline-drag-interaction-locked body {
   overflow: hidden !important;
   overscroll-behavior: none !important;
 }
+
+/* Dropping a dragged event re-lays out the timeline; browser scroll anchoring
+   would then nudge these scroll containers so the background visibly shifts
+   after the drop. Moves are user-driven, so keep the scroll offset exact. */
+.schedule-main,
+.schedule-week-preview-scroll {
+  overflow-anchor: none;
+}

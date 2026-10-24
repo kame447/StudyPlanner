@@ -19,13 +19,27 @@ describe('buildQuickEntryPlanDraft', () => {
   it.each([
     ['daily', '2026-04-21'],
     ['monthly', '2026-05-20'],
-  ] as const)('builds %s recurrence without materializing future plans', (repeatKind, occurrenceDate) => {
+  ] as const)('projects %s recurrence onto the requested date without changing the source plan', (repeatKind, occurrenceDate) => {
     const draft = buildQuickEntryPlanDraft({ ...baseInput, mode: 'repeat', repeatKind });
     expect(draft).toMatchObject({ repeat: repeatKind, repeatUntil: null, endTime: '19:30' });
     const plan = createPlanFromDraft(draft!);
-    expect([plan]).toHaveLength(1);
     expect(doesPlanOccurOnDate(plan, occurrenceDate)).toBe(true);
-    expect(expandPlansForDate([plan], occurrenceDate)).toHaveLength(1);
+
+    const sourcePlans = [plan];
+    const originalPlans = structuredClone(sourcePlans);
+    const occurrences = expandPlansForDate(sourcePlans, occurrenceDate);
+
+    expect(occurrences).toHaveLength(1);
+    expect(occurrences[0]).toMatchObject({
+      id: originalPlans[0].id,
+      sourceDate: baseInput.date,
+      date: occurrenceDate,
+      occurrenceDate,
+      occurrenceKey: `${originalPlans[0].id}::${occurrenceDate}`,
+      startTime: '19:00',
+      endTime: '19:30',
+    });
+    expect(sourcePlans).toEqual(originalPlans);
   });
 
   it('builds weekly recurrence with the selected weekdays', () => {

@@ -107,6 +107,6 @@ describe('DayTimeline schedule occurrence presentation', () => {
     act(() => {
       allDayButton.props.onClick();
     });
-    expect(onSelectEntry).toHaveBeenCalledWith({ kind: 'plan', id: 'all-day-plan' });
+    expect(onSelectEntry).toHaveBeenCalledWith({ kind: 'plan', id: 'all-day-plan', occurrenceId: 'plan:all-day-plan:2026-08-25' });
   });
 });

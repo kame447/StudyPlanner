@@ -1,3 +1,4 @@
+import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import { AI_CHAT_PURPOSE_MODELS } from '../../../../workers/ai-proxy/src/modelPolicy';
 import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
 import { createRef, forwardRef, useImperativeHandle } from 'react';
@@ -138,8 +139,8 @@ beforeEach(async () => {
         providerOrder.push('dialogue');
         const prompt = JSON.parse(body.messages[body.messages.length - 1].content);
         const decision = prompt.applicationDecision;
-        return completion(JSON.stringify({ actionId: prompt.actionId, actionKind: decision.actionKind, questionCode: decision.questionCode,
-          groundingAcknowledgement: null, text: `内容を確認してください。${decision.previewPromotionControlLabel ?? ''}` }));
+        return completion(JSON.stringify(withWeeklyPlanningEffortAcknowledgement(prompt, { actionId: prompt.actionId, actionKind: decision.actionKind, questionCode: decision.questionCode,
+          groundingAcknowledgement: null, text: `内容を確認してください。${decision.previewPromotionControlLabel ?? ''}` })));
       }
       unexpectedRequests.push(`schema:${schema}`);
     } else unexpectedRequests.push(endpoint);

@@ -39,9 +39,14 @@ vi.mock('../../../lib/aiConfig', () => ({
   }),
   getAiConfigValidationMessage: () => undefined,
 }));
-vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
-  createOpenAiCompatibleClient: () => ({ createChatCompletion: vi.fn() }),
-}));
+vi.mock('../../../services/ai/openAiCompatibleClient', async () => {
+  const { successfulWeeklyPlanningRendererCompletion } = await import(
+    '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture'
+  );
+  return { createOpenAiCompatibleClient: () => ({
+    createChatCompletion: successfulWeeklyPlanningRendererCompletion,
+  }) };
+});
 vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
 }));
@@ -105,7 +110,7 @@ function sessionDurationDocument(): WeeklyPlanningSemanticDocumentV5 {
       localId: 'answer-task', category: 'study', title: '直前の質問対象', study: null,
       workloads: [], temporalConstraints: [], recurrence: [], sourceText: '20分くらい',
       effortEstimates: [{
-        localId: 'answer-effort', targetLocalId: 'answer-task', kind: 'total_duration',
+        localId: 'answer-effort', targetLocalId: 'answer-task', kind: 'session_duration',
         minutes: 20, unitCode: null, precision: 'approximate', sourceText: '20分くらい',
       }],
     }],

@@ -1,3 +1,10 @@
+import { questionIntentForStableV5Dialogue } from '../dialogue/weeklyPlanningStableV5DialogueContext';
+import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import {
+  WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
+  createWeeklyPlanningStableV5DialogueRendererCore,
+} from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
+import { createWeeklyPlanningFallbackDialogueTrace } from '../dialogue/weeklyPlanningStableV5TurnDialogueTrace';
 import { recordFailedWeeklyPlanningApplicationTurn } from '../application/weeklyPlanningTurnTraceSideEffects';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import { WeeklyPlanningSemanticNormalizerRunV5 } from '../semantic/weeklyPlanningSemanticNormalizerRunV5';
@@ -10,7 +17,7 @@ import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-pr
 import { isWeeklyPlanningTraceEntry } from './weeklyPlanningTraceTypes';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import type { WeeklyPlanningStableV5DialogueRenderInput } from '../dialogue/weeklyPlanningStableV5DialogueContracts';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createMemoryStorageHarness,
   installWeeklyPlanningTestStorage,
@@ -33,6 +40,14 @@ import type {
   WeeklyPlanningTraceSession,
   WeeklyPlanningTraceTurnDiagnosticEntry,
 } from './weeklyPlanningTraceTypes';
+
+vi.mock('../../../lib/aiConfig', () => ({
+  getCloudflareAiProxyUrl: () => 'https://proxy.example/chat/completions',
+  usesCloudflareOpenAiProxy: () => true,
+}));
+vi.mock('../../../lib/firebaseClient', () => ({
+  getFirebaseAuth: () => ({ currentUser: { getIdToken: async () => 'test-token' } }),
+}));
 
 type PersistedRendererDiagnostic = WeeklyPlanningTraceTurnDiagnosticEntry & {
   diagnostics: WeeklyPlanningTraceTurnDiagnosticEntry['diagnostics'] & {
@@ -135,6 +150,10 @@ describe('Stable V5 renderer trace persistence', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     resetWeeklyPlanningStableV5TraceRuntimeForTest();
     resetWeeklyPlanningDialogueRendererPromptContextsForTest();
     setWeeklyPlanningTraceRepositoryForTests(undefined);
@@ -367,5 +386,101 @@ describe('Stable V5 renderer trace persistence', () => {
       }] }));
       expect(diagnosticEntry(harness.writes[0].entries).diagnostics).not.toHaveProperty('providerDispatch');
     });
+
+  it.each([false, true])('preserves real proxy failure through browser client, renderer, outbox retry and Worker preparation (empty=%s)', async empty => {
+    const expected = { kind: empty ? 'empty_response' : 'http_error', httpStatus: 502, upstreamStatus: empty ? 200 : 429,
+      completion: empty ? { finishReason: 'length', refusalPresent: false, requestedMaxCompletionTokens: null,
+        effectiveMaxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
+        reasoningTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS, textTokens: 0 } : null };
+    const upstream = vi.fn(async () => Response.json({ error: 'Provider request failed',
+      providerFailure: { ...expected, privateBody: 'secret-sentinel' } }, { status: 502 }));
+    vi.stubGlobal('fetch', upstream);
+    const client = createOpenAiCompatibleClient({ provider: 'openai', baseUrl: 'https://provider.example/v1',
+      apiKey: 'test-key', model: 'gpt-6-luna' });
+    const input: WeeklyPlanningStableV5DialogueRenderInput = { actionId: 'provider-failure-evidence', currentUserMessage: '予定を立てたい',
+      recentConversation: [], planningInformation: {}, actionKind: 'question', questionCode: 'missing_schedulable_work', questionTarget: null,
+      requiredLabels: [], fallbackText: '', previewCount: 0 };
+    const rendered = await createWeeklyPlanningStableV5DialogueRendererCore(client).render(input);
+    expect(upstream).toHaveBeenCalledTimes(empty ? 2 : 1);
+    expect(rendered.status).toBe('fallback');
+    if (rendered.status !== 'fallback') throw new Error('expected failure');
+    expect(rendered.providerFailure).toEqual(expected);
+    const trace = createWeeklyPlanningFallbackDialogueTrace({ actionId: input.actionId, actionKind: input.actionKind,
+      questionCode: input.questionCode, renderInput: input, rendered, finalMessage: '返信を作れませんでした。' });
+    trace.request!.promptContext = { futureProviderFailureSentinel: { retained: true },
+      ...(empty ? { largeFutureContext: 'large'.repeat(70_000) } : {}) };
+    const bounded = boundWeeklyPlanningDialogueRendererTraceForTransport(trace);
+    const harness = createRepositoryHarness(); harness.failNext(); setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const first = traceInput({ requestId: 'provider-failure', dialogueRendererTrace: bounded,
+      assistantMessage: '返信を作れませんでした。', responseSource: 'deterministic_fallback' });
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: first.userId, conversationId: first.conversationId })).toHaveLength(1);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({ requestId: 'provider-failure-retry' }));
+    const retried = harness.writes[0]; const entry = diagnosticEntry(retried.entries);
+    expect(entry.diagnostics.dialogueRenderer?.response.providerFailure).toEqual(expected);
+    expect(JSON.stringify(entry)).toContain('futureProviderFailureSentinel');
+    expect(JSON.stringify(entry)).not.toMatch(/secret-sentinel|private upstream|server-key/);
+    if (empty) expect(JSON.stringify(entry)).toContain('traceTruncated');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({ session: retried.session as unknown as Record<string, unknown>,
+      entries: retried.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '100' },
+      { sessionId: 'weekly-trace-123e4567-e89b-52d3-a456-426614174000', logicalConversationId: 'weekly-conversation-123e4567-e89b-52d3-a456-426614174000' },
+      '2026-10-15T00:00:00.000Z');
+    expect(prepared.entries).toHaveLength(1);
+    expect(prepared.entries[0]).toMatchObject({ diagnostics: { dialogueRenderer: { response: { providerFailure: expected } } } });
+    expect(JSON.stringify(prepared.entries[0])).toContain('futureProviderFailureSentinel');
+    expect(JSON.stringify(prepared.entries[0])).not.toMatch(/secret-sentinel|private upstream|server-key/);
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  });
+
+
+  it.each([false, true])('persists the actual open-ended session prompt through a failed write and Worker preparation (large=%s)', async large => {
+    const task = { id: 'research', category: 'study', title: '研究' };
+    const planningInformation = { tasks: [task], workloads: [] };
+    const questionTarget = { collection: 'tasks' as const, fact: task };
+    const input: WeeklyPlanningStableV5DialogueRenderInput = { actionId: 'open-ended-session-persistence',
+      currentUserMessage: '今日、研究を進めたい', recentConversation: [], planningInformation, actionKind: 'question',
+      questionCode: 'missing_schedulable_work', questionTarget,
+      questionIntent: questionIntentForStableV5Dialogue({ questionCode: 'missing_schedulable_work', questionTarget, planningInformation }),
+      requiredLabels: ['研究'], fallbackText: '', previewCount: 0 };
+    const calls: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
+    const text = '研究は、今日はいつ取り組めそうですか？';
+    const raw = JSON.stringify({ actionId: input.actionId, actionKind: input.actionKind, questionCode: input.questionCode,
+      groundingAcknowledgement: null, text });
+    const rendered = await createAiWeeklyPlanningStableV5DialogueRenderer(
+      { provider: 'openai', baseUrl: 'https://example.test/v1', apiKey: 'test', model: 'test' },
+      { async createChatCompletion(request) { calls.push(request); return raw; } },
+    ).render(input);
+    expect(rendered.status, JSON.stringify({ rendered, calls: calls.length })).toBe('rendered');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].messages[1].content).toContain('open_ended_session');
+    const trace = boundWeeklyPlanningDialogueRendererTraceForTransport({ ...rendererTrace('rendered'),
+      actionId: input.actionId, questionCode: input.questionCode,
+      response: { status: 'rendered', reason: null, rawResponse: raw, renderedText: text },
+      decision: { branch: 'ai_rendered', responseSource: 'ai', finalMessage: text } });
+    const context = trace.request!.promptContext as Record<string, unknown>;
+    expect(context.messages).toEqual(calls[0].messages);
+    trace.request!.promptContext = { futureSessionSentinel: { retained: true }, ...context,
+      ...(large ? { futureLargeSessionField: 'session-data'.repeat(30_000) } : {}) };
+    const harness = createRepositoryHarness(); harness.failNext(); setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const first = traceInput({ requestId: 'session-gate', dialogueRendererTrace: boundWeeklyPlanningDialogueRendererTraceForTransport(trace), assistantMessage: text });
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: first.userId, conversationId: first.conversationId })).toHaveLength(1);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({ requestId: 'session-gate-retry' }));
+    const retried = harness.writes[0];
+    const serialized = JSON.stringify(retried.entries[0]);
+    expect(serialized).toContain('futureSessionSentinel');
+    if (large) expect(serialized).toContain('traceTruncated');
+    expect(measureWeeklyPlanningTraceJsonBytes(retried.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({ session: retried.session as unknown as Record<string, unknown>,
+      entries: retried.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '100' },
+      { sessionId: 'weekly-trace-123e4567-e89b-52d3-a456-426614174000', logicalConversationId: 'weekly-conversation-123e4567-e89b-52d3-a456-426614174000' },
+      '2026-10-15T00:00:00.000Z');
+    expect(prepared.entries).toHaveLength(1);
+    expect(JSON.stringify(prepared.entries[0])).toContain('futureSessionSentinel');
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  });
 
 });

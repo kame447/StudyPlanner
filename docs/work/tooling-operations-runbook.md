@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-10-08
+Updated: 2026-10-18
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -31,6 +31,47 @@ Each durable entry should record:
 - Last verified date
 
 Do not record credentials, secret values, access tokens, private user data, or raw sensitive logs here.
+
+## Full unit-suite jobs need historical Worker source
+
+- Symptom: Test Intelligence coverage fails in `focusedContextualBindingWire.test.ts` with `fatal: not a tree object: 070d25cbe14796aebb8168ac5425c93e3506df1c`, while application and coverage-provider installation and locked-dependency checks pass (PR #835, job 119412057888).
+- Cause: the old/new Worker compatibility regression archives the immutable pre-J1 Worker from Git. A depth-1 checkout omits that historical commit; this is a harness precondition failure, not evidence of a registry or production defect.
+- Repair: use `fetch-depth: 0` with `persist-credentials: false` in jobs running the complete unit suite, matching core CI. The coverage and resumable-command jobs need full history, as does the mutation job for its history-dependent compatibility suite (see the #837 entry); dependency-audit stays shallow.
+- Preconditions and limits: ordinary read-only repository checkout is sufficient. Do not remove, skip or replace the actual historical Worker regression, bypass the registry, or change timeouts or mutation thresholds. This repair does not resolve the separate 45-minute mutation cancellation.
+- Verification: `scripts/ci/test-intelligence-workflow.test.mjs` checks full-suite checkout history and credentials, with shallow/default negative controls. Run it with `workers/ai-proxy/src/decision/focusedContextualBindingWire.test.ts`; parent-owned integration and native coverage must still pass on the published content.
+- Last reviewed: 2026-10-23.
+
+## Admin Logs: authenticated diagnostic drill-down
+
+Last reviewed: 2026-10-16. The authenticated Admin Logs session listing was observed on the live Pages site. A listed entry count alone was not a successful detail retrieval; an actual mobile failure's cause cannot be inferred from this index.
+
+### Operation and supported procedure
+
+When a user reports a failed weekly-planning conversation, open the production Admin Console at `https://laplance.com/admin/logs` in an administrator-authorized browser (historical Pages origin: `https://studyplannner.pages.dev/admin/logs`). Match date/time and conversation to its session ID. Expand the session row and wait until detailed entries finish loading. Check indexed-range, missing/unreadable entry, pagination and byte-limit indicators. Open `Redacted detail` for individual entries; when needed, download `Session Debug Bundle` or a targeted `Request Bundle` (bounded, redacted JSON). Correlate session, request ID, event type, timestamp, state revision, outcome, failure classification and preceding successful stage. Distinguish AI interpretation/renderer failures, validation, state commit/persistence and background resume. Do not infer causes from the generic message shown to a user.
+
+### Established data-access boundary
+
+`src/components/AdminLogsPage.tsx` owns session expansion/detail/export controls. `src/services/adminObservabilityService.ts` queries the Worker via authenticated `GET /observability/admin/logs` (session index), `GET /observability/admin/log-entries?session=...` (detailed entries) and `GET /observability/admin/debug-bundle?session=...` (bounded export; optional `request` filter). Administrator/trace-reader authorization is checked by `workers/ai-proxy/src/productObservabilityAdminApi.ts` and the diagnostic adapter. Use this read path rather than unscoped data scans. `entryCount` and `turnCount` are indexed metadata, not proof that the corresponding details were retrieved or complete; missing entries/truncation must be reported. Debug Bundle exports have no built-in audit history.
+
+### Browser automation and prior failure mode
+
+Past investigations attempted headless Brave/Playwright with Chrome DevTools Protocol (CDP) for Admin Logs. CDP is a browser-control interface, not authorization. An AppleScript `execute javascript` permission failure does not imply that all browser controls or Admin Logs are unavailable. Prefer the existing legitimately signed-in graphical browser through supported controls. If using Playwright/CDP, obtain a fresh administrator-authorized browser session through the normal interactive login flow. Never duplicate or extract a user's browser profile, IndexedDB/session stores, cookies, tokens or Authorization headers to manufacture a second logged-in session. Never weaken origin checks or admin authentication. If the browser-control tool cannot operate an authorized session, ask the administrator to export the redacted session/request Debug Bundle and provide it for analysis. Do not repeat an unchanged failed control path or claim success from an index-only read.
+
+### Verification and cleanup
+
+Verify that the expected per-request entries actually arrived and that any read gaps/pagination/truncation were accounted for; otherwise classify the result as incomplete. Record the exact code/deployment version under investigation and distinguish observed cause from hypothesis. Keep only minimally necessary redacted diagnostics in authorized incident records and avoid publishing raw user content or secrets. Remove temporary export copies after authorized use.
+
+---
+
+## Bounded live-model evaluation when workflow dispatch is unavailable
+
+Verified execution on 2026-10-14 for [PR #637](https://github.com/kame447/StudyPlanner/pull/637), [run 38505480239](https://github.com/kame447/StudyPlanner/actions/runs/38505480239). The connector exposed workflow reads and reruns but no dispatch; the server CLI and cloud browser had no authenticated session. This is a capability gap, not a permission denial. Use this fallback only with explicit authorization for the API call and the temporary repository workflow; never use it after a reviewer/access denial.
+
+The one-shot workflow reused `observe:weekly-ai:conversation:turn` and the existing `OPENAI_API_KEY` secret, scoped to its execution step. It used one fixed synthetic utterance, an empty checkpoint, the existing four-request process ceiling, no new credentials and only `contents: read`; checkout did not persist credentials. Branch/path, repository-owner, first-attempt and dedicated-commit guards limited execution. An exact parent/source check preceded secret use. There were no automatic retries or changes to another owner's branch/workflow. Artifact upload was conditional on checking that the secret value was absent from output files; only synthetic data was used.
+
+The first attempt passed with two API calls, one nonempty AI reply and no plan save. Check the exact head/inputs, job steps, downloaded artifact digest and purpose-level call metrics rather than treating a green workflow alone as a model result. This smoke does not prove Durable Object transport or a full approved-and-saved conversation.
+
+Cleanup must use a normal same-branch commit to remove the temporary file, followed by current-tree read-back and exact diff comparison; do not leave a recurring test trigger or grant a workflow write permission just to delete itself. A denied/cancelled cleanup must be reported and resolved through the owner, not bypassed through another tool. In this first occurrence, deletion-commit creation returned `user cancelled MCP tool call`; execution paused until the owner re-supplied the original authorization. One identical retry succeeded. Cleanup commit `dcb8a2b28ed5fe76c644016b24b7211491eab909` deletes only the temporary workflow and restores exactly the original `c3e218638c61f3e7fd3e2036aceb017f228b9384` tree. Both remote ref and fetched current-tree absence were verified. The original Completion-Based Evaluation workflow is unchanged.
 
 ---
 
@@ -152,6 +193,18 @@ Last verified: 2026-08-29, PR #240.
 - Compatibility: retain the Vitest/Stryker constraints in Issue #328. Do not change runner generations or lower mutation thresholds to get green
 - References: [Issue #382](https://github.com/kame447/StudyPlanner/issues/382), [npm install documentation](https://docs.npmjs.com/cli/v11/commands/npm-install/)
 
+## Mutation job reaches 45 minutes without a final score (#837)
+
+- Evidence: scheduled main run `39071973530` and PR #835 runs `39654784610` / `39847947725` were cancelled at the existing job limit. The last two used the same 761 mutants and 2550 dry-run tests but completed different amounts of work. This predates #835's npm transport change; install/manifest checks succeeded.
+- Classification: harness capacity. Related discovery growth is not proof that every discovered test runs for every mutant; the pinned runner uses per-test coverage selection. Do not exclude transitive tests without coverage evidence.
+- Candidate: concurrency 4, preserving both mutate targets, TypeScript checker, related/per-test selection, thresholds 80/60/50, locked toolchain and 45-minute limit. No new dependency or permission. Built-in event-recorder writes to `reports/stryker/events`; CPU/memory diagnostics share the existing always-uploaded artifact directory. Events from an interrupted run are partial evidence, never a final score.
+- History prerequisite: obsolete diagnostic run `39855313439` (artifact `12459957024`) recorded 2550 dry-run entries, of which 2519 succeeded and all 31 `focusedContextualBindingWire.test.ts` cases were Skipped at 0 ms. A file-level beforeAll archive failure can appear as skipped child tests in this runner; “dry run succeeded” alone does not prove those tests ran. Their zero coveredBy entries are missing evidence, not proof they cannot cover mutants. Both coverage and mutation now check out full history (`fetch-depth: 0`, `persist-credentials: false`) so the actual historical-Worker compatibility suite can execute. The dependency-audit job remains shallow.
+- Fixture isolation: the compatibility suite still archives immutable commit `070d25cb` and preserves all 31 assertions. Its helper caches a complete bundle keyed by commit, esbuild version and explicit compiler/build options, validates cached bytes, and publishes atomically from unique staging directories. Warm setups reuse the completed bundle; simultaneous cold misses may build independently before publication. This removes shared partial-output races without excluding tests. Native acceptance must confirm all 31 cases succeed instead of silently skipping; the cache is not an established explanation for the earlier per-mutant slowdown.
+- Sandbox archive paths: full history is necessary but not sufficient. Superseded full-history run `39858164979` still recorded all 31 cases as Skipped because `git archive` interprets its pathspecs relative to cwd; a Stryker sandbox prefix does not exist in the historical tree. The fixture helper resolves `git rev-parse --absolute-git-dir` from the selected repository and passes explicit `--git-dir` to archive root paths. This preserves `JEV_COMPATIBILITY_BASE_REPO` selection, including read-only object stores without a work tree, and is covered by actual nested-directory and Git-directory archive/import regressions. A shallow-history fix alone must not be reported as restored mutation coverage.
+- Acceptance: native execution on the final content completes before 45 minutes, emits a complete JSON report (761 mutants on main `82a948ae`), score at least 50, no manifest/tool drift, no timeout surge over the historical 1, and no false kills from shared-fixture races. A fast green alone is insufficient. Check the actual hardware logs and per-mutant statuses. See [Stryker parallel-worker guidance](https://stryker-mutator.io/docs/stryker-js/parallel-workers/).
+- If this candidate fails, investigate resource/fixture contention or use a deterministic partition with complete mutant union and weighted global score. Do not pad the timer or lower detection requirements. Preserve reports; only the launcher's own temporary tool installation is automatically removed.
+- Tracking and final native acceptance: [Issue #837](https://github.com/kame447/StudyPlanner/issues/837).
+
 ## Playwright OS-dependency installation stalls before tests
 
 Last verified: 2026-10-07, PR #524 head `efb8015c`, UI Regression Matrix run `37669944859`.
@@ -163,6 +216,35 @@ After checking the current head and original job steps/logs, use one normal reru
 Verified recovery: initial job `112958816536` was canceled during Chromium installation; build and visual tests were skipped. One same-head job rerun produced replacement job `112970535796`, where installation, production build and visual regression all succeeded. The visual-test portion reported `4 passed (15.2s)`; that is not the total installation/job duration. Original cancellation remains canceled evidence.
 
 Permissions/preconditions: the existing repository CI action must be authorized, and the logs must establish a pre-test installation stall. Do not apply this classification to an assertion failure, timeout inside the tested behavior, flaky test result or unknown error. Do not change browser/test/quality guards to manufacture success. No temporary workflow or repository file was introduced, so no cleanup was needed.
+
+### Prebuilt cross-browser setup instead of repeated apt installation
+
+Setup verified on 2026-10-10 in [PR #575](https://github.com/kame447/StudyPlanner/pull/575), head `ba7b3dd7c6433b971a2344ef112bea4ad9fdb420`, [Matrix run 38070641994](https://github.com/kame447/StudyPlanner/actions/runs/38070641994). The cross-browser jobs use the [official Playwright container](https://playwright.dev/docs/ci#via-containers), `mcr.microsoft.com/playwright:v1.64.0-noble`, with non-root UID 1001. The isolated `@playwright/test` install remains necessary and must match the image version. Remove the redundant browser/OS-dependency installation only in jobs that actually use this image; the unchanged visual job still needs its own Chromium installation.
+
+The earlier [mobile job 113959448876](https://github.com/kame447/StudyPlanner/actions/runs/37971528653/job/113959448876) spent 16m52s downloading 116 MB of apt archives; the entire browser/OS-install step took about 17m41s. It eventually started tests, then exhausted the 25-minute job budget partway through. The network/mirror cause remains unknown. In the new mobile job `114267156178`, container initialization took 27s and job start to test start took 58s, including checkout, Node/npm, application dependencies, runner installation and build. This is a historical comparison across different commits/runners, not an identical-source benchmark or a promise of fixed future latency.
+
+All four new containers reached their real browser tests; the Chromium job completed 68 tests with one pre-existing conditional skip and successfully uploaded artifacts and saved the npm cache. Setup success alone is not full acceptance: require the final four project results, aggregate gate, visual and applicable CI results recorded in PR #575. Preserve test selection, assertions, retries, timeouts and failure propagation. New hosted jobs still download/start fresh containers; this is not a persistent shared test machine. No new secret, elevated workflow permission, custom cache service or temporary cleanup workflow is required. Update image and runner pins together and revalidate when upgrading.
+
+
+### PR #575 integration after mobile sharding (2026-10-18; local candidate)
+
+- The active work remains [PR #575](https://github.com/kame447/StudyPlanner/pull/575), branch `ci/prebaked-playwright-matrix`. Its original head `3461cc10` is being normally merged with main `a0648817`; this is the same container-setup task, not a replacement PR. The historical four-leg result above is not acceptance of this newer composition.
+- Restore only the original official `mcr.microsoft.com/playwright:v1.64.0-noble` container, numeric user 1001 and removal of the cross-browser browser/OS install step. Keep the isolated `@playwright/test@1.64.0` installation and manifest checks; the image supplies browsers/system libraries, not the project's test package. Keep the image and runner versions aligned when updating either.
+- Preserve main's 35-minute project budget, three unsharded desktop projects plus two WebKit mobile shards from #760, exact single-spec unsharded dispatch, shard listing preflight, artifact names, permissions, concurrency and fail-closed aggregate. The independent visual job still installs Chromium on its original host.
+- Local verification is limited to related workflow/shard contracts, duplicate-key-rejecting YAML structure, unchanged-main boundary and shell syntax. Current five-leg container startup, non-root checkout/cache/build/artifact permissions and browser execution require fresh authorized CI. No new container capability, host IPC, secret or permission is added. This local candidate is not a measured speed improvement or a fix for timeouts inside test actions.
+- Next: independently review the exact diff; only after publication approval, update the existing PR with a normal merge commit and inspect its actual synthetic checkout, all five cross-browser legs, visual job and aggregate. Keep failed/cancelled prerequisites distinct from application failures and do not replace missing current execution with the historical results.
+
+## CI follows content changes rather than Ready-for-review metadata
+
+- Observed: PR #672 ran [CI 38687785373](https://github.com/kame447/StudyPlanner/actions/runs/38687785373) and, after becoming Ready, [CI 38691256016](https://github.com/kame447/StudyPlanner/actions/runs/38691256016). Both checked out merge `62fec2de835a14fc3e49f280ed6d313a9d12e7a4` and passed 9,030 tests. Draft PRs already run the same full `verify` job on content events; Ready does not enable extra tests or permissions.
+- Trigger contract: `ci.yml` subscribes to PR `opened`, `synchronize`, and `reopened`, plus `push` to `main` and explicit `workflow_dispatch`. Changing a PR from draft to Ready is not a new code-verification request. All verification steps, the `verify` check name, timeouts, permissions and content-run concurrency remain unchanged.
+- This is event ownership, not cached approval. The two observed runs used different runner-image versions despite their identical merge commit. Do not infer that identical head/tree alone permits reusing a full result in a different environment. External dependency advisories can also change independently of source.
+- No `edited` trigger, conditional `verify` skip, alternate success gate or metadata-only job is added. Title/body edits and Ready transitions therefore do not create a replacement green `verify` or cancel an in-progress content run through this workflow.
+- **Retargeting limitation:** automatic verification after changing only a PR's base branch remains unsupported. A PR first opened against another base may have no applicable `main` CI. Before merging a retargeted PR, establish a normal `reopened` or `synchronize` run against `main` and inspect its actual merge checkout and terminal result. A Ready transition is not a fallback. Do not use a missing check, an old-head result or a manual branch-head run as proof of the new synthetic merge. If no suitable run exists, stop the merge and arrange explicitly authorized verification.
+- A base branch advancing without a PR head update also does not become a new PR trigger here. Preserve the existing pre-merge exact-integration check: reconcile the current base, verify the resulting integration content and inspect applicable gates. Keep the independent post-merge `main` push verification. This change does not authorize merging stale integration evidence.
+- Local acceptance: the verification-command contract test rejects the former Ready trigger, preserves the content triggers/main push/manual entry, and checks that no job skip or concurrency substitution was introduced. YAML structure and the exact diff must show only removal of `ready_for_review` from the workflow.
+- **GitHub event acceptance is still pending:** on an authorized reviewable PR, confirm that draft opening runs full CI; unchanged-head Ready and title/body edits do not start another CI or cancel the existing run; a head update and reopening still run full CI. Verify the check name and exact checkout. Do not create a test-only PR, dispatch CI or toggle an existing PR solely for this exercise without authorization.
+- Cross-browser setup is a separate existing task in [PR #575](https://github.com/kame447/StudyPlanner/pull/575), `ci/prebaked-playwright-matrix`. That candidate removes repeated OS/browser installation using an official Playwright image. Do not create a parallel browser-install change or copy its old timeout/test selection over current `main`. This trigger change leaves all browser workflows, projects and assertions untouched.
 
 ## Miniflare requests sample `cf` metadata during Worker type generation
 
@@ -206,6 +288,13 @@ Prefer updating an existing entry when the new evidence is the same failure clas
 - Local tooling checks and an import check for unstable_dev do not establish remote-provider evaluation quality. No paid/live Jev evaluation or holdout consumption is implied by this update. Earlier 4.140.0 execution records remain historical evidence, not current launch instructions
 - Do not lower the dependency audit threshold, omit dev dependencies, or disable certificate verification to hide a tooling vulnerability
 
+
+## Firestore Rules deployment privileges and pins
+
+- Issue #715: `.github/workflows/deploy-firestore-rules.yml` runs emulator regression in a `test` job with only `contents: read`. Only the dependent `deploy` job grants `id-token: write` for the existing WIF identity; it installs no npm dependencies and runs only the Node built-in-only Rules API deployment and read-back scripts. Its actions use full commit SHAs and setup-node's package-manager cache is disabled.
+- Firebase CLI `15.34.0` was the registry's stable `latest` on 2026-10-17; its Node engine includes `.node-version`'s 22.23.0 and its emulator requires Java 21. It is an exact devDependency in private `tools/firebase-tools`, with its own lockfile and Dependabot entry. Install with `npm ci --prefix tools/firebase-tools --ignore-scripts`; the npm test/manual deploy commands use that local CLI and fail with an installation hint if missing. Production deployment uses WIF above.
+- The isolated CLI still includes unpatched `braces` ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)). Previously the same chain was fetched unpinned in a job with OIDC permission; now it runs only in the unprivileged test job against the demo emulator project. Keep the app's dependency graph and high-severity audit unchanged; do not suppress the advisory or force an incompatible watcher override. Review upstream CLI updates through Dependabot.
+- A merge changing this workflow triggers production deployment even with unchanged rules. Preserve the WIF settings, serialized concurrency, repository guard, production ruleset read-back and repository SHA-256 comparison; unchanged `firestore.rules` must deploy identical content. Do not dispatch production deployment merely to verify job isolation.
 
 ## Temporary Firestore Node transport security pin
 
@@ -261,3 +350,167 @@ Verified 2026-10-06 for Issue #497. A newly published audit entry can fail an un
 Run `node scripts/ci/worker-image-toolchain.mjs` after a clean install. It resolves Sharp from the actual Miniflare location, checks native versions, decodes benign SVG, resizes/transcodes PNG/JPEG/WebP, exercises local Miniflare Images info/transform/output and rejects malformed data. No remote binding or production configuration is used. Miniflare 5 requires its exported `convertV4MiniflareOptions` adapter for the older options shape; its bundled README alone is not sufficient evidence of the installed constructor contract.
 
 This override protects the repository-installed toolchain, not an independently downloaded `npm exec --package=wrangler` installation. Existing remote JEV launchers' external toolchain path is not exercised or certified by this fix. Prefer the verified lockfile installation; any separately installed toolchain needs its own dependency validation before use. The production app/Worker has no Images binding or direct Sharp import; this does not establish exploitation or guarantee every external toolchain is patched. Existing moderate Vitest advisories remain separately tracked.
+
+
+### Bounded manual WebKit spec verification
+
+When the existing 35-minute mobile matrix expires before a changed spec runs, a successful unrelated case is not evidence for that spec. Do not relabel the cancelled full matrix as passed or repeat the whole matrix without changed conditions.
+
+The existing UI Regression Matrix workflow accepts an optional `spec` filename on a manual dispatch. A nonempty value selects only `webkit-mobile` and one exact existing regular `tests/e2e/*.spec.mjs` file. For example, `yearly-quick-entry.spec.mjs` collects the three yearly regressions on the yearly feature revision. The filename is passed through an environment variable and a quoted Bash array after validation; paths, shell fragments, regex patterns, symlinks and missing files are rejected. An unmatched project selection remains a Playwright error, never a successful empty run.
+
+This manual selection produces `targeted-webkit` and `targeted-webkit-summary` check names and `ui-targeted-webkit*` artifacts. Targeted dispatches use a separate same-ref concurrency group, so they cannot cancel a standard main-push or full manual Matrix run. Their PR summary has a separate diagnostic-only identity; missing or mixed Matrix job identities preserve existing summaries rather than overwriting a full result. It does not replace the normal `cross-browser-smoke` gate. Preserve the full-matrix cancellation separately and attach the exact checkout SHA, source/tree identity, targeted test results and images to the owning release receipt. The ordinary pull-request/push matrix, blank-spec manual dispatch, permissions, concurrency, 35-minute limit, assertions and retry policy remain unchanged. A nonempty spec takes precedence over the visual/all suite selector so the bounded request never silently runs another suite instead.
+
+Publication and execution still require the applicable repository authorization. Updating a feature branch can trigger its ordinary automatic CI; a subsequent manual dispatch requests only the selected spec and must not be described as a full-suite success. Before dispatch, read back the exact published head and wait for the automatic UI workflow started by that publication to be terminal. Also check for any active run in the selected scope’s concurrency group: `ui-targeted-webkit-${{ github.ref }}` for a targeted dispatch, or `ui-regression-${{ github.ref }}` for a standard run. The retained `cancel-in-progress: true` can replace an older same-ref run within that scope. Record the observed run IDs, terminal states and ref before the manual dispatch. Do not cancel an unrelated running job as part of this operation.
+
+## Local Vite build test fails under a symlinked macOS TMPDIR
+
+- Operation / symptom: `scripts/admin-entry-preload.test.mjs` ("keeps native lazy imports and CSS gating in real Vite output without preloading the Admin entry") fails during local `npm run verify` on macOS; Linux CI passes.
+- Known error signature: `RollupError: [vite:build-html] The "fileName" or "name" properties of emitted chunks and assets must be strings that are neither absolute nor relative paths, received "../../../../../../private/var/folders/…/index.html"`.
+- Root cause: the test builds inside `os.tmpdir()`. On macOS that is `/var/folders/…`, a symlink to `/private/var/folders/…`. Vite's root keeps the symlinked path while the HTML module id is the real path, so the emitted HTML name is a `../` path escaping the root.
+- Safe workaround: until [PR #745](https://github.com/kame447/StudyPlanner/pull/745) ([Issue #744](https://github.com/kame447/StudyPlanner/issues/744)) is on main, run local verification with `TMPDIR` set to the real path, e.g. ``TMPDIR=$(node -p "require('fs').realpathSync(require('os').tmpdir())") npm run verify``.
+- Required permissions / preconditions: none.
+- What not to do: do not edit the test's assertions or Vite config to make it pass; do not treat the local failure as a CI failure.
+- Verification / cleanup: `npm run test:run -- scripts/admin-entry-preload.test.mjs` passes with the real-path `TMPDIR` (4/4); after PR #745 it must pass with the default `TMPDIR`. Reproduced on untouched main `8261300b`.
+- Last verified: 2026-10-18
+
+## Browser Regression Chromium shard cancelled at its 30-minute limit
+
+- Operation / symptom: a Browser Regression `chromium (shard N/2)` job ends `cancelled` with `##[error]The operation was canceled.`; the aggregate `chromium` check then fails.
+- Known error signature: shard duration ≈30 min (`timeout-minutes: 30` in `.github/workflows/browser-regression.yml`); the shard log's `Running N tests using 1 worker` total is never reached.
+- Root cause or strongest current explanation: runner slowness against the job limit. Before [Issue #757](https://github.com/kame447/StudyPlanner/issues/757) the whole suite ran in one job; at ≈890 tests it was cancelled on main itself (`b91ef7b5`, 30.4 min), and Playwright's file order meant the same alphabetical tail never ran: every `weekly-*` spec, `workspace-load-recovery` and `yearly-quick-entry` (2026-10-18, four cancelled attempts at two #382 heads executed 784–817 of 889–893 tests, 0 failed). #757 splits the run into two Playwright shards with the same limit, worker count and tests; a wrapper preflight fails a shard whose listing is empty, because Playwright 1.64 otherwise passes an empty shard.
+- Safe workaround: a cancelled shard is missing evidence, not a pass. "0 failed before cancellation" says nothing about the tests it never reached. Rerun that shard job once on the same commit; merge only on a completed run of both shards.
+- Required permissions / preconditions: permission to rerun workflow jobs.
+- What not to do: do not merge on a cancelled shard; do not rerun repeatedly without new evidence (repeat-action guard); do not drop tests, raise the limit or add `--pass-with-no-tests` to avoid the timeout. Do not confuse this with `cancel-in-progress` replacement by a newer run of the same ref, which is not a timeout.
+- Verification / cleanup: the rerun must complete within the limit with all of its tests passing; if the same commit times out again, stop and investigate (for example, whether one shard has become too large and the shard count needs review).
+- Last verified: 2026-10-18
+
+## UI Regression Matrix webkit-mobile job cancelled at its 35-minute limit
+
+- Operation / symptom: a `cross-browser-projects (webkit-mobile) (shard N/2)` job ends `cancelled` after about 35 minutes and the `cross-browser-smoke` aggregate turns red.
+- Known error signature: shard duration ≈35 min (`timeout-minutes: 35` in `.github/workflows/ui-regression.yml`), `##[error]The operation was canceled.`, and the shard log's total is never reached.
+- Root cause or strongest current explanation: runner slowness against the job limit. Before [Issue #759](https://github.com/kame447/StudyPlanner/issues/759), the whole WebKit mobile suite ran in one job: PR #743 run 39078814033 at `f87c17ab` and PR #755 run 39078828235 at `4e2f53d8` both stopped after 343 of 448 tests with 0 failures, leaving about 100 tests unexecuted. #759 splits only the full WebKit mobile leg into two Playwright shards with unchanged limits, workers, retries and coverage; the shared wrapper preflight rejects an empty shard listing because Playwright 1.64 otherwise passes it. The other three projects and manual single-spec WebKit dispatch remain unsharded.
+- Safe workaround: a cancelled shard is missing evidence, not a pass. “0 failed before cancellation” says nothing about tests it never reached. Rerun that shard job once on the same commit; merge only after both mobile shards and every other project complete successfully. For a specific spec, the targeted WebKit dispatch above provides diagnostic evidence without replacing the full gate.
+- Required permissions / preconditions: none to read logs; permission to rerun workflow jobs.
+- What not to do: do not merge on a cancelled shard, substitute main's cancellation or a targeted pass for full coverage, rerun repeatedly without new evidence (repeat-action guard), raise the 35-minute limit, drop tests or add `--pass-with-no-tests`. Distinguish a timeout from replacement by a newer run in the same concurrency group.
+- Verification / cleanup: require every project leg and both nonempty mobile shards to pass, with the two shard listing totals summing to the full `--list --project=webkit-mobile` total. If the same commit times out again, stop and investigate shard balance or runner setup instead of treating the partial run as success.
+- Last verified: 2026-10-18
+
+## Bundle-budget history and measured baseline recovery
+
+The UI Quality Automation bundle gate accumulated a repository-wide overrun: main `a39defd8` (2026-10-17) exceeded eight metrics, and the parent reported no successful UI Quality run among the latest60 runs. Controlled historical builds first cross the JS aggregate limits at `ee815b47` (#566, unreadable-checkpoint retention); predecessor `9f0e0911` passes. Other metrics cross later (#610/#634/#653/#674). This is accumulated application growth, not a dependency upgrade. Reduction remains in [Issue #321](https://github.com/kame447/StudyPlanner/issues/321).
+
+Owner decision based on measured main/PR baseline, 2026-10-21 (#305/[PR #826](https://github.com/kame447/StudyPlanner/pull/826)): restore a blocking absolute regression gate by calibrating the six exceeded metrics exactly to the measured main baseline plus the PR's justified increment, with **no extra headroom**. The user approved Jev production rollout; these specific budget values are the owner's decision, not a separate user approval. Neither the checker nor its CI step is disabled. Existing CSS largest-chunk and optional-appearance limits remain unchanged.
+
+Three-stage comparison of actual written output (bytes):
+
+| Source | JS total raw / gzip | Largest JS raw / gzip | CSS total raw / gzip | Previous limits |
+| --- | ---: | ---: | ---: | --- |
+| Last calibration f99a916f | 2263870 / 609511 | 782798 / 221199 | 492097 / 83402 | PASS |
+| Main22e42203 | 2595556 / 704618 | 1029356 / 282169 | 513954 / 89911 | FAIL,6 metrics |
+| PR source c309b457 | 2614112 / 711066 | 1047214 / 288393 | 513954 / 89911 | FAIL,6 metrics |
+
+The last calibration changed `scripts/ci/check-bundle-budget.mjs` atf99a916f for the approved release stack on4e162408, with its history retained in the client-runtime unplanned-study work record. The matched reconstruction exactly reproduces that calibration's JS2263870/609511 bytes. All three source snapshots used the same installed dependency tree, patched Vite6.4.4 lock and Nodev22.23.0 (darwin/arm64), production environment and Vite build invocation. Main/PR configuration is byte-identical; the historical calibration retains its original esbuild configuration, while main/PR include the existing conservative Terser configuration. No new minifier change is adopted: an extra conservative re-minification experiment saved only1061 raw/677 gzip bytes and slightly worsened the largest chunk's gzip; size alone did not establish behavior compatibility.
+
+Evidence fingerprints: lock SHA256 `4d7a9c84d4dcc42dbdd3f50c28c2db87fbd134de6e11310a614e998819ff3ad4`; installed-tree SHA256 `1b140abb073baf04ca0195439e3c4f0f30718539550a523e1b90c7bc203d4883`; environment fingerprint `c2d8f9d9685778c90af70ffd95bb3f48dc911bea57eaa3738cdcdc5e938eefb0`. Main/PR config SHA256 `112120c98210436a0a559f5cbe4bf3742dea034f63c86516628d436389979337`; calibration config SHA256 `041c945f142b1dd2ac55549fd0478353bf9db4ff4c481b719a75c331b4c429f9`. The environment is represented by a digest, not copied credentials. Local evidence under the owning worktree's ignored `.cache/issue305-ci/` includes `summary.json`, `installed-tree.json`, `*-composition.json`, `*-budget.log`, module/output-family deltas and the probe/finalization scripts. Output metrics are measured after Vite finalization; preliminary generateBundle code lengths are not the final asset sizes.
+
+Composition: calibration→main pre-minification rendered-module growth is weekly planning+230547, components+197982, hooks+64091, other app+121476, shared+21384 and vendor+13946 bytes. Those source-attribution values are not exact minified per-module costs; JS chunk families also moved between the instrumented-runtime and runtime-trace chunks. Main→PR's actual written increment is18556 raw/6448 gzip JS bytes, CSS0; its principal source change is effort display validation (+21297 pre-minified rendered bytes). Expanded inspection of all2435 emitted PR module entries and44 written JS assets found no dev registry/enablement, loopback bridge, test/spec/testUtils/fixture or E2E harness leak. Calibration→main CSS net+21857 bytes comes from AdminApp+16400, StudyStreakPage+7779, TimetableView+4686, announcements+4193, schedule actions+3013, AI planning+2614, inquiry+875, week drag+687, appearance+17 and initial CSS−18407.
+
+New absolute limits, with the six changed values equal to the PR's actual output:
+
+| Metric | JS limit (bytes) | CSS limit (bytes) |
+| --- | ---: | ---: |
+| Total raw | 2614112 | 513954 |
+| Total gzip | 711066 | 89911 |
+| Largest raw | 1047214 | 425000 (unchanged) |
+| Largest gzip | 288393 | 70000 (unchanged) |
+
+The optional appearance limits remain stylesheet8000/font512000 bytes. Do not add tolerance, waive a failure, remove features or adopt unsafe transforms to fit these limits. Future growth needs explicit review and attribution; reductions and any broader source/module work stay in #321. Run the normal production build, unchanged blocking checker and boundary contract tests on the exact candidate; the parent owns frozen-HEAD PR/CI verification. Once merged, normal absolute threshold judgment resumes against these limits, replacing the former temporary main-delta workaround.
+
+Local successor verification on base8cf554c7 (which includes the Vite6.4.4 audit repair):8 budget tests pass, including exact raw boundaries/one-byte overflows and unchanged appearance guards; `npm run build` passes (1m24s); `node scripts/ci/check-bundle-budget.mjs` exits0 with no violations. All55 written JS/CSS assets are byte-identical to the measured PR snapshot, and all six changed metrics exactly equal their limits. `git diff --check` passes. The new root report is `.cache/issue305-ci/recalibrated-root-budget.json`; logs are `/private/tmp/jev305-budget-recalibration-{final-tests,build,check}.log`. No app/Worker/minifier behavior, deployment or secrets change. Parent next: commit this budget script/test/runbook checkpoint, run frozen PR #826 gates and continue its separate rollout work. Last verified: 2026-10-21.
+
+
+### D5 production release: exact second-stage increment (base f1f347c5)
+
+Owner decision based on measured release increment, 2026-10-21 (#305 release): parent7977 authorizes only the release artifact's measured increment over PR #826's calibrated `f1f347c5b206e7a2d032a86f9f91f922c4b47e98`, with no headroom. This succeeds the main/PR baseline limits above; all CSS and appearance limits stay unchanged.
+
+Controlled rebuilds compared f1f347c5 with rebased release `408b151df0f76932484a0944be439ba495e4b468`. `npm ci` used the delegated worktree's `.cache/npm-cache`; both builds used the same physical installed dependency tree (baseline Git archive symlink), Node22.23.0/darwin-arm64, Vite6.4.4, unchanged lock/config, the same environment and `npm run build`. No `.env` files exist in the worktree. Lock SHA256 `4d7a9c84d4dcc42dbdd3f50c28c2db87fbd134de6e11310a614e998819ff3ad4`; Vite config SHA256 `112120c98210436a0a559f5cbe4bf3742dea034f63c86516628d436389979337`; current installed-tree report SHA256 `a3546ed43825c9fba7a97ed2b54491829714701e8835c5b9976a630cfba32d94`; build-relevant environment digest `1f4fe046168b1477536724ae5c5c6bc821f847b9b95017bc74841b7efc86890b`. The digest excludes raw environment values from this record.
+
+| JS metric | f1f347c5 measured/limit | Release measured/new limit | Exact increment |
+| --- | ---: | ---: | ---: |
+| Total raw | 2614112 | 2614547 | +435 |
+| Total gzip | 711066 | 711285 | +219 |
+| Largest raw | 1047214 | 1047649 | +435 |
+| Largest gzip | 288393 | 288638 | +245 |
+
+Baseline checker exits0. Before this adjustment, the release checker exits1 for exactly those four JS increments and no other violation. Every CSS filename and SHA256 is identical between the two builds: actual aggregate513954 raw/89911 gzip, largest406102 raw/66585 gzip. Keep existing CSS limits513954/89911/425000/70000 and appearance stylesheet8000/font512000 unchanged.
+
+Only the main index raw size changes (+435); the other43 JavaScript chunks retain their raw sizes, with44 total on each snapshot. The sole frontend production-source delta installs the D5 v2 policy data and binds registration to its shared version in `weeklyPlanningRegisteredCandidateDomains.ts`; the selector/producer/runtime modules were already bundled. Hash changes in imports produce the remaining gzip differences (aggregate+219 versus index+245). The release's evaluated-only Worker header is not in the frontend import graph. There are no new chunk families, dependencies, minifier transforms or dev seam; all44 built JS files have zero existing dev-enablement markers. No feature was removed and no unrelated metric was adjusted.
+
+The budget contract tests pin the new exact four limits, retain one-byte raw aggregate/largest rejection, and preserve CSS/appearance rejection/missing-font checks. Build logs: `/private/tmp/d5-release-rebased-{baseline-build,build}.log` (1m54s/1m56s). Baseline and pre-adjustment checker logs: `/private/tmp/d5-release-rebased-{baseline-budget,budget-before}.log`. Controlled evidence is in the owning worktree's ignored `.cache/issue305-release/`: `installed-tree.json`, `environment-fingerprint.json`, `baseline-budget.json`, `release-budget-before.json` and `measurement.json`. Parent owns the final frozen-HEAD PR/CI verification and release review; reducing the older repository-wide growth remains #321, not a reason to add tolerance here.
+
+Final verification on `408b151d` plus only the four-file budget/test/runbook/work-record diff: clean install and installed Vite6.4.4 confirmed; app + regenerated Worker runtime types + Worker TypeScript checks pass (`/private/tmp/d5-release-rebased-typecheck.log`). The combined focused suite passes24 files/557 tests, including all8 budget boundary/appearance tests (`/private/tmp/d5-release-rebased-focused-final.log`,42.08s). The blocking checker independently exits0 with zero violations; all four JS measured metrics equal their new limits exactly (`/private/tmp/d5-release-rebased-budget-final.log`, `.cache/issue305-release/release-budget-final.json`). `git diff --check` and smoke/helper/config syntax checks pass. Only the four JS limits, their contract fixtures and documentation changed after the measured build; no application build input changed. No deployment, provider call or production smoke was performed. Last verified:2026-10-21.
+
+
+### D5 controlled rejection: exact guarded-fallback increment (base 8568c8aa)
+
+Owner decision based on measured commit-rejection fallback increment, 2026-10-21 (#305 rejection fallback): parent mail8437 authorizes the four final measured JS limits, with no headroom. These supersede the preceding D5 release limits. CSS, optional appearance limits, checker logic and the blocking CI step remain unchanged.
+
+| JS metric | 8568c8aa limit / prior measured baseline | Final measured / new limit | Exact increment |
+| --- | ---: | ---: | ---: |
+| Total raw | 2614547 | 2616972 | +2425 |
+| Total gzip | 711285 | 711893 | +608 |
+| Largest raw | 1047649 | 1050074 | +2425 |
+| Largest gzip | 288638 | 289210 | +572 |
+
+The increment implements graph/checkpoint/reducer/receipt/current-source checks before one ordinary Luna execution after a definitively uncommitted selected-candidate rejection, plus bounded rejection reasons and a scheduled/none diagnostic. It addresses the error-only rejection path found while investigating the production no-reply report; the precise production trigger remains unproven. It is not a general retry of rejected turns. Recovery-unknown, stale owner/view/source or intervening revisions cannot authorize fallback. The shared enum list is used at runtime only by the test-only smoke; application imports are types, so no runtime enum array is added to the production bundle.
+
+Astra's real-persistence probe at95089764 exposed a defect in the new guard: rollback's own load_state save refreshed only savedAt, so byte equality blocked the required fallback. The follow-up validates both checkpoints with the real codec and exact owner/week/conversation, then canonical-compares the original raw envelopes excluding only top-level savedAt. Every other field, including legacy fields stripped by the decoder, remains in the comparison. This adds247 raw/41 gzip aggregate and247 raw/42 gzip largest bytes over95089764; the table includes that final measured increment. Before its recalibration the checker exits1 for exactly those four JS metrics. Existing CSS/appearance limits and checker logic remain unchanged. Source/test/build evidence: `.cache/d5-persist-rollback-{red,focused,verification,typecheck,build,budget-tests}.log`;24 affected files/406 tests and full typecheck pass, final build51.54s uses the same normal-npm-ci dependency tree described below. The checker passes at the exact final limits after this adjustment.
+
+CI run39601297015 then found an architecture gate failure at982fc0b1: controlledFallback directly imported SessionCodec outside the explicit audited module set. The same scoped read/validation/raw-envelope basis operation now lives in the already audited C5 checkpoint facade; the consumer imports only that narrow operation. No decoder re-export, allowlist change or behavior change is used. This adds100 raw/27 gzip aggregate and100 raw/15 gzip largest bytes over982fc0b1; the table includes it. Source/test/build evidence: `.cache/d5-isolation-facade-{red,focused,verification,typecheck,build,budget-tests}.log`. The previous24-file union plus the required isolation gate passes25 files/407 tests; full typecheck and final build50.96s pass. Only four exact measured JS limits/fixtures change; CSS/appearance/checker logic remain unchanged.
+
+A normal `npm ci` (including install scripts) used the worktree `.cache/npm-cache`, followed by a clean Vite production build. Node22.23.0/darwin-arm64, Vite6.4.4, lock SHA256 `4d7a9c84d4dcc42dbdd3f50c28c2db87fbd134de6e11310a614e998819ff3ad4` and Vite config SHA256 `112120c98210436a0a559f5cbe4bf3742dea034f63c86516628d436389979337` match the prior release environment. The prior measured limits supply the baseline; this checkpoint did not reconstruct a second baseline build. Final CSS remains513954 raw/89911 gzip (largest406102/66585), appearance stylesheet7077/font500340. Before calibration, the checker exits1 for exactly the four JS metrics; afterward it exits0 with zero violations, each JS metric equal to its limit. Contract tests retain exact-boundary/one-byte overflow and CSS/appearance/missing-font detection.
+
+Evidence in the delegated worktree: `.cache/d5-commit-npm-ci.log`, `.cache/d5-commit-clean-build.log`, `.cache/d5-commit-final-typecheck.log`, `.cache/d5-commit-final-verification.log`, `.cache/d5-commit-final-budget-smoke.log`, `.cache/d5-commit-last-tests.log`, and `artifacts/quality-gate/bundle-budget.json`. Parent owns the final frozen commit/PR audit, CI and any production attempt; no deployment or provider/production request was performed here.
+
+### D5 chat ownership: checkpoint metadata must not revoke completion (base d8f8470e)
+
+Owner decision8487 raises only JS totalRaw from2616972 to the measured2617120 (+148 raw bytes), with no extra raw allowance. Other JS limits remain711893/1050074/289210; measured values are711872/1050074/289203. CSS/appearance, checker logic and CI stay unchanged. The same Node22.23.0/darwin-arm64, Vite6.4.4, lock/config and installed dependency tree as the preceding checkpoint produced this38.47s build (`.cache/d5-chat-scope-build.log`). Before the adjustment only totalRaw fails; afterward the checker exits0. The new bytes bind the view operation to its chat session and active chat, so its own metadata checkpoint cannot revoke final reply persistence. Tests retain exact raw-boundary and one-byte overflow rejection. Smoke/test-only changes do not enter the app bundle. Parent owns the frozen-head audit and integration/production verification.
+
+### Study-record note visibility: exact CSS aggregate increment (#841/#842)
+
+Owner decision8, 2026-10-23, explicitly approves only the measured CSS aggregate increment for [Issue #841](https://github.com/kame447/StudyPlanner/issues/841) / [PR #842](https://github.com/kame447/StudyPlanner/pull/842). The main72f51922 CSS baseline is513954 raw/89911 gzip bytes; the integration f750399f (775656b9 merged with72f51922) measures513993/89918, exactly **+39 raw/+7 gzip**, with no extra headroom. The39 raw bytes are the minified selector-list addition `,.study-session-page[data-phase=record]`, which extends the existing16px bottom scroll inset to the record phase so the focused note stays fully visible after native end-aligned scrolling.
+
+Only `css.totalRaw`513954→513993 and `css.totalGzip`89911→89918 change. CSS largest limits425000/70000, all JS limits2617120/711893/1050074/289210 and appearance limits8000/512000 remain unchanged. Checker logic, blocking CI, viewport ratio1, retries/timeouts and the strict Matrix policy remain unchanged; this decision grants no waiver for #805/#776 or any other PR/metric.
+
+Fresh `npm ci --cache .cache/npm-cache` on f750399f uses patched Node24.22.1/darwin-arm64 and Vite6.4.4. The pre-edit production build succeeds; the unchanged checker exits1 for exactly the two CSS aggregates above. JS measures2617120/711878, largest1050074/289199; CSS largest406141/66592 and appearance7077/500340 are within their unchanged limits. After calibration, the rebuild and blocking checker both exit0, with zero violations and CSS totals exactly equal to the new limits. All67 generated files and all measured metrics are byte-identical before/after; all8 budget tests pass, retaining the exact-boundary fixture and one-byte overflow rejection. If any different increment or other violation appears in later verification, stop rather than extending this approval.
+
+Evidence and follow-up: [PR #842](https://github.com/kame447/StudyPlanner/pull/842) / [Issue #841](https://github.com/kame447/StudyPlanner/issues/841) for the before/after build and budget measurements. The parent owns the frozen successor's full `npm run verify` (including `check:node`), native CI/strict Matrix and final audit; the old775656b9 browser evidence does not transfer to a changed integration head. No deployment, provider or production-data operation is part of this calibration.
+
+### Stable V5 production isolation: new caller imports an internal codec
+
+Signature: `weeklyPlanningStableV5ProductionIsolation.test.ts` reports `allows direct Stable V5 imports only through explicitly audited runtime support modules`, for example `application/c5LocalSelection/controlledFallback.ts:../weeklyPlanningStableV5SessionCodec` (#831, run39601297015). Functional tests can pass while this dependency boundary is invalid; a focused green suite that omits the gate is incomplete evidence.
+
+Keep storage/codec validation behind the audited module that owns that responsibility. For the C5 envelope this is `application/c5LocalSelection/checkpoint.ts`; expose a scoped read/validation operation rather than a generic decoder or an import alias. Do not expand the allowlist merely to permit a new caller. Include `semantic/weeklyPlanningStableV5ProductionIsolation.test.ts` in the affected verification union, retain real persistence/rollback and negative-state controls, then run typecheck and the production build/budget. No special permission or deployment is needed for this local fix. Remove the caller's direct internal import and confirm the unchanged architecture gate plus the behavior regressions pass; parent-owned CI must still finish on the frozen successor SHA.
+
+
+## Worker tooling transport: package overrides do not patch CLI bundles
+
+Last verified: 2026-10-21. This is a partial mitigation, not full toolchain security clearance.
+
+- The pinned Wrangler 4.151.0 uses Miniflare 5.20261012.0-beta. Its separately resolved Undici 7.29.1 is affected by the [Undici 7.30.1 security fixes](https://github.com/nodejs/undici/releases/tag/v7.30.1). A scoped Miniflare override selects 7.30.1 without changing Wrangler, workerd, or unrelated dependency versions. The existing sharp override remains unchanged.
+- Wrangler also embeds its own Undici 7.29.1 in `wrangler-dist/cli.js`. npm overrides and updating the Node executable do not rewrite that copy. The published Wrangler 4.151.3 artifact (latest at inspection) still embeds 7.29.1, and its Miniflare 5.20261019.1-beta still declares 7.29.1. Upgrading to that release is not a security fix for this issue.
+- The regression suite verifies the installed Miniflare copy and records the unresolved embedded version separately. A passing test is not evidence that the embedded transport is patched. npm audit can miss the bundled copy and, at inspection, did not report the published 7.29.1 advisories.
+- Wrangler's embedded fetch serves Cloudflare API/auth requests and its unstable development API. [TLS renegotiation denial-of-service (CVE-2026-87018)](https://github.com/nodejs/undici/security/advisories/GHSA-qrxm-fqhp-jwvm) and [Content-Encoding denial-of-service (CVE-2026-109869)](https://github.com/nodejs/undici/security/advisories/GHSA-xjj6-f33q-929c) require a malicious or compromised responding server. Custom-certificate, shared-cache/redirect, EventSource and WebSocket advisories have additional feature-specific prerequisites; inclusion in the bundle alone does not prove use by this application. No exploit was executed; this source inspection does not establish whether production has been attacked.
+- Until Cloudflare publishes a verified patched artifact, avoid untrusted API endpoint overrides, proxy/config files and untrusted development responses. Do not disable TLS validation or copy/dump credentials to work around this limitation. Keep optional telemetry/update fetches disabled during offline verification. These reduce exposure but do not remove the embedded dependency risk or authorize changing user/system network settings.
+- Do not edit vendored bundle strings, relax assertions, or apply a blanket override and call the issue fixed. A future toolchain upgrade must verify both installed resolution and actual embedded code/version, then rerun Worker type generation, launcher tests and the full repository verification. Provider-hosted action runtimes and production deployment verification are separate boundaries.
+
+
+## Bundle excessive-growth policy (2026-10-23)
+
+The owner's direction is to check when bundles become excessively large rather than reject every small increase. This supersedes the no-headroom / exact-increment requirement in the historical calibration sections above, not their measured evidence.
+
+Keep the reviewed JS/CSS reference values unchanged as fixed `baselines`, including #842's measured CSS totals 513993/89918. Each effective limit is baseline + max(floor(baseline × 5%), absolute floor), with floors of 16 KiB raw and 4 KiB gzip. Thus growth fails only when it exceeds both the relative and absolute allowance. These are cumulative limits against a fixed reference, not per-PR allowances or an automatically increasing baseline. Existing appearance stylesheet/font hard caps and required asset checks stay unchanged.
+
+JS reference totals are 2617120 raw / 711893 gzip. Five percent gives total allowances of 130856 / 35594 JS bytes and 25699 / 4495 CSS bytes, allowing ordinary small fixes while rejecting substantive cumulative growth. The gzip floor prevents treating a few compressed kilobytes on smaller chunks as excessive (CSS largest allowance4096 B). This is a review policy, not a measured load-time guarantee. Preserve the #842 calibration history; it does not become an exemption or permission to ratchet future references.
+
+Keep measuring every emitted asset with level-9 gzip and reporting totals, largest chunks, fixed references, exact deltas, allowances and effective limits in JSON and the CI summary. Oversized bundles still exit nonzero. Never waive failures or regenerate references from the build under test. Future recalibration needs measured-build evidence and review. Reductions remain tracked in #321; native UI/Matrix and other review gates are not waived.

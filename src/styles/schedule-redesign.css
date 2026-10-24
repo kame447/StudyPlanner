@@ -12,45 +12,6 @@
   background: var(--surface);
 }
 
-.schedule-app-header {
-  position: relative;
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) 52px;
-  align-items: center;
-  min-height: 62px;
-  margin: 0 -14px;
-  padding: env(safe-area-inset-top, 0px) 14px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(18px);
-  z-index: 4;
-}
-
-.schedule-app-header h1 {
-  margin: 0;
-  font-size: clamp(1.15rem, 3.8vw, 1.45rem);
-  line-height: 1;
-  text-align: center;
-  letter-spacing: 0.02em;
-}
-
-.schedule-back-button,
-.schedule-header-spacer {
-  width: 44px;
-  height: 44px;
-}
-
-.schedule-back-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: 14px;
-  background: transparent;
-  color: var(--text);
-}
-
 .schedule-toolbar {
   position: relative;
   z-index: 3;
@@ -284,11 +245,6 @@
   padding: 0 !important;
 }
 
-.schedule-month-view .month-pager-viewport {
-  border: 0;
-  border-radius: 0;
-}
-
 .schedule-month-view .month-grid {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   overflow: hidden;
@@ -380,27 +336,11 @@
   padding: 3px 5px;
   border: 0;
   border-radius: 5px;
-  background: color-mix(in srgb, #6ec9a2 30%, var(--surface) 70%);
+  background: var(--schedule-event-bg);
   color: var(--text);
   font-size: 0.62rem;
   font-weight: 700;
   box-shadow: none;
-}
-
-.schedule-month-view .month-major-event-pill:nth-child(5n + 2) {
-  background: color-mix(in srgb, #f4b85c 31%, var(--surface) 69%);
-}
-
-.schedule-month-view .month-major-event-pill:nth-child(5n + 3) {
-  background: color-mix(in srgb, #a787ef 27%, var(--surface) 73%);
-}
-
-.schedule-month-view .month-major-event-pill:nth-child(5n + 4) {
-  background: color-mix(in srgb, #72aefa 28%, var(--surface) 72%);
-}
-
-.schedule-month-view .month-major-event-pill:nth-child(5n) {
-  background: color-mix(in srgb, #ef7b9f 25%, var(--surface) 75%);
 }
 
 .schedule-month-view .month-major-event-full {
@@ -532,14 +472,8 @@
 .month-day-sheet-bar {
   align-self: stretch;
   border-radius: 999px;
-  background: #8b5cf6;
+  background: var(--schedule-event-color);
 }
-
-.month-day-sheet-event.mint .month-day-sheet-bar { background: #44c08a; }
-.month-day-sheet-event.violet .month-day-sheet-bar { background: #8b5cf6; }
-.month-day-sheet-event.blue .month-day-sheet-bar { background: #4d9cf7; }
-.month-day-sheet-event.amber .month-day-sheet-bar { background: #efa93a; }
-.month-day-sheet-event.pink .month-day-sheet-bar { background: #ef6f95; }
 
 .month-day-sheet-title {
   font-size: 1rem;
@@ -948,11 +882,6 @@
 
 @media (max-width: 640px) {
   .schedule-workspace-shell {
-    padding-inline: 12px;
-  }
-
-  .schedule-app-header {
-    margin-inline: -12px;
     padding-inline: 12px;
   }
 

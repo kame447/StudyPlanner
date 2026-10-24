@@ -1,6 +1,6 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Plan } from '../types/domain';
+import type { MonthEvent, Plan } from '../types/domain';
 import { MonthDaySheet } from './MonthDaySheet';
 
 const callbacks = {
@@ -104,7 +104,7 @@ describe('MonthDaySheet', () => {
     expect(serialized).not.toContain('数学');
 
     const eventButton = renderer.root.findAllByProps({
-      className: 'month-day-sheet-event mint',
+      className: 'month-day-sheet-event',
     })[0];
     expect(eventButton).toBeTruthy();
 
@@ -114,5 +114,37 @@ describe('MonthDaySheet', () => {
 
     expect(callbacks.onOpenDay).toHaveBeenCalledWith('2026-08-22');
     expect(callbacks.onEdit).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('MonthDaySheet occurrence day labels', () => {
+  it.each([
+    ['2026-08-22', '18:00〜'],
+    ['2026-08-23', '終日'],
+    ['2026-08-24', '〜10:00'],
+    ['2026-08-25', null],
+  ])('clips the multi-day label for %s without changing its edit source', (date, label) => {
+    const event: MonthEvent = { id: 'trip', userId: 'user-1', title: 'Trip', date: '2026-08-22',
+      endDate: '2026-08-24', startTime: '18:00', endTime: '10:00', repeat: 'none', repeatUntil: null,
+      excludedDates: [], url: '', memo: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '' };
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<MonthDaySheet openDate={date} userId="user-1" monthEvents={[event]} {...callbacks} />); });
+    const buttons = renderer.root.findAllByProps({ className: 'month-day-sheet-event' });
+    expect(buttons).toHaveLength(label ? 1 : 0);
+    if (label) {
+      expect(JSON.stringify(renderer.toJSON())).toContain(label);
+      act(() => { buttons[0].props.onClick(); });
+      expect(callbacks.onEdit).toHaveBeenCalledWith(event);
+    }
+    act(() => renderer.unmount());
+  });
+
+  it('excludes the midnight endpoint date', () => {
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<MonthDaySheet openDate="2026-08-23" userId="user-1"
+      plans={[plan({ startTime: '23:00', endTime: '00:00' })]} monthEvents={[]} {...callbacks} />); });
+    expect(renderer.root.findAllByProps({ className: 'month-day-sheet-event' })).toHaveLength(0);
+    act(() => renderer.unmount());
   });
 });

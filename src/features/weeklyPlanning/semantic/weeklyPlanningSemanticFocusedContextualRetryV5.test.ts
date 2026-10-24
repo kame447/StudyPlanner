@@ -131,7 +131,7 @@ describe('Stable V5 focused contextual-answer retry', () => {
     expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
     expect(vi.mocked(client.createChatCompletion).mock.calls.map(
       ([request]) => request.decisionContext?.purpose,
-    )).toEqual(['focused_contextual_answer', 'focused_contextual_answer']);
+    )).toEqual(['focused_contextual_answer_v2', 'focused_contextual_answer_v2']);
     expect(result.document?.tasks[0]).toMatchObject({
       existingPublicId: 'task-slides',
       effortEstimates: [expect.objectContaining({
@@ -164,7 +164,7 @@ describe('Stable V5 focused contextual-answer retry', () => {
     expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
     const firstRequest = vi.mocked(client.createChatCompletion).mock.calls[0][0];
     const secondRequest = vi.mocked(client.createChatCompletion).mock.calls[1][0];
-    expect(firstRequest.decisionContext?.purpose).toBe('focused_contextual_answer');
+    expect(firstRequest.decisionContext?.purpose).toBe('focused_contextual_answer_v2');
     expect(secondRequest).not.toHaveProperty('decisionContext');
     const repairMessage = secondRequest.messages[secondRequest.messages.length - 1];
     expect(repairMessage?.content).toContain('Re-evaluate only the current user text');

@@ -1,14 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getMotionLevel, resolveExitDurationMs, STANDARD_EXIT_MS } from '../lib/motionPreference';
 
-export const DEFAULT_EXIT_MOTION_MS = 280;
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
-}
+export const DEFAULT_EXIT_MOTION_MS = STANDARD_EXIT_MS;
 
 export function useExitMotion(
   onExit: () => void,
@@ -45,7 +38,9 @@ export function useExitMotion(
         afterExit?.();
       };
 
-      if (durationMs <= 0 || prefersReducedMotion()) {
+      // Read at the moment of exit: the user may have changed the level since mount.
+      const exitMs = resolveExitDurationMs(getMotionLevel(), durationMs);
+      if (exitMs <= 0) {
         finishExit();
         return;
       }
@@ -55,7 +50,7 @@ export function useExitMotion(
       timeoutRef.current = setTimeout(() => {
         timeoutRef.current = null;
         finishExit();
-      }, durationMs);
+      }, exitMs);
     },
     [durationMs],
   );

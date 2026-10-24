@@ -13,6 +13,7 @@ import {
   getWeekdayLabel,
 } from '../lib/date';
 import type { ViewMode } from '../types/domain';
+import { allowsSpatialMotion } from '../lib/motionPreference';
 import { MonthPickerDialog } from './MonthPickerDialog';
 
 const SCHEDULE_VIEW_OPTIONS: ReadonlyArray<{ mode: ViewMode; label: string }> = [
@@ -105,10 +106,6 @@ function setScrollLeftImmediately(element: HTMLDivElement, left: number) {
   element.style.scrollBehavior = previousScrollBehavior;
 }
 
-function prefersReducedMotion(): boolean {
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-}
-
 interface ScheduleDayStripProps {
   selectedDate: string;
   onChangeDay: (date: string) => void;
@@ -188,7 +185,7 @@ function ScheduleDayStrip({ selectedDate, onChangeDay }: ScheduleDayStripProps) 
     } else {
       strip.scrollTo({
         left: targetLeft,
-        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        behavior: allowsSpatialMotion() ? 'smooth' : 'auto',
       });
     }
 

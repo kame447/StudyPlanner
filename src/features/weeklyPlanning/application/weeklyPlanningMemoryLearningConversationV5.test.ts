@@ -21,9 +21,14 @@ vi.mock('../../../lib/aiConfig', () => ({
   }),
   getAiConfigValidationMessage: () => undefined,
 }));
-vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
-  createOpenAiCompatibleClient: () => ({ createChatCompletion: vi.fn() }),
-}));
+vi.mock('../../../services/ai/openAiCompatibleClient', async () => {
+  const { successfulWeeklyPlanningRendererCompletion } = await import(
+    '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture'
+  );
+  return { createOpenAiCompatibleClient: () => ({
+    createChatCompletion: successfulWeeklyPlanningRendererCompletion,
+  }) };
+});
 vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
 }));
@@ -138,7 +143,7 @@ function durationDocument(minutes: number): WeeklyPlanningSemanticDocumentV5 {
       effortEstimates: [{
         localId: 'answer-effort',
         targetLocalId: 'answer-task',
-        kind: 'total_duration',
+        kind: 'session_duration',
         minutes,
         unitCode: null,
         precision: 'approximate',

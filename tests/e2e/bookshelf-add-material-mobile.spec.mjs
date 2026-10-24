@@ -119,7 +119,7 @@ async function expectBookshelfFabToMatch(page, scheduleFabGeometry) {
 }
 
 test.describe('bookshelf add-material surface', () => {
-  test('matches Schedule FAB and material-sheet geometry after mobile page scrolling', async ({ page }, testInfo) => {
+  test('matches Schedule FAB and expands the material sheet after mobile page scrolling', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await seedBookshelfMobileState(page);
     await page.goto('/');
@@ -245,8 +245,11 @@ test.describe('bookshelf add-material surface', () => {
     expect(modalGeometry.modalBottomLeftRadius).toBe('0px');
     expect(modalGeometry.pageWidth).toBeLessThanOrEqual(modalGeometry.viewportWidth + 1);
 
-    expect(Math.abs(modalGeometry.modalLeft - intendedSheetInset)).toBeLessThanOrEqual(1);
-    expect(Math.abs(modalGeometry.modalRight - intendedSheetInset)).toBeLessThanOrEqual(1);
+    // Creation now fills the viewport width. Its overlay explicitly clears
+    // the classic scrollbar gutters observed in the Schedule reference above.
+    expect(Math.abs(modalGeometry.modalLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(modalGeometry.modalRight)).toBeLessThanOrEqual(1);
+    expect(modalGeometry.modalWidth).toBeCloseTo(390, 0);
 
     await testInfo.attach('bookshelf-add-aligned.png', {
       body: await page.screenshot({ fullPage: false }),

@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
+import type { ChatMessage } from '../../../services/ai/openAiCompatibleClientTypes';
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { deferred } from './localPersistenceConcurrency.testUtils';
 import type { MonthEvent, Plan } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
 import {
@@ -22,6 +23,7 @@ function legacyRepository(): PlannerRepository {
     getScheduleSnapshot: vi.fn().mockResolvedValue({ plans: [legacyPlan], monthEvents: [] }),
     getPlans: vi.fn().mockResolvedValue([legacyPlan]),
     getMonthEvents: vi.fn().mockResolvedValue([]),
+    applyRecurringMonthEventMutation: vi.fn().mockResolvedValue(undefined),
     upsertPlan: vi.fn(async (plan: Plan) => plan),
   } as unknown as PlannerRepository;
 }
@@ -36,6 +38,7 @@ function authorityRepository(): ScheduleEventAuthorityRepository {
     deletePlanWithDependents: vi.fn().mockResolvedValue(undefined),
     restorePlanWithDependents: vi.fn().mockResolvedValue(undefined),
     scheduleTodoPlan: vi.fn().mockResolvedValue(undefined),
+    applyRecurringMonthEventMutation: vi.fn().mockResolvedValue(undefined),
     upsertPlan: vi.fn(async (plan: Plan) => plan),
     deletePlan: vi.fn().mockResolvedValue(undefined),
     upsertMonthEvent: vi.fn(async (event: MonthEvent) => event),
@@ -145,5 +148,120 @@ describe('combined schedule read authority', () => {
     await expect(repository.getScheduleSnapshot('user-1')).resolves.toEqual({ plans: [canonicalPlan], monthEvents: [] });
     expect(legacy.getScheduleSnapshot).not.toHaveBeenCalled();
     expect(authority.getScheduleSnapshot).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('recurring MonthEvent authority routing', () => {
+  const events = [{ id: 'series', userId: 'user-1' }, { id: 'replacement', userId: 'user-1' }] as MonthEvent[];
+
+  it('sends the entire mutation to the canonical authority after migration', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await repository.applyRecurringMonthEventMutation('user-1', events);
+    expect(authority.ensureMigrated).toHaveBeenCalledOnce();
+    expect(authority.applyRecurringMonthEventMutation).toHaveBeenCalledExactlyOnceWith('user-1', events);
+    expect(legacy.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+    expect(authority.upsertMonthEvent).not.toHaveBeenCalled();
+  });
+
+  it('sends the entire mutation to legacy only when migration capability is unavailable', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    vi.mocked(authority.ensureMigrated).mockRejectedValueOnce(new ScheduleEventMigrationCapabilityUnavailableError());
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await repository.applyRecurringMonthEventMutation('user-1', events);
+    expect(legacy.applyRecurringMonthEventMutation).toHaveBeenCalledExactlyOnceWith('user-1', events);
+    expect(authority.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+    expect(authority.upsertMonthEvent).not.toHaveBeenCalled();
+  });
+
+  it('rejects a mixed owner before migration can read or write', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await expect(repository.applyRecurringMonthEventMutation('user-1', [events[0], { ...events[1], userId: 'foreign' }])).rejects.toThrow('所有者が一致しません');
+    expect(authority.ensureMigrated).not.toHaveBeenCalled();
+    expect(legacy.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+    expect(authority.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+  });
+
+  it('propagates canonical write failure without legacy fallback', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    const failure = new Error('Canonical atomic commit failed');
+    vi.mocked(authority.applyRecurringMonthEventMutation).mockRejectedValueOnce(failure);
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await expect(repository.applyRecurringMonthEventMutation('user-1', events)).rejects.toBe(failure);
+    expect(legacy.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+    expect(authority.upsertMonthEvent).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('migration confirmation owner scope', () => {
+  it('reconfirms an owner return, but shares pending and settled confirmation within that owner', async () => {
+    const authority = authorityRepository();
+    const repository = createScheduleEventBackedPlannerRepository(legacyRepository(), authority);
+    await repository.getScheduleSnapshot('a');
+    await repository.getScheduleSnapshot('b');
+    const gate = deferred<void>();
+    vi.mocked(authority.ensureMigrated).mockReturnValueOnce(gate.promise);
+    const plans = repository.getPlans('a');
+    const events = repository.getMonthEvents('a');
+    expect(vi.mocked(authority.ensureMigrated).mock.calls.map(([owner]) => owner)).toEqual(['a', 'b', 'a']);
+    expect(authority.getPlans).not.toHaveBeenCalled();
+    expect(authority.getMonthEvents).not.toHaveBeenCalled();
+    gate.resolve(); await Promise.all([plans, events]);
+    await repository.getScheduleSnapshot('a');
+    expect(authority.ensureMigrated).toHaveBeenCalledTimes(3);
+    expect(authority.getPlans).toHaveBeenCalledExactlyOnceWith('a');
+    expect(authority.getMonthEvents).toHaveBeenCalledExactlyOnceWith('a');
+  });
+
+  it.each(['failure', 'fallback', 'success'] as const)('shares pending A across B and handles its %s before the next A request', async outcome => {
+    const authority = authorityRepository();
+    const repository = createScheduleEventBackedPlannerRepository(legacyRepository(), authority);
+    const gate = deferred<void>();
+    vi.mocked(authority.ensureMigrated).mockReturnValueOnce(gate.promise);
+    const firstA = Promise.allSettled([repository.getScheduleSnapshot('a')]);
+    await repository.getScheduleSnapshot('b');
+    const returnedA = Promise.allSettled([repository.getPlans('a')]);
+    expect(vi.mocked(authority.ensureMigrated).mock.calls.map(([owner]) => owner)).toEqual(['a', 'b']);
+    if (outcome === 'success') gate.resolve();
+    else gate.reject(outcome === 'fallback' ? new ScheduleEventMigrationCapabilityUnavailableError() : new Error('attempt failed'));
+    expect((await firstA)[0].status).toBe(outcome === 'failure' ? 'rejected' : 'fulfilled');
+    expect((await returnedA)[0].status).toBe(outcome === 'failure' ? 'rejected' : 'fulfilled');
+    await repository.getMonthEvents('a');
+    expect(authority.ensureMigrated).toHaveBeenCalledTimes(outcome === 'success' ? 2 : 3);
+  });
+
+  it.each(['failure', 'fallback', 'success'] as const)('late A %s does not replace the selected B confirmation', async outcome => {
+    const authority = authorityRepository();
+    const repository = createScheduleEventBackedPlannerRepository(legacyRepository(), authority);
+    const gate = deferred<void>();
+    vi.mocked(authority.ensureMigrated).mockReturnValueOnce(gate.promise);
+    const oldA = Promise.allSettled([repository.getScheduleSnapshot('a')]);
+    await repository.getScheduleSnapshot('b');
+    if (outcome === 'success') gate.resolve();
+    else gate.reject(outcome === 'fallback' ? new ScheduleEventMigrationCapabilityUnavailableError() : new Error('old attempt failed'));
+    expect((await oldA)[0].status).toBe(outcome === 'failure' ? 'rejected' : 'fulfilled');
+    await repository.getPlans('b');
+    expect(authority.ensureMigrated).toHaveBeenCalledTimes(2);
+    await repository.getMonthEvents('a');
+    expect(vi.mocked(authority.ensureMigrated).mock.calls.map(([owner]) => owner)).toEqual(['a', 'b', 'a']);
+  });
+
+  it('keeps an unresolved same-owner migration shared across A to B to A', async () => {
+    const authority = authorityRepository();
+    const repository = createScheduleEventBackedPlannerRepository(legacyRepository(), authority);
+    const gate = deferred<void>();
+    vi.mocked(authority.ensureMigrated).mockReturnValueOnce(gate.promise);
+    const firstA = repository.getScheduleSnapshot('a');
+    await repository.getScheduleSnapshot('b');
+    const returnedA = repository.getPlans('a');
+    expect(vi.mocked(authority.ensureMigrated).mock.calls.map(([owner]) => owner)).toEqual(['a', 'b']);
+    gate.resolve(); await Promise.all([firstA, returnedA]);
   });
 });

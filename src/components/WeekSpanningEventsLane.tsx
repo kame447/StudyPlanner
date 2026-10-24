@@ -1,25 +1,20 @@
 import type { CSSProperties } from 'react';
-import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
+import { getScheduleOccurrenceColor, scheduleEventWeekStyle } from '../lib/scheduleEventColor';
 import type { WeekSpanningOccurrenceLayout } from '../lib/scheduleOccurrencePresentation';
 import type { Plan } from '../types/domain';
+import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 
 interface WeekSpanningEventsLaneProps {
   layout: WeekSpanningOccurrenceLayout;
   plans: readonly Plan[];
   onOpenPlan?: (plan: Plan) => void;
-}
-
-function toneClassForOccurrence(occurrence: ScheduleOccurrence): string {
-  const key = (occurrence.subject || occurrence.title || occurrence.id).trim();
-  const toneIndex = Array.from(key || occurrence.id).reduce(
-    (sum, character) => sum + character.charCodeAt(0),
-    0,
-  ) % 8;
-  return `weekly-draft-tone-${toneIndex + 1}`;
+  onOpenOccurrence: (occurrence: ScheduleOccurrence, element: HTMLButtonElement) => void;
 }
 
 function cardStyle(item: WeekSpanningOccurrenceLayout['items'][number]): CSSProperties {
   return {
+    ...scheduleEventWeekStyle(getScheduleOccurrenceColor(item.occurrence),
+      item.occurrence.source.backingKind === 'month-event' ? 'theme' : 'pastel'),
     gridColumn: `${item.startColumn + 2} / ${item.endColumn + 2}`,
     gridRow: item.lane + 1,
     alignSelf: 'center',
@@ -47,6 +42,7 @@ export function WeekSpanningEventsLane({
   layout,
   plans,
   onOpenPlan,
+  onOpenOccurrence,
 }: WeekSpanningEventsLaneProps) {
   if (layout.items.length === 0) return null;
 
@@ -85,21 +81,23 @@ export function WeekSpanningEventsLane({
         const isReadOnlyTimetable =
           occurrence.source.backingKind === 'timetable-template';
         const commonProps = {
-          className: toneClassForOccurrence(occurrence),
           'data-schedule-occurrence-id': isReadOnlyTimetable ? undefined : occurrence.id,
           'data-week-spanning-event': 'true',
           style: cardStyle(item),
           title: `${occurrence.title} / ${occurrence.start.date} ${occurrence.start.time} - ${occurrence.end.date} ${occurrence.end.time}`,
         };
 
-        if (plan) {
+        if (!isReadOnlyTimetable) {
           return (
             <button
               {...commonProps}
               key={occurrence.id}
               type="button"
-              aria-label={`${occurrence.title}。終日または日を跨ぐ予定。タップで編集、長押しで操作`}
-              onClick={() => onOpenPlan?.(plan)}
+              aria-label={`${occurrence.title}。終日または日を跨ぐ予定。${plan ? 'タップで編集、長押しで操作' : 'タップまたは長押しで操作'}`}
+              aria-haspopup={plan ? undefined : 'menu'}
+              onClick={plan
+                ? () => onOpenPlan?.(plan)
+                : (event) => onOpenOccurrence(occurrence, event.currentTarget)}
               onContextMenu={(event) => event.preventDefault()}
               style={{ ...commonProps.style, cursor: 'pointer' }}
             >
@@ -112,14 +110,7 @@ export function WeekSpanningEventsLane({
           <span
             {...commonProps}
             key={occurrence.id}
-            aria-label={
-              isReadOnlyTimetable
-                ? `${occurrence.title}。終日または日を跨ぐ時間割`
-                : `${occurrence.title}。終日または日を跨ぐ予定。長押しで操作`
-            }
-            onContextMenu={
-              isReadOnlyTimetable ? undefined : (event) => event.preventDefault()
-            }
+            aria-label={`${occurrence.title}。終日または日を跨ぐ時間割`}
           >
             {occurrence.title}
           </span>

@@ -70,9 +70,9 @@ function durationDocument(minutes: number): WeeklyPlanningSemanticDocumentV5 {
       effortEstimates: [{
         localId: 'reply-effort',
         targetLocalId: 'reply-task',
-        kind: 'total_duration',
+        kind: 'duration_per_unit',
         minutes,
-        unitCode: null,
+        unitCode: 'problem',
         precision: 'exact',
         sourceText: 'AI interpreted duration',
       }],

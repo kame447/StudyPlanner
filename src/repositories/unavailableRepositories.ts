@@ -104,6 +104,9 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async upsertDayNote() {
       throw createConfigurationError();
     },
+    async applyRecurringMonthEventMutation() {
+      throw createConfigurationError();
+    },
     async upsertMonthEvent() {
       throw createConfigurationError();
     },

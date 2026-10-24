@@ -65,7 +65,7 @@ it.each(['create', 'edit'] as const)('retains %s input through optimistic update
     expect(title(renderer).props.value).toBe('入力を残す予定');
     await act(async () => {
       button(renderer, '閉じる').props.onClick();
-      button(renderer, '新規').props.onClick();
+      button(renderer, '追加').props.onClick();
       renderer.root.findByProps({ className: 'overlay modal-overlay month-event-modal-overlay' }).props.onClick();
       renderer.root.findAllByType(TimeWheelPicker)[0].props.onChange('12:00');
       renderer.root.findAllByType('button').find(node => node.props.className?.includes('month-event-timeline-item'))?.props.onClick();
@@ -161,4 +161,26 @@ it.each(['none', 'single', 'future'] as const)('keeps failed %s deletion retryab
     expect(remove.mock.calls.length + save.mock.calls.length).toBe(2);
     expect(close).toHaveBeenCalledTimes(1);
   } finally { act(() => renderer.unmount()); vi.unstubAllGlobals(); }
+});
+
+
+it('persists automatic color after reopening an existing explicitly colored event', async () => {
+  let renderer!: ReactTestRenderer;
+  await act(async () => { renderer = create(<Harness openDate={null} />); });
+  try {
+    await act(async () => { await planner.saveMonthEvent({ ...createEmptyMonthEventDraft('owner-a', DATE), title: '色付き予定', color: 'pink' }); });
+    const id = planner.monthEvents[0].id;
+    await act(async () => { renderer.update(<Harness targetId={id} />); });
+    await act(async () => { button(renderer, 'ラベル').props.onClick(); });
+    expect(renderer.root.findByProps({ 'aria-label': 'ピンク' }).props.checked).toBe(true);
+    await act(async () => { renderer.root.findByProps({ 'aria-label': '自動' }).props.onChange(); });
+    await act(async () => { button(renderer, '完了').props.onClick(); });
+    await act(async () => { button(renderer, '保存').props.onClick(); });
+    expect(planner.monthEvents[0].color).toBeUndefined();
+    expect(repository.upsertMonthEvent.mock.calls[repository.upsertMonthEvent.mock.calls.length - 1][0].color).toBeUndefined();
+    await act(async () => { renderer.update(<Harness openDate={null} />); });
+    await act(async () => { renderer.update(<Harness targetId={id} />); });
+    await act(async () => { button(renderer, 'ラベル').props.onClick(); });
+    expect(renderer.root.findByProps({ 'aria-label': '自動' }).props.checked).toBe(true);
+  } finally { act(() => renderer.unmount()); }
 });

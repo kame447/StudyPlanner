@@ -38,14 +38,30 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('weekly preview stays within the document viewport while its actions remain reachable', async ({ page }) => {
-      await page.goto(`${HARNESS_BASE}/?scenario=preview`);
+      await page.goto(`${HARNESS_BASE}/real-weekly.html?preview=1`);
+      const input = page.locator('.ai-planning-composer textarea');
+      await expect(input).toBeVisible();
+      await input.fill('小さい画面でプレビューを検査する条件');
+      await page.getByRole('button', { name: '送信', exact: true }).click();
+      await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+      const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+      await expect(preview).toBeVisible();
 
-      const promote = page.getByRole('button', { name: 'この内容で仮予定にする' });
-      const closePreview = page.getByRole('button', { name: 'previewを閉じる' });
+      const promote = preview.getByRole('button', { name: 'この内容で仮予定にする' });
+      const closePreview = preview.getByRole('button', { name: '閉じる', exact: true });
       await expect(promote).toBeVisible();
       await expect(closePreview).toBeVisible();
       await expectDocumentFitsViewport(page);
       await expectHorizontallyReachable(promote, viewport.width);
+      await expectHorizontallyReachable(closePreview, viewport.width);
+
+      await promote.click();
+      const savePreview = preview.getByRole('button', { name: 'この内容で保存', exact: true });
+      await expect(savePreview).toBeEnabled();
+      await expect(savePreview).toBeInViewport();
+      await expect(closePreview).toBeInViewport();
+      await expectDocumentFitsViewport(page);
+      await expectHorizontallyReachable(savePreview, viewport.width);
       await expectHorizontallyReachable(closePreview, viewport.width);
     });
   });

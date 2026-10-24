@@ -1,0 +1,60 @@
+/* A full-screen announcement owns scrolling; don't reserve the underlying
+   schedule's stable scrollbar gutter while its native dialog is open. */
+html:has(.announcements-page[open]),
+body:has(.announcements-page[open]) {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+.announcements-page {
+  position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none;
+  box-sizing: border-box; margin: 0; padding: max(20px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom));
+  border: 0; color: var(--text-primary); background: var(--app-background); background-color: Canvas; overscroll-behavior: contain;
+  overflow-y: auto;
+}
+.announcements-page::backdrop { background: var(--app-background); }
+.announcements-content { width: min(100%, 860px); margin: 0 auto; }
+.announcements-header { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 12px; margin-bottom: 24px; }
+.announcements-header h1 { margin: 0; font-size: clamp(18px, 4.5vw, 25px); text-align: center; }
+.announcements-back, .announcements-read-all { border: 1px solid var(--border); background: var(--surface-strong); color: inherit; cursor: pointer; min-height: 44px; border-radius: 24px; }
+.announcements-back { width: 44px; display: grid; place-items: center; }
+.announcements-read-all { font: inherit; padding: 8px 14px; white-space: nowrap; }
+.announcements-read-all:disabled { opacity: .45; cursor: default; }
+.announcement-list { display: grid; gap: 12px; list-style: none; padding: 0; margin: 0; }
+.announcement-row {
+  display: block; width: 100%; box-sizing: border-box; border: 1px solid var(--border);
+  border-inline-start: 3px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 16px; color: inherit; background: var(--surface-strong); text-align: left;
+  padding: 18px; font: inherit; cursor: pointer; box-shadow: 0 4px 14px color-mix(in srgb, var(--accent-shadow) 35%, transparent);
+}
+.announcement-row[data-unread="true"] { border-inline-start-color: var(--accent); }
+.announcement-row:focus-visible, .announcements-back:focus-visible, .announcements-read-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (hover: hover) { .announcement-row:hover { background: color-mix(in srgb, var(--surface-strong) 95%, var(--accent)); } }
+.announcement-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--text-muted, #777c8a); }
+.announcement-category { display: inline-flex; align-items: center; gap: 6px; color: var(--chip-text); background: var(--chip-bg); padding: 5px 9px; border-radius: 8px; }
+.announcement-category svg { flex-shrink: 0; }
+.announcement-title { display: flex; gap: 10px; align-items: baseline; margin-top: 12px; font-size: 17px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.announcement-title > span:last-of-type { flex: 1; min-width: 0; }
+.announcement-chevron { flex-shrink: 0; align-self: center; color: var(--text-muted); }
+.announcement-unread { display: inline-block; flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger, #db5050); }
+.announcement-detail h2, .announcement-admin-card h2 { overflow-wrap: anywhere; }
+.announcement-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.9; }
+.announcements-page .announcement-detail { overflow: hidden; border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 18px; background: var(--surface-strong); }
+.announcement-detail-heading { padding: 22px; background: color-mix(in srgb, var(--surface-strong) 95%, var(--accent)); border-bottom: 1px solid var(--border); }
+.announcement-detail-heading h2 { margin: 16px 0 0; font-size: clamp(21px, 5vw, 28px); line-height: 1.5; }
+.announcements-page .announcement-body { margin: 0; padding: 22px; font-size: 16px; }
+.announcements-more { margin-top: 24px; width: 100%; }
+.announcements-empty { padding: 32px 0; text-align: center; color: var(--text-muted); }
+.announcement-editor { display: grid; gap: 18px; }
+.announcement-editor label { display: grid; gap: 8px; }
+.announcement-editor input, .announcement-editor select, .announcement-editor textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.announcement-admin-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.admin-announcements-page > .section-stack { margin-top: 20px; }
+@media (max-width: 480px) {
+  .announcements-page { padding-inline: 16px; }
+  .announcements-header { gap: 8px; }
+  .announcements-read-all { padding: 8px 10px; font-size: 12px; }
+  .announcement-title { font-size: 16px; }
+  .announcement-row { padding: 16px; }
+  .announcement-meta { gap: 8px; font-size: 12px; }
+  .announcement-detail-heading, .announcements-page .announcement-body { padding: 18px; }
+}

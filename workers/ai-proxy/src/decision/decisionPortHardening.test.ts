@@ -114,7 +114,7 @@ describe('bounded Luna response and ordinary error-log privacy', () => {
       }, { highWaterMark: 0 }), { headers: { 'Content-Length': '1' } }));
       const response = await endpoint.fetch(request(), env as never);
       expect(response.status).toBe(overflow ? 502 : 200);
-      expect(await response.json()).toEqual(overflow ? { error: 'OpenAI request failed.' } : { content: 'bounded-baseline' });
+      expect(await response.json()).toEqual(overflow ? { error: 'OpenAI request failed.', ...(endpoint === worker ? { providerFailure: { kind: 'response_too_large', httpStatus: 502, upstreamStatus: 200, completion: null } } : {}) } : { content: 'bounded-baseline' });
       expect(pulled).toBe(2);
       expect(cancelled).toBe(overflow);
       expect(mock).toHaveBeenCalledTimes(2);

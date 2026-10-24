@@ -1,5 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
+import { useEditorMutation } from '../hooks/useEditorMutation';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
@@ -52,8 +54,8 @@ interface QuickEntryModalProps {
 }
 
 const MODE_OPTIONS: Array<{ value: QuickEntryMode; label: string }> = [
-  { value: 'later', label: 'Todo' },
   { value: 'scheduled', label: '時間指定' },
+  { value: 'later', label: 'Todo' },
   { value: 'repeat', label: '繰り返し' },
 ];
 
@@ -108,6 +110,7 @@ function QuickEntryEditor({
   onSaveStandaloneActual,
   onSaveLinkedActual,
 }: QuickEntryModalProps) {
+  const { dialogRef } = useDialogFocus<HTMLFormElement>(true, onClose);
   const initialMaterial = materials.find((material) =>
     material.id === initialMaterialId && material.userId === userId && material.status !== 'archived');
   const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
@@ -133,12 +136,7 @@ function QuickEntryEditor({
     getRecurrenceWeekday(selectedDate),
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const submissionInFlightRef = useRef(false);
-  const mountedRef = useRef(false);
-  useLayoutEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
+  const beginMutation = useEditorMutation();
   const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
   const actualEndTime = calculateEndTime(actualStartTime, estimatedMinutes);
   const dayPlans = useMemo(
@@ -392,11 +390,12 @@ function QuickEntryEditor({
   }
 
   async function handleSaveLinkedActual(plan: Plan) {
-    if (!mountedRef.current || submissionInFlightRef.current || hasUnavailableMaterial || !actualEndTime || !title.trim()) {
+    if (hasUnavailableMaterial || !actualEndTime || !title.trim()) {
       return;
     }
 
-    submissionInFlightRef.current = true;
+    const operation = beginMutation();
+    if (!operation) return;
     setIsSubmitting(true);
     try {
       await onSaveLinkedActual(plan, {
@@ -411,23 +410,21 @@ function QuickEntryEditor({
         note: memo.trim(),
         ...getSelectedMaterialFields(),
       });
-      if (mountedRef.current) onClose();
+      if (operation.isCurrent()) onClose();
     } finally {
-      if (mountedRef.current) {
-        submissionInFlightRef.current = false;
-        setIsSubmitting(false);
-      }
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!mountedRef.current || submissionInFlightRef.current || !canSave) {
+    if (!canSave) {
       return;
     }
 
-    submissionInFlightRef.current = true;
+    const operation = beginMutation();
+    if (!operation) return;
     setIsSubmitting(true);
     try {
       if (entryKind === 'actual') {
@@ -481,20 +478,19 @@ function QuickEntryEditor({
           pinned: todoPinned,
         });
       }
-      if (mountedRef.current) onClose();
+      if (operation.isCurrent()) onClose();
     } finally {
-      if (mountedRef.current) {
-        submissionInFlightRef.current = false;
-        setIsSubmitting(false);
-      }
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
   return (
     <div className="overlay modal-overlay quick-entry-overlay" onClick={onClose}>
       <form
+        ref={dialogRef}
         className="modal-card quick-entry-modal"
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-label="予定・記録の追加"
         onClick={(event) => event.stopPropagation()}
@@ -716,6 +712,7 @@ function QuickEntryEditor({
                             ['daily', '毎日'],
                             ['weekly', '毎週'],
                             ['monthly', '毎月'],
+                            ['yearly', '毎年'],
                           ] as const
                         ).map(([value, label]) => (
                           <button

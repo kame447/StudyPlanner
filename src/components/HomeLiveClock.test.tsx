@@ -8,6 +8,7 @@ import { HomeView } from './HomeView';
 import { HomeSceneAtmosphereProvider } from './home/HomeSceneAtmosphereContext';
 import { addDays } from '../lib/date';
 import * as scheduleProjection from '../lib/homeScheduleAugmentation';
+import type { StudyProgressPreferences } from '../lib/studyProgressPolicy';
 import type { Actual, MonthEvent, Plan, ScheduleTemplate, TimetableTerm, User } from '../types/domain';
 
 const noop = () => {};
@@ -21,6 +22,7 @@ function plan(id: string, date: string, startTime: string, endTime: string, over
 }
 interface Fixture {
   plans: Plan[];
+  progressPreferences?: StudyProgressPreferences;
   actuals?: Actual[];
   monthEvents?: MonthEvent[];
   scheduleTemplates?: ScheduleTemplate[];
@@ -33,6 +35,7 @@ function home(fixture: Fixture, showHome = true) {
   return <StrictMode><HomeDisplayClockProvider><HomeSceneAtmosphereProvider>
     <HomeTopbar user={user} plans={fixture.plans} actuals={fixture.actuals ?? empty} todos={empty} onOpenProfile={noop} onOpenSettings={noop} />
     {showHome ? <HomeScheduleView userId={user.id} homeScenePreferences={{ style: 'pixel', animated: false }}
+      progressPreferences={fixture.progressPreferences}
       plans={fixture.plans} actuals={fixture.actuals ?? empty} todos={empty} studyMaterials={empty}
       monthEvents={fixture.monthEvents ?? empty} scheduleTemplates={fixture.scheduleTemplates ?? empty}
       timetableTermId="term" timetableTerm={fixture.timetableTerms?.[0]} timetableTerms={fixture.timetableTerms ?? empty}
@@ -165,6 +168,29 @@ describe('live Home display with stable input arrays', () => {
     expect(state().next).toBe('daily-study');
     expect(today().findAllByProps({ className: 'home-time-dot completed' })).toHaveLength(0);
     expect(openAllToday()).toBe('2026-10-08');
+    expect(JSON.stringify(fixture)).toBe(original);
+  });
+
+  it('toggles major-event progress without hiding its saved schedule or changing the record', () => {
+    vi.setSystemTime(new Date('2026-10-14T22:00:00'));
+    const event: MonthEvent = { id: 'job', userId: user.id, title: '塾バイト', date: '2026-10-14',
+      startTime: '17:00', endTime: '21:30', repeat: 'none', repeatUntil: null, excludedDates: [],
+      url: '', memo: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '' };
+    const actual: Actual = { id: 'job-record', userId: user.id, planId: event.id,
+      occurrenceDate: event.date, title: event.title, subject: '主要予定',
+      actualStartTime: '17:00', actualEndTime: '21:30', note: '', updatedAt: '' };
+    const fixture: Fixture = { plans: empty, monthEvents: [event], actuals: [actual] };
+    const original = JSON.stringify(fixture);
+    mount(fixture);
+    for (const includeGeneralEvents of [false, true, false]) {
+      act(() => renderer!.update(home({ ...fixture, progressPreferences: { includeGeneralEvents, includeTimetable: false } })));
+      const summary = renderer!.root.findByProps({ className: 'weekly-progress-summary' });
+      expect(textOf(summary)).toContain(includeGeneralEvents ? '実績 4h30m' : '実績 0m');
+      const ring = renderer!.root.findByProps({ className: 'weekly-progress-ring' });
+      expect(ring.props['aria-label']).toBe(`週全体の予定に対する達成率 ${includeGeneralEvents ? 100 : 0}%`);
+      expect(state().rows).toEqual(['塾バイト']);
+      expect(renderer!.root.findByType(HomeView).props.actuals).toBe(fixture.actuals);
+    }
     expect(JSON.stringify(fixture)).toBe(original);
   });
 

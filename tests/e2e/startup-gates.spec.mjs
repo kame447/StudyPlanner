@@ -1,4 +1,5 @@
 import { expect, test } from './support/fixed-clock.mjs';
+import { assertStartupTimingRow } from './support/startup-timing-contract.mjs';
 const URL = 'http://127.0.0.1:4174/startup-gates.html?startupTiming=1';
 async function boot(page, width, query = '') {
   await page.setViewportSize({ width, height: 900 });
@@ -37,6 +38,16 @@ for (const width of [1280, 390]) {
     await expect(page.locator('.home-main')).toContainText('最新の予定');
     expect(await originalSplash.evaluate(node => node.isConnected)).toBe(false);
     await expect.poll(async () => (await rows(page)).some(row => row.phase === 'home-visible')).toBe(true);
+    const diagnosticRows = await rows(page);
+    expect(diagnosticRows.length).toBeLessThanOrEqual(80);
+    for (const phase of ['profile', 'schedule-snapshot', 'actuals', 'bootstrap', 'home-visible']) {
+      expect(diagnosticRows.some(row => row.phase === phase && row.outcome === 'success')).toBe(true);
+    }
+    expect(diagnosticRows.filter(row => row.phase === 'schedule-snapshot')).toHaveLength(1);
+    expect(diagnosticRows.filter(row => ['plans', 'month-events'].includes(row.phase))).toEqual([]);
+    for (const row of diagnosticRows) assertStartupTimingRow(row);
+    expect(diagnosticRows.filter(row => row.phase === 'intro-complete')).toHaveLength(1);
+    expect(JSON.stringify(diagnosticRows)).not.toMatch(/startup-gates@example|startup-gates-owner|起動検証/);
     expect(await page.evaluate(() => localStorage.getItem(`studyplanner.startup-schedule.v1:${window.__startupGateHarness.ownerId}`))).toBeNull();
     await page.reload(); await page.waitForFunction(() => Boolean(window.__startupGateHarness));
     await page.evaluate(() => { window.__startupGateHarness.emitAuth(); window.__startupGateHarness.emitPolicy('accepted'); });

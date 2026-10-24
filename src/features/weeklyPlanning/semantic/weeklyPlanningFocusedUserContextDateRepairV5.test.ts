@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../shared/aiProxyContract';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
@@ -68,7 +69,7 @@ describe('Stable V5 focused user-context date repair', () => {
       calendarContext: { currentDate: '2026-08-14', timeZone: 'Asia/Tokyo' },
     });
     expect(messages[0]?.content).toContain('only the already-interpreted relative event date');
-    expect(FOCUSED_USER_CONTEXT_DATE_REPAIR_MAX_COMPLETION_TOKENS).toBe(120);
+    expect(FOCUSED_USER_CONTEXT_DATE_REPAIR_MAX_COMPLETION_TOKENS).toBe(AI_PROXY_CHAT_REQUEST_LIMITS.defaultOutputTokens);
 
     const decision = parseFocusedUserContextDateRepairDecisionV5(
       JSON.stringify({ dateExpression: '2026-08-28' }),

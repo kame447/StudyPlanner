@@ -181,7 +181,7 @@ it('drops old selection operations on owner/reset/unmount while preserving the v
   }
 });
 
-it.each(['plan', 'todo'] as const)('preserves toolbar navigation after the actual %s editor closes while saving', async ui => {
+it.each(['plan', 'todo'] as const)('preserves explicit toolbar navigation while the actual %s editor is saving', async ui => {
   await mount(ui);
   const gate = deferred(); let submit: Promise<void> | undefined;
   if (ui === 'plan') {
@@ -194,9 +194,10 @@ it.each(['plan', 'todo'] as const)('preserves toolbar navigation after the actua
     await act(async () => { renderer!.root.findByProps({ 'aria-label': '予定にする' }).props.onClick(); });
     repo.scheduleTodoPlan.mockReturnValueOnce(gate.promise);
     await act(async () => { renderer!.root.findByType('form').props.onSubmit({ preventDefault() {} }); });
-    expect(renderer!.root.findAllByType('form')).toHaveLength(0);
+    expect(renderer!.root.findAllByType('form')).toHaveLength(1);
     expect(repo.scheduleTodoPlan).toHaveBeenCalledTimes(1);
     await act(async () => { renderer!.root.findAllByProps({ role: 'tab' }).find(tab => tab.children.join('') === '月')!.props.onClick(); });
+    expect(renderer!.root.findAllByType('form')).toHaveLength(0);
   }
   expect(state.selectedDate).toBe(SAVE);
   await act(async () => { renderer!.root.findByProps({ 'aria-label': '次の期間へ' }).props.onClick(); });
@@ -204,4 +205,20 @@ it.each(['plan', 'todo'] as const)('preserves toolbar navigation after the actua
   await act(async () => { gate.reject(new Error('offline')); await submit; });
   expect(state.selectedDate).toBe('2026-11-01');
   expect(state.monthDate).toBe('2026-11-01');
+});
+
+it('opens a duplicate as a new single-plan draft and never updates the original plan', async () => {
+  await mount();
+  await act(async () => { await state.savePlanDraft({ ...draft(SAVE), repeat: 'daily', repeatUntil: LATEST, materialId: 'material', materialName: '問題集', memo: '内容' }); });
+  const original = structuredClone(state.plans[0]);
+  repo.upsertPlan.mockClear();
+  await act(async () => { state.openEditPlan(original); state.openDuplicatePlan(original); });
+  expect(state.editingPlanId).toBeNull(); expect(state.editingPlan).toBeNull();
+  expect(state.editorDraft).toMatchObject({ title: original.title, materialId: 'material', materialName: '問題集', memo: '内容',
+    repeat: 'none', repeatUntil: null, recurrenceRules: [], excludedDates: [] });
+  expect(repo.upsertPlan).not.toHaveBeenCalled(); expect(state.plans).toEqual([original]);
+  await act(async () => { await state.savePlanDraft(state.editorDraft!); });
+  expect(repo.upsertPlan).toHaveBeenCalledOnce();
+  expect(repo.upsertPlan.mock.calls[0][0].id).not.toBe(original.id);
+  expect(state.plans).toContainEqual(original);
 });

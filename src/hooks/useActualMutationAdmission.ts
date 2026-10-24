@@ -114,6 +114,7 @@ export function useActualMutationAdmission(
     return {
       current: () => currentActuals,
       plans: () => currentPlans,
+      monthEvents: () => currentMonthEvents,
       materials: () => currentMaterials,
       subjects: () => currentSubjects,
       captureMaterial,

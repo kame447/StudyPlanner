@@ -1,5 +1,10 @@
+import { upsertByKey } from '../lib/collections';
+import { sortByDateTime } from '../lib/date';
+import { getActualOccurrenceKey } from '../lib/planRecurrence';
+import type { RecurringPlanMutation } from './recurringPlanMutation';
 import type {
   Actual,
+  Plan,
   ScheduleTemplate,
   StudyMaterial,
   TimetablePeriod,
@@ -129,4 +134,63 @@ export function resolveActualMaterialProgress(
     );
   });
   return { nextMaterials, changedMaterials };
+}
+
+// Pure compatibility-view transitions only. Persistence, admission and accepted-read
+// freshness remain owned by the repository and application boundaries.
+export function sortAndUpsertPlans(current: Plan[], nextPlans: Plan[]): Plan[] {
+  return sortByDateTime(
+    nextPlans.reduce(
+      (records, nextPlan) => upsertByKey(records, nextPlan, (plan) => plan.id),
+      current,
+    ),
+  );
+}
+
+export function upsertActualsById(current: Actual[], nextActuals: Actual[]): Actual[] {
+  return nextActuals.reduce(
+    (records, nextActual) => upsertByKey(records, nextActual, (actual) => actual.id),
+    current,
+  );
+}
+
+export function upsertActualByOccurrenceKey(
+  current: Actual[],
+  nextActual: Actual,
+  removedActualIds: string[] = [],
+): Actual[] {
+  const removedIdSet = new Set(removedActualIds);
+
+  return upsertByKey(
+    current.filter((actual) => !removedIdSet.has(actual.id)),
+    nextActual,
+    (actual) => getActualOccurrenceKey(actual),
+  );
+}
+
+export function applyRecurringPlanProjection(
+  current: Plan[],
+  mutation: RecurringPlanMutation,
+): Plan[] {
+  const deletedPlanIds = new Set(mutation.planDeletes.map((plan) => plan.id));
+  return sortAndUpsertPlans(
+    current.filter((plan) => !deletedPlanIds.has(plan.id)),
+    mutation.planUpserts,
+  );
+}
+
+export function applyRecurringActualProjection(
+  current: Actual[],
+  mutation: RecurringPlanMutation,
+): Actual[] {
+  const deletedPlanIds = new Set(mutation.planDeletes.map((plan) => plan.id));
+  const deletedActualIds = new Set(mutation.actualDeletes.map((actual) => actual.id));
+  return upsertActualsById(
+    current.filter(
+      (actual) =>
+        !deletedActualIds.has(actual.id) &&
+        (!actual.planId || !deletedPlanIds.has(actual.planId)),
+    ),
+    mutation.actualUpserts,
+  );
 }

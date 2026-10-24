@@ -684,14 +684,14 @@ describe('Stable V5 runtime executor', () => {
       draftGenerationIntent: 'user_authorized',
       lastQuestionContext: {
         targetSlot: 'stable_v5:missing_schedulable_work',
-        intent: 'existing_target_progress',
+        intent: 'open_ended_session',
         topicId: expect.any(String),
       },
     });
     expect(result.message).toContain('「午前：研究を進める」');
     expect(result.message).not.toContain('「午後：院試の勉強」');
-    expect(result.message).toContain('全体の範囲');
-    expect(result.message).toContain('今どこまで終わっているか');
+    expect(result.message).toContain('この計画期間');
+    expect(result.message).not.toContain('100%');
     expect(result.message).not.toContain('どこまで進めたいですか');
     expect(result.message).not.toContain('それぞれ');
     expect(result.message).not.toBe(

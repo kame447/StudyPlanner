@@ -7,6 +7,7 @@ import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPla
 import { isUserUtteranceSourcedV5, type WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
 import { decodeWeeklyPlanningStableV5QuestionSlot } from '../../intake/weeklyPlanningStableV5QuestionSlot';
 import { isWeeklyPlanningQuestionPresentationUnaccompanied } from '../../intake/weeklyPlanningQuestionPresentation';
+import type { WeeklyPlanningMessage } from '../../types';
 import type { PlanningIntakeState } from '../../intake/weeklyPlanningIntakeTypes';
 import type { C5QuestionSnapshot, C5SelectionLedger } from './contracts';
 import type { WorkloadFact } from '../../semantic/weeklyPlanningFactGraph';
@@ -32,7 +33,22 @@ export function narrowC5EffortBasis(graph: WeeklyPlanningFactGraphV5, workloadId
   const task = active.tasks.find((fact) => fact.id === workload.taskId);
   const component = workload.componentId ? active.components.find((fact) => fact.id === workload.componentId) : null;
   if (!task || (workload.componentId && !component)) return null;
-  if ([task, workload, ...(component ? [component] : [])].some((fact) => !isUserUtteranceSourcedV5(fact.source))) return null;
+  // Preserve every typed qualifier through the root; an incomplete chain cannot be selected.
+  // Bounds match Unit0: no truncation, and private source/reference data remain local.
+  const chain: Array<(typeof active.components)[number]> = [];
+  const seen = new Set<string>();
+  let current = component;
+  while (current) {
+    if (chain.length >= 8 || seen.has(current.id) || current.taskId !== task.id
+      || !current.label.trim() || new TextEncoder().encode(current.label).length > 512) return null;
+    seen.add(current.id);
+    chain.unshift(current);
+    if (current.parentComponentId === null) break;
+    const parent = active.components.find(fact => fact.id === current!.parentComponentId);
+    if (!parent) return null;
+    current = parent;
+  }
+  if ([task, workload, ...chain].some((fact) => !isUserUtteranceSourcedV5(fact.source))) return null;
   const resolution = resolveGenericWorkItemEstimate({ workload, workloads: c5PlanningWorkloads(active), estimates: active.effortEstimates });
   if (!resolution.ambiguous || resolution.sourceWorkloadFactIds.length || resolution.sourceFactIds.length < 2) return null;
   const cohort = resolution.sourceFactIds;
@@ -49,6 +65,7 @@ export function narrowC5EffortBasis(graph: WeeklyPlanningFactGraphV5, workloadId
     componentId: workload.componentId, componentLabel: component?.label ?? null,
     componentRole: component?.role ?? null, componentParentId: component?.parentComponentId ?? null,
     componentCreatedRevision: component?.createdRevision ?? null,
+    componentChain: chain.map(({ role, label }) => ({ role, label })),
     workload: {
       id: workload.id, quantityRole: workload.quantityRole, amount: workload.amount,
       unitCode: workload.unitCode, unitLabel: workload.unitLabel,
@@ -67,8 +84,11 @@ export function narrowC5EffortBasis(graph: WeeklyPlanningFactGraphV5, workloadId
     },
   }));
   // Source text and access metadata stay internal; Unit 2 never projects binding.sources to a provider.
-  const sources = [task, ...(component ? [component] : []), workload, ...estimates]
-    .map((fact) => ({ id: fact.id, revision: canonicalCandidateSerialization({ source: fact.source, createdRevision: fact.createdRevision }) }));
+  const sources = [task, ...chain, workload, ...estimates]
+    .map((fact) => ({ id: fact.id, revision: canonicalCandidateSerialization({
+      source: fact.source, createdRevision: fact.createdRevision,
+      ...('parentComponentId' in fact ? { taskId: fact.taskId, parentComponentId: fact.parentComponentId } : {}),
+    }) }));
   return { target: { kind: 'workload', id: workload.id }, scope, sources, cohort, candidates };
 }
 
@@ -111,15 +131,29 @@ export function decodeC5Snapshot(value: unknown, ownerId: string, conversationId
 }
 
 /** Called only at the presenting controller commit; a reload never enumerates a replacement payload. */
+export function boundC5PresentedQuestion(question: CandidateBinding['question'], messages: readonly WeeklyPlanningMessage[]): NonNullable<CandidateBinding['question']['presentedQuestion']> | null {
+  const matching = messages.filter(message => message.id === question.presentingMessageId);
+  if (matching.length !== 1 || matching[0].role !== 'assistant' || typeof matching[0].content !== 'string'
+    || !matching[0].content.trim() || new TextEncoder().encode(matching[0].content).length > 4000) return null;
+  return { assistantMessageId: matching[0].id, text: matching[0].content };
+}
+
 export function captureC5Question(params: {
   state: PlanningIntakeState; graph: WeeklyPlanningFactGraphV5; ownerId: string; conversationId: string;
+  messages?: readonly WeeklyPlanningMessage[];
 }): PlanningIntakeState {
   const context = params.state.lastQuestionContext;
   const presentation = context?.presentation;
-  if (params.state.questions.length !== 1 || !presentation || presentation.content.responseSource !== 'deterministic_fallback'
+  if (params.state.questions.length !== 1 || !presentation
     || !isWeeklyPlanningQuestionPresentationUnaccompanied(presentation.content)
     || decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot) !== 'ambiguous_effort_estimate'
-    || !context?.actionId || !context.topicId || presentation.graphRevision !== params.graph.revision) return params.state;
+    || !context?.topicId || presentation.graphRevision !== params.graph.revision) return params.state;
+  // A fresh presenting commit owns this identity; renderer wording/echoes never supply it.
+  const actionId = context.actionId ?? ['c5-question', presentation.turnId, context.topicId].join(':');
+  const question = { id: actionId, code: 'ambiguous_effort_estimate', presentingTurnId: presentation.turnId,
+    presentingMessageId: presentation.assistantMessageId, presentationRevision: presentation.planningStateRevision };
+  const presentedQuestion = boundC5PresentedQuestion(question, params.messages ?? []);
+  if (!presentedQuestion || presentedQuestion.text !== params.state.questions[0]) return params.state;
   const basis = narrowC5EffortBasis(params.graph, context.topicId);
   if (!basis) return params.state;
   const old = params.state.c5SelectionLedger;
@@ -130,12 +164,11 @@ export function captureC5Question(params: {
   const payload = {
     version: 1 as const, ownerId: params.ownerId, conversationId: params.conversationId,
     graphRevision: params.graph.revision, selectionEpoch,
-    question: { id: context.actionId, code: 'ambiguous_effort_estimate', presentingTurnId: presentation.turnId,
-      presentingMessageId: presentation.assistantMessageId, presentationRevision: presentation.planningStateRevision },
+    question: { ...question, presentedQuestion },
     ...basis,
   };
   const snapshot = freezeCandidateValue({ ...payload, payloadSerialization: canonicalCandidateSerialization(payload) }) as unknown as C5QuestionSnapshot;
-  return { ...params.state, c5SelectionLedger: { ...ledger, lastEpoch: selectionEpoch }, lastQuestionContext: { ...context, c5: snapshot } };
+  return { ...params.state, c5SelectionLedger: { ...ledger, lastEpoch: selectionEpoch }, lastQuestionContext: { ...context, actionId, c5: snapshot } };
 }
 
 /** Old sessions have neither record and remain ineligible until a new presenting commit. */

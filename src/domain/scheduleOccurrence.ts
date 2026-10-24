@@ -11,6 +11,7 @@ import { resolveTimetableTermForDate } from '../lib/timetableCalendar';
 import { buildTimetableImportCandidates } from '../lib/timetableImport';
 import type {
   MonthEvent,
+  MonthEventColor,
   Plan,
   PlanSourceType,
   ScheduleTemplate,
@@ -44,6 +45,7 @@ export interface ScheduleOccurrenceSource {
 }
 
 export interface ScheduleOccurrence {
+  color?: MonthEventColor;
   id: string;
   ownerId: string;
   title: string;
@@ -127,6 +129,25 @@ function normalizeMonthEventEndPoint(
   return endsAtDayBoundary
     ? { date: addDays(endDate, 1), time: '00:00' }
     : { date: endDate, time: endTime };
+}
+
+/** Tests a normalized occurrence against a half-open local calendar day. */
+export function scheduleOccurrenceCoversDate(
+  occurrence: ScheduleOccurrence,
+  date: string,
+): boolean {
+  return overlapsProjectionRange(occurrence, date, date);
+}
+
+/** Clips an admitted occurrence to a covered day; does not rewrite its identity. */
+export function scheduleOccurrenceTimesForDate(
+  occurrence: ScheduleOccurrence,
+  date: string,
+): { startTime: string; endTime: string } {
+  return {
+    startTime: occurrence.start.date === date ? occurrence.start.time : '00:00',
+    endTime: occurrence.end.date === date ? occurrence.end.time : '24:00',
+  };
 }
 
 function overlapsProjectionRange(
@@ -303,6 +324,7 @@ function monthEventOccurrences(params: {
           id: occurrenceId(source, start),
           ownerId: params.ownerId,
           title: event.title,
+          ...(event.color ? { color: event.color } : {}),
           subject: '主要予定',
           category: 'other',
           // Legacy MonthEvent omits busy and therefore remains occupied. Canonical

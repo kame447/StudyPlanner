@@ -97,7 +97,7 @@ describe('executeWeeklyPlanningTurn', () => {
       questionCode: 'quantity_role_unresolved',
       request: {
         purpose: 'weekly_planning_renderer',
-        fallbackText: stableV5QuestionResult().message,
+        fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。',
       },
       response: {
         status: 'rendered',
@@ -143,11 +143,11 @@ describe('executeWeeklyPlanningTurn', () => {
     expect(stableV5RendererMock).toHaveBeenCalledWith(expect.objectContaining({
       actionKind: 'question',
       questionCode: 'quantity_role_unresolved',
-      fallbackText: fallback,
+      fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。',
     }));
   });
 
-  it('uses the deterministic fallback text if normal question rendering fails', async () => {
+  it('reports renderer failure as a technical error without presenting the pending question', async () => {
     stableV5RuntimeMock.mockResolvedValue(stableV5QuestionResult());
     stableV5RendererMock.mockResolvedValue({
       status: 'fallback',
@@ -157,13 +157,16 @@ describe('executeWeeklyPlanningTurn', () => {
 
     const result = await executeWeeklyPlanningTurn(input);
 
-    expect(result.message).toBe(stableV5QuestionResult().message);
-    expect(result.state.questions).toEqual([stableV5QuestionResult().message]);
+    expect(result.message).toBe('返信を作れませんでした。少し待ってからもう一度送信してください。');
+    expect(result.message).not.toContain('院試の勉強の量');
+    expect(result.state.questions).toEqual([]);
+    expect(result.state.lastQuestionContext).toMatchObject({ targetSlot: 'stable_v5:quantity_role_unresolved' });
+    expect(result.questionPresentationContent).toBeUndefined();
     expect(result.responseSource).toBe('deterministic_fallback');
     expect(result.dialogueRendererTrace).toMatchObject({
       request: {
         purpose: 'weekly_planning_renderer',
-        fallbackText: stableV5QuestionResult().message,
+        fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。',
       },
       response: {
         status: 'fallback',
@@ -174,7 +177,7 @@ describe('executeWeeklyPlanningTurn', () => {
       decision: {
         branch: 'deterministic_fallback',
         responseSource: 'deterministic_fallback',
-        finalMessage: stableV5QuestionResult().message,
+        finalMessage: '返信を作れませんでした。少し待ってからもう一度送信してください。',
       },
     });
     expect(stableV5RendererMock).toHaveBeenCalledTimes(1);

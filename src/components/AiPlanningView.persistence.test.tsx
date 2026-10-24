@@ -27,7 +27,7 @@ const USER_ID = 'user-1';
 let application: WeeklyPlanningApplication;
 let renderer: ReactTestRenderer | undefined;
 
-function Harness() {
+function Harness({ active = true }: { active?: boolean }) {
   application = useWeeklyPlanningApplication({
     userId: USER_ID,
     selectedDate: '2026-07-14',
@@ -36,7 +36,7 @@ function Harness() {
     isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(USER_ID),
     saveWeeklyApprovedPlan: vi.fn(),
   });
-  return <AiPlanningView application={application} userId={USER_ID} selectedDate="2026-07-14" plans={[]} />;
+  return <AiPlanningView active={active} application={application} userId={USER_ID} selectedDate="2026-07-14" plans={[]} />;
 }
 
 class PreviewTrigger {
@@ -99,4 +99,35 @@ describe('preview edit persistence', () => {
     expect(loadAiPlanningChatSnapshot(USER_ID, active)?.planningState.draftBlocks).toEqual([]);
     expect(renderer!.root.findAllByType(AiPlanningPreviewDialog)).toHaveLength(0);
   });
+});
+
+
+it('releases preview scroll locks and ignores old dialog commands when the retained view becomes inactive', () => {
+  const rootStyle = { overflow: 'auto', overscrollBehavior: 'contain' };
+  const bodyStyle = { overflow: 'auto', overscrollBehavior: '', position: '', top: '', left: '', right: '', width: '' };
+  vi.stubGlobal('document', { documentElement: { style: rootStyle }, body: { style: bodyStyle } });
+  Object.assign(window, { scrollX: 0, scrollY: 40, scrollTo: vi.fn() });
+  const conversation = { scrollTop: 30, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  act(() => { renderer = create(<Harness />, { createNodeMock: node =>
+    String(node.props.className ?? '').startsWith('ai-planning-view-shell-v2')
+      ? { querySelector: () => conversation } : null,
+  }); });
+  act(() => { application.createDraftBlocks([createWeeklyPlanningTestDraftBlock({ id: 'kept-draft' })]); });
+  act(() => {
+    renderer!.root.findByProps({ className: 'ai-planning-view-shell-v2 ' }).props.onClickCapture({
+      target: new PreviewTrigger(), preventDefault() {}, stopPropagation() {},
+    });
+  });
+  expect(bodyStyle.position).toBe('fixed');
+  const oldRemove = renderer!.root.findByType(AiPlanningPreviewDialog).props.onRemove;
+  act(() => { renderer!.update(<Harness active={false} />); });
+  expect(renderer!.root.findAllByType(AiPlanningPreviewDialog)).toHaveLength(0);
+  expect(rootStyle).toEqual({ overflow: 'auto', overscrollBehavior: 'contain' });
+  expect(bodyStyle).toEqual({ overflow: 'auto', overscrollBehavior: '', position: '', top: '', left: '', right: '', width: '' });
+  expect(conversation.removeEventListener).toHaveBeenCalledOnce();
+  expect(window.scrollTo).toHaveBeenCalledWith(0, 40);
+  act(() => { oldRemove('kept-draft'); });
+  expect(application.pendingDraftBlocks.map(block => block.id)).toEqual(['kept-draft']);
+  act(() => { renderer!.update(<Harness active />); });
+  expect(renderer!.root.findAllByType(AiPlanningPreviewDialog)).toHaveLength(0);
 });

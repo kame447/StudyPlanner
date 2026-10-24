@@ -115,6 +115,10 @@ Material-bearing admission requires an accepted same-owner snapshot before dispa
 
 Subject data is a conditional dependent slice of that existing group. Each immutable repair attempt captures whether a waiting Subject claim requires the Subjects getter. Pure Actual/material attempts add no Subjects read. If Subject activity starts or settles while an Actual-only attempt is in flight, activity/request validation invalidates it; a fresh attempt includes Subjects. A failed Subjects getter or preparation publishes none of the batch and cannot release the Subject claim. Superseding nonquiescent full reads retain outstanding claim requirements; a stable full read already includes Subjects and can satisfy them.
 
+Empty-Subject delete and each invoked Undo participate in that same Subject claim and accepted-projection lease. They suppress captured acknowledgements after an accepted read and retain the conditional Subject repair when a full read crosses completion, including uncertain dispatched failure. Successful writes remain successful if the subsequent read fails; explicit retry only reads, without repeating delete or restore. Uncontended completion adds no getters.
+
+Delete resolves its owner, current Subject row and material membership from committed admission data before dispatch. Undo captures that current deleted row and refuses dispatch when a same-ID Subject is already present, so an old notice cannot overwrite an observed replacement. Existing owner/reset/unmount fencing remains authoritative. This does not add Subject content-generation/ABA detection, admission for every new-material membership writer, or cross-client atomicity.
+
 This conditional footprint is not a fourth global readiness authority or a claim to have repaired every collection. Scope/owner/read checks still govern acceptance. Do not become ready with a stranded Subject claim, unconditionally add Subjects to every Actual read, or transparently replay writes after an uncertain outcome.
 
 ## User-visible recovery

@@ -3,6 +3,7 @@ import {
   getAdminObservabilityOverview,
   getAdminObservabilityUserInvestigation,
   getAdminObservabilityUsers,
+  getAdminObservabilityUsersPage,
   resolveAdminObservabilityUserIdentity,
 } from './adminObservabilityService.phase5.stub.js';
 
@@ -11,6 +12,7 @@ export {
   getAdminObservabilityOverview,
   getAdminObservabilityUserInvestigation,
   getAdminObservabilityUsers,
+  getAdminObservabilityUsersPage,
   resolveAdminObservabilityUserIdentity,
 };
 

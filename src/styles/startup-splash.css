@@ -80,3 +80,18 @@ html:has(.startup-splash) {
   color: #c9d0e2;
   pointer-events: none;
 }
+
+/* Autoplay permission failures retain the clip and offer an explicit choice. */
+.startup-video__skip {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  right: 16px;
+  width: auto;
+  height: auto;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid #b4d5ff;
+  border-radius: 8px;
+  background: #060914;
+  color: #edf1fc;
+}

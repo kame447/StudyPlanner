@@ -1,3 +1,4 @@
+import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import { boundWeeklyPlanningDialogueRendererTraceForTransport } from '../trace/weeklyPlanningDialogueRendererTrace';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
@@ -12,6 +13,7 @@ import { setWeeklyPlanningTraceRepositoryForTests } from '../trace/weeklyPlannin
 import type { WeeklyPlanningTraceRepository, WeeklyPlanningTraceSession, WeeklyPlanningTraceEntry } from '../trace/weeklyPlanningTraceTypes';
 import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
 import type { WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weeklyPlanningSemanticNormalizerContractsV5';
+import { FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS } from '../semantic/weeklyPlanningFocusedAuthorizationV5';
 import { resolveWeeklyPlanningQuestionPresentationFreshness, withoutWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
 import { createPresentedWeeklyPlanningConversation } from '../testUtils/__tests__/weeklyPlanningPresentedConversation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -133,7 +135,7 @@ function proposalDecisionDocument(params: {
   };
 }
 
-function durationAnswerDocument(minutes: number): WeeklyPlanningSemanticDocumentV5 {
+function durationAnswerDocument(minutes: number, kind: 'total_duration' | 'duration_per_unit' | 'session_duration' = 'total_duration', unitCode: SemanticWorkloadUnitCodeV5 | null = null): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'discuss',
@@ -147,9 +149,9 @@ function durationAnswerDocument(minutes: number): WeeklyPlanningSemanticDocument
       effortEstimates: [{
         localId: 'answer-effort',
         targetLocalId: 'answer-task',
-        kind: 'total_duration',
+        kind,
         minutes,
-        unitCode: null,
+        unitCode,
         precision: 'approximate',
         sourceText: `${minutes}分くらい`,
       }],
@@ -300,9 +302,14 @@ vi.mock('../../../lib/aiConfig', () => ({
   }),
   getAiConfigValidationMessage: () => undefined,
 }));
-vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
-  createOpenAiCompatibleClient: () => ({ createChatCompletion: vi.fn() }),
-}));
+vi.mock('../../../services/ai/openAiCompatibleClient', async () => {
+  const { successfulWeeklyPlanningRendererCompletion } = await import(
+    '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture'
+  );
+  return { createOpenAiCompatibleClient: () => ({
+    createChatCompletion: successfulWeeklyPlanningRendererCompletion,
+  }) };
+});
 vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
 }));
@@ -366,7 +373,8 @@ async function runTwoTurnPlanningConversation(params: {
         minutes: params.answerMinutes,
         ...params.answerDirection,
       })
-    : durationAnswerDocument(params.answerMinutes);
+    : durationAnswerDocument(params.answerMinutes, first.state.lastQuestionContext!.intent as 'duration_per_unit' | 'session_duration',
+      first.stableV5Graph!.workloads.find(work => work.id === first.state.lastQuestionContext!.topicId)!.unitCode);
   normalizeMock.mockResolvedValueOnce(acceptedResult(answerDocument));
   const second = await conversation.run(turnInput({
     conversationId: params.conversationId,
@@ -973,7 +981,7 @@ describe('Stable V5 human-scale conversation integration', () => {
           pendingQuestion: null, previousCompatibilityStatus: 'needs_scope',
           tasks: expect.arrayContaining([expect.objectContaining({ category: 'non_study' })]),
         });
-        expect(request.maxCompletionTokens).toBe(80);
+        expect(request.maxCompletionTokens).toBe(FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS);
         expect(JSON.parse(request.messages[1].content)).toEqual({ currentUserText: params.userText,
           lastAssistantMessage: semanticInput.publicStateSummary?.lastAssistantMessage ?? null });
         return JSON.stringify({ decision: 'fallback' });
@@ -1165,9 +1173,9 @@ describe('Stable V5 human-scale conversation integration', () => {
       expect(request.purpose).toBe('weekly_planning_renderer');
       expect(request.responseFormat?.json_schema.name).toBe('weekly_planning_stable_v5_dialogue_response');
       const body = JSON.parse(request.messages[request.messages.length - 1].content);
-      return JSON.stringify({ actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
+      return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(body, { actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
         questionCode: body.applicationDecision.questionCode, groundingAcknowledgement: null,
-        text: '部活の予定は、予定画面の「予定を追加」から入力できます。' });
+        text: '部活の予定は、予定画面の「予定を追加」から入力できます。' }));
     });
     const clientModule = await import('../../../services/ai/openAiCompatibleClient');
     const clientSpy = vi.spyOn(clientModule, 'createOpenAiCompatibleClient')
@@ -1273,11 +1281,11 @@ describe('Stable V5 human-scale conversation integration', () => {
       expect(request.responseFormat?.json_schema.name).toBe('weekly_planning_stable_v5_dialogue_response');
       if (rendererFailure) throw new Error('Fixed handoff renderer provider failure fixture');
       const body = JSON.parse(request.messages[request.messages.length - 1].content);
-      return JSON.stringify({ actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
+      return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(body, { actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
         questionCode: body.applicationDecision.questionCode, groundingAcknowledgement: null,
         text: body.applicationDecision.communication.statusReason === 'fixed_event_manual_entry'
           ? '部活の予定は、この画面では保存していません。「予定」から「予定を追加」を開いて入力できます。'
-          : '分かりました。' });
+          : '分かりました。' }));
     });
     const clientModule = await import('../../../services/ai/openAiCompatibleClient');
     const clientSpy = vi.spyOn(clientModule, 'createOpenAiCompatibleClient')

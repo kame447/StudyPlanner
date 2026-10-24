@@ -27,7 +27,24 @@ export interface AiQuotaCheckResult {
   remaining?: number;
 }
 
+export const TELEMETRY_ADMISSION_LIMITS = { minute: 1_200, day: 20_000 } as const;
+
+/** Separate telemetry buckets reuse the quota DO, with Japan-time daily reset. */
+export function buildTelemetryQuotaRules(now = Date.now()): AiQuotaWindowRule[] {
+  const minuteStart = Math.floor(now / 60_000) * 60_000;
+  const offset = 9 * 60 * 60 * 1000;
+  const dayStart = Math.floor((now + offset) / 86_400_000) * 86_400_000;
+  return [
+    { name: 'telemetry:uid:minute', limit: TELEMETRY_ADMISSION_LIMITS.minute,
+      windowId: String(minuteStart), resetAt: minuteStart + 60_000 },
+    { name: 'telemetry:uid:day', limit: TELEMETRY_ADMISSION_LIMITS.day,
+      windowId: new Date(dayStart).toISOString().slice(0, 10), resetAt: dayStart + 86_400_000 - offset },
+  ];
+}
+
 const MINIMUM_RULE_LIMITS: Record<string, number> = {
+  'telemetry:uid:minute': TELEMETRY_ADMISSION_LIMITS.minute,
+  'telemetry:uid:day': TELEMETRY_ADMISSION_LIMITS.day,
   'ip:minute': 120,
   'chat:uid:minute': 30,
   'chat:uid:day': 1000,

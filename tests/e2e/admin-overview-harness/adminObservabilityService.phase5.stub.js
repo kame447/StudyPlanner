@@ -3,6 +3,7 @@ import {
   getAdminObservabilityOverview,
   getAdminObservabilityUserInvestigation,
   getAdminObservabilityUsers as getLegacyUsers,
+  getAdminObservabilityUsersPage as getLegacyUsersPage,
   resolveAdminObservabilityUserIdentity,
 } from './adminObservabilityService.stub.js';
 
@@ -13,8 +14,7 @@ export {
   resolveAdminObservabilityUserIdentity,
 };
 
-export async function getAdminObservabilityUsers() {
-  const page = await getLegacyUsers();
+function enrichUserPage(page) {
   return {
     ...page,
     users: page.users.map((user, index) => ({
@@ -33,4 +33,12 @@ export async function getAdminObservabilityUsers() {
       recentErrorCategory: index === 0 ? 'provider_error' : null,
     })),
   };
+}
+
+export async function getAdminObservabilityUsers() {
+  return enrichUserPage(await getLegacyUsers());
+}
+
+export async function getAdminObservabilityUsersPage() {
+  return enrichUserPage(await getLegacyUsersPage());
 }

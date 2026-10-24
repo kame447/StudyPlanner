@@ -80,15 +80,29 @@ describe('strict independent purpose configuration', () => {
     }
   });
 
-  it('source-controlled production defaults leave every purpose off', () => {
+  it('production selects all eligible candidate choices and evaluated purposes, keeping routing off', () => {
     const config = JSON.parse(readFileSync(new URL('../../wrangler.jsonc', import.meta.url), 'utf8'));
-    expect(config.vars.JEV_MODE).toBe('off'); expect(config.vars.JEV_CANARY_PERCENT).toBe('0');
-    for (const route of routes) {
-      expect(config.vars[`JEV_${route.prefix}_MODE`]).toBe('off');
-      expect(config.vars[`JEV_${route.prefix}_CANARY_PERCENT`]).toBe('0');
-      expect(route.mode(config.vars)).toBe('off'); expect(route.selected(config.vars, 0)).toBe(false);
-      expect(route.mode({ ...config.vars, JEV_MODE: 'canary' })).toBe('off');
+    expect(config.vars.JEV_MODE).toBe('canary');
+    expect(config.vars.JEV_CANARY_PERCENT).toBe('100');
+    for (const route of routes.filter(route => route.purpose !== 'candidate_choice')) {
+      const enabled = route.purpose === 'focused_authorization' || route.purpose === 'focused_contextual_answer' || route.purpose === 'temporal_scope_repair';
+      expect(config.vars[`JEV_${route.prefix}_MODE`]).toBe(enabled ? 'canary' : 'off');
+      expect(config.vars[`JEV_${route.prefix}_CANARY_PERCENT`]).toBe(enabled ? '100' : '0');
+      expect(route.mode(config.vars)).toBe(enabled ? 'canary' : 'off');
+      for (const sample of [0, 0.05, 0.5, 0.9999]) {
+        expect(route.selected(config.vars, sample)).toBe(enabled);
+      }
     }
+    expect(config.vars.JEV_CANDIDATE_CHOICE_MODE).toBe('canary');
+    expect(config.vars.JEV_CANDIDATE_CHOICE_CANARY_PERCENT).toBe('100');
+    expect(resolveJevPurposeRollout(config.vars, 'candidate_choice')).toEqual({ mode: 'canary', canaryPercent: 100 });
+    for (const sample of [0, 0.0499, 0.05, 0.5, 0.9999]) {
+      expect(jevPurposeCanarySelected(config.vars, 'candidate_choice', sample)).toBe(true);
+    }
+    for (const sample of [undefined, NaN, Infinity, -Infinity, -0.01, 1, 1.01]) {
+      expect(jevPurposeCanarySelected(config.vars, 'candidate_choice', sample)).toBe(false);
+    }
+
   });
 });
 

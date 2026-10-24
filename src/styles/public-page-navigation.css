@@ -1,0 +1,11 @@
+.public-page-planner { display: contents; }
+.public-page-planner[hidden] { display: none !important; }
+/* Independent scrolling also works while a retained study session owns a body lock. */
+.public-page-surface {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-overlay);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--app-background);
+}

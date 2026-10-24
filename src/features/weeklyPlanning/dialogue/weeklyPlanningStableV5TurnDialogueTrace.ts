@@ -57,6 +57,7 @@ export function createWeeklyPlanningFallbackDialogueTrace(params: {
     response: {
       status: 'fallback',
       reason: params.rendered.reason,
+      ...(params.rendered.providerFailure ? { providerFailure: params.rendered.providerFailure } : {}),
       rawResponse: params.rendered.rawResponse,
       renderedText: null,
     },

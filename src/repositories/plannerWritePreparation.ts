@@ -1,5 +1,5 @@
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
-import type { Actual } from '../types/domain';
+import type { Actual, MonthEvent } from '../types/domain';
 
 export function stripUndefinedDeep<T>(value: T): T {
   if (Array.isArray(value)) {
@@ -48,4 +48,21 @@ export function prepareRecurringPlanWrite(
   }
 
   return { actualDeletes: [...actualDeletesById.values()], operationCount };
+}
+
+// Scope edits replace a source series and optionally create one replacement.
+// Keep this boundary bounded so no adapter can split the operation.
+export function assertRecurringMonthEventWrite(
+  userId: string,
+  monthEvents: readonly MonthEvent[],
+): void {
+  if (monthEvents.length < 1 || monthEvents.length > 2) {
+    throw new Error('繰り返し予定更新は1〜2件の予定が必要です。');
+  }
+  if (monthEvents.some((event) => event.userId !== userId)) {
+    throw new Error('繰り返し予定更新 の所有者が一致しません。');
+  }
+  if (new Set(monthEvents.map((event) => event.id)).size !== monthEvents.length) {
+    throw new Error('繰り返し予定更新のIDが重複しています。');
+  }
 }

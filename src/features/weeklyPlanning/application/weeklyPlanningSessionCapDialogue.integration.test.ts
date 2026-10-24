@@ -1,10 +1,11 @@
+import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import { recordCommittedWeeklyPlanningApplicationTurn } from './weeklyPlanningTurnTraceSideEffects';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, type WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
 import { executeWeeklyPlanningStableV5RuntimeTurn } from './weeklyPlanningStableV5InstrumentedRuntimeExecutor';
-import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
+import { getWeeklyPlanningStableV5RuntimeSession, resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
 import { renderWeeklyPlanningStableV5AssistantMessage } from '../dialogue/weeklyPlanningStableV5TurnDialogue';
 import * as rendererTraceOwner from '../trace/weeklyPlanningDialogueRendererTrace';
 import { resetWeeklyPlanningDialogueRendererPromptContextsForTest } from '../trace/weeklyPlanningDialogueRendererTrace';
@@ -51,7 +52,7 @@ async function execute(cap = 20, intent: 'create_plan' | 'discuss' = 'create_pla
 }
 function response(request: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0], text: string) {
   const prompt = JSON.parse(request.messages[1].content);
-  return JSON.stringify({ actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind, questionCode: prompt.applicationDecision.questionCode, groundingAcknowledgement: null, text });
+  return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(prompt, { actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind, questionCode: prompt.applicationDecision.questionCode, groundingAcknowledgement: null, text }));
 }
 function persistedPromptContext(entry: unknown): unknown {
   const diagnostics = (entry as { diagnostics: Record<string, unknown> }).diagnostics;
@@ -76,21 +77,45 @@ describe('session cap actual runtime to current renderer disclosure', () => {
     const text = `数学の教材は、希望の区切りを候補全体では満たせていません。「${CONTROL}」から確認できます。`;
     completion.mockImplementation(async request => response(request, text));
     const rendered = await renderWeeklyPlanningStableV5AssistantMessage(run);
-    expect(rendered.responseSource).toBe('ai'); expect(rendered.message).toBe(text);
+    expect(rendered.responseSource).toBe('ai'); expect(rendered.message).toContain(text);
     const prompt = JSON.parse(completion.mock.calls[0][0].messages[1].content);
     expect(prompt.applicationDecision.previewConstraintSatisfaction).toEqual(before.previewConstraintSatisfaction);
     expect(prompt.request).toContain('超過・欠落などの原因や変更を推測しない');
     expect(rendered.draftCandidates).toEqual(before.draftCandidates); expect(rendered.state).toEqual(before.state); expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);
     expect(completion).toHaveBeenCalledTimes(1);
   });
-  it.each(['satisfied', 'not_satisfied', 'not_evaluated'] as const)('keeps state and normal fallback semantics for %s', async status => {
+  it.each(['satisfied', 'not_satisfied', 'not_evaluated'] as const)('withholds a newly estimated preview when its required effort ACK fails: %s', async status => {
     const run = await execute(status === 'satisfied' ? 60 : 20);
     if (status === 'not_evaluated') run.result.previewConstraintSatisfaction![0].status = status;
-    const before = structuredClone(run.result); completion.mockRejectedValue(new Error('injected renderer failure'));
+    const before = structuredClone(run.result);
+    const committedBefore = structuredClone(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION)?.graph);
+    completion.mockRejectedValue(new Error('injected renderer failure'));
+    const rendered = await renderWeeklyPlanningStableV5AssistantMessage(run);
+    expect(rendered.responseSource).toBe('system');
+    expect(rendered.failure?.traceCode).toBe('stable_v5_required_effort_ack_failed');
+    expect(rendered.preserveExistingPreview).toBe(true);
+    expect(rendered.message).toContain('今回の内容は計画へ反映していません');
+    expect(rendered.message).not.toBe(before.message);
+    expect(rendered.questionPresentationContent).toBeUndefined();
+    expect(rendered.dialogueRendererTrace?.response).toMatchObject({ status: 'fallback', reason: 'provider_error' });
+    expect(rendered.draftCandidates).toEqual([]); expect(rendered.state).toEqual(before.state);
+    expect(rendered.stableV5Graph).toEqual(committedBefore);
+    expect(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION)?.graph).toEqual(committedBefore);
+    expect(completion).toHaveBeenCalledTimes(1);
+  });
+  it('retains an already accepted preview on a later renderer-only outage without new effort facts', async () => {
+    const run = await execute();
+    const before = structuredClone(run.result);
+    // This renderer boundary re-presents existing facts; none belong to this request.
+    run.input.traceRequestId = 'later-preview-disclosure';
+    completion.mockRejectedValue(new Error('injected later renderer failure'));
     const rendered = await renderWeeklyPlanningStableV5AssistantMessage(run);
     expect(rendered.responseSource).toBe('deterministic_fallback');
-    expect(rendered.message).toBe(status === 'satisfied' ? before.message : '返信を作れませんでした。少し待ってからもう一度送信してください。');
-    expect(rendered.draftCandidates).toEqual(before.draftCandidates); expect(rendered.state).toEqual(before.state); expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);
+    expect(rendered.failure).toBeUndefined();
+    expect(rendered.message).toBe('返信を作れませんでした。少し待ってからもう一度送信してください。');
+    expect(rendered.draftCandidates).toEqual(before.draftCandidates);
+    expect(rendered.state).toEqual(before.state);
+    expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);
     expect(completion).toHaveBeenCalledTimes(1);
   });
   it('does not project a cap into a non-preview reply', async () => {

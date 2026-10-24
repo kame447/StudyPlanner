@@ -20,9 +20,9 @@
   width: min(100%, 760px);
   min-width: 0;
   margin: 0 auto;
-  padding: clamp(8px, 1.4vw, 16px) 0 28px;
+  padding: 4px 0 8px;
   display: grid;
-  gap: 14px;
+  gap: 8px;
   color: var(--text-primary);
 }
 
@@ -109,12 +109,12 @@
 
 .learning-report-summary-card {
   min-width: 0;
-  min-height: 104px;
+  min-height: 56px;
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
-  padding: 13px;
+  padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--surface-strong);
@@ -150,22 +150,10 @@
 
 .learning-report-summary-copy strong {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-size: clamp(1.08rem, 4.3vw, 1.55rem);
   line-height: 1.2;
   letter-spacing: -0.02em;
-}
-
-.learning-report-summary-copy small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-muted);
-  font-size: 0.68rem;
-  font-weight: 700;
 }
 
 .learning-report-scope-tabs {
@@ -180,8 +168,8 @@
 
 .learning-report-scope-tabs button {
   min-width: 0;
-  min-height: 38px;
-  padding: 7px 10px;
+  min-height: 44px;
+  padding: 7px 4px;
   border: 0;
   border-radius: 11px;
   background: transparent;
@@ -209,10 +197,8 @@
 
 .learning-report-period-navigation > strong {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-align: center;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-size: clamp(0.8rem, 3vw, 1rem);
 }
 
@@ -260,7 +246,7 @@
 }
 
 .learning-report-card {
-  padding: 16px;
+  padding: 10px;
 }
 
 .learning-report-card-heading {
@@ -280,6 +266,14 @@
   margin: 0;
   font-size: 1rem;
   line-height: 1.35;
+}
+
+/* Paging slides the chart, or the empty notice's text, in from the side
+   (#696); each card keeps it inside so the page never gains a horizontal
+   scroll. Neither card has focusable content to clip. */
+.learning-report-empty,
+.learning-report-trend-card {
+  overflow-x: clip;
 }
 
 .learning-report-card-heading p,
@@ -314,7 +308,7 @@
 }
 
 .learning-report-chart {
-  --learning-report-chart-height: 210px;
+  --learning-report-chart-height: clamp(80px, calc(100svh - 590px), 180px);
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(
@@ -323,8 +317,8 @@
   );
   gap: clamp(2px, 1.4vw, 12px);
   align-items: end;
-  margin-top: 18px;
-  padding: 12px 4px 0;
+  margin-top: 8px;
+  padding: 4px 4px 0;
   border-bottom: 1px solid var(--border);
   background-image: linear-gradient(
     to bottom,
@@ -345,15 +339,46 @@
 .learning-report-chart-item {
   min-width: 0;
   display: grid;
-  grid-template-rows: var(--learning-report-chart-height) 38px;
+  grid-template-rows: var(--learning-report-chart-height) minmax(28px, auto);
   gap: 7px;
   align-items: end;
 }
 
 .learning-report-chart-bar-area {
-  position: relative;
   width: 100%;
   height: var(--learning-report-chart-height);
+  min-width: 0;
+}
+
+/* Shared rows grow for enlarged text without changing the scale between bars. */
+.learning-report-chart:not(.scope-month) {
+  grid-template-rows: minmax(var(--learning-report-chart-height), max-content) minmax(28px, auto);
+  row-gap: 7px;
+}
+
+.learning-report-chart:not(.scope-month) .learning-report-chart-item {
+  grid-row: 1 / span 2;
+  grid-template-rows: subgrid;
+  align-self: stretch;
+}
+
+.learning-report-chart:not(.scope-month) .learning-report-chart-bar-area {
+  height: auto;
+  min-height: var(--learning-report-chart-height);
+  align-self: stretch;
+  display: grid;
+  grid-template-rows: minmax(max-content, 1fr) max(32px, calc(var(--learning-report-chart-height) - 3.6em - 4px));
+  gap: 4px;
+  font-size: 0.75rem;
+  /* DotGothic16's 1.448em font envelope needs room at enlarged text sizes. */
+  line-height: 1.6;
+}
+
+.learning-report-chart-plot {
+  grid-row: 2;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: end;
   justify-content: center;
@@ -372,19 +397,13 @@
 }
 
 .learning-report-chart-value {
-  position: absolute;
-  left: 50%;
-  bottom: calc(min(100%, var(--learning-report-value-position, 0%)) + 4px);
-  transform: translateX(-50%);
+  grid-row: 1;
+  align-self: end;
+  min-width: 0;
   color: var(--accent-strong);
-  font-size: 0.61rem;
   font-weight: 800;
-  white-space: nowrap;
-}
-
-.learning-report-chart-bar-area:has(.learning-report-chart-value) .learning-report-chart-value {
-  bottom: auto;
-  top: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .learning-report-chart-label {
@@ -399,9 +418,7 @@
 .learning-report-chart-label strong,
 .learning-report-chart-label span {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .learning-report-chart-label strong {
@@ -419,6 +436,13 @@
 
 .learning-report-chart.scope-month {
   gap: 2px;
+}
+
+/* Month ticks span empty neighbouring columns without breaking digit pairs. */
+.learning-report-chart.scope-month .learning-report-chart-label strong {
+  max-width: none;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .learning-report-chart.scope-month .learning-report-chart-bar {
@@ -570,116 +594,108 @@
   padding: 24px 20px;
 }
 
+
+.learning-report-controls {
+  display: grid;
+  grid-template-columns: minmax(144px, 1fr) minmax(0, 1.25fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.learning-report-summary-card { grid-template-columns: minmax(0, 1fr); }
+.learning-report-summary-icon { display: none; }
+.learning-report-summary-copy {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.learning-report-summary-copy strong { text-align: right; }
+.learning-report-material-filter {
+  grid-template-columns: minmax(0, 1fr);
+  padding-inline: 8px;
+}
+.learning-report-material-filter > svg { display: none; }
+.learning-report-card-heading { flex-wrap: wrap; gap: 4px 12px; }
+.learning-report-period-total { min-width: 0; flex-shrink: 1; }
+.learning-report-period-total strong,
+.learning-report-period-total span { white-space: normal; overflow-wrap: anywhere; }
+.learning-report-details > summary {
+  min-height: 44px;
+  padding: 10px 8px;
+  color: var(--accent-strong);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.learning-report-details > summary:focus-visible {
+  outline: 3px solid var(--focus-outline);
+  outline-offset: 2px;
+}
+.learning-report-details-content { display: grid; gap: 12px; padding-block: 8px; }
+.learning-report-details-content h2 { margin: 0; font-size: 1rem; }
+.learning-report-details-content p { font-size: 0.875rem; }
+.learning-report-plan-details { display: grid; gap: 8px; }
+.learning-report-plan-details > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.learning-report-plan-details dd { margin: 0; }
+/* Enlarged text and long names may grow vertically without losing content. */
+.learning-report-breakdown-copy strong,
+.learning-report-breakdown-copy span { white-space: normal; overflow-wrap: anywhere; }
+
+/* Small emphasized text needs the readable text token on dark surfaces.
+   Keep accent colors for the bars and for the existing light-theme text. */
+:root[data-theme='dark'] .learning-report-chart-value,
+:root[data-theme='dark'] .learning-report-details > summary,
+:root[data-theme='dark'] .learning-report-insight strong {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .learning-report-scope-tabs button.active {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+
 @media (max-width: 520px) {
-  .app-shell:has(.learning-report-view) {
-    width: 100%;
-    padding-inline: 10px;
-  }
-
-  .learning-report-view {
-    gap: 12px;
-  }
-
-  .learning-report-summary-card {
-    grid-template-columns: 34px minmax(0, 1fr);
-    gap: 8px;
-    min-height: 96px;
-    padding: 11px;
-    border-radius: 16px;
-  }
-
-  .learning-report-summary-icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 11px;
-  }
-
-  .learning-report-summary-icon svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .learning-report-card {
-    padding: 14px;
-    border-radius: 18px;
-  }
-
-  .learning-report-card-heading {
-    gap: 8px;
-  }
-
-  .learning-report-chart {
-    --learning-report-chart-height: 184px;
-    padding-inline: 0;
-  }
-
-  .learning-report-chart-value {
-    font-size: 0.56rem;
-  }
-
-  .learning-report-breakdown-item {
-    grid-template-columns: 38px minmax(0, 1fr) auto;
-    gap: 8px;
-  }
-
-  .learning-report-breakdown-icon {
-    width: 38px;
-    height: 38px;
-  }
+  .app-shell:has(.learning-report-view) { width: 100%; padding-inline: 10px; }
+  .learning-report-summary-grid { gap: 6px; }
+  .learning-report-summary-card { min-height: 50px; padding: 6px 8px; }
+  .learning-report-chart { padding-inline: 0; }
 }
 
 @media (max-width: 380px) {
-  .learning-report-summary-grid {
-    gap: 8px;
-  }
-
-  .learning-report-summary-card {
-    grid-template-columns: 30px minmax(0, 1fr);
-    gap: 7px;
-    padding: 10px 9px;
-  }
-
-  .learning-report-summary-icon {
-    width: 30px;
-    height: 30px;
-  }
-
-  .learning-report-summary-copy strong {
-    font-size: 1rem;
-  }
-
-  .learning-report-summary-copy > span {
-    font-size: 0.72rem;
-  }
-
-  .learning-report-summary-copy small {
-    font-size: 0.61rem;
-  }
-
-  .learning-report-period-navigation > strong {
-    font-size: 0.76rem;
-  }
-
-  .learning-report-card-heading {
-    display: grid;
-  }
-
-  .learning-report-period-total {
-    justify-items: start;
-    text-align: left;
-  }
-
-  .learning-report-breakdown-value strong {
-    font-size: 0.72rem;
-  }
+  .learning-report-view { gap: 6px; }
+  .learning-report-summary-copy { gap: 4px; }
+  .learning-report-summary-copy strong { font-size: 1.08rem; }
 }
 
 @media (min-width: 700px) {
-  .learning-report-summary-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
+  .learning-report-summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .learning-report-summary-copy { grid-template-columns: minmax(0, 1fr); }
+  .learning-report-summary-copy strong { text-align: left; }
+}
 
-  .learning-report-summary-card {
-    grid-template-columns: 42px minmax(0, 1fr);
+/* Use the existing desktop shell for data, while keeping disclosed prose readable.
+   Chart rows still grow for enlarged text; no viewport clipping is introduced. */
+@media (min-width: 1100px) {
+  .learning-report-view { width: min(100%, 960px); }
+  .learning-report-details-content { max-width: 760px; margin-inline: auto; }
+
+  .learning-report-summary-copy > span,
+  .learning-report-card-heading p,
+  .learning-report-period-total span,
+  .learning-report-chart-label strong,
+  .learning-report-chart-label span,
+  .learning-report-breakdown-copy strong,
+  .learning-report-breakdown-copy span,
+  .learning-report-breakdown-value strong,
+  .learning-report-breakdown-value span,
+  .learning-report-insight strong,
+  .learning-report-insight p,
+  .learning-report-chart:not(.scope-month) .learning-report-chart-bar-area {
+    font-size: 0.875rem;
   }
 }

@@ -65,19 +65,7 @@ async function seedStudySession(page) {
   });
 }
 
-function expectExitDialog(page) {
-  return new Promise((resolve) => {
-    page.once('dialog', async (dialog) => {
-      expect(dialog.message()).toBe(
-        '学習セッションを終了してホームに戻りますか？ 計測内容は保存されません。',
-      );
-      await dialog.dismiss();
-      resolve();
-    });
-  });
-}
-
-test('touch swipe locks horizontally, follows the finger, and opens the exit confirmation', async ({ page }) => {
+test('touch swipe locks horizontally, follows the finger, and minimizes without losing the active timer', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await seedStudySession(page);
@@ -94,7 +82,8 @@ test('touch swipe locks horizontally, follows the finger, and opens the exit con
   await expect(elapsed).not.toHaveText('00:00:00', { timeout: 2500 });
   const restingLeft = await sessionPage.evaluate(element => element.getBoundingClientRect().left);
 
-  const dialogPromise = expectExitDialog(page);
+  const dialogs = [];
+  page.on('dialog', dialog => { dialogs.push(dialog.message()); void dialog.dismiss(); });
   const feedback = await sessionPage.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const target = element;
@@ -161,8 +150,11 @@ test('touch swipe locks horizontally, follows the finger, and opens the exit con
     Number.parseFloat(feedback.firstOffset),
   );
 
-  await dialogPromise;
+  await expect(session).toBeHidden();
+  expect(dialogs).toEqual([]);
+  await page.getByRole('button', { name: '計測中へ戻る', exact: true }).click();
   await expect(session).toBeVisible();
+  await expect(elapsed).not.toHaveText('00:00:00');
   await expect(sessionPage).not.toHaveClass(/is-swiping-back/);
   await expect.poll(() => sessionPage.evaluate(element => element.getAnimations().length)).toBe(0);
   await expect.poll(() => sessionPage.evaluate(element => element.getBoundingClientRect().left)).toBe(restingLeft);

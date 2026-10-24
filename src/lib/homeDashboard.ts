@@ -1,8 +1,8 @@
+import { elapsedEntryMinutes, getEntryDurationMinutes } from './entryTimeRange';
 import {
   addDays,
   getWeekDates,
   getWeekdayLabel,
-  minutesBetween,
   sortByDateTime,
   toIsoDate,
 } from './date';
@@ -11,12 +11,12 @@ import {
   expandPlansForDate,
   getActualOccurrenceKey,
 } from './planRecurrence';
-import { isStudyTimePlan } from './studyAnalytics';
+import { isActualProgressSourceIncluded, canRecordProgressActual, DEFAULT_STUDY_PROGRESS_PREFERENCES, isIncludedInStudyProgress, type StudyProgressPreferences } from './studyProgressPolicy';
 import {
-  isStudyRecordForDisplay,
   normalizeStudyRecordsForDisplay,
 } from './studyRecords';
-import type { Actual, Plan, TodoTask } from '../types/domain';
+import type { Actual, MonthEvent, Plan, TodoTask } from '../types/domain';
+import { calculateStudyStreaks } from './studyStreak';
 
 export interface HomeDayProgress {
   date: string;
@@ -50,25 +50,15 @@ function timeNowLabel(now: Date): string {
 }
 
 function studyMinutes(actual: Actual): number {
-  return Math.max(0, minutesBetween(actual.actualStartTime, actual.actualEndTime));
-}
-
-function elapsedMinutesByTime(startTime: string, endTime: string, nowTime: string): number {
-  if (nowTime <= startTime) return 0;
-  if (nowTime >= endTime) return Math.max(0, minutesBetween(startTime, endTime));
-  return Math.max(0, minutesBetween(startTime, nowTime));
+  return Math.max(0, getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime));
 }
 
 function plannedMinutesByNow(plan: Plan, date: string, today: string, nowTime: string): number {
-  if (date < today) return Math.max(0, minutesBetween(plan.startTime, plan.endTime));
-  if (date > today) return 0;
-  return elapsedMinutesByTime(plan.startTime, plan.endTime, nowTime);
+  return elapsedEntryMinutes(date, plan.startTime, plan.endTime, today, nowTime);
 }
 
 function actualMinutesByNow(actual: Actual, today: string, nowTime: string): number {
-  if (actual.occurrenceDate < today) return studyMinutes(actual);
-  if (actual.occurrenceDate > today) return 0;
-  return elapsedMinutesByTime(actual.actualStartTime, actual.actualEndTime, nowTime);
+  return elapsedEntryMinutes(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, today, nowTime);
 }
 
 function buildStudyDateSet(actuals: Actual[]): Set<string> {
@@ -77,34 +67,6 @@ function buildStudyDateSet(actuals: Actual[]): Set<string> {
       .filter((actual) => studyMinutes(actual) > 0)
       .map((actual) => actual.occurrenceDate),
   );
-}
-
-function calculateStreaks(actuals: Actual[], today: string): { current: number; best: number } {
-  const studyDates = buildStudyDateSet(actuals);
-  const sortedDates = Array.from(studyDates).sort();
-
-  let best = 0;
-  let running = 0;
-  let previous: string | null = null;
-
-  for (const date of sortedDates) {
-    running = previous && addDays(previous, 1) === date ? running + 1 : 1;
-    best = Math.max(best, running);
-    previous = date;
-  }
-
-  let cursor = studyDates.has(today) ? today : addDays(today, -1);
-  if (!studyDates.has(cursor)) {
-    return { current: 0, best };
-  }
-
-  let current = 0;
-  while (studyDates.has(cursor)) {
-    current += 1;
-    cursor = addDays(cursor, -1);
-  }
-
-  return { current, best };
 }
 
 function sortDueTodos(todos: TodoTask[]): TodoTask[] {
@@ -122,10 +84,18 @@ function buildUpcomingPlans(plans: Plan[], today: string): Plan[] {
   return sortByDateTime(projected).slice(0, 6);
 }
 
-function resolveStudyActuals(plans: Plan[], actuals: Actual[]): Actual[] {
+function resolveStudyActuals(
+  plans: Plan[],
+  actuals: Actual[],
+  monthEvents: MonthEvent[],
+  preferences: StudyProgressPreferences,
+): Actual[] {
   const studyActualIds = new Set(
-    normalizeStudyRecordsForDisplay({ actuals, plans })
-      .filter(isStudyRecordForDisplay)
+    normalizeStudyRecordsForDisplay({ actuals, plans, monthEvents })
+      .filter((record) => record.monthEvent
+        ? preferences.includeGeneralEvents
+        : record.plan ? isIncludedInStudyProgress(record.plan, preferences)
+          : isActualProgressSourceIncluded(record.actual.progressSource, preferences))
       .map((record) => record.actualId),
   );
 
@@ -135,27 +105,35 @@ function resolveStudyActuals(plans: Plan[], actuals: Actual[]): Actual[] {
 export function buildHomeDashboardModel({
   plans,
   actuals,
+  monthEvents = [],
   todos,
   now = new Date(),
+  progressPreferences = DEFAULT_STUDY_PROGRESS_PREFERENCES,
 }: {
   plans: Plan[];
   actuals: Actual[];
+  monthEvents?: MonthEvent[];
   todos: TodoTask[];
   now?: Date;
+  progressPreferences?: StudyProgressPreferences;
 }): HomeDashboardModel {
   const today = toIsoDate(now);
   const nowTime = timeNowLabel(now);
   const todayPlans = sortByDateTime(expandPlansForDate(plans, today));
-  const todayStudyPlans = todayPlans.filter(isStudyTimePlan);
+  const todayStudyPlans = todayPlans.filter((plan) => isIncludedInStudyProgress(plan, progressPreferences));
   const upcomingPlans = buildUpcomingPlans(plans, today);
-  const studyActuals = resolveStudyActuals(plans, actuals);
+  const studyActuals = resolveStudyActuals(plans, actuals, monthEvents, progressPreferences);
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
-  const nextPlan = todayPlans.find((plan) => plan.endTime > nowTime) ?? null;
+  const nextPlan = todayPlans.find((plan) =>
+    getEntryDurationMinutes(plan.startTime, plan.endTime) > plannedMinutesByNow(plan, today, today, nowTime)) ?? null;
   const missingActualPlans = todayStudyPlans.filter((plan) => {
     const occurrenceKey = buildPlanOccurrenceKey(plan.id, plan.date);
-    return plan.endTime <= nowTime && !actualByOccurrenceKey.has(occurrenceKey);
+    return canRecordProgressActual(plan)
+      && getEntryDurationMinutes(plan.startTime, plan.endTime) > 0
+      && plannedMinutesByNow(plan, today, today, nowTime) >= getEntryDurationMinutes(plan.startTime, plan.endTime)
+      && !actualByOccurrenceKey.has(occurrenceKey);
   });
 
   const nearDueLimit = addDays(today, 2);
@@ -172,7 +150,7 @@ export function buildHomeDashboardModel({
   let weekExpectedMinutesByNow = 0;
   let weekActualMinutesByNow = 0;
   const weekDays = getWeekDates(today).map((date) => {
-    const dayPlans = expandPlansForDate(plans, date).filter(isStudyTimePlan);
+    const dayPlans = expandPlansForDate(plans, date).filter((plan) => isIncludedInStudyProgress(plan, progressPreferences));
     const dayActuals = studyActuals.filter((actual) => actual.occurrenceDate === date);
 
     weekExpectedMinutesByNow += dayPlans.reduce(
@@ -188,7 +166,7 @@ export function buildHomeDashboardModel({
       date,
       label: getWeekdayLabel(date),
       plannedMinutes: dayPlans.reduce(
-        (sum, plan) => sum + Math.max(0, minutesBetween(plan.startTime, plan.endTime)),
+        (sum, plan) => sum + Math.max(0, getEntryDurationMinutes(plan.startTime, plan.endTime)),
         0,
       ),
       actualMinutes: dayActuals.reduce((sum, actual) => sum + studyMinutes(actual), 0),
@@ -203,7 +181,7 @@ export function buildHomeDashboardModel({
       : weekActualMinutes > 0
         ? 100
         : 0;
-  const streaks = calculateStreaks(studyActuals, today);
+  const streaks = calculateStudyStreaks([...buildStudyDateSet(studyActuals)], today);
 
   return {
     today,

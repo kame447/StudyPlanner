@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Bot,
   ChevronRight,
@@ -17,6 +17,7 @@ import type {
 import { useAdminDataLoader } from '../hooks/useAdminData';
 import {
   getAdminObservabilityUsers,
+  getAdminObservabilityUsersPage,
   resolveAdminObservabilityUserIdentity,
   type AdminObservabilityUserPage,
 } from '../services/adminObservabilityService';
@@ -128,6 +129,20 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
   const [identityMatches, setIdentityMatches] = useState<ObservabilityAdminIdentityMatch[]>([]);
   const [identityState, setIdentityState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [identityError, setIdentityError] = useState('');
+  const identitySearch = useRef({
+    active: false,
+    query: '',
+    request: null as symbol | null,
+  });
+
+  useLayoutEffect(() => {
+    const owner = identitySearch.current;
+    owner.active = true;
+    return () => {
+      owner.active = false;
+      owner.request = null;
+    };
+  }, []);
   const [extraUsers, setExtraUsers] = useState<ObservabilityAdminUserListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -167,19 +182,41 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
     });
   }, [filter, searchQuery, sort, users]);
 
+  function changeIdentityQuery(value: string) {
+    const owner = identitySearch.current;
+    const query = value.trim();
+    if (query !== owner.query) {
+      owner.query = query;
+      owner.request = null;
+      setIdentityMatches([]);
+      setIdentityError('');
+      setIdentityState('idle');
+    }
+    setIdentityQuery(value);
+  }
+
   async function searchIdentity() {
-    const query = identityQuery.trim();
-    if (!query) return;
+    const owner = identitySearch.current;
+    const query = owner.query;
+    if (!owner.active || !query || owner.request) return;
+    const request = Symbol();
+    owner.request = request;
+    const ownsSearch = () => owner.active && owner.request === request;
     setIdentityState('loading');
+    setIdentityMatches([]);
     setIdentityError('');
     try {
       const matches = await resolveAdminObservabilityUserIdentity(query);
+      if (!ownsSearch()) return;
       setIdentityMatches(matches);
       setIdentityState('ready');
     } catch (error) {
+      if (!ownsSearch()) return;
       setIdentityMatches([]);
       setIdentityError(error instanceof Error ? error.message : 'プロフィールを検索できませんでした。');
       setIdentityState('error');
+    } finally {
+      if (ownsSearch()) owner.request = null;
     }
   }
 
@@ -188,7 +225,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
     setLoadingMore(true);
     setLoadMoreError('');
     try {
-      const page = await getAdminObservabilityUsers({
+      const page = await getAdminObservabilityUsersPage({
         environment: 'production',
         cursor: resolvedCursor,
         limit: 25,
@@ -228,14 +265,14 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
       <section className="admin-identity-search panel">
         <div>
           <strong>プロフィールから調査を開始</strong>
-          <p>メールアドレス、Firebase UID、またはユーザー名の完全一致で検索します。個人情報はanalyticsへ保存しません。</p>
+          <p>確認済みメールアドレス、Firebase UID、またはユーザー名の完全一致で検索します。ユーザー名は自己申告の表示名です。個人情報はanalyticsへ保存しません。</p>
         </div>
         <div className="admin-identity-search-row">
           <label className="admin-search-field">
             <Search aria-hidden="true" size={18} strokeWidth={2} />
             <input
               value={identityQuery}
-              onChange={(event) => setIdentityQuery(event.target.value)}
+              onChange={(event) => changeIdentityQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void searchIdentity();
               }}
@@ -257,7 +294,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
               <article className="admin-identity-result" key={match.firebaseUid}>
                 <div>
                   <strong>{match.username}</strong>
-                  <span>{match.email || 'メール未設定'}</span>
+                  <span>{match.email ? `確認済みメール: ${match.email}` : '確認済みメールなし'}</span>
                   <small>登録 {formatTimestamp(match.registeredAt)}</small>
                   <code>{match.firebaseUid}</code>
                 </div>

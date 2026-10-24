@@ -99,7 +99,11 @@
 }
 
 .todo-completed-label {
-  flex: 1;
+  min-width: 0;
+}
+
+.todo-completed-disclosure > .todo-section-count {
+  margin-inline-start: auto;
 }
 
 .todo-section-count {

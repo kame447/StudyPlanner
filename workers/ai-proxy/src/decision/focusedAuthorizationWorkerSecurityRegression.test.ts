@@ -96,7 +96,7 @@ describe('Issue #335 Worker response containment regression', () => {
             ? 'create_plan'
             : 'fallback';
           return Response.json({
-            model: 'typesafe/jev-1.13',
+            model: 'typesafe/jev-1.14',
             answers: {
               authorization: {
                 type: 'choice',

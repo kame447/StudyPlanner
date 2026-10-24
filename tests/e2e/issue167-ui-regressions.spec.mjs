@@ -177,7 +177,7 @@ test.describe('issue 167 UI regressions', () => {
 
     await menuButton.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByText('教材内構造を編集')).toBeVisible();
+    await expect(page.getByText('目次を編集')).toBeVisible();
     await page.getByRole('button', { name: 'キャンセル', exact: true }).click();
 
     await openButton.focus();

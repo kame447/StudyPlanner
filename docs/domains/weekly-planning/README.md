@@ -28,6 +28,7 @@ These documents supplement the canonical owners above; they do not override them
 - [Semantic schema reference](architecture/weekly-planning-semantic-schema-v5.md)
 - [Conversation trace architecture](architecture/weekly-planning-conversation-trace.md)
 - [Real-API evaluation policy](quality/real-api-eval-policy.md)
+- [Agent-guided browser E2E pilot](quality/agentic-browser-e2e.md)
 - [Personalization index](personalization/README.md)
 
 ## Responsibility map
@@ -64,3 +65,5 @@ These documents supplement the canonical owners above; they do not override them
 A historical file, old `Status: active`, branch name or PR number never overrides this domain index or the current contract.
 
 At the same time, moving a historical task/design to `docs/archive/` does not mean every concept inside it is obsolete. If current code/tests still enforce an invariant, that invariant must be represented in the current owning spec/architecture/policy/quality document before the historical record is treated as archive-only evidence.
+
+- [#305 top-1 contextual minutes / grounded ACK work](work/20261021-issue305-top1-ack.md)

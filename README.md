@@ -81,18 +81,28 @@ Issue #246 の planned consultation extension でもこの責任境界を維持�
 
 外部 API は provider 固有 response を product domain へ直接流さず、Cloudflare Worker 上の integration boundary で正規化します。書籍教材の初期実装では共有 catalog を先に参照し、miss 時だけ NDL Search へ問い合わせることで外部依存と不要な request を抑えます。
 
-テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。
+テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。会話のブラウザ操作を補助するTesterArmy/e2e pilotは独立runnerで、`npm ci --prefix tests/agent-e2e`後に`npm run test:agentic:smoke`でモデル不要の検証を実行できます。モデル利用やonline検証の区別は[専用ガイド](./docs/domains/weekly-planning/quality/agentic-browser-e2e.md)を参照してください。
 
 実装上の責務と主要ディレクトリは [`PROJECT_MAP.md`](./PROJECT_MAP.md) にまとめています。
 
 ## 開発環境
 
-Node.js と npm が必要です。
+Node.js と npm が必要です。開発・CI の基準は [`.node-version`](./.node-version) の Node.js 22.23.4 です。2026-10-21 のセキュリティ修正済みの Node 22.23.4 / 24.22.1 / 26.12.1 以降の同一 major 系列を利用してください。`engines` は既定では警告のみなので、依存インストール前に下記の確認を実行します。`npm run verify` と `npm run build` も実際の実行バージョンを検査します。更新の範囲と未検証点は [Node セキュリティ更新記録](docs/domains/client-runtime/work/node-october-2026-security-handoff.md) を参照してください。
 
 ```bash
+node scripts/ci/check-node-security-version.mjs
 npm install --cache .npm-cache
 npm run dev
 ```
+
+開発サーバーは既定でこの PC 内 (`127.0.0.1`) からだけ接続できます。スマートフォンなど同じ LAN の端末から確認するときは、開発用証明書に開発 PC の LAN IP を含めてから LAN 起動コマンドを使います。
+
+```bash
+npm run cert:dev -- 192.168.0.5
+npm run dev:lan
+```
+
+`192.168.0.5` は開発 PC の LAN IP に置き換えてください。`dev:lan` は `0.0.0.0` に bind し、Vite は証明書が `.cert/` に存在すれば HTTPS を使います。スマートフォンで HTTPS を開くには、その端末が mkcert のローカル認証局を信頼する必要があります。LAN 公開が必要な作業中だけこのコマンドを使います。build 済み画面の確認には `npm run preview:lan`（Node preview）または `npm run preview:vite:lan` を使えます。明示的な LAN script は OS に依存しない `--host` option を使います。手動で起動先を変える場合は `STUDYPLANNER_DEV_HOST=0.0.0.0` を `npm run dev`、`npm run preview`、または `npm run preview:vite` に指定できます。
 
 Firebase や AI gateway を設定しなくても、一部機能はローカル fallback で確認できます。本番相当の認証、保存、AI 接続を確認する場合は環境設定が必要です。
 
@@ -146,11 +156,13 @@ npx wrangler secret put OPENROUTER_API_KEY --config workers/ai-proxy/wrangler.js
 
 既定値は `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` です。`shadow` はWorkerの `waitUntil` 内で比較記録だけを行い、既存LLMの応答を待たせず、Jevから正式状態を書き換えません。`canary` は明示した5・25・100%でのみ選択されます。現在の閾値は未校正なので、日本語gold/holdout評価と#152の該当security gateが完了するまで本番canaryを有効化しません。rollbackは `off` へ戻してWorkerを再デプロイします。今回の実装自体はデプロイや本番有効化を行いません。
 
-モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。要求は固定release `typesafe/jev-1.13`、応答は公式に確認したrelease/dated snapshotのみ許可し、`latest` や未検証snapshotへの自動追従はしません。モデル更新時はrequest ID、response allowlist、catalog/gateの校正を合わせて見直します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。OpenRouter応答はstream読取中に32,768 bytesで打ち切り、上限超過時は残りをbufferせずcancelします。
+モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。要求は固定release `typesafe/jev-1.14`、応答は `typesafe/jev-1.14` / `typesafe/jev-1.14-20261014` のみ許可し、`latest` や未検証snapshotへの自動追従はしません。モデル更新時はrequest ID、response allowlist、catalog/gateの校正を合わせて見直します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。OpenRouter応答はstream読取中に32,768 bytesで打ち切り、上限超過時は残りをbufferせずcancelします。
+
+[PR #848](https://github.com/kame447/StudyPlanner/pull/848) は本番Workerのモデル固定を更新したもので、事前登録済みUnit 0評価の `scripts/jev-contextual-unit0-budget.mjs` は比較条件を保持するため1.13のままです。この評価snapshotを本番設定と混同せず、モデル固定の更新だけで品質改善や本番有効化を確認済みとは扱いません。
 
 低確信度・補助判定の不一致・欠落値・モデル不一致・通信障害は既存focused LLMへ戻します。明確な条件変更や独立した意味はgeneric semanticへ渡します。両providerの失敗は現行のcontrolled failureへ戻り、legacy自然言語parserは復活させません。汎用入力や長すぎる入力は従来経路を使います。
 
-[TypeSafeのjev-1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13) は、stateをhostileとして扱わず、注入された指示や誘導的な文章が回答を動かし得ると明記しています。catalog内の「untrusted」は助言的なprompt表現であってsecurity boundaryではなく、injection層の評価結果も観測値にすぎません。安全性はdeterministicなeligibilityと権限制限に置き、Jevが選べるのは空のdocumentに対する未保存案の `create_plan` だけで、approval/saveは実行できません。このcontainmentは#152のsecurity gateを置き換えません。
+旧版についての[TypeSafeのjev-1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13) は、stateをhostileとして扱わず、注入された指示や誘導的な文章が回答を動かし得ると明記しています。catalog内の「untrusted」は助言的なprompt表現であってsecurity boundaryではなく、injection層の評価結果も観測値にすぎません。安全性はdeterministicなeligibilityと権限制限に置き、Jevが選べるのは空のdocumentに対する未保存案の `create_plan` だけで、approval/saveは実行できません。このcontainmentは#152のsecurity gateを置き換えません。
 
 通常テストはmockのみでキー不要です。実APIの疎通試験は環境変数 `OPENROUTER_API_KEY` を設定したプロセスで、次を明示実行します。`.env` の自動読込や通常CIからの課金API起動はありません。既存のsecret managerから環境変数を渡すか、ローカルではshell履歴へ値を残さない非表示入力を使ってください。
 
@@ -173,7 +185,7 @@ npm run eval:jev:shadow
 キーをCloudflareのSecretに登録済みなら、Wranglerへログインした端末から次の任意試験も実行できます。キーを端末へ取り出さず、一時remote dev内で同じadapterと本番の1.5秒timeoutを検証します。本番コードやroutingはデプロイせず、通常CIにも追加しません。
 
 ```bash
-npm exec --yes --package=wrangler@4.147.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
+npm exec --yes --package=wrangler@4.151.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
 ```
 
 検証コードは3分で失効する認証付きの合成入力専用です。終了時に開発サーバーを停止し、一時ファイルを削除します。判断結果の採用gateは疎通確認とは別に記録し、`abstained`なら既存LLMへ戻す方針を維持します。API仕様・日本語品質・本番設定の問題を隠すためにgateを緩めないでください。
@@ -188,9 +200,10 @@ LAN 内の端末から HTTPS で開発環境へ接続する場合は、開発用
 
 ```bash
 npm run cert:dev -- 192.168.0.5
+npm run dev:lan
 ```
 
-IP アドレスは開発 PC の LAN IP に置き換えてください。
+IP アドレスは開発 PC の LAN IP に置き換えてください。Vite は既定では loopback のみに bind するため、実機から見るときだけ `dev:lan` を起動します。証明書は開発 PC と実機の両方で信頼されている必要があります。
 
 ## テスト
 

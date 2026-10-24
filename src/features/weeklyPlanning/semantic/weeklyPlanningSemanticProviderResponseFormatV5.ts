@@ -1,6 +1,6 @@
 import type {
   JsonSchemaResponseFormat,
-} from '../../../services/ai/openAiCompatibleClient';
+} from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   CANONICAL_RELATIVE_DAY_EXPRESSIONS,
   CANONICAL_RELATIVE_WEEK_EXPRESSIONS,

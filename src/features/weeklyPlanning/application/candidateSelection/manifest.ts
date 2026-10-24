@@ -17,8 +17,13 @@ export function snapshotCandidateBasis<T extends CandidateTuple>(basis: Candidat
     || ![binding.inputRevision, binding.graphRevision, binding.selectionEpoch].every(revision)
     || !record(binding.target) || !keys(binding.target, ['kind', 'id'])
     || !nonempty(binding.target.id) || !nonempty(binding.target.kind) || !record(binding.scope)
-    || !record(binding.question) || !keys(binding.question, ['id', 'code', 'presentingTurnId', 'presentingMessageId', 'presentationRevision'])
+    || !record(binding.question) || !keys(binding.question, ['id', 'code', 'presentingTurnId', 'presentingMessageId', 'presentationRevision', ...(binding.question.presentedQuestion === undefined ? [] : ['presentedQuestion'])])
     || ![binding.question.id, binding.question.code, binding.question.presentingTurnId, binding.question.presentingMessageId].every(nonempty)
+    || (binding.question.presentedQuestion !== undefined && (!record(binding.question.presentedQuestion)
+      || !keys(binding.question.presentedQuestion, ['assistantMessageId', 'text'])
+      || binding.question.presentedQuestion.assistantMessageId !== binding.question.presentingMessageId
+      || !nonempty(binding.question.presentedQuestion.text)
+      || new TextEncoder().encode(binding.question.presentedQuestion.text).length > 4000))
     || !revision(binding.question.presentationRevision)
     || !Array.isArray(binding.sources) || binding.sources.some((source) => !record(source) || !keys(source, ['id', 'revision']) || !nonempty(source.id) || !nonempty(source.revision))
     || new Set(binding.sources.map((source) => source.id)).size !== binding.sources.length
@@ -38,7 +43,7 @@ export async function createCandidateManifest<T extends CandidateTuple>(basis: C
   // Snapshot BEFORE await: caller-owned references cannot change what is hashed or returned.
   const snapshot = snapshotCandidateBasis(basis);
   const canonicalSerialization = serializeCandidateBasis(snapshot);
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalSerialization));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalSerialization));
   const candidateSetHash = `sha256:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
   const manifest: CandidateManifest<T> = Object.freeze({ version: 1, ...snapshot, canonicalSerialization, candidateSetHash });
   manifests.add(manifest);
@@ -53,6 +58,7 @@ export function projectCandidateProviderContext<T extends CandidateTuple>(manife
     question: Object.freeze({ id: manifest.binding.question.id, code: manifest.binding.question.code }),
     target: manifest.binding.target,
     scope: manifest.binding.scope,
+    ...(manifest.binding.question.presentedQuestion ? { presentedQuestion: manifest.binding.question.presentedQuestion.text } : {}),
   });
 }
 

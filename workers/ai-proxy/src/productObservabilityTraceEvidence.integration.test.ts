@@ -43,6 +43,59 @@ async function harness() {
 afterEach(() => vi.restoreAllMocks());
 
 describe('modern trace diagnostic evidence at bounded read boundaries', () => {
+  it('restores authenticated audited admin log reads without adding a secret for each epoch', async () => {
+    const epoch = resolveWeeklyPlanningTraceEpoch(new Date());
+    const previous = String(Number(epoch) - 1);
+    const audit = vi.spyOn(WeeklyPlanningTraceFirestoreClient.prototype, 'setImmutableDocument')
+      .mockResolvedValue(undefined);
+    vi.spyOn(WeeklyPlanningTraceFirestoreClient.prototype, 'getDocument').mockResolvedValue(session());
+    const adapter = new ProductObservabilityWeeklyPlanningDiagnosticAdapter({
+      FIREBASE_PROJECT_ID: 'synthetic-project',
+      FIREBASE_SERVICE_ACCOUNT_EMAIL: 'unused@example.invalid',
+      FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused',
+      WEEKLY_PLANNING_TRACE_HMAC_SECRETS: JSON.stringify({ [previous]: 'a'.repeat(64) }),
+    });
+    await adapter.assertTraceReader('synthetic-admin', { enabled: true, weeklyPlanningTraceReader: true });
+    const result = await adapter.listSessions({ sessionId });
+    expect(result.sessions).toHaveLength(1);
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(audit.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      actorEpoch: epoch,
+      action: 'list_sessions',
+    }));
+  });
+
+  it('prefers an explicitly provisioned current epoch over an otherwise derived epoch', async () => {
+    const epoch = resolveWeeklyPlanningTraceEpoch(new Date());
+    const previous = String(Number(epoch) - 1);
+    const audit = vi.spyOn(WeeklyPlanningTraceFirestoreClient.prototype, 'setImmutableDocument')
+      .mockResolvedValue(undefined);
+    vi.spyOn(WeeklyPlanningTraceFirestoreClient.prototype, 'getDocument')
+      .mockResolvedValue(session());
+    const baseEnv = {
+      FIREBASE_PROJECT_ID: 'synthetic-project',
+      FIREBASE_SERVICE_ACCOUNT_EMAIL: 'unused@example.invalid',
+      FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused',
+      WEEKLY_PLANNING_TRACE_HMAC_SECRETS: JSON.stringify({ [previous]: 'a'.repeat(64) }),
+    };
+    const old = new ProductObservabilityWeeklyPlanningDiagnosticAdapter(baseEnv);
+    await old.assertTraceReader('synthetic-admin', { enabled: true, weeklyPlanningTraceReader: true });
+    expect((await old.listSessions({ sessionId })).sessions).toHaveLength(1);
+
+    const recovered = new ProductObservabilityWeeklyPlanningDiagnosticAdapter({
+      ...baseEnv,
+      WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION: JSON.stringify({
+        [epoch]: 'b'.repeat(64),
+      }),
+    });
+    await recovered.assertTraceReader('synthetic-admin', { enabled: true, weeklyPlanningTraceReader: true });
+    expect((await recovered.listSessions({ sessionId })).sessions).toHaveLength(1);
+    expect(audit).toHaveBeenCalledTimes(2);
+    expect(audit.mock.calls[1]?.[2]).toEqual(expect.objectContaining({ actorEpoch: epoch, action: 'list_sessions' }));
+    expect((audit.mock.calls[1]?.[2] as Record<string, unknown>).actorToken)
+      .not.toBe((audit.mock.calls[0]?.[2] as Record<string, unknown>).actorToken);
+  });
+
   it('retains pagination and distinguishes filtered and unreadable sessions without entry scans', async () => {
     const h = await harness();
     h.query.mockResolvedValue([

@@ -1,3 +1,5 @@
+import { prepareActualProgressSource } from '../domain/actualProgressSource';
+import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { StartupSessionCapability } from '../lib/startupSessionScope';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import type { MonthEvent, Plan } from '../types/domain';
@@ -28,6 +30,9 @@ export interface ScheduleEventAuthorityRepository {
     loadLegacy: () => Promise<LegacyScheduleSnapshot>,
   ): Promise<void>;
   getScheduleSnapshot(userId: string): Promise<PlannerScheduleSnapshot>;
+  // Both source kinds with this persisted legacy ID, including full recurrence.
+  // This partial read must not certify complete study history.
+  getActualProgressSources?(userId: string, sourceId: string): Promise<PlannerScheduleSnapshot>;
   getPlans(userId: string): Promise<Plan[]>;
   getMonthEvents(userId: string): Promise<MonthEvent[]>;
   applyRecurringPlanMutation(
@@ -43,6 +48,7 @@ export interface ScheduleEventAuthorityRepository {
   scheduleTodoPlan(mutation: TodoPlanScheduleMutation): Promise<void>;
   upsertPlan(plan: Plan): Promise<Plan>;
   deletePlan(userId: string, planId: string): Promise<void>;
+  applyRecurringMonthEventMutation(userId: string, monthEvents: MonthEvent[]): Promise<void>;
   upsertMonthEvent(monthEvent: MonthEvent): Promise<MonthEvent>;
   deleteMonthEvent(userId: string, monthEventId: string): Promise<void>;
 }
@@ -53,15 +59,26 @@ export function createScheduleEventBackedPlannerRepository(
   legacyRepository: PlannerRepository,
   authorityRepository: ScheduleEventAuthorityRepository,
 ): PlannerRepository {
-  const migrations = new Map<string, Promise<SchedulePersistenceMode>>();
+  // Keep pending migrations shared per owner, even across owner switches: a
+  // second migration could race the first canonical snapshot replacement.
+  const pendingMigrations = new Map<string, Promise<SchedulePersistenceMode>>();
+  let selectedOwner: string | null = null;
+  let completed: { ownerId: string; promise: Promise<SchedulePersistenceMode> } | null = null;
 
   const resolveSchedulePersistenceMode = (
     userId: string,
   ): Promise<SchedulePersistenceMode> => {
-    const current = migrations.get(userId);
-    if (current) return current;
+    // A completed marker must be reconfirmed after another owner's schedule
+    // access, since the bundle's single-owner history evidence is retired.
+    if (selectedOwner !== userId) {
+      selectedOwner = userId;
+      completed = null;
+    }
+    const pending = pendingMigrations.get(userId);
+    if (pending) return pending;
+    if (completed?.ownerId === userId) return completed.promise;
 
-    const migration = authorityRepository
+    const promise = authorityRepository
       .ensureMigrated(userId, async () => {
         const [plans, monthEvents] = await Promise.all([
           legacyRepository.getPlans(userId),
@@ -69,20 +86,57 @@ export function createScheduleEventBackedPlannerRepository(
         ]);
         return { plans, monthEvents };
       })
-      .then(() => 'canonical' as const)
+      .then(() => {
+        if (selectedOwner === userId) completed = { ownerId: userId, promise };
+        return 'canonical' as const;
+      })
       .catch((error: unknown) => {
-        migrations.delete(userId);
         if (error instanceof ScheduleEventMigrationCapabilityUnavailableError) {
           return 'legacy-rollout-compatibility' as const;
         }
         throw error;
+      })
+      .finally(() => {
+        if (pendingMigrations.get(userId) === promise) pendingMigrations.delete(userId);
       });
-    migrations.set(userId, migration);
-    return migration;
+    pendingMigrations.set(userId, promise);
+    return promise;
   };
+
+  async function prepareActual(actual: import('../types/domain').Actual) {
+    const previous = legacyRepository.getActualForWritePreparation
+      ? await legacyRepository.getActualForWritePreparation(actual.userId, actual.id)
+      : (await legacyRepository.getActuals(actual.userId))
+        .find(item => item.id === actual.id && item.userId === actual.userId);
+    const sourceId = actual.planId || previous?.planId;
+    // Independent study saves do not need schedule migration or a schedule read.
+    if (!sourceId) {
+      return prepareActualProgressSource(actual, { plans: [], monthEvents: [] }, previous);
+    }
+    const mode = await resolveSchedulePersistenceMode(actual.userId);
+    const sources = mode === 'canonical'
+      ? authorityRepository.getActualProgressSources
+        ? await authorityRepository.getActualProgressSources(actual.userId, sourceId)
+        : await authorityRepository.getScheduleSnapshot(actual.userId)
+      : await legacyRepository.getScheduleSnapshot(actual.userId);
+    const prepared = prepareActualProgressSource(actual, sources, previous);
+    if (actual.planId && !prepared.progressSource
+      && (!previous || previous.planId !== actual.planId)) {
+      throw new Error('紐づけ先の予定が変更または削除されました。再読み込みしてから記録を保存してください。');
+    }
+    return prepared;
+  }
 
   return {
     ...legacyRepository,
+    async upsertActual(actual) {
+      return legacyRepository.upsertActual(await prepareActual(actual));
+    },
+    async upsertActualWithMaterialProgress(mutation) {
+      return legacyRepository.upsertActualWithMaterialProgress({
+        ...mutation, actual: await prepareActual(mutation.actual),
+      });
+    },
     observeStartupScheduleMarker: authorityRepository.observeStartupScheduleMarker
       ? (owner, scope) => authorityRepository.observeStartupScheduleMarker!(owner, scope)
       : undefined,
@@ -149,6 +203,15 @@ export function createScheduleEventBackedPlannerRepository(
         return;
       }
       await legacyRepository.deletePlan(userId, planId);
+    },
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      assertRecurringMonthEventWrite(userId, monthEvents);
+      const mode = await resolveSchedulePersistenceMode(userId);
+      if (mode === 'canonical') {
+        await authorityRepository.applyRecurringMonthEventMutation(userId, monthEvents);
+        return;
+      }
+      await legacyRepository.applyRecurringMonthEventMutation(userId, monthEvents);
     },
     async upsertMonthEvent(monthEvent) {
       const mode = await resolveSchedulePersistenceMode(monthEvent.userId);

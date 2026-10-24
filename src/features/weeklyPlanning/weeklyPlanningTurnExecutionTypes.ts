@@ -1,3 +1,5 @@
+import type { WeeklyPlanningSemanticTurnObservation } from './trace/weeklyPlanningSemanticCensusTypes';
+import type { ControlledCandidateCommitRejection } from '../../../shared/controlledCandidateCommit';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from './application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {
@@ -18,16 +20,20 @@ import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlannin
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGraphV5';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from './semantic/weeklyPlanningTurnEvidenceV5';
+import type { WeeklyPlanningMachineBoundEffortAnswerV5 } from './semantic/weeklyPlanningMachineBoundAnswerV5';
 import type { WeeklyPlanningDialogueRendererTrace } from './trace/weeklyPlanningDialogueRendererTrace';
 import type { WeeklyPlanningTraceResponseSource } from './trace/weeklyPlanningTraceTypes';
 import type { WeeklyPlanningMessage } from './types';
 
 export interface WeeklyPlanningTurnExecutionInput {
+  /** Invocation-local Choice/Luna observer; internal only, never serialized or persisted. */
+  semanticObservation?: WeeklyPlanningSemanticTurnObservation;
   previousState?: PlanningIntakeState;
   messages: readonly WeeklyPlanningMessage[];
   userText: string;
   supplementalContext?: string;
   selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
+  machineBoundAnswer?: WeeklyPlanningMachineBoundEffortAnswerV5;
   selectedDate: string;
   userId: string;
   plans: Plan[];
@@ -86,6 +92,9 @@ export type WeeklyPlanningInteractionOutcome = {
 };
 
 export interface WeeklyPlanningTurnExecutionResult {
+  /** Diagnostic evidence on a discarded selected result; never persisted as planning authority. */
+  candidateCommitRejectionReason?: ControlledCandidateCommitRejection;
+  candidateCommitFallback?: 'luna_scheduled' | 'none';
   interactionOutcome?: WeeklyPlanningInteractionOutcome;
   /** Turn-local terminal explanation; grants no event creation or save authority. */
   communicationFacts?: WeeklyPlanningFixedEventCommunicationFacts;

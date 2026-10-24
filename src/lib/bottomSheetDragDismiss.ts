@@ -1,3 +1,4 @@
+import { allowsSpatialMotion } from './motionPreference';
 import { isTimelineDragInteractionLocked } from './timelineDragInteractionLock';
 
 const SHEET_SURFACE_SELECTOR = [
@@ -71,14 +72,6 @@ interface ActiveDrag {
 interface DragAnimationPair {
   sheet: Animation | null;
   overlay: Animation | null;
-}
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
 }
 
 export function getBottomSheetDismissDistance(height: number): number {
@@ -171,7 +164,7 @@ function animateTransform(
   toY: number,
   duration: number,
 ): Animation | null {
-  if (prefersReducedMotion() || typeof surface.animate !== 'function') {
+  if (!allowsSpatialMotion() || typeof surface.animate !== 'function') {
     return null;
   }
 
@@ -189,7 +182,7 @@ function animateTransform(
 }
 
 function animateOverlayOut(overlay: HTMLElement): Animation | null {
-  if (prefersReducedMotion() || typeof overlay.animate !== 'function') {
+  if (!allowsSpatialMotion() || typeof overlay.animate !== 'function') {
     return null;
   }
 

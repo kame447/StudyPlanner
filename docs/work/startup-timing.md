@@ -1,16 +1,18 @@
 # Local startup timing
 
-Use `?startupTiming=1` on the application URL to opt into an in-memory diagnostic panel. Open “起動計測（端末内のみ）” after startup. A normal URL has no panel or measurements. Reload starts a new recording; no database, localStorage, cookies, network telemetry, or trace payload is added by this instrumentation.
+Use `?startupTiming=1` on the application URL to opt into in-memory measurement. In production, the panel appears only after the existing Firebase administrator check permits the verified signed-in account; the query itself is not an administrator credential. Local development permits the panel without an administrator account. Open “起動計測（端末内のみ）” after startup. A normal URL has no panel or measurements. Reload starts a new recording; no database, localStorage, cookies, network telemetry, or trace payload is added by this instrumentation.
 
 Rows contain only an anonymous sequence number, a fixed phase name, milliseconds from this page's monotonic performance clock, duration, and a pending/success/error/cancelled outcome. An `intro-complete` point additionally contains one fixed `introOutcome` value. The recorder is capped at 80 rows and stops accepting new spans after the first visible Home observation. Existing pending spans may finish. No account IDs, schedule contents, request URLs, tokens, results, or raw error messages are retained. Startup timing is intentionally separate from AI conversation traces; it does not alter trace fields or retention.
 
-## Start from the existing app
+## Operator access
 
-In the app, open Settings → Support and choose “起動を計測して再読み込み”. This explicitly reloads the same browsing context with `startupTiming=1`, which also works as an entry point for an already-installed Home Screen instance without creating another icon. The timing panel offers “計測を終了して再読み込み” to remove the recorder switch. The Support card offers that same stop action while the recorder is enabled.
+Ordinary Settings → Support has no startup timing card or reload control, whether the query switch is present or absent. Production signed-out, unresolved, unverified and non-administrator accounts have no timing panel. The access check is activated only for an explicit timing query, is keyed by current authenticated owner, and uses the existing administrator subscription; no new permission or persistent preference is created. Account change, sign-out and administrator revocation remove the panel.
 
-Both actions preserve the current origin, path, fragment and all other query parameters, including any explicit diagnostic comparison choices. Removing `startupTiming` disables those choices on the next document under the existing selector rules; their URL values remain present. Re-enabling timing can therefore reactivate previously supplied comparison choices. The button labels promise a recorder toggle, not resetting every diagnostic option. No diagnostic preference, recording, authentication or data is written by these controls. Existing leave-page warnings still apply; cancelling one keeps the control usable.
+Operators start a sample with the explicit query URL. The permitted panel offers “計測を終了して再読み込み” to remove the recorder switch from the same browsing context. The anonymous Home observation runs independently of panel authorization, so waiting for administrator verification does not redefine its timestamp. That optional authorization read can still affect a diagnostic sample's resource contention; compare matched configurations.
 
-A reload starts a new sample and does not recover timings from the previous document. This entry does not diagnose or speed up startup by itself, and a normal browser sample must not be substituted for a slow Home Screen instance.
+The stop action preserves the current origin, path, fragment and all other query parameters, including diagnostic comparison choices. Removing `startupTiming` disables those choices on the next document under the existing selector rules; their URL values remain. No timing preference or recording is saved. Existing leave-page warnings still apply; cancelling one keeps the control usable. Reload starts a new sample and does not recover the previous recording.
+
+The query remains an explicit developer/operator measurement switch. It does not diagnose or speed up startup, and a normal browser sample is not an installed Home Screen performance measurement.
 
 ## Interpretation
 
@@ -30,6 +32,50 @@ A Home layout may contain recovery/error UI; inspect bootstrap/read outcomes bef
 Compare the first splash point to Home and inspect the spans between them. Use `startup-wait-ended` and `intro-complete` to distinguish preparation waiting from intro presentation; read error outcomes still determine whether required data loaded successfully. Multiple wait-ended points describe separate wait exits (for example a failed read and a later manual retry), not one successful launch. Before/after-video Home timings, skipped/full-playback samples and backgrounded/foreground samples are not directly interchangeable. Record the exact deployed commit, browser/device and whether this is a new tab or a reload. Asset cache warmth, Firebase cache warmth and existing login are separate conditions. Production runs and development StrictMode's repeated effects are not equivalent; cancelled spans identify effect cleanup. Logged-out/onboarding runs legitimately have no `home-visible` point. A failed phase does not make the application successful merely because its splash ends.
 
 The panel adds opt-in observation overhead, so do not present sub-millisecond differences as a user-visible speedup. Unit/deferred and synthetic local-repository browser fixtures verify measurement, error identity and ordering, not actual Firebase or mobile latency. Never put private screenshots/fixture replacements into public Issues. Publish only a manually reviewed phase timing summary with environment context.
+
+## Passive document and initial-asset delivery
+
+The authorized panel also reads already-buffered Navigation/Resource Timing once
+when it has the first `splash-mounted` point. If administrator access arrives
+later, the browser may already have discarded resource entries; missing data
+stays unknown. This adds no request, listener, resource-buffer resize, storage,
+clipboard/export action or Firestore read. The existing authorization read and
+its potential contention remain unchanged. Phase-row JSON and its 80-row limit
+are unchanged; the delivery summary is a separate bounded projection.
+
+The document exposes only fetch/request/response-start and response-end times.
+Resources expose only fixed role, start/response-end and transfer/encoded/decoded
+byte counts. The allowlist is the current production Vite graph: `entry-script`,
+`react-vendor`, `firebase-vendor`, `runtime-vendor`, `icons-vendor`, `entry-styles`.
+Only same-origin `/assets/` hash-named JS/CSS without credentials, query or fragment,
+completed by the first Splash effect, qualify. Full names/URLs, arbitrary resource
+entries, navigation URLs, request contents and raw errors are never retained.
+Other dynamic views, video, fonts and API requests are outside this projection.
+
+The inferred delivery-to-Splash residual subtracts the latest response completion
+among HTML and all six tracked assets from the Splash effect. It is not a sum of
+parallel resource durations, measured CPU time, browser paint, or total startup
+latency. It can include evaluation, scheduling, rendering and other unobserved
+work. Missing/invalid navigation, missing or duplicate asset roles, or a response
+later than Splash suppress the inference. Zero byte counters are shown as unknown,
+not proof of memory/disk/service-worker cache or a zero-byte response. Browser
+response timing includes cache/service-worker behavior and is not a server-only
+or wire-only measurement. Redirect/network subphases are not independently
+attributed. The six-role mapping must be reviewed if the initial build graph
+changes; development source modules normally leave those roles unknown.
+
+Use fresh documents when comparing launches. A retained-page or back/forward-cache
+resume can still show the original document's sample and is not a newly measured
+launch. Match the actual origin/path, build, account/data, theme, visibility,
+network and diagnostic choices across a slow installed launch and Safari. Do not
+clear storage/cache or reinstall to manufacture comparability. If the diagnostic
+URL cannot be opened in the installed context, report that limitation rather than
+labelling a Safari sample as PWA evidence. This instrumentation does not identify
+the user's actual delay or establish any speed improvement.
+
+API references: [Navigation Timing](https://www.w3.org/TR/navigation-timing-2/)
+and [Resource Timing](https://www.w3.org/TR/resource-timing/).
+Implementation/evidence: [delivery timing checkpoint](../domains/client-runtime/work/startup-delivery-timing-handoff.md).
 
 ## Bootstrap overlap
 

@@ -1,7 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthScreen } from '../../../src/components/AuthScreen';
-import { NaturalLanguageAssistant } from '../../../src/components/NaturalLanguageAssistant';
 import { QuickEntryModal } from '../../../src/components/QuickEntryModal';
 import '../../../src/styles.css';
 
@@ -50,64 +49,7 @@ window.__quickEntryHarness = {
   },
 };
 
-const scenario = params.get('scenario') ?? (params.get('weekly') === '1' ? 'weekly' : 'manual');
-const hasWeeklySession = [
-  'weekly',
-  'weekly-turn-preview',
-  'preview',
-  'draft',
-].includes(scenario);
-
-const initialWeeklyMessages = hasWeeklySession
-  ? [{
-      id: 'assistant-seed',
-      role: 'assistant',
-      content: '週間計画の条件を教えてください。',
-      createdAt: '2026-08-13T07:00:00.000Z',
-    }]
-  : [];
-
-const previewCandidate = {
-  stableKey: 'browser-preview-math',
-  date: '2026-08-18',
-  startTime: '19:00',
-  endTime: '20:00',
-  durationMinutes: 60,
-  title: '数学のワーク',
-  field: '数学',
-  year: 0,
-  estimatedMinutes: 60,
-  source: 'weekly_exam_prep',
-  approvalStatus: 'unapproved',
-  workItemKey: 'math-work',
-  stableV5Metadata: {
-    runtime: 'stable_v5',
-    conversationId: 'browser-conversation',
-    graphRevision: 7,
-    taskId: 'task:math-work',
-    sourceFactRefs: ['fact:math-work-duration'],
-    planType: 'study',
-  },
-};
-
-const draftBlock = {
-  id: 'browser-draft-math',
-  userId: 'browser-test-user',
-  date: '2026-08-18',
-  startTime: '19:00',
-  endTime: '20:00',
-  title: '数学のワーク',
-  subject: '数学',
-  type: 'study',
-  label: '数学',
-  materialId: null,
-  memo: '',
-  source: 'ai',
-  status: 'draft',
-  userEdited: false,
-  createdAt: '2026-08-13T07:00:00.000Z',
-  updatedAt: '2026-08-13T07:00:00.000Z',
-};
+const scenario = params.get('scenario') ?? 'manual';
 
 const linkablePlan = {
   id: 'browser-plan-english',
@@ -147,6 +89,18 @@ const scenarioPlans = scenario === 'linked-actual' || scenario === 'recorded-act
   : [];
 const scenarioActuals = scenario === 'recorded-actual' ? [recordedActual] : [];
 
+// Opt-in deferred callbacks exercise pending entry controls without a provider.
+const deferAuthActions = new URLSearchParams(location.search).get('authDeferred') === '1';
+function waitForAuthAction() {
+  return new Promise((resolve, reject) => {
+    window.__settleAuthAction = (failed = false) => {
+      delete window.__settleAuthAction;
+      if (failed) reject(new Error('Synthetic auth callback failure'));
+      else resolve();
+    };
+  });
+}
+
 function AuthHarness() {
   return (
     <AuthScreen
@@ -154,16 +108,20 @@ function AuthHarness() {
       onDismissNotice={() => record('auth-dismiss-notice')}
       onSignUpWithPassword={async (email, password, username) => {
         record('auth-sign-up', { email, password, username });
+        if (deferAuthActions) await waitForAuthAction();
         return false;
       }}
       onSignInWithPassword={async (email, password) => {
         record('auth-sign-in', { email, password });
+        if (deferAuthActions) await waitForAuthAction();
       }}
       onSignInWithGoogle={async () => {
         record('auth-google-sign-in');
+        if (deferAuthActions) await waitForAuthAction();
       }}
       onSendPasswordReset={async (email) => {
         record('auth-password-reset', { email });
+        if (deferAuthActions) await waitForAuthAction();
       }}
     />
   );
@@ -171,99 +129,6 @@ function AuthHarness() {
 
 function Harness() {
   const [open, setOpen] = useState(true);
-  const [weeklyMessages, setWeeklyMessages] = useState(initialWeeklyMessages);
-  const [previewCandidates, setPreviewCandidates] = useState(
-    scenario === 'preview' ? [previewCandidate] : [],
-  );
-  const [draftBlocks, setDraftBlocks] = useState(
-    scenario === 'draft' ? [draftBlock] : [],
-  );
-  const [pendingTurn, setPendingTurn] = useState(undefined);
-  const [pendingApproval, setPendingApproval] = useState(undefined);
-  const [revision, setRevision] = useState(0);
-  const activeWeeklyRequestRef = useRef(null);
-  const activeApprovalRef = useRef(null);
-  const weeklyRequestSequenceRef = useRef(0);
-  const approvalSequenceRef = useRef(0);
-
-  async function submitWeeklyTurn(text) {
-    weeklyRequestSequenceRef.current += 1;
-    const sequence = weeklyRequestSequenceRef.current;
-    const requestId = `browser-request-${sequence}`;
-    activeWeeklyRequestRef.current = requestId;
-    record('submit-weekly-turn', { text, requestId });
-    setPendingTurn({
-      conversationId: 'browser-conversation',
-      turnId: `browser-turn-${sequence}`,
-      requestId,
-      weekStartDate: '2026-08-10',
-      baseRevision: revision,
-      startedAt: new Date().toISOString(),
-    });
-    setWeeklyMessages((current) => [
-      ...current,
-      {
-        id: `user-${sequence}`,
-        role: 'user',
-        content: text,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-
-    await waitForGate('weekly');
-
-    if (activeWeeklyRequestRef.current !== requestId) {
-      record('ignore-weekly-turn', { text, requestId });
-      return { accepted: false, draftCandidates: [] };
-    }
-
-    const draftCandidates = scenario === 'weekly-turn-preview' ? [previewCandidate] : [];
-    activeWeeklyRequestRef.current = null;
-    setPendingTurn(undefined);
-    setRevision((current) => current + 1);
-    if (draftCandidates.length > 0) {
-      setPreviewCandidates(draftCandidates);
-    }
-    setWeeklyMessages((current) => [
-      ...current,
-      {
-        id: `assistant-${requestId}`,
-        role: 'assistant',
-        content: `ブラウザ応答: ${text}`,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-    record('complete-weekly-turn', { text, requestId, draftCandidateCount: draftCandidates.length });
-    return { accepted: true, draftCandidates };
-  }
-
-  async function approveDrafts() {
-    approvalSequenceRef.current += 1;
-    const requestId = `browser-approval-${approvalSequenceRef.current}`;
-    activeApprovalRef.current = requestId;
-    record('approve-drafts', { requestId });
-    setPendingApproval({
-      requestId,
-      weekStartDate: '2026-08-10',
-      baseRevision: revision,
-      blockIds: draftBlocks.map((block) => block.id),
-      startedAt: new Date().toISOString(),
-    });
-
-    await waitForGate('approval');
-
-    if (activeApprovalRef.current !== requestId) {
-      record('ignore-approval', { requestId });
-      return;
-    }
-
-    activeApprovalRef.current = null;
-    setPendingApproval(undefined);
-    setDraftBlocks([]);
-    setRevision((current) => current + 1);
-    record('complete-approval', { requestId });
-  }
-
   function closeHarness() {
     record('close');
     setOpen(false);
@@ -275,82 +140,6 @@ function Harness() {
         <button type="button" onClick={() => setOpen(true)}>
           モーダルを再度開く
         </button>
-      </main>
-    );
-  }
-
-  if (hasWeeklySession) {
-    return (
-      <main data-testid="weekly-planning-harness">
-        <button type="button" onClick={closeHarness}>
-          閉じる
-        </button>
-        <NaturalLanguageAssistant
-          selectedDate="2026-08-13"
-          userId="browser-test-user"
-          plans={scenarioPlans}
-          materials={[]}
-          subjects={[]}
-          onApplyDraft={async (draft) => {
-            record('save-plan', draft);
-            await waitForGate('save-plan');
-            record('complete-save-plan');
-          }}
-          weeklyDraftBlocks={draftBlocks}
-          weeklyPlanningPreviewCandidates={previewCandidates}
-          weeklyPlanningMessages={weeklyMessages}
-          weeklyPlanningIntakeState={null}
-          weeklyPlanningWeekStartDate="2026-08-10"
-          weeklyPlanningRevision={revision}
-          weeklyPlanningPendingTurn={pendingTurn}
-          weeklyPlanningPendingApproval={pendingApproval}
-          onSubmitWeeklyPlanningTurn={submitWeeklyTurn}
-          onCancelWeeklyPlanningTurn={() => {
-            record('cancel-weekly-turn');
-            activeWeeklyRequestRef.current = null;
-            setPendingTurn(undefined);
-            return true;
-          }}
-          onClearWeeklyPlanningConversation={() => {
-            record('clear-weekly-conversation');
-            setWeeklyMessages([]);
-            return true;
-          }}
-          onAppendWeeklyPlanningMessage={(message) => {
-            record('append-weekly-message', message);
-            setWeeklyMessages((current) => [...current, message]);
-          }}
-          onResetWeeklyPlanningSession={() => {
-            record('reset-weekly-session');
-            activeWeeklyRequestRef.current = null;
-            activeApprovalRef.current = null;
-            setPendingTurn(undefined);
-            setPendingApproval(undefined);
-            setPreviewCandidates([]);
-            setDraftBlocks([]);
-            setWeeklyMessages([]);
-          }}
-          onCreateWeeklyDraftBlocks={(blocks) => {
-            record('create-weekly-draft-blocks', blocks);
-            setDraftBlocks(blocks);
-            setPreviewCandidates([]);
-          }}
-          onRemoveWeeklyPlanningPreviewCandidate={(candidateId) => {
-            record('remove-preview', candidateId);
-            setPreviewCandidates((current) => current.filter((candidate) => candidate.stableKey !== candidateId));
-          }}
-          onRemoveWeeklyDraftBlock={(blockId) => {
-            record('remove-draft', blockId);
-            setDraftBlocks((current) => current.filter((block) => block.id !== blockId));
-          }}
-          onClearWeeklyDraftBlocks={() => {
-            record('clear-drafts');
-            setDraftBlocks([]);
-            setPreviewCandidates([]);
-          }}
-          onApproveWeeklyDraftBlocks={approveDrafts}
-          embedded
-        />
       </main>
     );
   }
