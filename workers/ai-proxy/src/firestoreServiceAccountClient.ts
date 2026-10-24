@@ -1,3 +1,4 @@
+import { decodeFirestoreFields, decodeFirestoreValue, encodeFirestoreFields, type FirestoreValue } from './firestoreValueCodec';
 import type { WorkerSubrequestObserver } from './workerSubrequestBudget';
 
 export interface FirestoreServiceAccountEnv {
@@ -29,18 +30,6 @@ export class FirestoreImmutableDocumentConflictError extends Error {
 interface OAuthTokenResponse {
   access_token?: string;
   expires_in?: number;
-}
-
-interface FirestoreValue {
-  nullValue?: null;
-  booleanValue?: boolean;
-  integerValue?: string;
-  doubleValue?: number;
-  timestampValue?: string;
-  stringValue?: string;
-  referenceValue?: string;
-  arrayValue?: { values?: FirestoreValue[] };
-  mapValue?: { fields?: Record<string, FirestoreValue> };
 }
 
 interface FirestoreDocument {
@@ -151,7 +140,6 @@ const QUERY_BATCH_SIZE = 500;
 const BATCH_GET_DOCUMENT_LIMIT = 100;
 const FIRESTORE_COMMIT_WRITE_LIMIT = 500;
 const FIRESTORE_REQUEST_BODY_LIMIT_BYTES = 10 * 1024 * 1024;
-const TIMESTAMP_FIELD_NAMES = new Set(['expireAt', 'registeredAt']);
 const workerSafeFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
 
 async function discardResponseBody(response: Response): Promise<void> {
@@ -187,65 +175,6 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes.buffer;
-}
-
-function encodeFirestoreValue(value: unknown, key = ''): FirestoreValue {
-  if (value === null || value === undefined) return { nullValue: null };
-  if (typeof value === 'boolean') return { booleanValue: value };
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) return { nullValue: null };
-    return Number.isInteger(value)
-      ? { integerValue: String(value) }
-      : { doubleValue: value };
-  }
-  if (typeof value === 'string') {
-    if (TIMESTAMP_FIELD_NAMES.has(key) && Number.isFinite(new Date(value).getTime())) {
-      return { timestampValue: value };
-    }
-    return { stringValue: value };
-  }
-  if (Array.isArray(value)) {
-    return { arrayValue: { values: value.map((item) => encodeFirestoreValue(item)) } };
-  }
-  if (typeof value === 'object') {
-    return {
-      mapValue: {
-        fields: encodeFirestoreFields(value as Record<string, unknown>),
-      },
-    };
-  }
-  return { stringValue: String(value) };
-}
-
-function encodeFirestoreFields(value: Record<string, unknown>): Record<string, FirestoreValue> {
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, entryValue]) => entryValue !== undefined)
-      .map(([key, entryValue]) => [key, encodeFirestoreValue(entryValue, key)]),
-  );
-}
-
-function decodeFirestoreValue(value: FirestoreValue | undefined): unknown {
-  if (!value || 'nullValue' in value) return null;
-  if ('booleanValue' in value) return value.booleanValue;
-  if ('integerValue' in value) return Number(value.integerValue);
-  if ('doubleValue' in value) return value.doubleValue;
-  if ('timestampValue' in value) return value.timestampValue;
-  if ('stringValue' in value) return value.stringValue;
-  if ('referenceValue' in value) return value.referenceValue;
-  if ('arrayValue' in value) {
-    return (value.arrayValue?.values ?? []).map(decodeFirestoreValue);
-  }
-  if ('mapValue' in value) {
-    return decodeFirestoreFields(value.mapValue?.fields ?? {});
-  }
-  return null;
-}
-
-function decodeFirestoreFields(fields: Record<string, FirestoreValue>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(fields).map(([key, value]) => [key, decodeFirestoreValue(value)]),
-  );
 }
 
 function documentId(name: string | undefined): string {

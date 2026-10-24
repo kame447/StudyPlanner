@@ -145,3 +145,42 @@ it('prepares registration from the captured credential snapshot without a destru
   expect((await repo.signInWithPassword(EMAIL, PASSWORD)).username).toBe('Existing');
   expect((await repo.signInWithPassword('synthetic-other@example.test', PASSWORD)).username).toBe('Other');
 });
+
+it('leaves both identity collections unchanged when the credential snapshot is unavailable', async () => {
+  const storage = new MemoryStorage();
+  const repo = createAuthRepository(createLocalAuthStorageGateway(storage));
+  await repo.signUpWithPassword(EMAIL, PASSWORD, 'Existing');
+  const getItem = storage.getItem.bind(storage);
+  const usersBefore = getItem('studyplanner.users');
+  const passwordsBefore = getItem(PASSWORD_KEY);
+  const failure = Error('synthetic snapshot read failure');
+  storage.getItem = key => { if (key === PASSWORD_KEY) throw failure; return getItem(key); };
+  await expect(repo.signUpWithPassword('synthetic-other@example.test', PASSWORD, 'Other')).rejects.toBe(failure);
+  expect(getItem('studyplanner.users')).toBe(usersBefore);
+  expect(getItem(PASSWORD_KEY)).toBe(passwordsBefore);
+  storage.getItem = getItem;
+  expect((await repo.signInWithPassword(EMAIL, PASSWORD)).username).toBe('Existing');
+  await repo.signUpWithPassword('synthetic-other@example.test', PASSWORD, 'Other');
+  expect((await repo.signInWithPassword('synthetic-other@example.test', PASSWORD)).username).toBe('Other');
+});
+
+it('still restores credentials when restoring the user collection fails', async () => {
+  const storage = new MemoryStorage();
+  const passwordsBefore = ' [ ] ';
+  storage.setItem(PASSWORD_KEY, passwordsBefore);
+  const setItem = storage.setItem.bind(storage);
+  let failed = false;
+  storage.setItem = (key, value) => {
+    setItem(key, value);
+    if (key === PASSWORD_KEY && !failed) {
+      failed = true;
+      throw Error('synthetic write failure after side effect');
+    }
+  };
+  storage.removeItem = () => { throw Error('synthetic user recovery failure'); };
+  const repo = createAuthRepository(createLocalAuthStorageGateway(storage));
+  await expect(repo.signUpWithPassword(EMAIL, PASSWORD, 'Synthetic')).rejects.toThrow('保存状態の復元にも失敗');
+  expect(storage.getItem(PASSWORD_KEY)).toBe(passwordsBefore);
+  await expect(repo.signInWithPassword(EMAIL, PASSWORD)).rejects.toThrow('一致しません');
+  expect(await repo.getCurrentUser()).toBeNull();
+});

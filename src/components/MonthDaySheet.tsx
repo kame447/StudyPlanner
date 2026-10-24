@@ -3,9 +3,10 @@ import { getMonthEventColor, getScheduleOccurrenceColor, scheduleEventColorStyle
 import { Plus, X } from 'lucide-react';
 import {
   createScheduleOccurrenceProjection,
+  scheduleOccurrenceCoversDate,
+  scheduleOccurrenceTimesForDate,
   type ScheduleOccurrence,
 } from '../domain/scheduleOccurrence';
-import { addDays } from '../lib/date';
 import { getMotionLevel, resolveExitDurationMs, STANDARD_EXIT_MS } from '../lib/motionPreference';
 import {
   doesMonthEventOccurOnDate,
@@ -57,17 +58,11 @@ function formatOccurrenceTimeForDate(
   occurrence: ScheduleOccurrence,
   date: string,
 ): string {
-  const dayStart = `${date}T00:00`;
-  const dayEnd = `${addDays(date, 1)}T00:00`;
-  const occurrenceStart = `${occurrence.start.date}T${occurrence.start.time}`;
-  const occurrenceEnd = `${occurrence.end.date}T${occurrence.end.time}`;
-
-  if (occurrenceEnd <= dayStart || occurrenceStart >= dayEnd) {
+  if (!scheduleOccurrenceCoversDate(occurrence, date)) {
     return '';
   }
 
-  const startTime = occurrence.start.date === date ? occurrence.start.time : '00:00';
-  const endTime = occurrence.end.date === date ? occurrence.end.time : '24:00';
+  const { startTime, endTime } = scheduleOccurrenceTimesForDate(occurrence, date);
   if (startTime === '00:00' && endTime === '24:00') return '終日';
   if (startTime === '00:00') return `〜${endTime}`;
   if (endTime === '24:00') return `${startTime}〜`;
