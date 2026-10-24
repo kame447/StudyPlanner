@@ -1,4 +1,4 @@
-import { loadMaterialDetailPreferences } from '../lib/bookshelfMaterialDetails';
+import { loadMaterialDetailPreferences } from '../repositories/materialDetailPreferencesRepository';
 import { deferred, MemoryStorage } from '../repositories/localPersistenceConcurrency.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';

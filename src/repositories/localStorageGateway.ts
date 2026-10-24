@@ -9,10 +9,8 @@ import type {
   TimetablePeriod,
   TimetableTerm,
   TodoTask,
-  User,
 } from '../types/domain';
 import type {
-  AuthStorageGateway,
   PlannerStorageGateway,
 } from './repositoryContracts';
 import {
@@ -25,8 +23,6 @@ import {
 } from './repositoryUtils';
 
 const STORAGE_KEYS = {
-  users: 'studyplanner.users',
-  session: 'studyplanner.session',
   plans: 'studyplanner.plans',
   actuals: 'studyplanner.actuals',
   dayNotes: 'studyplanner.dayNotes',
@@ -41,8 +37,6 @@ const STORAGE_KEYS = {
 
 type StoredMonthEvent = Omit<MonthEvent, 'repeatUntil' | 'excludedDates'> &
   Partial<Pick<MonthEvent, 'repeatUntil' | 'excludedDates'>>;
-type StoredUser = Omit<User, 'username' | 'avatar'> &
-  Partial<Pick<User, 'username' | 'avatar'>>;
 type StoredTodoTask = TodoTask;
 type StoredStudySubject = StudySubject;
 type StoredStudyMaterial = StudyMaterial;
@@ -78,35 +72,7 @@ function normalizeMonthEvent(monthEvent: StoredMonthEvent): MonthEvent {
   };
 }
 
-function normalizeUser(user: StoredUser): User {
-  return {
-    ...user,
-    username: user.username?.trim() || user.email,
-    avatar: user.avatar ?? '',
-  };
-}
-
-export function createLocalAuthStorageGateway(
-  storage: Storage = window.localStorage,
-): AuthStorageGateway {
-  return {
-    async readUsers() {
-      return readJson<StoredUser[]>(storage, STORAGE_KEYS.users, []).map(normalizeUser);
-    },
-    async writeUsers(users) {
-      writeJson(storage, STORAGE_KEYS.users, users);
-    },
-    async readSessionUserId() {
-      return storage.getItem(STORAGE_KEYS.session);
-    },
-    async writeSessionUserId(userId) {
-      storage.setItem(STORAGE_KEYS.session, userId);
-    },
-    async clearSessionUserId() {
-      storage.removeItem(STORAGE_KEYS.session);
-    },
-  };
-}
+export { createLocalAuthStorageGateway } from './localAuthStorageGateway';
 
 export function createLocalPlannerStorageGateway(
   storage: Storage = window.localStorage,

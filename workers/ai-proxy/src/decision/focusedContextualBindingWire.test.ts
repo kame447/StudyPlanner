@@ -29,7 +29,8 @@ beforeEach(() => {
     if (String(url).endsWith('/api/alpha/decisions')) {
       jevBodies.push(body);
       if (failJev) return new Response('', { status: 503 });
-      return Response.json({ model: JEV_MODEL.responses[1], answers: {
+      const servedModel = body.model === 'typesafe/jev-1.13' ? 'typesafe/jev-1.13-20260917' : JEV_MODEL.responses[1];
+      return Response.json({ model: servedModel, answers: {
         contextual_answer: { type: 'choice', choice: 'remaining', confidence: .999,
           probabilities: { target: .0001, remaining: .9996, completed: .0001, focused_luna: .0001, fallback: .0001 } },
         condition_change: { type: 'noul', noul: .001 }, independent_meaning: { type: 'noul', noul: .001 },

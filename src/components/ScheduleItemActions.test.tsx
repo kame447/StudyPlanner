@@ -264,3 +264,74 @@ describe.each(['day', 'week'] as const)('%s radial wiring', kind => {
     else expect(ui.callbacks.onEditPlan).toHaveBeenCalledWith(expect.objectContaining({ id: plan.id }));
   });
 });
+
+for (const kind of ['day', 'week'] as const) {
+  it(`${kind} capture admits only the primary non-touch pointer and preserves pointer identity`, () => {
+    const { section, event } = setup(kind);
+    const pointer = { ...event(), pointerType: 'mouse', button: 0, isPrimary: true, pointerId: 7, clientX: 50, clientY: 50 };
+    act(() => {
+      for (const patch of [{ pointerType: 'touch' }, { button: 2 }, { isPrimary: false }]) {
+        section().props.onPointerDownCapture({ ...pointer, ...patch });
+        vi.advanceTimersByTime(250);
+      }
+    });
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(0);
+    act(() => {
+      section().props.onPointerDownCapture(pointer);
+      section().props.onPointerMoveCapture({ ...pointer, pointerId: 8, clientX: 200 });
+      section().props.onPointerUpCapture({ ...pointer, pointerId: 8 });
+      vi.advanceTimersByTime(250);
+    });
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(1);
+  });
+
+  it(`${kind} capture ignores multitouch admission and unrelated touch release`, () => {
+    const { section, event } = setup(kind);
+    const first = { identifier: 7, clientX: 50, clientY: 50 };
+    const second = { identifier: 8, clientX: 200, clientY: 50 };
+    act(() => {
+      section().props.onTouchStartCapture({ ...event(), touches: [first, second] });
+      vi.advanceTimersByTime(250);
+    });
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(0);
+    act(() => {
+      section().props.onTouchStartCapture({ ...event(), touches: [first] });
+      section().props.onTouchMoveCapture({ ...event(), touches: [second] });
+      section().props.onTouchEndCapture({ ...event(), changedTouches: [second] });
+      vi.advanceTimersByTime(250);
+    });
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(1);
+  });
+}
+
+describe('week spanning major-event keyboard actions', () => {
+  const event = { id: 'all-day', userId: 'owner', date: plan.date, title: '終日行事', startTime: '00:00', endTime: '24:00', repeat: 'none' as const,
+    repeatUntil: null, excludedDates: [], memo: '', url: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '' };
+
+  it.each([undefined, '2026-10-06'])('provides a named native button with one click action (endDate=%s)', endDate => {
+    const ui = setup('week', [], { plans: [], monthEvents: [{ ...event, endDate }] });
+    const card = renderer!.root.findByProps({ 'data-week-spanning-event': 'true' });
+    expect(card.type).toBe('button');
+    expect(card.props.type).toBe('button');
+    expect(card.props['aria-label']).toBe('終日行事。終日または日を跨ぐ予定。タップまたは長押しで操作');
+    // Native buttons dispatch click for Enter/Space; avoid a second synthetic key handler.
+    expect(card.props.onKeyDown).toBeUndefined();
+    const click = { ...ui.event(), detail: 0 };
+    act(() => ui.section().props.onClickCapture(click));
+    expect(click.preventDefault).not.toHaveBeenCalled();
+    act(() => card.props.onClick(click));
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(1);
+    expect(renderer!.root.findByProps({ role: 'menu' }).props['aria-label']).toBe('終日行事の操作');
+    expect(ui.callbacks.onEditPlan).not.toHaveBeenCalled();
+    expect(ui.callbacks.onSaveActual).not.toHaveBeenCalled();
+  });
+
+  it.each([{ key: 'ContextMenu', shiftKey: false }, { key: 'F10', shiftKey: true }])('opens through the existing section-owned $key handler', keys => {
+    const ui = setup('week', [], { plans: [], monthEvents: [event] });
+    const keyEvent = { ...ui.event(), ...keys };
+    act(() => ui.section().props.onKeyDown(keyEvent));
+    expect(keyEvent.preventDefault).toHaveBeenCalledOnce();
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(1);
+    expect(renderer!.root.findByProps({ role: 'menu' }).props['aria-label']).toBe('終日行事の操作');
+  });
+});
