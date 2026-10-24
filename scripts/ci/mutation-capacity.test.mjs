@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { assertPolicy } from './mutation-partition.mjs';
 import { describe, expect, it } from 'vitest';
 import config from '../../stryker.config.mjs';
 
@@ -25,7 +27,25 @@ describe('weekly-planning mutation capacity contract', () => {
     expect(config.thresholds).toEqual({ high: 80, low: 60, break: 50 });
     expect(config.mutator).toBeUndefined();
     expect(config.ignoreMutations).toBeUndefined();
-    expect(config.disableTypeChecks).toBeUndefined();
+    expect(config.disableTypeChecks).toBe('{*,!(scripts)/**/*,scripts/*,scripts/!(fixtures)/**/*}.{js,ts,jsx,tsx,html,vue,mjs,mts,cts,cjs}');
+    expect(() => assertPolicy(config)).not.toThrow();
+    for (const disableTypeChecks of [undefined, true, false, '**/*.ts']) {
+      expect(() => assertPolicy({ ...config, disableTypeChecks })).toThrow('preprocessing scope');
+    }
+    for (const file of [
+      'vite.config.mjs', 'src/task.ts', 'src/nested/task.ts', 'src/fixtures/task.ts',
+      'test/task.ts', 'lib/task.js', 'shared/task.ts', 'workers/task.ts',
+      'scripts/ci/task.mjs', 'scripts/eval.mjs', 'scripts/fixtures-other/task.ts',
+    ]) {
+      expect(path.matchesGlob(path.resolve(file), path.resolve(config.disableTypeChecks)), file).toBe(true);
+    }
+    for (const file of [
+      'scripts/fixtures/unit0-jev-1.13-decisionPolicy.ts',
+      'scripts/fixtures/unit0-jev-1.13-openRouterDecisionProvider.ts',
+      'scripts/fixtures/nested/policy.ts',
+    ]) {
+      expect(path.matchesGlob(path.resolve(file), path.resolve(config.disableTypeChecks)), file).toBe(false);
+    }
   });
 
   it('retains complete JSON and partial events under the uploaded report directory', () => {
