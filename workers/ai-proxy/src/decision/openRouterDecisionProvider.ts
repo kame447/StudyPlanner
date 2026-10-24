@@ -137,7 +137,7 @@ export function createOpenRouterDecisionProvider<TState, TDecision extends strin
           return failed('model_mismatch');
         }
         metadata.servedModel = servedModel;
-        const answers = record(root.answers);
+        const answers = record(root?.answers);
         const choiceAnswer = record(answers?.[catalog.choiceAnswerKey]);
         const distribution = record(choiceAnswer?.probabilities);
         const changes = record(answers?.[catalog.conditionChangeAnswerKey]);
