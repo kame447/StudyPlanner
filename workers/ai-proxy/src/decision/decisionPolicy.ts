@@ -13,7 +13,8 @@ export const JEV_MODEL = {
 export function isSupportedJevServedModel(model: unknown): model is string {
   if (typeof model !== 'string') return false;
   const match = /^typesafe\/jev-([1-9]\d*)\.([1-9]\d*)(?:-(\d{8}))?$/.exec(model);
-  if (!match || Number(match[1]) !== 1 || Number(match[2]) < 14) return false;
+  const minor = Number(match?.[2]);
+  if (!match || Number(match[1]) !== 1 || !Number.isSafeInteger(minor) || minor < 14) return false;
   const date = match[3];
   if (!date) return true;
   const year = Number(date.slice(0, 4));
