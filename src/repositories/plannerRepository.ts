@@ -1,3 +1,4 @@
+import { runRecoverableMutation } from './runRecoverableMutation';
 import { preserveMonthEventActualSources } from '../domain/actualProgressSource';
 import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
@@ -88,25 +89,6 @@ function applyRecurringActualMutation(
   );
 }
 
-async function runRecoverableMutation(
-  apply: () => Promise<void>,
-  rollback: () => Promise<void>,
-  label: string,
-): Promise<void> {
-  try {
-    await apply();
-  } catch (error) {
-    try {
-      await rollback();
-    } catch (rollbackError) {
-      const detail = rollbackError instanceof Error
-        ? rollbackError.message
-        : String(rollbackError);
-      throw new Error(`${label}に失敗し、ロールバックにも失敗しました: ${detail}`);
-    }
-    throw error;
-  }
-}
 
 function resolveActualUpsert(
   actuals: import('../types/domain').Actual[],

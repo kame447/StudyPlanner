@@ -5,7 +5,7 @@ import { createFirebaseAuthRepository } from '../repositories/firebaseAuthReposi
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest';
 import { LaplanceAppRoot } from './LaplanceAppRoot';
 import { AuthScreen } from './AuthScreen';
 import { SplashScreen } from './SplashScreen';
@@ -65,7 +65,7 @@ let renderer: ReactTestRenderer | undefined;
 let fake: ReturnType<typeof createFakeAuthSession>;
 let memoryGate: ReturnType<typeof deferred>;
 let plannerGate: ReturnType<typeof deferred>;
-let snapshotSpy: ReturnType<typeof vi.fn>;
+let snapshotSpy: Mock<PlannerRepository['getScheduleSnapshot']>;
 beforeEach(() => {
   fixture.realApp = false; fixture.reducedMotion = true;
   vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: new MemoryStorage(), setTimeout, clearTimeout,

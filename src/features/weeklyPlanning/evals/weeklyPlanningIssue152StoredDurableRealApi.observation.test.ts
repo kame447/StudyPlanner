@@ -380,7 +380,7 @@ describe('Issue #152 V05/V06/V09 scripted dry run', () => {
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     });
-    vi.stubGlobal('fetch', answerProvider);
+    vi.stubGlobal('fetch', (...args: Parameters<typeof answerProvider>) => answerProvider(...args));
     const canary = 'CNRY152-B-V09-HYBRID';
     const ownerId = 'issue152-b-v09-hybrid-owner';
     seedIssue152Context({

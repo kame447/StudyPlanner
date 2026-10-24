@@ -134,7 +134,7 @@ describe('D5prime single-date formal correction adapter', () => {
   it('rejects calendar changes already present before the reply and legacy missing question basis', async () => {
     const h = await fixture();
     const shifted = { ...h.view, calendar: { ...h.view.calendar, referenceDate: '2026-10-06' } };
-    const choose = vi.fn(h.port.choose);
+    const choose = vi.fn((...args: Parameters<typeof h.port.choose>) => h.port.choose(...args));
     expect(await selectTemporalDateChoiceV5({ ...h.port, readCurrent: () => shifted, choose })).toBeNull();
     expect(choose).not.toHaveBeenCalled();
     expect(await selectTemporalDateChoiceV5({ ...h.port, readCurrent: () => ({ ...h.view, questionBasis: null }), choose })).toBeNull();

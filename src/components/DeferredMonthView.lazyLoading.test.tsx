@@ -4,13 +4,14 @@ import { DeferredMonthView } from './DeferredMonthView';
 import { MonthEventDialog } from './MonthEventDialog';
 
 const delivery = vi.hoisted(() => {
-  let release!: () => void, started!: () => void;
+  let release!: () => void, started!: () => void, completed!: () => void;
   return { requested: vi.fn(), starting: new Promise<void>(resolve => { started = resolve; }), started: () => started(),
+    loaded: new Promise<void>(resolve => { completed = resolve; }), completed: () => completed(),
     ready: new Promise<void>(resolve => { release = resolve; }), release: () => release() };
 });
 vi.mock('./MonthView', async importOriginal => {
   delivery.requested(); delivery.started(); await delivery.ready;
-  return await importOriginal();
+  const module = await importOriginal(); delivery.completed(); return module;
 });
 // Keep the real month view, editor and request handling; replace only the DOM portal.
 vi.mock('react-dom', () => ({ createPortal: (node: unknown) => node }));
@@ -41,7 +42,7 @@ it('retains an add request during delivery, abandons cancelled owners, and does 
   // An owner replacement resets the shell even without a route unmount.
   act(() => renderer.update(<DeferredMonthView {...current} />));
   act(() => renderer.update(<DeferredMonthView {...current} createRequestId={2} />));
-  await act(async () => { delivery.release(); await vi.dynamicImportSettled(); });
+  await act(async () => { delivery.release(); await delivery.loaded; await vi.dynamicImportSettled(); });
   expect(renderer.root.findAllByType(MonthEventDialog)).toHaveLength(1);
   expect(renderer.root.findByProps({ 'aria-label': '開始日' }).children.join('')).toContain('2026年10月17日');
   expect(select).toHaveBeenCalledTimes(1);

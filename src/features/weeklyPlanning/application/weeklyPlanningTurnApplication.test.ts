@@ -88,7 +88,7 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     const { params } = baseParams();
     let configurationReads = 0;
     const execute = vi.fn(async () => ({ state: createInitialPlanningIntakeState(), message: '回収した返信', draftCandidates: [] }));
-    const continueSelectedTurn = vi.fn(execute);
+    const continueSelectedTurn = vi.fn(() => execute());
     const services = createServices({ runtimeGateway: { execute, continueSelectedTurn },
       candidateChoice: { get configuration() { configurationReads += 1; return null; } } });
     const resumePending = { conversationId: 'conversation-1', turnId: 'conversation-1:turn:1',

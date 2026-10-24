@@ -3,13 +3,14 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { callbacks, entries, selectedDate, view } from './deferredWorkspaceViews.testUtils';
 
 const deliveries = vi.hoisted(() => Object.fromEntries(['Day', 'Timetable', 'Report'].map(entry => {
-  let release!: () => void, started!: () => void;
+  let release!: () => void, started!: () => void, completed!: () => void;
   return [entry, { requested: vi.fn(), starting: new Promise<void>(resolve => { started = resolve; }), started: () => started(),
+    loaded: new Promise<void>(resolve => { completed = resolve; }), completed: () => completed(),
     ready: new Promise<void>(resolve => { release = resolve; }), release: () => release() }];
 })));
-vi.mock('./DayView', async original => { const d = deliveries.Day; d.requested(); d.started(); await d.ready; return await original(); });
-vi.mock('./TimetableView', async original => { const d = deliveries.Timetable; d.requested(); d.started(); await d.ready; return await original(); });
-vi.mock('./ReportView', async original => { const d = deliveries.Report; d.requested(); d.started(); await d.ready; return await original(); });
+vi.mock('./DayView', async original => { const d = deliveries.Day; d.requested(); d.started(); await d.ready; const module = await original(); d.completed(); return module; });
+vi.mock('./TimetableView', async original => { const d = deliveries.Timetable; d.requested(); d.started(); await d.ready; const module = await original(); d.completed(); return module; });
+vi.mock('./ReportView', async original => { const d = deliveries.Report; d.requested(); d.started(); await d.ready; const module = await original(); d.completed(); return module; });
 vi.mock('react-dom', () => ({ createPortal: (node: unknown) => node }));
 let renderer: ReactTestRenderer;
 beforeEach(() => {
@@ -27,7 +28,7 @@ it.each(entries)('keeps %s lazy and delivers the real view only with current-own
   expect(renderer.root.findAllByProps({ className: 'loading-screen splash-screen' })).toHaveLength(1);
   act(() => renderer.update(<p>Home</p>));
   act(() => renderer.update(view(entry, 'current-owner')));
-  await act(async () => { delivery.release(); await vi.dynamicImportSettled(); });
+  await act(async () => { delivery.release(); await delivery.loaded; await vi.dynamicImportSettled(); });
   const actualView = renderer.root.find(node => typeof node.type === 'function' && node.type.name === `${entry}View`);
   if (entry !== 'Report') expect(actualView.props.userId).toBe('current-owner');
   expect(actualView.props.plans).toEqual([]);

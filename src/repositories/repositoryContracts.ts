@@ -16,6 +16,10 @@ import type {
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 
 export interface AuthStorageGateway {
+  // Serializes a complete user-collection mutation; callbacks must not reenter.
+  runExclusive<T>(operation: () => Promise<T>): Promise<T>;
+  registerUserWithPassword(user: User, password: string): Promise<void>;
+  findPasswordUserId(email: string, password: string): Promise<string | null>;
   readUsers(): Promise<User[]>;
   writeUsers(users: User[]): Promise<void>;
   readSessionUserId(): Promise<string | null>;

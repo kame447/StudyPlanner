@@ -1,5 +1,5 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest';
 import { LaplanceAppRoot } from './LaplanceAppRoot';
 import { SplashScreen } from './SplashScreen';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
@@ -50,7 +50,7 @@ let renderer: ReactTestRenderer | undefined;
 let fake: ReturnType<typeof createFakeAuthSession>;
 let memoryGate: ReturnType<typeof deferred>;
 let plannerGate: ReturnType<typeof deferred>;
-let snapshotSpy: ReturnType<typeof vi.fn>;
+let snapshotSpy: Mock<PlannerRepository['getScheduleSnapshot']>;
 beforeEach(() => {
   fixture.reducedMotion = true;
   vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: new MemoryStorage(), setTimeout, clearTimeout,
