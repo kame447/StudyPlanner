@@ -5,7 +5,7 @@ import type {
   DecisionProvider,
   DecisionQuestionCatalog,
 } from './decisionProvider';
-import { AUTHORIZATION_QUESTIONS, JEV_MODEL, JEV_PROVIDER_PREFERENCES, JEV_TIMEOUT_MS } from './decisionPolicy';
+import { AUTHORIZATION_QUESTIONS, isSupportedJevServedModel, JEV_MODEL, JEV_PROVIDER_PREFERENCES, JEV_TIMEOUT_MS } from './decisionPolicy';
 
 const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
 const MAX_DECISIONS_RESPONSE_BYTES = 32_768;
@@ -132,10 +132,11 @@ export function createOpenRouterDecisionProvider<TState, TDecision extends strin
         metadata.costUsd = typeof usage?.cost === 'number' && Number.isFinite(usage.cost) && usage.cost >= 0
           && Number.isSafeInteger(Math.round(usage.cost * 1_000_000))
           ? usage.cost : null;
-        if (typeof root?.model !== 'string' || !JEV_MODEL.responses.includes(root.model)) {
+        const servedModel = root?.model;
+        if (!isSupportedJevServedModel(servedModel)) {
           return failed('model_mismatch');
         }
-        metadata.servedModel = root.model;
+        metadata.servedModel = servedModel;
         const answers = record(root.answers);
         const choiceAnswer = record(answers?.[catalog.choiceAnswerKey]);
         const distribution = record(choiceAnswer?.probabilities);
