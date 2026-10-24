@@ -1,4 +1,5 @@
 import { validateWeeklyPlanningMaterialIdentityAnswerV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
+import { normalizeExactSiblingWorkloadsV5 } from './weeklyPlanningDuplicateWorkloadNormalizationV5';
 import { resolveWeeklyPlanningConversationActTargetsV5, type SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
 import {
   validateWeeklyPlanningCorrectionReplacementKindsV5,
@@ -184,12 +185,13 @@ export function validateWeeklyPlanningSemanticResponseV5(
       committedGraph: input.committedGraph,
     }),
   ];
+  const siblingNormalization = errors.length === 0 ? normalizeExactSiblingWorkloadsV5(document) : null;
   return {
-    document: errors.length === 0 ? document : null,
-    parsedDocument: document,
+    document: errors.length === 0 && siblingNormalization?.errors.length === 0 ? siblingNormalization.document : null,
+    parsedDocument: siblingNormalization?.document ?? document,
     providerDocument,
-    errors,
-    algorithmicRepairs,
+    errors: [...errors, ...(siblingNormalization?.errors ?? [])],
+    algorithmicRepairs: [...algorithmicRepairs, ...(siblingNormalization?.repairs ?? [])],
     ...actEvidence,
   };
 }

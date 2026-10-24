@@ -7,7 +7,7 @@ import {
   startOfMonth,
   startOfWeek,
 } from './date';
-import { expandPlansForDateRange } from './planRecurrence';
+import { expandPlansForDateRange, resolvePlanOccurrence } from './planRecurrence';
 import {
   buildSubjectColorMap,
   endOfMonth,
@@ -278,18 +278,22 @@ function sumLifetimeStudyMinutes({
   subjects,
   materials,
 }: LearningReportDataInput): number {
-  const planById = new Map(plans.map((plan) => [plan.id, plan]));
-  const monthEventById = new Map((monthEvents ?? []).map((event) => [event.id, event]));
+  const planById = new Map(plans.map((plan) => [`${plan.userId}\u0000${plan.id}`, plan]));
+  const monthEventById = new Map((monthEvents ?? []).map((event) => [`${event.userId}\u0000${event.id}`, event]));
   const records = dedupeLinkedStudyActuals(actuals)
-    .map((actual) =>
-      normalizeStudyRecordForDisplay({
+    .map((actual) => {
+      const sourceKey = actual.planId ? `${actual.userId}\u0000${actual.planId}` : undefined;
+      const source = sourceKey ? planById.get(sourceKey) : undefined;
+      // Resolve only recorded occurrences; expanding the whole lifetime range
+      // would also visit every unrecorded day of a recurring plan.
+      return normalizeStudyRecordForDisplay({
         actual,
-        plan: actual.planId ? planById.get(actual.planId) : undefined,
-        monthEvent: actual.planId ? monthEventById.get(actual.planId) : undefined,
+        plan: source ? resolvePlanOccurrence(source, actual.occurrenceDate) : undefined,
+        monthEvent: sourceKey ? monthEventById.get(sourceKey) : undefined,
         subjects,
         materials,
-      }),
-    )
+      });
+    })
     .filter(isStudyRecordForDisplay)
     .filter(isValidLearningRecord);
 

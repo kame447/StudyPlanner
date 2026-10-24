@@ -67,6 +67,13 @@ export interface ControlledCandidateAdapter {
   // Calls the existing opaque receipt factory after live domain revalidation.
   prepare(): C5ReducerCommit | null;
 }
+export interface ControlledCandidatePayload {
+  readonly target: CandidateBinding['target'];
+  readonly scope: CandidateTuple;
+  readonly sources: CandidateBinding['sources'];
+  readonly candidates: readonly ApplicationCandidate[];
+  readonly domainData: CandidateTuple;
+}
 export interface ControlledCandidateDomain {
   readonly domainId: ControlledCandidateDomainId;
   readonly questionCode: 'missing_effort_estimate' | 'missing_availability_date_scope';
@@ -74,12 +81,7 @@ export interface ControlledCandidateDomain {
   /** Question time only, before capture. The registry supplies the facts the presenting request
    * accepted (what its acknowledgement may echo); true leaves the question to the ordinary route. */
   rejectsCoPresentedFacts(params: { readonly targetId: string; readonly facts: readonly WeeklyPlanningStableV5DialogueGroundingFact[] }): boolean;
-  capture(context: ControlledCandidateCaptureContext): {
-    readonly target: CandidateBinding['target'];
-    readonly scope: CandidateTuple;
-    readonly sources: CandidateBinding['sources'];
-    readonly candidates: readonly ApplicationCandidate[];
-    readonly domainData: CandidateTuple;
-  } | null;
+  capture(context: ControlledCandidateCaptureContext): ControlledCandidatePayload | null;
+  proposeAnswerPayload?(payload: ControlledCandidatePayload, userText: string): ControlledCandidatePayload | null;
   stage(context: ControlledCandidateStageContext): Promise<ControlledCandidateAdapter | null>;
 }

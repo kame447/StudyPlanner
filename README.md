@@ -87,9 +87,10 @@ Issue #246 の planned consultation extension でもこの責任境界を維持�
 
 ## 開発環境
 
-Node.js と npm が必要です。
+Node.js と npm が必要です。開発・CI の基準は [`.node-version`](./.node-version) の Node.js 22.23.4 です。2026-10-21 のセキュリティ修正済みの Node 22.23.4 / 24.22.1 / 26.12.1 以降の同一 major 系列を利用してください。`engines` は既定では警告のみなので、依存インストール前に下記の確認を実行します。`npm run verify` と `npm run build` も実際の実行バージョンを検査します。更新の範囲と未検証点は [Node セキュリティ更新記録](docs/domains/client-runtime/work/node-october-2026-security-handoff.md) を参照してください。
 
 ```bash
+node scripts/ci/check-node-security-version.mjs
 npm install --cache .npm-cache
 npm run dev
 ```
@@ -155,11 +156,13 @@ npx wrangler secret put OPENROUTER_API_KEY --config workers/ai-proxy/wrangler.js
 
 既定値は `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` です。`shadow` はWorkerの `waitUntil` 内で比較記録だけを行い、既存LLMの応答を待たせず、Jevから正式状態を書き換えません。`canary` は明示した5・25・100%でのみ選択されます。現在の閾値は未校正なので、日本語gold/holdout評価と#152の該当security gateが完了するまで本番canaryを有効化しません。rollbackは `off` へ戻してWorkerを再デプロイします。今回の実装自体はデプロイや本番有効化を行いません。
 
-モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。要求は固定release `typesafe/jev-1.13`、応答は公式に確認したrelease/dated snapshotのみ許可し、`latest` や未検証snapshotへの自動追従はしません。モデル更新時はrequest ID、response allowlist、catalog/gateの校正を合わせて見直します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。OpenRouter応答はstream読取中に32,768 bytesで打ち切り、上限超過時は残りをbufferせずcancelします。
+モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。要求は固定release `typesafe/jev-1.14`、応答は `typesafe/jev-1.14` / `typesafe/jev-1.14-20261014` のみ許可し、`latest` や未検証snapshotへの自動追従はしません。モデル更新時はrequest ID、response allowlist、catalog/gateの校正を合わせて見直します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。OpenRouter応答はstream読取中に32,768 bytesで打ち切り、上限超過時は残りをbufferせずcancelします。
+
+[PR #848](https://github.com/kame447/StudyPlanner/pull/848) は本番Workerのモデル固定を更新したもので、事前登録済みUnit 0評価の `scripts/jev-contextual-unit0-budget.mjs` は比較条件を保持するため1.13のままです。この評価snapshotを本番設定と混同せず、モデル固定の更新だけで品質改善や本番有効化を確認済みとは扱いません。
 
 低確信度・補助判定の不一致・欠落値・モデル不一致・通信障害は既存focused LLMへ戻します。明確な条件変更や独立した意味はgeneric semanticへ渡します。両providerの失敗は現行のcontrolled failureへ戻り、legacy自然言語parserは復活させません。汎用入力や長すぎる入力は従来経路を使います。
 
-[TypeSafeのjev-1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13) は、stateをhostileとして扱わず、注入された指示や誘導的な文章が回答を動かし得ると明記しています。catalog内の「untrusted」は助言的なprompt表現であってsecurity boundaryではなく、injection層の評価結果も観測値にすぎません。安全性はdeterministicなeligibilityと権限制限に置き、Jevが選べるのは空のdocumentに対する未保存案の `create_plan` だけで、approval/saveは実行できません。このcontainmentは#152のsecurity gateを置き換えません。
+旧版についての[TypeSafeのjev-1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13) は、stateをhostileとして扱わず、注入された指示や誘導的な文章が回答を動かし得ると明記しています。catalog内の「untrusted」は助言的なprompt表現であってsecurity boundaryではなく、injection層の評価結果も観測値にすぎません。安全性はdeterministicなeligibilityと権限制限に置き、Jevが選べるのは空のdocumentに対する未保存案の `create_plan` だけで、approval/saveは実行できません。このcontainmentは#152のsecurity gateを置き換えません。
 
 通常テストはmockのみでキー不要です。実APIの疎通試験は環境変数 `OPENROUTER_API_KEY` を設定したプロセスで、次を明示実行します。`.env` の自動読込や通常CIからの課金API起動はありません。既存のsecret managerから環境変数を渡すか、ローカルではshell履歴へ値を残さない非表示入力を使ってください。
 

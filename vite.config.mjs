@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolvePreferredLanIp } from './scripts/dev-network-config.mjs';
+import { deduplicateLegalNoticesPlugin } from './scripts/ci/deduplicate-legal-notices.mjs';
 
 const workspaceDir = path.dirname(fileURLToPath(import.meta.url));
 const certDirectory = path.join(workspaceDir, '.cert');
@@ -89,7 +90,7 @@ function resolveVendorChunk(id) {
 }
 
 export default defineConfig({
-  plugins: [react(), preferredNetworkUrlPlugin()],
+  plugins: [react(), preferredNetworkUrlPlugin(), deduplicateLegalNoticesPlugin()],
   build: {
     minify: 'terser',
     terserOptions: {

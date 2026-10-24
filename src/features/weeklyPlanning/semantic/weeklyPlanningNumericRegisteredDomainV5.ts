@@ -1,3 +1,4 @@
+import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../../shared/d5AnswerPolicy';
 import type { CandidateBinding, CandidateTuple } from '../application/candidateSelection/contracts';
 import { canonicalCandidateSerialization } from '../application/candidateSelection/canonical';
 import type { ControlledCandidateDomain, ControlledCandidateCaptureContext, ControlledCandidateStageContext } from '../application/weeklyPlanningControlledCandidateDomains';
@@ -9,13 +10,14 @@ import { captureNumericPendingQuestionDomainV5, isNumericPendingQuestionDomainCu
 import { numericPendingObservationV5, type NumericPendingStateV5 } from './weeklyPlanningNumericPendingChoiceV5';
 import { numericPendingCompleteScopeV5 } from './weeklyPlanningNumericPendingScopeV5';
 import { createFrozenNumericPendingControlledAdapterV5 } from './weeklyPlanningNumericPendingCommitV5';
+import { numericAnswerProposalV5, numericDigitRunsV5 } from './weeklyPlanningNumericAnswerProposalV5';
 
 function measurement(context: ControlledCandidateCaptureContext): NumericPendingStateV5['measurement'] | null {
   const intent = context.state.intakeState?.lastQuestionContext?.intent;
   return intent === 'total_duration' || intent === 'duration_per_unit' ? intent : null;
 }
 
-function presentingEvidence(context: ControlledCandidateCaptureContext): {
+function presentingEvidence(context: ControlledCandidateCaptureContext, policyVersion: string): {
   input: WeeklyPlanningSemanticNormalizerInputV5;
   state: NumericPendingStateV5;
 } | null {
@@ -39,7 +41,7 @@ function presentingEvidence(context: ControlledCandidateCaptureContext): {
     committedGraph: context.graph,
     publicStateSummary: summary,
   };
-  const scope = numericPendingCompleteScopeV5(input);
+  const scope = numericPendingCompleteScopeV5(input, policyVersion);
   if (!scope) return null;
   // Only typed evidence is snapshotted. Raw source text and provenance stay in the graph.
   const sources: CandidateBinding['sources'] = [{
@@ -104,18 +106,39 @@ function answerState(context: ControlledCandidateStageContext, domain: NumericPe
 export function createNumericPendingRegisteredDomainV5(
   domainMinutes: readonly number[],
   domainPolicyVersion: string,
+  options: { readonly candidateSource: 'question_menu' | 'answer_proposal' } = { candidateSource: 'question_menu' },
 ): ControlledCandidateDomain {
+  const answerProposal = options.candidateSource === 'answer_proposal';
+  const top1 = domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION;
   return {
     domainId: 'd5_numeric',
     questionCode: 'missing_effort_estimate',
     domainPolicyVersion,
+    ...(answerProposal ? {
+      proposeAnswerPayload(payload, userText) {
+        const proposal = numericAnswerProposalV5(userText, top1);
+        if (!proposal) return null;
+        const frozen = payload.domainData as unknown as NumericPendingQuestionDomainV5;
+        // Only a question-time placeholder written by this domain's capture may be widened.
+        if (canonicalCandidateSerialization(frozen.domainMinutes) !== canonicalCandidateSerialization(domainMinutes)) return null;
+        const observation = numericPendingObservationV5({ binding: { ...frozen.binding,
+          requestId: frozen.binding.question.presentingTurnId, inputRevision: frozen.binding.question.presentationRevision },
+          measurement: frozen.measurement, perUnit: frozen.perUnit, pendingTargetCount: 1,
+          sourceAccess: 'allowed', intentProvenance: 'validated_current_turn', targetStatus: 'active',
+          questionPresentation: 'fresh', formalEligibility: 'eligible' },
+        proposal.minutes, domainPolicyVersion);
+        return { target: observation.binding.target, scope: observation.binding.scope,
+          sources: observation.binding.sources, candidates: observation.candidates,
+          domainData: { ...frozen, domainMinutes: proposal.minutes } as unknown as CandidateTuple };
+      },
+    } satisfies Pick<ControlledCandidateDomain, 'proposeAnswerPayload'> : {}),
     rejectsCoPresentedFacts({ targetId, facts }) {
       // An acknowledged sibling quantity or estimate would make a bare minute answer
       // ambiguous (an estimate or target switch). The target's own task/components/amount are inherent.
-      return facts.some(fact => fact.kind === 'effort_estimate' || (fact.kind === 'workload' && fact.factId !== targetId));
+      return !top1 && facts.some(fact => fact.kind === 'effort_estimate' || (fact.kind === 'workload' && fact.factId !== targetId));
     },
     capture(context) {
-      const evidence = presentingEvidence(context);
+      const evidence = presentingEvidence(context, domainPolicyVersion);
       if (!evidence) return null;
       const presented = context.question.presentedQuestion;
       if (!presented) return null;
@@ -140,7 +163,7 @@ export function createNumericPendingRegisteredDomainV5(
       const port = {
         domainMinutes: frozen.domainMinutes,
         domainPolicyVersion: frozen.domainPolicyVersion,
-        choicePolicy: context.policy,
+        choicePolicy: top1 ? { ...context.policy, rules: context.policy.rules.map(rule => ({ ...rule, minimumTopProbability: 0, minimumMargin: 0 })) } : context.policy,
         maximumChildrenPerMenu: context.maximumChildrenPerMenu,
         maximumDecisions: context.maximumDecisions,
         readCurrent: () => answerState(context, frozen),
@@ -152,6 +175,21 @@ export function createNumericPendingRegisteredDomainV5(
       }, context.normalizerInput);
       const staged = await tryFrozenNumericPendingChoiceRouteV5(run, port, frozen);
       if (!staged) return null;
+      if (answerProposal && !top1) {
+        const minutes = staged.selection.candidate.tuple.minutes;
+        const integers = numericAnswerProposalV5(context.userText)?.sourceIntegers.get(minutes);
+        if (!integers) return null;
+        const values = new Set([minutes, ...integers]);
+        // Range labels are compared by every digit run they contain; over-blocking falls back to Luna.
+        const collides = (value: number | string | null | undefined) => value != null
+          && (typeof value === 'number' ? values.has(value) : numericDigitRunsV5(value).some(n => values.has(n)));
+        const graph = context.readCommittedGraph();
+        const active = new Set(graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
+        if (graph.workloads.some(f => active.has(f.id) && [f.amount, f.rangeStart, f.rangeEnd].some(collides))
+          || graph.effortEstimates.some(f => active.has(f.id) && collides(f.minutes))
+          || graph.availabilityDeclarations.some(f => active.has(f.id) && collides(f.capacityMinutes))
+          || graph.recurrences.some(f => active.has(f.id) && collides(f.count))) return null;
+      }
       const priorState = serializeC5ApplicationState(context.readCurrentState());
       const priorInput = serializeC5ApplicationState(context.normalizerInput);
       const priorLedger = serializeC5ApplicationState(context.readLedger());

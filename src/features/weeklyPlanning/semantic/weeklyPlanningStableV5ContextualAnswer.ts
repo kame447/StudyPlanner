@@ -320,20 +320,12 @@ function effortPlanForPendingQuestion(
   },
 ) {
   const measurement = input.pendingQuestion.effortMeasurement;
-  if (!measurement) return null;
+  if (!measurement || candidate.kind !== measurement) return null;
 
-  if (candidate.kind === 'duration_per_unit' && candidate.unitCode !== null) {
-    if (candidate.unitCode !== target.unitCode) return null;
-    return {
-      kind: 'duration_per_unit' as const,
-      unitCode: target.unitCode,
-    };
-  }
-
-  return {
-    kind: measurement,
-    unitCode: measurement === 'total_duration' ? null : target.unitCode,
-  };
+  // The interpreter owns measurement meaning; the pending question cannot coerce it.
+  if (candidate.kind === 'duration_per_unit' && candidate.unitCode !== target.unitCode) return null;
+  if (candidate.kind === 'total_duration' && candidate.unitCode !== null) return null;
+  return { kind: candidate.kind, unitCode: candidate.unitCode };
 }
 
 function applyEffortAnswer(

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { todayIsoDate } from '../lib/date';
 import { isIsoCalendarDate } from '../lib/timetableCalendar';
 import type { PlanDraft, PlanType, ScheduleTemplate } from '../types/domain';
@@ -18,7 +18,7 @@ export function TimetableClassScheduleForm({ template, onSave, onClose }: {
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
   const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const validTime = (value: string) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
   const valid = title.trim() && isIsoCalendarDate(date) && validTime(startTime) && validTime(endTime) && endTime > startTime;
   async function submit(event: FormEvent) {

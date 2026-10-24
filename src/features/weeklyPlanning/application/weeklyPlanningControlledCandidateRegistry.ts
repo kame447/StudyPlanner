@@ -19,6 +19,8 @@ import { decodeControlledCandidateQuestion, freezeControlledCandidateQuestion } 
 export interface ControlledCandidateCaptureTurn {
   ownerId: string; conversationId: string; state: PlanningIntakeState; graph: WeeklyPlanningFactGraphV5;
   messages: readonly WeeklyPlanningMessage[]; planningState: PlanningState; pending: WeeklyPlanningPendingTurn;
+  /** Ephemeral pre-turn machine state; never derived from rendered text. */
+  previousQuestionCode?: string | null;
 }
 export interface ControlledCandidateStageTurn extends ControlledCandidateGateInput {
   ownerId: string; readCommittedGraph(): WeeklyPlanningFactGraphV5;
@@ -30,6 +32,7 @@ export interface RegisteredControlledCandidateDomain {
   stage(turn: ControlledCandidateStageTurn): Promise<RegisteredControlledCandidateAdapter | null>;
 }
 export interface RegisteredControlledCandidateAdapter extends Omit<ControlledCandidateAdapter, 'semanticContribution' | 'branch'> {
+  sourceAccess(): 'allowed' | 'denied' | 'unknown';
   readonly branch: 'c5_local_selection' | 'd5_pending_selection' | 'temporal_date_selection';
   readonly semanticContribution: ControlledCandidateSemanticContribution | null;
   continueSelectedTurn(turn: { snapshot: PlanningState; pending: WeeklyPlanningPendingTurn; userText: string }): Promise<WeeklyPlanningTurnExecutionResult>;
@@ -70,6 +73,7 @@ export function registerC5CandidateDomain(options: C5LocalSelectionOptions): Reg
       const input = { ...turn, options, getGraph: turn.readCommittedGraph };
       const selected = await selectC5Turn(input);
       return selected ? { selected, branch: 'c5_local_selection', semanticContribution: null,
+        sourceAccess: options.sourceAccess,
         prepare: () => prepareC5TurnCommit(input, selected),
         continueSelectedTurn: next => options.continueSelectedTurn({ ...next, graph: structuredClone(selected.graph) }),
       } : null;
@@ -83,13 +87,22 @@ export function registerControlledCandidateDomain(domain: ControlledCandidateDom
     domainId: domain.domainId, questionCode: domain.questionCode,
     capture(turn) {
       const context = turn.state.lastQuestionContext; const p = context?.presentation;
+      const presentingFacts = weeklyPlanningStableV5AcceptedFactsForTurn(turn.graph, turn.pending.requestId);
+      // Restore prior recommended eligibility only when mandatory effort ACK is the
+      // sole new requirement. A same-question re-ask was already required before #305.
+      const effortAcknowledgementOnly = turn.previousQuestionCode !== undefined
+        && turn.previousQuestionCode !== domain.questionCode
+        && presentingFacts.some(fact => fact.kind === 'effort_estimate');
       if (!p || turn.state.questions.length !== 1 || !context?.topicId
-        || !isWeeklyPlanningQuestionPresentationControlledDirect(p.content) || p.graphRevision !== turn.graph.revision
+        || !(isWeeklyPlanningQuestionPresentationControlledDirect(p.content)
+          || effortAcknowledgementOnly
+            && p.content.currentTurnGrounding === 'required_before_resume'
+            && isWeeklyPlanningQuestionPresentationControlledDirect({ ...p.content, currentTurnGrounding: 'recommended' })) || p.graphRevision !== turn.graph.revision
         || domain.domainPolicyVersion !== policyVersion || options.sourceAccess() !== 'allowed') return turn.state;
       // Facts carry the presenting request ID (not the presentation's turn ID): exactly what the
       // rendered acknowledgement may echo. Never re-run at answer time.
       if (domain.rejectsCoPresentedFacts({ targetId: context.topicId,
-        facts: weeklyPlanningStableV5AcceptedFactsForTurn(turn.graph, turn.pending.requestId) }) !== false) return turn.state;
+        facts: presentingFacts }) !== false) return turn.state;
       const old = turn.state.c5SelectionLedger;
       const ledger = old === undefined ? { version: 1 as const, ownerId: turn.ownerId, conversationId: turn.conversationId, lastEpoch: 0, consumed: [] }
         : decodeC5Ledger(old, turn.ownerId, turn.conversationId);
@@ -115,23 +128,34 @@ export function registerControlledCandidateDomain(domain: ControlledCandidateDom
         lastQuestionContext: { ...state.lastQuestionContext, controlledCandidate: snapshot } };
     },
     async stage(turn) {
-      const frozen = decodeControlledCandidateQuestion(turn.snapshot.intakeState?.lastQuestionContext?.controlledCandidate, turn.ownerId, turn.pending.conversationId);
+      let frozen = decodeControlledCandidateQuestion(turn.snapshot.intakeState?.lastQuestionContext?.controlledCandidate, turn.ownerId, turn.pending.conversationId);
       const ledger = decodeC5Ledger(turn.snapshot.intakeState?.c5SelectionLedger, turn.ownerId, turn.pending.conversationId);
       if (!frozen || frozen.domainId !== domain.domainId || frozen.domainPolicyVersion !== policyVersion
         || domain.domainPolicyVersion !== policyVersion || ledger?.lastEpoch !== frozen.basis.binding.selectionEpoch) return null;
+      if (domain.proposeAnswerPayload) {
+        const payload = domain.proposeAnswerPayload({ target: frozen.basis.binding.target,
+          scope: frozen.basis.binding.scope, sources: frozen.basis.binding.sources,
+          candidates: frozen.basis.candidates, domainData: frozen.domainData }, turn.userText);
+        if (!payload) return null;
+        frozen = freezeControlledCandidateQuestion(domain, { binding: { ...frozen.basis.binding,
+          target: payload.target, scope: payload.scope, sources: payload.sources }, candidates: payload.candidates }, payload.domainData);
+      }
       const basis = { ...frozen.basis, binding: { ...frozen.basis.binding, requestId: turn.pending.requestId, inputRevision: turn.pending.baseRevision } };
       const input = structuredClone(options.inputForTurn(turn));
       if (input.userText !== turn.userText || input.traceRequestId !== turn.pending.requestId || !input.committedGraph
         || input.supplementalContext || input.selectedStarterTarget
         || canonicalCandidateSerialization(input.committedGraph) !== canonicalCandidateSerialization(turn.readCommittedGraph())) return null;
       let selectedCapability: StagedCandidateSelection | undefined;
-      const currentBasis = (expected: CandidateBasis): ReturnType<typeof domain.capture> => domain.capture({
-        ownerId: turn.ownerId, conversationId: turn.pending.conversationId,
-        graph: turn.readCommittedGraph(), state: turn.getState(), messages: turn.getState().messages,
-        question: { ...expected.binding.question, presentedQuestion: boundC5PresentedQuestion(expected.binding.question, turn.getState().messages) ?? undefined },
-        selectionEpoch: frozen.basis.binding.selectionEpoch, domainPolicyVersion: policyVersion,
-        requestContext: options.requestContextForTurn(turn.pending),
-      });
+      const currentBasis = (expected: CandidateBasis): ReturnType<typeof domain.capture> => {
+        const payload = domain.capture({
+          ownerId: turn.ownerId, conversationId: turn.pending.conversationId,
+          graph: turn.readCommittedGraph(), state: turn.getState(), messages: turn.getState().messages,
+          question: { ...expected.binding.question, presentedQuestion: boundC5PresentedQuestion(expected.binding.question, turn.getState().messages) ?? undefined },
+          selectionEpoch: frozen.basis.binding.selectionEpoch, domainPolicyVersion: policyVersion,
+          requestContext: options.requestContextForTurn(turn.pending),
+        });
+        return payload && domain.proposeAnswerPayload ? domain.proposeAnswerPayload(payload, turn.userText) : payload;
+      };
       const observeCurrentBasis = (expected: CandidateBasis) => {
         const graph = turn.readCommittedGraph(); const gates = controlledCandidateTurnGates(turn, graph, frozen.basis.binding);
         const live = currentBasis(expected);
@@ -173,7 +197,7 @@ export function registerControlledCandidateDomain(domain: ControlledCandidateDom
         || adapter.semanticContribution.canonicalization.status !== 'applied'
         || canonicalCandidateSerialization(adapter.semanticContribution.canonicalization.graph) !== canonicalCandidateSerialization(adapter.selected.graph)) return null;
       selectedCapability = adapter.selected.selection;
-      return { ...adapter, prepare: () => current() ? adapter.prepare() : null,
+      return { ...adapter, sourceAccess: options.sourceAccess, prepare: () => current() ? adapter.prepare() : null,
         continueSelectedTurn: next => options.continueSelectedTurn({ ...next, graph: structuredClone(adapter.selected.graph), semanticContribution: adapter.semanticContribution }) };
     },
   };
