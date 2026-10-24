@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Class-schedule commit lifetime](work/class-schedule-commit-lifetime-handoff.md) — retire old schedule-save completion before it can dismiss a replacement attendance form.
+
 - [Study-session finish measurement boundary](work/study-session-finish-boundary-handoff.md) — pure temporal projection with preserved Pomodoro/date contracts; integration verification pending.
 
 - [Existing linked-Actual write read](work/actual-existing-write-read-handoff.md) — Issue #542; reuse save-attempt existence evidence while retaining transaction rereads and fail-closed deletion handling.
