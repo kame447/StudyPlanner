@@ -12,7 +12,7 @@ import {
 import { BookOpen, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { getMaterialUnitLabel } from '../lib/materialPace';
 import { createMaterialCoverDataUrl } from '../lib/materialImage';
-import { saveMaterialDetailPreferences } from '../lib/bookshelfMaterialDetails';
+import { saveMaterialDetailPreferences } from '../repositories/materialDetailPreferencesRepository';
 import {
   getSubjectColor,
   getSubjectStyle,

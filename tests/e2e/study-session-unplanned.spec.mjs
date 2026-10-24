@@ -174,6 +174,33 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
   });
 }
 
+test('record note stays fully visible after native end-aligned focus scrolling at 390px', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await seed(page, { dark: true });
+  await page.goto('/');
+  await page.getByRole('button', { name: /勉強を開始/ }).click();
+  const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
+  await ready.getByRole('textbox', { name: '勉強する内容' }).fill('今から復習');
+  await ready.getByRole('button', { name: 'スタート', exact: true }).click();
+  await page.clock.fastForward(125_000);
+  await page.getByRole('button', { name: '終了する', exact: true }).click();
+  const record = page.getByRole('dialog', { name: '学習を記録', exact: true });
+  await expect.poll(() => record.locator('.study-session-page').evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+  const note = record.getByRole('textbox', { name: 'メモ・気づき' });
+  await note.fill('端まで表示するメモ');
+  // Exercise the native alignment selected by a retried click, independently of motion timing.
+  await note.evaluate(element => element.scrollIntoView({ block: 'end', inline: 'end', behavior: 'instant' }));
+  console.log('End-aligned study note bounds:', await note.evaluate(element => {
+    const pane = element.closest('.study-session-page');
+    const rect = element.getBoundingClientRect();
+    return { top: rect.top, bottom: rect.bottom, height: rect.height, viewportHeight: innerHeight,
+      pageScroll: pane.scrollTop, scrollPaddingBottom: getComputedStyle(pane).scrollPaddingBottom };
+  }));
+  await expect(note).toBeFocused();
+  await expect(note).toBeInViewport({ ratio: 1 });
+});
+
 // Preserve the original two-width, two-motion rapid-start/save coverage independently
 // of the phase-navigation precondition. The gesture may leave the same timer running
 // or paused; assert that exact state set before normalizing it.

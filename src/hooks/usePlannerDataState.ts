@@ -1,3 +1,4 @@
+import { prepareStudyMaterialRecord } from '../domain/studyMaterialRecord';
 import { createDuplicatePlanDraft } from '../lib/scheduleItemActions';
 import { getEntryDurationMinutes, isValidPlanEntryTimeRange } from '../lib/entryTimeRange';
 import { prepareActualProgressSource, preserveMonthEventActualSources } from '../domain/actualProgressSource';
@@ -36,6 +37,11 @@ import {
 } from '../domain/plannerDataReadAuthority';
 import {
   normalizePlannerTimetableData,
+  sortAndUpsertPlans,
+  upsertActualsById,
+  upsertActualByOccurrenceKey,
+  applyRecurringPlanProjection,
+  applyRecurringActualProjection,
   resolveActualMaterialProgress,
 } from '../domain/plannerDataTransforms';
 import { createId } from '../lib/id';
@@ -512,36 +518,6 @@ export function usePlannerDataState({
     return plans.find((item) => item.id === plan.id) ?? plan;
   }
 
-  function sortAndUpsertPlans(current: Plan[], nextPlans: Plan[]): Plan[] {
-    return sortByDateTime(
-      nextPlans.reduce(
-        (records, nextPlan) => upsertByKey(records, nextPlan, (plan) => plan.id),
-        current,
-      ),
-    );
-  }
-
-  function upsertActualsById(current: Actual[], nextActuals: Actual[]): Actual[] {
-    return nextActuals.reduce(
-      (records, nextActual) => upsertByKey(records, nextActual, (actual) => actual.id),
-      current,
-    );
-  }
-
-  function upsertActualByOccurrenceKey(
-    current: Actual[],
-    nextActual: Actual,
-    removedActualIds: string[] = [],
-  ): Actual[] {
-    const removedIdSet = new Set(removedActualIds);
-
-    return upsertByKey(
-      current.filter((actual) => !removedIdSet.has(actual.id)),
-      nextActual,
-      (actual) => getActualOccurrenceKey(actual),
-    );
-  }
-
   function isScopedRecurringEditCandidate(plan: Plan | null): boolean {
     if (!plan) {
       return false;
@@ -839,30 +815,10 @@ export function usePlannerDataState({
         selectionOperation = selectionState.begin(() => selectionAt(occurrenceDate));
       }
       await plannerRepository.applyRecurringPlanMutation(userId, mutation);
-      const deletedPlanIds = new Set(
-        mutation.planDeletes.map((plan) => plan.id),
-      );
-      const deletedActualIds = new Set(
-        mutation.actualDeletes.map((actual) => actual.id),
-      );
       needsRefresh = Boolean(acknowledgedProjection && plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection));
       if (!needsRefresh) {
-        setPlans((current) =>
-          sortAndUpsertPlans(
-            current.filter((plan) => !deletedPlanIds.has(plan.id)),
-            mutation.planUpserts,
-          ),
-        );
-        setActuals((current) =>
-          upsertActualsById(
-            current.filter(
-              (actual) =>
-                !deletedActualIds.has(actual.id) &&
-                (!actual.planId || !deletedPlanIds.has(actual.planId)),
-            ),
-            mutation.actualUpserts,
-          ),
-        );
+        setPlans(current => applyRecurringPlanProjection(current, mutation));
+        setActuals(current => applyRecurringActualProjection(current, mutation));
       }
 
       if (selectionOperation) selectionState.commit(selectionOperation);
@@ -940,7 +896,7 @@ export function usePlannerDataState({
     }
 
     const nextPlan = createPlanFromDraft(draft, sourcePlan);
-    const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+    const planOperation = planState.begin(current => sortAndUpsertPlans(current, [nextPlan]));
 
     try {
       await plannerRepository.upsertPlan(nextPlan);
@@ -993,7 +949,7 @@ export function usePlannerDataState({
     // Include the generated ID before publishing its optimistic occurrence.
     // Day cancellation must not race the initial upsert of a newly imported Plan.
     return withDayOccurrenceSourceWrite(`plan:${nextPlan.id}`, async () => {
-      const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+      const planOperation = planState.begin(current => sortAndUpsertPlans(current, [nextPlan]));
       const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
 
       try {
@@ -1842,7 +1798,7 @@ export function usePlannerDataState({
         dueTime: dueDate ? todo.dueTime ?? null : null,
         updatedAt: new Date().toISOString(),
       };
-      const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+      const planOperation = planState.begin(current => sortAndUpsertPlans(current, [nextPlan]));
       const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
 
       const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, item => item.id));
@@ -2030,54 +1986,9 @@ export function usePlannerDataState({
     const releaseAdmission = admitActualMutation([], [], [materialId]);
     let dispatchedFailure = false;
     const now = new Date().toISOString();
-    const paceEnabled = draft.paceEnabled === true;
-    const totalUnits =
-      typeof draft.totalUnits === 'number' && Number.isFinite(draft.totalUnits)
-        ? Math.max(0, draft.totalUnits)
-        : undefined;
-    const currentUnit =
-      typeof draft.currentUnit === 'number' && Number.isFinite(draft.currentUnit)
-        ? Math.min(Math.max(0, draft.currentUnit), totalUnits ?? draft.currentUnit)
-        : undefined;
-    const estimatedMinutesPerUnit =
-      typeof draft.estimatedMinutesPerUnit === 'number' &&
-      Number.isFinite(draft.estimatedMinutesPerUnit)
-        ? Math.max(0, draft.estimatedMinutesPerUnit)
-        : undefined;
-    const maxUnitsPerDay =
-      typeof draft.maxUnitsPerDay === 'number' && Number.isFinite(draft.maxUnitsPerDay)
-        ? Math.max(0, draft.maxUnitsPerDay)
-        : undefined;
-    const nextMaterial: StudyMaterial = {
-      id: materialId,
-      userId,
-      name,
-      subjectId: subject.id,
-      subjectName: subject.name,
-      color: draft.color ?? subject.color,
-      coverImageUrl: draft.coverImageUrl || undefined,
-      coverImageDataUrl: draft.coverImageDataUrl || undefined,
-      catalogEntryId: draft.catalogEntryId?.trim() || currentMaterial?.catalogEntryId,
-      catalogTitle: draft.catalogTitle?.trim() || currentMaterial?.catalogTitle,
-      catalogIsbn10: draft.catalogIsbn10?.trim() || currentMaterial?.catalogIsbn10,
-      catalogIsbn13: draft.catalogIsbn13?.trim() || currentMaterial?.catalogIsbn13,
-      aliases: draft.aliases ?? currentMaterial?.aliases ?? [],
-      status: draft.status ?? currentMaterial?.status ?? 'active',
-      studyStatus: draft.studyStatus ?? currentMaterial?.studyStatus ?? 'studying',
-      paceEnabled,
-      progressUnit: draft.progressUnit ?? currentMaterial?.progressUnit ?? 'page',
-      progressUnitLabel:
-        draft.progressUnit === 'custom'
-          ? draft.progressUnitLabel?.trim() || undefined
-          : undefined,
-      totalUnits,
-      currentUnit,
-      targetDate: draft.targetDate?.trim() || undefined,
-      estimatedMinutesPerUnit,
-      maxUnitsPerDay,
-      createdAt: currentMaterial?.createdAt ?? now,
-      updatedAt: now,
-    };
+    const nextMaterial = prepareStudyMaterialRecord({
+      draft, subject, currentMaterial, userId, materialId, name, now,
+    });
 
     try {
       await plannerRepository.upsertStudyMaterial(nextMaterial);

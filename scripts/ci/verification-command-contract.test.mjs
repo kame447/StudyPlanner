@@ -41,7 +41,7 @@ describe('verification command safety boundary', () => {
     expect(scripts['typecheck:app:full']).toBe('tsc --noEmit --incremental false');
     expect(scripts['typecheck:worker:full']).toBe('npm run types:worker && tsc --noEmit -p tsconfig.worker.json --incremental false');
     expect(scripts['typecheck:full']).toBe('npm run typecheck:app:full && npm run typecheck:worker:full');
-    expect(scripts.verify).toBe('npm run typecheck:full && npm run test:run && npm run build');
+    expect(scripts.verify).toBe('npm run check:node && npm run typecheck:full && npm run test:run && npm run build');
   });
 
   it('keeps CI on the fresh typecheck plus full tests, rules regression and build', () => {
