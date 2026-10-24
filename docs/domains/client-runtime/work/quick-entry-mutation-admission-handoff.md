@@ -1,5 +1,13 @@
 # Quick Entry mutation admission
 
+## Current repository status (2026-10-24)
+
+[PR #820](https://github.com/kame447/StudyPlanner/pull/820) merged into `main` on 2026-10-24 UTC as `08fece48f87d88bf1d5673d1b0d535079a9304d3`. The merge is present in the inspected main snapshot `382fdff2a5ee98850aea2eb369eeaeee420d636d`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: active local candidate; full local verification passed, native/integration acceptance pending
 Branch: `refactor/quick-entry-mutation-admission`
 Base: `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`; remote main confirmed unchanged before this checkpoint.

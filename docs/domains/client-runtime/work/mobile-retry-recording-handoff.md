@@ -1,5 +1,15 @@
 # Mobile WebKit functional budget and retry recording
 
+## Current repository status (2026-10-24)
+
+[PR #836](https://github.com/kame447/StudyPlanner/pull/836) merged into `main` on 2026-10-23 UTC as `10a5bff775a82114a5114340909c71d517120ded`. The merge is present in the inspected main snapshot `382fdff2a5ee98850aea2eb369eeaeee420d636d`.
+
+The separate [PR #845](https://github.com/kame447/StudyPlanner/pull/845) Month functional-budget change also merged on 2026-10-23 UTC as `ae833f7ac4d7af1d09a66da586f96276cdf085f4`. These merges do not establish a rendering-speed improvement or resolve the broader performance investigation.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: integrating the owner-approved three-case functional budget into existing PR #836. Rendering latency is not fixed; #805 remains open. Native verification of the combined recording-policy/budget head is pending.
 
 Branch: `fix/mobile-retry-recording`. Integration base: main `72f5192222da2608c5de46557f548f655905ba04`; previous PR head: `88cebf49ff04be9c3b86b002782d17c25fd144e6`.

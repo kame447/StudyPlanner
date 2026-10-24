@@ -1,5 +1,13 @@
 # Radial input capture ownership
 
+## Current repository status (2026-10-24)
+
+[PR #815](https://github.com/kame447/StudyPlanner/pull/815) merged into `main` on 2026-10-23 UTC as `b7582c571b57ce33882cc22e8db668e4606e7d11`. The merge is present in the inspected main snapshot `382fdff2a5ee98850aea2eb369eeaeee420d636d`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: latest-main integration passed local final verification and bundle budget. Native gates must pass again after the necessary normal branch integration. See the latest checkpoint below; older entries are historical.
 Branch: `refactor/radial-input-capture-on-keyboard`.
 PR base: `main`. Current integration base: `3cefe1b7b67c70eaa06c433b62b6c9f435ba5407`.

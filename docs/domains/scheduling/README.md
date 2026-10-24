@@ -1,7 +1,7 @@
 # Scheduling domain
 
 Status: canonical domain entry point
-Updated: 2026-09-10
+Updated: 2026-10-24
 
 このドメインは、StudyPlanner 内の「時間が確定した予定」に関するアプリ全体の責務（app-wide ownership）を扱う。
 
@@ -36,9 +36,11 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 
 これらは各 owning domain 側で管理を継続し、scheduled occurrence の参照や確定予定の保存が必要な箇所でのみ本ドメインの境界へ接続する。
 
-## Active work
+## Work records
 
-- [Planner projection transition boundary](work/planner-projection-boundary-handoff.md) — move pure accepted-mutation collection rules out of React orchestration without changing persistence or read/admission authority.
+Merged entries are retained for source-scoped evidence, not as an active implementation queue. See each handoff for its current disposition and historical limits.
+
+- [Planner projection transition boundary](work/planner-projection-boundary-handoff.md) — merged in PR #816; pure accepted-mutation collection rules are outside React orchestration without changing persistence or read/admission authority.
 
 - [Restore the accepted major event on Undo](work/month-event-undo-latest-handoff.md) — local two-reference correction with real-Local persistence and progress regression coverage; publication/native pending.
 
@@ -62,4 +64,4 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 
 - [Final explicit-date deletion](work/recurring-last-date-delete-handoff.md) — local fix for a deleted final date reappearing after reload; existing storage/IDs retained, focused verification and old-reader evidence recorded.
 
-- [Week spanning-event keyboard access](work/week-spanning-keyboard-handoff.md) — Issue #780; named native action buttons, with read-only timetable and plan tap behavior preserved. Local verification passes; native browser acceptance remains pending.
+- [Week spanning-event keyboard access](work/week-spanning-keyboard-handoff.md) — Issue #780; named native action buttons, with read-only timetable and plan tap behavior preserved. Merged in PR #808; source-scoped verification is retained in the handoff.

@@ -1,7 +1,7 @@
 # Client Runtime
 
 Status: canonical domain index
-Updated: 2026-10-09
+Updated: 2026-10-24
 
 This domain owns client-first execution, local/runtime capability boundaries, synchronization authority and the conditions under which work may move from server-mediated execution toward the client.
 
@@ -21,11 +21,11 @@ Supporting architecture:
 
 Execution tracking:
 
-- [Quick Entry mutation admission](work/quick-entry-mutation-admission-handoff.md) — reuse the existing editor lifetime gate while preserving duplicate-save and stale-completion protections.
+- [Quick Entry mutation admission](work/quick-entry-mutation-admission-handoff.md) — merged in PR #820; preserves duplicate-save and stale-completion protections.
 
-- [Class-schedule commit lifetime](work/class-schedule-commit-lifetime-handoff.md) — retire old schedule-save completion before it can dismiss a replacement attendance form.
+- [Class-schedule commit lifetime](work/class-schedule-commit-lifetime-handoff.md) — merged in PR #821; retires old schedule-save completion before it can dismiss a replacement attendance form.
 
-- [Study-session finish measurement boundary](work/study-session-finish-boundary-handoff.md) — pure temporal projection with preserved Pomodoro/date contracts; integration verification pending.
+- [Study-session finish measurement boundary](work/study-session-finish-boundary-handoff.md) — merged in PR #818; pure temporal projection with preserved Pomodoro/date contracts.
 
 - [Existing linked-Actual write read](work/actual-existing-write-read-handoff.md) — Issue #542; reuse save-attempt existence evidence while retaining transaction rereads and fail-closed deletion handling.
 
@@ -117,6 +117,6 @@ Client-first does not imply client-authoritative shared state. Authentication, o
 
 - [Optional delivery native acceptance](work/delivery-acceptance-ci-handoff.md): PR #729 fixture, emitted-asset and browser-transport corrections; native rerun tracked separately.
 
-- [Material record preparation](work/material-record-preparation-handoff.md) — pure record construction separated from admitted persistence.
-- [Material preferences boundary](work/material-preferences-boundary-handoff.md) — local behavior-preserving separation of material domain rules from browser persistence.
-- [Mobile WebKit paint investigation and retry recording](work/mobile-retry-recording-handoff.md): bounded retry capture; root-paint candidates rejected, with #805 still unresolved.
+- [Material record preparation](work/material-record-preparation-handoff.md) — merged in PR #813; pure record construction separated from admitted persistence.
+- [Material preferences boundary](work/material-preferences-boundary-handoff.md) — merged in PR #812; behavior-preserving separation of material domain rules from browser persistence.
+- [Mobile WebKit paint investigation and retry recording](work/mobile-retry-recording-handoff.md): PR #836 retry recording and PR #845 Month functional budget are merged; the broader rendering-performance investigation is not resolved by those merges.
