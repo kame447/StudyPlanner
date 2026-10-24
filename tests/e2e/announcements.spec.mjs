@@ -56,7 +56,7 @@ for (const width of [375, 1440]) for (const theme of ['light', 'dark']) {
 }
 test('announcements failures are explicit, and account changes cannot reopen another owner history', async ({ page }) => {
   await page.goto('/admin-overview.html?view=announcements&state=error');
-  await expect.poll(() => page.evaluate(() => window.__announcementReads.length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.__announcementReads?.length)).toBe(1);
   await page.getByRole('button', { name: 'お知らせを開く' }).click();
   await expect(page.getByRole('alert')).toContainText('取得できません');
   await page.getByRole('button', { name: '再試行', exact: true }).click(); await expect(page.locator('.announcement-row')).toHaveCount(25);

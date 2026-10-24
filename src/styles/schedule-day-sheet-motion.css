@@ -34,6 +34,12 @@
   animation: month-day-sheet-backdrop-in var(--motion-duration-base) ease-out both;
 }
 
+/* Reduced motion keeps the settled backdrop blur and fades only the tint:
+   interpolating the blur radius re-filters the whole backdrop every frame. */
+:root[data-motion='reduced'] .month-day-sheet-overlay.is-open {
+  animation-name: month-day-sheet-backdrop-fade;
+}
+
 .month-day-sheet-overlay.is-open .month-day-sheet {
   animation: month-day-sheet-panel-in var(--motion-duration-slow) var(--motion-ease-emphasized) both;
 }
@@ -77,6 +83,12 @@
 .month-day-sheet-event:disabled,
 .month-day-sheet-empty:disabled {
   pointer-events: none;
+}
+
+@keyframes month-day-sheet-backdrop-fade {
+  from {
+    background: rgba(18, 24, 36, 0);
+  }
 }
 
 @keyframes month-day-sheet-backdrop-in {

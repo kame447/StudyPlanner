@@ -20,6 +20,22 @@ export async function runGenericSemanticRepairRouteV5(params: {
   attemptCountBeforeRepair?: number;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
   const attemptCountBeforeRepair = params.attemptCountBeforeRepair ?? 1;
+  // Referenced aliases cannot be compacted without a binding policy. Do not
+  // open a whole-document AI repair for this newly detected representation error.
+  if (params.initialValidation.errors.some(error => error.startsWith('same-container-workload-duplicate-referenced:'))) {
+    const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+      status: 'rejected',
+      document: null,
+      diagnostics: params.run.diagnostics({
+        attemptCount: attemptCountBeforeRepair,
+        repairAttempted: false,
+        validationErrors: params.initialValidation.errors,
+        providerError: null,
+      }),
+    };
+    params.run.recordDecision(result, { severity: 'error' });
+    return result;
+  }
   const repairAttemptCount = attemptCountBeforeRepair + 1;
   const repairMessages = createWeeklyPlanningSemanticRepairMessagesV5({
     baseMessages: params.baseMessages,

@@ -1,6 +1,6 @@
 # Attendance pending-save boundary
 
-Status: locally verified and independently reviewed; publication pending.
+Status: existing PR #822; current-main verification in progress.
 Base: main `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
 Branch: `refactor/attendance-pending-save-boundary`.
 
@@ -48,3 +48,13 @@ Architecture, persistence, state ownership, async lifetime, date/schema compatib
 `npm run verify` exited 0 on exact commit `bfe81ccee34dd9688256298d77150f01a3e04cd9`, tree `819beaf55fdd3295f2fd95e90243c5acaee6c1a6`, with no initial tracked or untracked source changes. Fresh app and regenerated Worker typechecks passed; 1,056 test files / 10,539 tests passed (67 skipped, 1 todo retained), production build passed in 13.37 seconds. Log: `/tmp/attendance-full-verify.log`. Same canonical npm-ci dependency seed and lock identity above; standard telemetry-disabled environment, DEV_LAN_HOST=127.0.0.1, isolated Wrangler log `/tmp/attendance-verify-wrangler.log`. Full test run generated `.cache/j1-old-worker` historical-fixture output; no tracked source changed. The historical commit `070d25cbe14796aebb8168ac5425c93e3506df1c` exists locally, and its tests passed rather than being skipped or weakened.
 
 Only this receipt documentation changed after verification. Locally verified, not published or merged. Browser/CI/backend evidence remains separate.
+
+
+## Existing PR integration — 2026-10-24
+
+Resume existing PR #822 and branch `refactor/attendance-pending-save-boundary`, with normal existing-branch publication and subsequent gated merge now authorized. Remote head `9f918bb8854819da200d520fd4e4520d9da4d556` merged cleanly with current main `aaac18833d2565d23bd7d5e68ffe0c962887c91b`, yielding integration `a18b5cb5dbf3e8989ec7e312dc6b62594e9c1590`. Original attendance implementation and tests are unchanged. The main advances for study-session finishing and scheduling-day projection are separate responsibilities; PR #821 independently owns schedule-form retirement. Current review threads are empty.
+
+The previous unpublished checkout and dependency seed are unavailable in this restored environment, so historical local proof is not reused. Next: verify the restored dependency/runtime identity, focused attendance coverage and one fresh full `npm run verify`, then publish this existing branch and follow exact-head native gates. No new PR, persistence schema, UI layout, timeout/assertion relaxation or scope extension is proposed.
+
+
+Fresh `npm run verify` passed (exit 0) on `74055d288cf305db502c2b4700b5380336de5556`, tree `97296301e936797cb8afaf65a281835e52d27f80`: fresh app/Worker checks, 1,079 test files / 11,320 tests passed (12 files / 67 tests skipped, 1 todo), build 13.40s. Six focused attendance files / 46 tests also passed. Logs: `/tmp/pr822-oct24-full.log`, `/tmp/pr822-oct24-focused.log`. Node 24.22.1/npm 11.9.0; fresh `npm ci` seed at main `aaac1883` copied privately after matching package and lock hashes. All 19,392 installed manifest entries matched before and after verification (manifest SHA-256 `a5f7820a16c0e68825ca9dfc1f329baea1f8acb359572efec32f3aad0a3edda0`). No tracked input changed; only generated historical-worker fixture and runner output. Telemetry disabled, loopback dev host, isolated Wrangler log. This receipt is documentation-only; native exact-head gates remain required before merge.

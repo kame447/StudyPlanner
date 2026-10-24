@@ -192,6 +192,9 @@ Not in MVP unless explicitly requested:
 
 - The app must feel easier than typical calendar/task apps
 - Avoid cluttered screens
+- Avoid redundant secondary labels, helper text, and descriptions that merely repeat the primary label or visible structure.
+- Let layout, grouping, spacing, and visual hierarchy communicate relationships and meaning before adding explanatory text.
+- Keep supporting text when necessary for clarity, accessibility, important constraints, or actionable feedback.
 - Do not show all information at once
 - Use progressive disclosure:
   - month view first
