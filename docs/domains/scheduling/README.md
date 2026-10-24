@@ -38,6 +38,8 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 
 ## Active work
 
+- [Planner projection transition boundary](work/planner-projection-boundary-handoff.md) — move pure accepted-mutation collection rules out of React orchestration without changing persistence or read/admission authority.
+
 - [Restore the accepted major event on Undo](work/month-event-undo-latest-handoff.md) — local two-reference correction with real-Local persistence and progress regression coverage; publication/native pending.
 
 - [Calendar recurrence evaluation](work/calendar-recurrence-evaluation-handoff.md) — reuse the selected occurrence rule; exact-content publication verification in progress.
@@ -59,3 +61,5 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 - [Continuous radial flick selection](work/radial-continuous-flick-handoff.md) — local same-finger selection, gesture ownership and capability-limited haptics; native acceptance pending.
 
 - [Final explicit-date deletion](work/recurring-last-date-delete-handoff.md) — local fix for a deleted final date reappearing after reload; existing storage/IDs retained, focused verification and old-reader evidence recorded.
+
+- [Week spanning-event keyboard access](work/week-spanning-keyboard-handoff.md) — Issue #780; named native action buttons, with read-only timetable and plan tap behavior preserved. Local verification passes; native browser acceptance remains pending.

@@ -9,8 +9,8 @@ import {
 
 const metadata: DecisionMetadata = {
   provider: 'openrouter',
-  requestedModel: 'typesafe/jev-1.13',
-  servedModel: 'typesafe/jev-1.13',
+  requestedModel: 'typesafe/jev-1.14',
+  servedModel: 'typesafe/jev-1.14',
   latencyMs: 1,
   inputTokens: 1,
   outputTokens: 1,

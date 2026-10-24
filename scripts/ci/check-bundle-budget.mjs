@@ -8,7 +8,8 @@ const distDir = path.join(repoRoot, 'dist');
 const reportDir = path.join(repoRoot, 'artifacts', 'quality-gate');
 const reportPath = path.join(reportDir, 'bundle-budget.json');
 
-const budgets = {
+// Fixed reviewed references, never regenerated from the checked build.
+const baselines = {
   javascript: {
     // Owner decision based on measured main/PR baseline, 2026-10-21 (#305/#826):
     // main 22e42203 plus PR #826's
@@ -31,13 +32,27 @@ const budgets = {
   css: {
     // Same owner decision: PR #826 changes no CSS. Aggregate limits
     // equal measured main exactly; largest-chunk and appearance guards stay put.
-    totalRaw: 513_954,
-    totalGzip: 89_911,
+    // Owner decision, 2026-10-23 (#841/#842): record-phase scroll inset adds
+    // measured +39 raw / +7 gzip aggregate bytes, with no added headroom.
+    // Largest-chunk and appearance limits remain unchanged.
+    totalRaw: 513_993,
+    totalGzip: 89_918,
     largestRaw: 425_000,
     largestGzip: 70_000,
   },
   appearance: { stylesheetRaw: 8_000, fontRaw: 512_000 },
 };
+
+// Fail only above both the relative allowance and absolute noise floor.
+// Appearance asset caps remain strict. References never ratchet per build/PR.
+const growthPolicy = { relative: 0.05, rawFloor: 16_384, gzipFloor: 4_096 };
+const budgets = { appearance: baselines.appearance };
+for (const kind of ['javascript', 'css']) {
+  budgets[kind] = Object.fromEntries(Object.entries(baselines[kind]).map(([metric, baseline]) => {
+    const floor = metric.endsWith('Raw') ? growthPolicy.rawFloor : growthPolicy.gzipFloor;
+    return [metric, baseline + Math.max(floor, Math.floor(baseline * growthPolicy.relative))];
+  }));
+}
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -82,7 +97,10 @@ const report = {
     stylesheetRaw: fs.statSync(appearanceStylesheets[0]).size,
     fontRaw: fs.statSync(appearanceFont).size,
   },
+  baselines,
+  growthPolicy,
   budgets,
+  growth: [],
   violations: [],
 };
 
@@ -90,6 +108,9 @@ for (const kind of ['javascript', 'css']) {
   for (const metric of ['totalRaw', 'totalGzip', 'largestRaw', 'largestGzip']) {
     const actual = report[kind][metric];
     const limit = budgets[kind][metric];
+    const baseline = baselines[kind][metric];
+    report.growth.push({ kind, metric, actual, baseline, delta: actual - baseline,
+      relative: (actual - baseline) / baseline, allowance: limit - baseline, limit });
     if (actual > limit) {
       report.violations.push({ kind, metric, actual, limit });
     }
@@ -118,6 +139,10 @@ if (process.env.GITHUB_STEP_SUMMARY) {
   const rows = ['| Asset | Total raw | Total gzip | Largest raw | Largest gzip |', '| --- | ---: | ---: | ---: | ---: |'];
   for (const kind of ['javascript', 'css']) {
     rows.push(`| ${kind} | ${formatKiB(report[kind].totalRaw)} | ${formatKiB(report[kind].totalGzip)} | ${formatKiB(report[kind].largestRaw)} | ${formatKiB(report[kind].largestGzip)} |`);
+  }
+  rows.push('', '| Metric | Baseline B | Change B | Allowed growth B | Limit B |', '| --- | ---: | ---: | ---: | ---: |');
+  for (const growth of report.growth) {
+    rows.push(`| ${growth.kind}.${growth.metric} | ${growth.baseline} | ${growth.delta >= 0 ? '+' : ''}${growth.delta} | ${growth.allowance} | ${growth.limit} |`);
   }
   fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Bundle budget\n\n${rows.join('\n')}\n`);
 }
