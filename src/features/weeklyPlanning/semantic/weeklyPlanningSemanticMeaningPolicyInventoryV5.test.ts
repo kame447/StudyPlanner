@@ -54,6 +54,21 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     expect(instructionFor('semantic_meaning_ownership')).toContain('does not recover semantic meaning');
   });
 
+  it('keeps co-stated effort meanings independent from quantity and from their storage location', () => {
+    const effort = instructionFor('effort_measurement');
+    expect(effort).toContain('each asserted current-turn effort estimate');
+    expect(effort).toContain('co-stated kinds remain separate');
+    expect(effort).toContain('duration_per_unit = time per explicit unit');
+    expect(effort).toContain('session_duration = one-session duration/limit');
+    expect(effort).toContain('total_duration = whole-work cost');
+    expect(effort).toContain("containing task's effortEstimates");
+    expect(effort).toContain('intended task/component/workload by exact localId');
+    expect(effort).toContain('including for nested workloads');
+    expect(effort).toContain('Do not omit a stated effort because quantity or another effort is present');
+    expect(effort).toContain('do not derive unstated totals');
+    expect(instructionFor('workload_quantity_effort')).not.toContain('Separate workload cost');
+  });
+
   it('keeps qualitative scope structural and does not reopen an approved material breakdown', () => {
     const workloadRule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
       (rule) => rule.id === 'workload_quantity_effort',
