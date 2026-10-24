@@ -1,5 +1,13 @@
 # Week spanning-event keyboard access
 
+## Current repository status (2026-10-24)
+
+[PR #808](https://github.com/kame447/StudyPlanner/pull/808) merged into `main` on 2026-10-23 UTC as `18562bcf885502f5a6a85caf06a3c37b3dfc86ce`. The merge is present in the inspected main snapshot `382fdff2a5ee98850aea2eb369eeaeee420d636d`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: draft PR #808; integration with actual main passes local full verification. Native browser gates remain pending.
 PR: https://github.com/kame447/StudyPlanner/pull/808
 Owner: Issue [#780](https://github.com/kame447/StudyPlanner/issues/780), keyboard scope only.

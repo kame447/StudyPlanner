@@ -1,5 +1,13 @@
 # Planner projection transition boundary
 
+## Current repository status (2026-10-24)
+
+[PR #816](https://github.com/kame447/StudyPlanner/pull/816) merged into `main` on 2026-10-23 UTC as `7ed272d0f72eb20e60f09982b03d28fe5914a626`. The merge is present in the inspected main snapshot `382fdff2a5ee98850aea2eb369eeaeee420d636d`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: current-main integration locally verified; native gates pending
 Updated: 2026-10-23
 Base: `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`

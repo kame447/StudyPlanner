@@ -1,5 +1,13 @@
 # Attendance pending-save boundary
 
+## Current repository status (2026-10-24)
+
+[PR #822](https://github.com/kame447/StudyPlanner/pull/822) merged into `main` on 2026-10-24 UTC as `cd63daf5f6780d334fd813f9e69307dd97034f0a`. The merge is present in the inspected main snapshot `382fdff2a5ee98850aea2eb369eeaeee420d636d`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: existing PR #822; current-main verification in progress.
 Base: main `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
 Branch: `refactor/attendance-pending-save-boundary`.

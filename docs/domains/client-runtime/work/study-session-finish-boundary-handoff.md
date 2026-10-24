@@ -1,5 +1,13 @@
 # Study session finish measurement boundary
 
+## Current repository status (2026-10-24)
+
+[PR #818](https://github.com/kame447/StudyPlanner/pull/818) merged into `main` on 2026-10-23 UTC as `4334c52206eae940fa9958a30b9d963b2a7cdbe1`. The merge is present in the inspected main snapshot `382fdff2a5ee98850aea2eb369eeaeee420d636d`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: active PR #818; current-main integration verification and native acceptance pending
 Owner: client runtime; related product contract [Issue #190](https://github.com/kame447/StudyPlanner/issues/190)
 

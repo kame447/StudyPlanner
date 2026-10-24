@@ -1,5 +1,13 @@
 # Material record preparation
 
+## Current repository status (2026-10-24)
+
+[PR #813](https://github.com/kame447/StudyPlanner/pull/813) merged into `main` on 2026-10-23 UTC as `606570c813fe111a162e15e07b22dd91bdc7f937`. The merge is present in the inspected main snapshot `382fdff2a5ee98850aea2eb369eeaeee420d636d`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: verified local candidate; no publication
 Branch: refactor/material-record-preparation
 Base: 22e42203a4df82b5432d4290b7b5ea3a4246b8c9
