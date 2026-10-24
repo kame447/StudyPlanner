@@ -28,7 +28,8 @@ export function assertPolicy(config) {
   assert(config.concurrency === 4 && config.tsconfigFile === 'tsconfig.json', 'Mutation capacity/compiler changed');
   assert(equal(config.plugins, ['@stryker-mutator/vitest-runner', '@stryker-mutator/typescript-checker']), 'Unexpected mutation plugin');
   assert(equal(config.reporters, ['clear-text', 'progress', 'json', 'event-recorder']), 'Unexpected reporter delegation contract');
-  assert(!config.mutator && !config.ignoreMutations && !config.testFiles && !config.disableTypeChecks, 'Unexpected mutation restriction');
+  assert(!config.mutator && !config.ignoreMutations && !config.testFiles, 'Unexpected mutation restriction');
+  assert(config.disableTypeChecks === '{*,!(scripts)/**/*,scripts/*,scripts/!(fixtures)/**/*}.{js,ts,jsx,tsx,html,vue,mjs,mts,cts,cjs}', 'Unexpected type-directive preprocessing scope');
 }
 
 export function partitionRanges(sources, ts) {
