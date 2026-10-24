@@ -98,7 +98,7 @@ describe('OpenRouter Decisions contract and gates', () => {
       .toMatchObject({ status: 'evaluated', metadata: { requestedModel: '~typesafe/jev-latest', servedModel: model } });
   });
 
-  it.each(['typesafe/jev-latest', '~typesafe/jev-latest', 'typesafe/jev-1.13', 'typesafe/jev-1.13-20260917', 'typesafe/jev-1.14-20990101', 'typesafe/jev-1.15-20261340', 'typesafe/jev-2.0', 'typesafe/jev-1.014', 'typesafe/jev-router', 'other/jev-1.15', null])('rejects an unsupported model %s', async (model) => {
+  it.each(['typesafe/jev-latest', '~typesafe/jev-latest', 'typesafe/jev-1.13', 'typesafe/jev-1.13-20260917', 'typesafe/jev-1.14-20990101', 'typesafe/jev-1.15-20261340', 'typesafe/jev-2.0', 'typesafe/jev-1.014', 'typesafe/jev-1.9999999999999999999999999', 'typesafe/jev-router', 'other/jev-1.15', null])('rejects an unsupported model %s', async (model) => {
     expect(await adapter({ ...decisionResponse(), model }).provider.evaluate(state))
       .toMatchObject({ status: 'unavailable', reason: 'model_mismatch' });
   });
