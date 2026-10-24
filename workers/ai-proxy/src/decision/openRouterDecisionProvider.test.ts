@@ -43,9 +43,9 @@ function chunkedResponse(chunks: readonly Uint8Array[], onCancel?: () => void): 
 afterEach(() => vi.useRealTimers());
 
 describe('OpenRouter Decisions contract and gates', () => {
-  it('uses the verified Decisions endpoint, pinned model and typed questions, retaining usage/cost', async () => {
+  it('uses the Decisions endpoint, stable latest alias and typed questions, retaining usage/cost', async () => {
     const { provider, fetchMock } = adapter(decisionResponse());
-    expect(JEV_MODEL).toEqual({ request: 'typesafe/jev-1.14', responses: ['typesafe/jev-1.14', 'typesafe/jev-1.14-20261014'] });
+    expect(JEV_MODEL).toEqual({ request: '~typesafe/jev-latest', responses: ['typesafe/jev-1.14', 'typesafe/jev-1.14-20261014'] });
     const result = await provider.evaluate(state);
     expect(result).toMatchObject({ status: 'evaluated', decision: 'create_plan', metadata: { inputTokens: 320, outputTokens: 40, costUsd: 0.00001344 } });
     expect(gateDecision(result)).toEqual({ status: 'accepted', decision: 'create_plan' });
@@ -93,12 +93,12 @@ describe('OpenRouter Decisions contract and gates', () => {
     expect(await adapter(value).provider.evaluate(state)).toMatchObject({ status: 'unavailable', reason: 'invalid_response' });
   });
 
-  it.each(JEV_MODEL.responses)('accepts a verified 1.14 response %s', async (model) => {
+  it.each([...JEV_MODEL.responses, 'typesafe/jev-1.15', 'typesafe/jev-1.15-20261020'])('accepts compatible Jev 1.x response %s', async (model) => {
     expect(await adapter({ ...decisionResponse(), model }).provider.evaluate(state))
-      .toMatchObject({ status: 'evaluated', metadata: { requestedModel: 'typesafe/jev-1.14', servedModel: model } });
+      .toMatchObject({ status: 'evaluated', metadata: { requestedModel: '~typesafe/jev-latest', servedModel: model } });
   });
 
-  it.each(['typesafe/jev-latest', 'typesafe/jev-1.13', 'typesafe/jev-1.13-20260917', 'typesafe/jev-1.14-20990101', null])('rejects an unverified model %s', async (model) => {
+  it.each(['typesafe/jev-latest', '~typesafe/jev-latest', 'typesafe/jev-1.13', 'typesafe/jev-1.13-20260917', 'typesafe/jev-1.14-20990101', 'typesafe/jev-1.15-20261340', 'typesafe/jev-2.0', 'typesafe/jev-1.014', 'typesafe/jev-router', 'other/jev-1.15', null])('rejects an unsupported model %s', async (model) => {
     expect(await adapter({ ...decisionResponse(), model }).provider.evaluate(state))
       .toMatchObject({ status: 'unavailable', reason: 'model_mismatch' });
   });
