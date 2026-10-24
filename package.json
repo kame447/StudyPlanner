@@ -68,9 +68,6 @@
     "@firebase/firestore@4.14.0": {
       "@grpc/grpc-js": "1.13.6"
     },
-    "vitest@3.2.7": {
-      "tinypool": "2.1.2"
-    },
     "miniflare@5.20261012.0-beta": {
       "undici": "7.30.1"
     },
