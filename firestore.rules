@@ -26,6 +26,16 @@ service cloud.firestore {
       return isOwner(resource.data.userId) || isAdmin();
     }
 
+    // A first approval transaction must see that its own deterministic document
+    // does not exist yet. Those ids embed the owner's uid, so another user still
+    // cannot learn whether such a document exists.
+    function canGetOwnedOrOwnAbsent(documentId, ownerIdPrefix) {
+      return (resource == null
+          && isSignedIn()
+          && documentId.split('%1F')[0] == ownerIdPrefix + request.auth.uid)
+        || (resource != null && canReadOwnedResource());
+    }
+
     function canCreateOwnedResource() {
       return isOwner(request.resource.data.userId);
     }
@@ -277,14 +287,16 @@ service cloud.firestore {
     }
 
     match /plans/{planId} {
-      allow read: if canReadOwnedResource();
+      allow get: if canGetOwnedOrOwnAbsent(planId, 'weekly-plan-');
+      allow list: if canReadOwnedResource();
       allow create: if canCreateLegacyScheduleResource();
       allow update: if canUpdateLegacyScheduleResource();
       allow delete: if canDeleteLegacyScheduleResource();
     }
 
     match /schedule_events/{eventId} {
-      allow read: if canReadOwnedResource();
+      allow get: if canGetOwnedOrOwnAbsent(eventId, 'plan:weekly-plan-');
+      allow list: if canReadOwnedResource();
       allow create: if canCreateOwnedResource()
         && hasScheduleEventMigration(request.resource.data.userId)
         && isValidScheduleEventDocument(eventId);
@@ -562,7 +574,8 @@ service cloud.firestore {
     }
 
     match /weekly_planning_approval_operations/{operationId} {
-      allow read: if canReadOwnedResource();
+      allow get: if canGetOwnedOrOwnAbsent(operationId, 'weekly-approval-');
+      allow list: if canReadOwnedResource();
       allow create: if canCreateOwnedResource()
         && request.resource.data.schemaVersion == 1
         && request.resource.data.savedItemCount >= 1
@@ -598,7 +611,8 @@ service cloud.firestore {
       allow delete: if false;
 
       match /weekly_planning_approval_items/{itemId} {
-        allow read: if canReadOwnedResource();
+        allow get: if canGetOwnedOrOwnAbsent(operationId, 'weekly-approval-');
+        allow list: if canReadOwnedResource();
         allow create: if canCreateOwnedResource()
           && request.resource.data.schemaVersion == 1
           && request.resource.data.status == 'saved'
