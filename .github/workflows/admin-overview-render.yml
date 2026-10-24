@@ -1,5 +1,8 @@
 name: Admin Overview Render
 
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+
 on:
   workflow_dispatch:
   pull_request:

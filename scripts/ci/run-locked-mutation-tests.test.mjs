@@ -89,7 +89,7 @@ describe('isolated mutation launcher integration', () => {
     const { root, result, prefix } = execute();
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(fs.readFileSync(path.join(root, 'install-args.json'), 'utf8')))
-      .toEqual(expect.arrayContaining(['vitest@3.2.7', 'typescript@5.9.3', '@stryker-mutator/core@10.1.1', '@stryker-mutator/vitest-runner@10.1.1', '@stryker-mutator/typescript-checker@10.1.1']));
+      .toEqual(expect.arrayContaining(['vitest@3.2.7', 'typescript@5.9.3', '@stryker-mutator/core@10.1.1', '@stryker-mutator/instrumenter@10.1.1', '@stryker-mutator/vitest-runner@10.1.1', '@stryker-mutator/typescript-checker@10.1.1']));
     expect(JSON.parse(fs.readFileSync(path.join(root, 'isolated-manifest.json'), 'utf8')).overrides).toEqual({ ...applicationOverrides, 'vitest@3.2.7': { tinypool: '2.1.2' } });
     expect(result.stdout).toContain('Isolated tinypool resolved from Vitest: 2.1.2');
     expect(fs.existsSync(prefix)).toBe(false);

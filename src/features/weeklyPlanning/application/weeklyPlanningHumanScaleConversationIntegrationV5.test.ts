@@ -597,6 +597,40 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(second.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_effort_estimate');
   });
 
+  it('retains a repaired side deadline and asks again for the unresolved effort (#825)', async () => {
+    const conversationId = 'compound-repair-retained-deadline';
+    const initial = planningDocument({ title: '数学', amount: 20, unitCode: 'problem', unitLabel: '問', sourceText: '数学20問' });
+    initial.tasks.push({ ...structuredClone(initial.tasks[0]), localId: 'english', title: '英語', workloads: [], sourceText: '英語' });
+    normalizeMock.mockResolvedValueOnce(acceptedResult(initial));
+    const first = await conversation.run(turnInput({ conversationId,
+      userText: '8月17日から23日で数学20問と英語の予定を作りたい', traceRequestId: 'compound-repair:1' }));
+    expect(first.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_effort_estimate');
+    const mathWorkloadId = first.stableV5Graph!.workloads.find(work => work.taskId === first.stableV5Graph!.tasks.find(task => task.title === '数学')!.id)!.id;
+    expect(first.state.lastQuestionContext?.topicId).toBe(mathWorkloadId);
+    const englishId = first.stableV5Graph!.tasks.find(task => task.title === '英語')!.id;
+
+    // The repair boundary can retain this valid update while rejecting the
+    // malformed effort contribution; the application must keep that question open.
+    const retained: WeeklyPlanningSemanticDocumentV5 = { ...initial, planningIntent: 'update_plan', planningWindow: null,
+      tasks: [{ ...initial.tasks[1], existingPublicId: englishId, temporalConstraints: [{
+        localId: 'english-deadline', targetLocalId: 'english', kind: 'deadline', constraintLevel: 'hard',
+        dateExpression: 'weekday:friday', namedTimePeriod: null, startTime: null, endTime: null,
+        precision: 'exact', sourceText: '英語の締切を金曜にして',
+      }] }] };
+    normalizeMock.mockResolvedValueOnce(acceptedResult(retained));
+    const second = await conversation.run(turnInput({ conversationId, previousState: first.state,
+      userText: '15分。あと英語の締切を金曜にして', traceRequestId: 'compound-repair:2', messages: [
+        { id: 'u1', role: 'user', content: '数学20問と英語の予定', createdAt: '2026-08-12T00:00:00.000Z' },
+        { id: 'a1', role: 'assistant', content: first.message, createdAt: '2026-08-12T00:00:01.000Z' },
+      ] }));
+    expect(second.stableV5Graph!.temporalConstraints).toContainEqual(expect.objectContaining({
+      taskId: englishId, kind: 'deadline', dateExpression: 'weekday:friday',
+    }));
+    expect(second.stableV5Graph!.effortEstimates.filter(effort => effort.targetFactId === mathWorkloadId)).toEqual([]);
+    expect(second.state.lastQuestionContext).toMatchObject({ targetSlot: 'stable_v5:missing_effort_estimate', topicId: mathWorkloadId });
+    expect(second.draftCandidates).toEqual([]);
+  });
+
   it('asks for completed duration and reserves buffer around the observed-pace estimate', async () => {
     const { first, second } = await runTwoTurnPlanningConversation({
       conversationId: 'conversation-observed-pace',
