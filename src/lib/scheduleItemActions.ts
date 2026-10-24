@@ -4,7 +4,7 @@ import type { Actual, ActualDraft, MonthEvent, Plan, PlanDraft } from '../types/
 import { createActualDraftForPlan } from './actualDrafts';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey, resolvePlanOccurrence } from './planRecurrence';
 import { SCHEDULE_RADIAL_ACTION_LABELS, SCHEDULE_RADIAL_ACTION_ORDER, type ScheduleRadialActionDescriptor } from './scheduleRadialActions';
-import { scheduleOccurrenceCoversDate, scheduleOccurrenceTimesForDate } from './weekViewLayout';
+import { scheduleOccurrenceCoversDate, scheduleOccurrenceTimesForDate } from '../domain/scheduleOccurrence';
 import { getEntryDurationMinutes, resolveEntryEndTime } from './entryTimeRange';
 import type { WeekPlanMoveTarget } from './weekPlanDrag';
 

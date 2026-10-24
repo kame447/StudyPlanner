@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createPairedWorkerSource } from './jev-contextual-paired-runtime.mjs';
+import { frozenJevPolicyPlugin } from './jev-contextual-frozen-policy.mjs';
 import { contextualArtifactCatalogVersion, validateArm } from './jev-contextual-paired-artifact.mjs';
 import { runtimeFingerprint, sha256, validateCorpus } from './jev-contextual-paired-eval.mjs';
 import { ARM_TOKEN_RESERVE_MS, ConsumptionLedger, PREREGISTERED_LIMITS, PREREGISTERED_PRICING, SEGMENT_TOKEN_LIFETIME_MS,
@@ -435,7 +436,8 @@ export async function buildWorkerBundle({ cases, preSend, dispatchesPerTurn = PR
   // the process cwd, making approval-bound code bytes depend on the caller.
   const output = await build({ stdin: { contents: source, resolveDir: ROOT, loader: 'ts' }, absWorkingDir: ROOT, bundle: true, format: 'esm',
     platform: 'browser', conditions: ['workerd', 'worker', 'browser'], external: ['cloudflare:*', 'node:*', SEGMENT_DATA_MODULE],
-    write: false, logLevel: 'silent', minify: false, legalComments: 'none' });
+    write: false, logLevel: 'silent', minify: false, legalComments: 'none',
+    plugins: [frozenJevPolicyPlugin] });
   const code = output.outputFiles[0].text;
   assert.equal(code.split(JSON.stringify(SEGMENT_DATA_MODULE)).length, 2, 'Runtime code must import its data module exactly once.');
   const casesJson = JSON.stringify(cases);
