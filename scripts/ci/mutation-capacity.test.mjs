@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import config from '../../stryker.config.mjs';
 
@@ -25,7 +26,13 @@ describe('weekly-planning mutation capacity contract', () => {
     expect(config.thresholds).toEqual({ high: 80, low: 60, break: 50 });
     expect(config.mutator).toBeUndefined();
     expect(config.ignoreMutations).toBeUndefined();
-    expect(config.disableTypeChecks).toBeUndefined();
+    expect(config.disableTypeChecks).toBe('**/!(unit0-jev-1.13-decisionPolicy).{js,ts,jsx,tsx,html,vue,mjs,mts,cts,cjs}');
+  });
+
+  it('retains the exact preregistered policy fixture instead of weakening its hash guard', () => {
+    const source = fs.readFileSync(new URL('../fixtures/unit0-jev-1.13-decisionPolicy.ts', import.meta.url));
+    const blobSha = createHash('sha1').update(`blob ${source.length}\0`).update(source).digest('hex');
+    expect(blobSha).toBe('bb5ffa2740bfca6d844ddb756a2cee8557b98d10');
   });
 
   it('retains complete JSON and partial events under the uploaded report directory', () => {

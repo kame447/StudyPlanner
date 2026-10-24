@@ -6,6 +6,9 @@ export default {
     '@stryker-mutator/typescript-checker',
   ],
   tsconfigFile: 'tsconfig.json',
+  // Preserve the preregistered fixture byte-for-byte; its hash guard also runs in the sandbox.
+  // This only disables Stryker's ts-nocheck prefix for the fixture, not any tests or mutations.
+  disableTypeChecks: '**/!(unit0-jev-1.13-decisionPolicy).{js,ts,jsx,tsx,html,vue,mjs,mts,cts,cjs}',
   mutate: [
     'src/features/weeklyPlanning/semantic/weeklyPlanningPendingQuestionV5.ts',
     'src/features/weeklyPlanning/semantic/weeklyPlanningStableV5ContextualAnswer.ts',
