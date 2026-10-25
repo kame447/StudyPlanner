@@ -4,7 +4,7 @@ import {
   buildWeeklyStudySeries,
   calculateTodayStudyMinutes,
 } from './studyAnalytics';
-import { isStudyRecordForDisplay, normalizeStudyRecordsForDisplay } from './studyRecords';
+import { isStudyRecordForDisplay, normalizeStudyRecordForDisplay, normalizeStudyRecordsForDisplay } from './studyRecords';
 import type { Actual, MonthEvent, Plan, StudyMaterial, StudySubject } from '../types/domain';
 
 const timestamp = '2026-05-01T00:00:00.000Z';
@@ -73,6 +73,32 @@ const materials: StudyMaterial[] = [
 ];
 
 describe('normalizeStudyRecordsForDisplay', () => {
+  it.each([
+    {
+      name: 'actual values before plan values',
+      fields: { subject: ' 英語 ', materialId: ' actual-book ', materialName: ' 単語帳 ' },
+      linkedPlan: plan({ subject: ' 数学 ', materialId: ' plan-book ', materialName: ' 問題集 ' }),
+      expected: { subject: '英語', materialId: 'actual-book', materialName: '単語帳' },
+    },
+    {
+      name: 'trimmed plan values when actual values are blank',
+      fields: { subject: ' ', materialId: ' ', materialName: ' ' },
+      linkedPlan: plan({ subject: ' 数学 ', materialId: ' plan-book ', materialName: ' 問題集 ' }),
+      expected: { subject: '数学', materialId: 'plan-book', materialName: '問題集' },
+    },
+    {
+      name: 'empty values without a plan',
+      fields: { subject: ' ', materialId: undefined, materialName: undefined },
+      linkedPlan: undefined,
+      expected: { subject: '', materialId: null, materialName: '' },
+    },
+  ])('preserves $name', ({ fields, linkedPlan, expected }) => {
+    expect(normalizeStudyRecordForDisplay({
+      actual: actual(fields),
+      plan: linkedPlan,
+    })).toMatchObject(expected);
+  });
+
   it('normalizes planned and standalone actuals into the same display shape', () => {
     const records = normalizeStudyRecordsForDisplay({
       plans: [
