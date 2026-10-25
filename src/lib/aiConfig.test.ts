@@ -41,6 +41,22 @@ describe('AI model configuration', () => {
     expect(resetAiConfig().model).toBe('gpt-eval-model');
   });
 
+  it.each(['openai', 'rules'] as const)('preserves the validated stored %s provider', (provider) => {
+    storage.set('studyplanner.ai.runtime.v1', JSON.stringify({ provider }));
+    expect(getAiConfig().provider).toBe(provider);
+  });
+
+  it.each(['unsupported', '', null, 42, {}])('rejects an invalid stored provider %j at the storage boundary', (provider) => {
+    vi.stubEnv('VITE_AI_PROVIDER', 'rules');
+    storage.set('studyplanner.ai.runtime.v1', JSON.stringify({ provider }));
+    expect(getAiConfig().provider).toBe('rules');
+  });
+
+  it('falls back to the default provider when the environment provider is invalid', () => {
+    vi.stubEnv('VITE_AI_PROVIDER', 'unsupported');
+    expect(getAiConfig().provider).toBe('openai');
+  });
+
   it('keeps rules-only configuration free of a provider model', () => {
     vi.stubEnv('VITE_AI_PROVIDER', 'rules');
     expect(getAiConfig()).toEqual({ provider: 'rules', baseUrl: '', model: '', apiKey: '' });

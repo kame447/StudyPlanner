@@ -167,18 +167,6 @@ function resolveRecordTitle(actual: Actual, plan?: Plan, monthEvent?: MonthEvent
   );
 }
 
-function resolveRecordSubject(actual: Actual, plan?: Plan): string {
-  return actual.subject.trim() || plan?.subject.trim() || '';
-}
-
-function resolveRecordMaterialName(actual: Actual, plan?: Plan): string {
-  return actual.materialName?.trim() || plan?.materialName?.trim() || '';
-}
-
-function resolveRecordMaterialId(actual: Actual, plan?: Plan): string | null {
-  return actual.materialId?.trim() || plan?.materialId?.trim() || null;
-}
-
 export function normalizeStudyRecordForDisplay({
   actual,
   plan,
@@ -197,9 +185,9 @@ export function normalizeStudyRecordForDisplay({
   const linkedMonthEvent = !plan && monthEvent && actual.planId === monthEvent.id && actual.userId === monthEvent.userId
     ? monthEvent : undefined;
   const title = resolveRecordTitle(actual, plan, linkedMonthEvent);
-  const subject = resolveRecordSubject(actual, plan) || (linkedMonthEvent ? '主要予定' : '');
-  const materialId = resolveRecordMaterialId(actual, plan);
-  const materialName = resolveRecordMaterialName(actual, plan);
+  const subject = actual.subject.trim() || plan?.subject.trim() || (linkedMonthEvent ? '主要予定' : '');
+  const materialId = actual.materialId?.trim() || plan?.materialId?.trim() || null;
+  const materialName = actual.materialName?.trim() || plan?.materialName?.trim() || '';
   const type = plan?.type ?? (linkedMonthEvent ? 'other'
     : actual.progressSource?.planType ?? (actual.progressSource?.kind === 'general-event' ? 'other' : 'study'));
   const sourceType = plan?.sourceType ?? (linkedMonthEvent ? 'manual' : undefined);
