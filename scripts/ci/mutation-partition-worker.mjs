@@ -11,24 +11,35 @@ const json = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 const write = (file, value) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n'); };
 export const coreHashes = {
   'dist/src/stryker.js': '40aad2f8b42dd95e4732d5d0aefb9c528f5e3ffae457f00399b146c429210252',
-  'dist/src/reporters/mutation-test-report-helper.js': 'a40ce24393f33aeb88024aefeeab8a401e867ce3f51bb643ca423d1ee44bbe28',
+  'dist/src/reporters/mutation-test-report-helper.js': 'f15e13fd5e7df56d9b126ebbcd284a9fe9c059a09508bda38c502ce039421a86',
 };
+
+export function attestVitestPool(vitestFile) {
+  const vitest = json(vitestFile);
+  if (/^5\./.test(vitest.version)) {
+    check(!vitest.dependencies?.tinypool && !vitest.optionalDependencies?.tinypool, 'Unexpected tinypool dependency in Vitest 5');
+    return { pool: 'vitest-builtin', tinypool: null };
+  }
+  const fromVitest = createRequire(vitestFile);
+  const version = json(fromVitest.resolve('tinypool/package.json')).version;
+  check(typeof version === 'string' && /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version), 'Missing exact resolved tinypool version');
+  return { pool: 'tinypool', tinypool: version };
+}
 
 export function attestTools(directory) {
   const requireTool = createRequire(path.join(directory, 'package.json'));
   const versions = { node: process.version };
   for (const name of ['core', 'instrumenter', 'vitest-runner', 'typescript-checker']) {
     const file = requireTool.resolve(`@stryker-mutator/${name}/package.json`);
-    check(json(file).version === '9.6.1', `Unreviewed mutation tool: ${name}`);
-    versions[name] = '9.6.1';
+    check(json(file).version === '10.1.1', `Unreviewed mutation tool: ${name}`);
+    versions[name] = '10.1.1';
   }
   const coreRoot = path.dirname(requireTool.resolve('@stryker-mutator/core/package.json'));
   for (const [file, expected] of Object.entries(coreHashes)) {
     check(sha256(fs.readFileSync(path.join(coreRoot, file))) === expected, 'Unreviewed Stryker completion/score-exit implementation');
   }
   for (const name of ['vitest', 'typescript']) versions[name] = json(requireTool.resolve(name + '/package.json')).version;
-  const fromVitest = createRequire(requireTool.resolve('vitest/package.json'));
-  versions.tinypool = json(fromVitest.resolve('tinypool/package.json')).version;
+  Object.assign(versions, attestVitestPool(requireTool.resolve('vitest/package.json')));
   return { requireTool, versions };
 }
 

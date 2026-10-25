@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { assertPolicy } from './mutation-partition.mjs';
 import { describe, expect, it } from 'vitest';
@@ -46,6 +47,12 @@ describe('weekly-planning mutation capacity contract', () => {
     ]) {
       expect(path.matchesGlob(path.resolve(file), path.resolve(config.disableTypeChecks)), file).toBe(false);
     }
+  });
+
+  it('retains the exact preregistered policy fixture instead of weakening its hash guard', () => {
+    const source = fs.readFileSync(new URL('../fixtures/unit0-jev-1.13-decisionPolicy.ts', import.meta.url));
+    const blobSha = createHash('sha1').update(`blob ${source.length}\0`).update(source).digest('hex');
+    expect(blobSha).toBe('bb5ffa2740bfca6d844ddb756a2cee8557b98d10');
   });
 
   it('retains complete JSON and partial events under the uploaded report directory', () => {

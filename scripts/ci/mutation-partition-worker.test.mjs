@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import base from '../../stryker.config.mjs';
 import { detectionPolicy, mutantIdentity, partitionRanges, scoreMutants, sha256, targets } from './mutation-partition.mjs';
-import { executeShardApi, prepareInventory } from './mutation-partition-worker.mjs';
+import { attestTools, attestVitestPool, coreHashes, executeShardApi, prepareInventory } from './mutation-partition-worker.mjs';
 import { createReporterState, strictReporter } from './mutation-partition-reporter.mjs';
 
 const root = path.resolve(new URL('../../', import.meta.url).pathname);
@@ -103,5 +104,57 @@ describe('independent full-scope instrumenter inventory', () => {
   });
   it.each(['crossing', 'overlap'])('rejects %s rather than inventing a complete range proof', async mode => {
     await expect(prepareInventory({ root, instrumenter: fakeInstrumenter(mode), ts, config: base, identity: {}, versions: {} })).rejects.toThrow();
+  });
+});
+
+const toolFixtures = [];
+afterEach(() => { for (const directory of toolFixtures.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
+function toolFixture() {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mutation-attestation-'));
+  toolFixtures.push(directory);
+  const write = (name, value) => {
+    const file = path.join(directory, 'node_modules', name, 'package.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(value));
+    return file;
+  };
+  return { directory, write };
+}
+
+describe('partition tool and worker-pool attestation', () => {
+  it('records the Vitest 5 built-in pool as an explicit serializable identity', () => {
+    const { write } = toolFixture();
+    expect(attestVitestPool(write('vitest', { version: '5.0.5' })))
+      .toEqual({ pool: 'vitest-builtin', tinypool: null });
+  });
+  it.each(['dependencies', 'optionalDependencies'])('rejects an unexpected Vitest 5 %s pool', field => {
+    const { write } = toolFixture();
+    expect(() => attestVitestPool(write('vitest', { version: '5.0.5', [field]: { tinypool: '2.1.2' } })))
+      .toThrow('Unexpected tinypool dependency in Vitest 5');
+  });
+  it('retains the exact legacy pool identity and rejects a missing version', () => {
+    const { write } = toolFixture();
+    const vitest = write('vitest', { version: '3.2.7' });
+    write('tinypool', { version: '2.1.2', exports: { './package.json': './package.json' } });
+    expect(attestVitestPool(vitest)).toEqual({ pool: 'tinypool', tinypool: '2.1.2' });
+    write('tinypool', { exports: { './package.json': './package.json' } });
+    expect(() => attestVitestPool(vitest)).toThrow('Missing exact resolved tinypool version');
+  });
+  it.each(['core', 'instrumenter', 'vitest-runner', 'typescript-checker'])('rejects unreviewed %s versions', changed => {
+    const { directory, write } = toolFixture();
+    for (const name of ['core', 'instrumenter', 'vitest-runner', 'typescript-checker']) {
+      write('@stryker-mutator/' + name, { version: name === changed ? '9.6.1' : '10.1.1' });
+    }
+    expect(() => attestTools(directory)).toThrow('Unreviewed mutation tool: ' + changed);
+  });
+  it('rejects changed completion/score implementations even with the reviewed version', () => {
+    const { directory, write } = toolFixture();
+    for (const name of ['core', 'instrumenter', 'vitest-runner', 'typescript-checker']) write('@stryker-mutator/' + name, { version: '10.1.1' });
+    for (const file of Object.keys(coreHashes)) {
+      const target = path.join(directory, 'node_modules/@stryker-mutator/core', file);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, 'unreviewed implementation');
+    }
+    expect(() => attestTools(directory)).toThrow('Unreviewed Stryker completion/score-exit implementation');
   });
 });

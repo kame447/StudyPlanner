@@ -21,7 +21,17 @@ export async function withIsolatedMutationTools(useTools) {
   };
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const resolvedPool = prefix => {
-    const fromVitest = createRequire(path.join(prefix, 'node_modules/vitest/package.json'));
+    const vitestFile = path.join(prefix, 'node_modules/vitest/package.json');
+    const installedVitest = JSON.parse(fs.readFileSync(vitestFile, 'utf8'));
+    // Vitest 5 owns its worker pool; it no longer depends on tinypool.
+    // Fail closed if that contract changes, rather than ignoring a pool dependency.
+    if (/^5\./.test(installedVitest.version)) {
+      if (installedVitest.dependencies?.tinypool || installedVitest.optionalDependencies?.tinypool) {
+        throw new Error('Unexpected tinypool dependency in Vitest 5');
+      }
+      return null;
+    }
+    const fromVitest = createRequire(vitestFile);
     const poolFile = fs.realpathSync(fromVitest.resolve('tinypool/package.json'));
     const modulesRoot = fs.realpathSync(path.join(prefix, 'node_modules'));
     if (!poolFile.startsWith(modulesRoot + path.sep)) throw new Error('Tinypool resolved outside the tool installation');
@@ -38,13 +48,14 @@ export async function withIsolatedMutationTools(useTools) {
   const rootPool = resolvedPool(root);
   const verifyRootPool = () => {
     const current = resolvedPool(root);
-    if (lock.packages?.[current.lockKey]?.version !== current.version
+    if (current === null && rootPool === null) return;
+    if (!current || !rootPool || lock.packages?.[current.lockKey]?.version !== current.version
       || current.lockKey !== rootPool.lockKey || current.version !== rootPool.version) {
       throw new Error('Root resolved tinypool is not locked or changed');
     }
   };
   verifyRootPool();
-  const tinypoolVersion = rootPool.version;
+  const tinypoolVersion = rootPool?.version;
   const typescriptVersion = version('typescript');
   const before = snapshotLockedToolchain(root);
   const manifestPaths = ['package.json', 'package-lock.json'];
@@ -66,9 +77,10 @@ export async function withIsolatedMutationTools(useTools) {
     }));
     run(npmCli, [
       'install', '--prefix', directory, '--no-save', '--no-audit', '--no-fund',
-      '@stryker-mutator/core@9.6.1',
-      '@stryker-mutator/vitest-runner@9.6.1',
-      '@stryker-mutator/typescript-checker@9.6.1',
+      '@stryker-mutator/core@10.1.1',
+      '@stryker-mutator/instrumenter@10.1.1',
+      '@stryker-mutator/vitest-runner@10.1.1',
+      '@stryker-mutator/typescript-checker@10.1.1',
       'vitest@' + vitestVersion, 'typescript@' + typescriptVersion,
     ]);
     for (const [name, expected] of [['vitest', vitestVersion], ['typescript', typescriptVersion]]) {
@@ -76,9 +88,13 @@ export async function withIsolatedMutationTools(useTools) {
       if (actual !== expected) throw new Error('Isolated ' + name + ' version mismatch');
       console.log('Isolated ' + name + ': ' + actual);
     }
-    const isolatedPoolVersion = resolvedPool(directory).version;
-    if (isolatedPoolVersion !== tinypoolVersion) throw new Error('Isolated tinypool version mismatch');
-    console.log('Isolated tinypool resolved from Vitest: ' + isolatedPoolVersion);
+    const isolatedPool = resolvedPool(directory);
+    if ((isolatedPool === null) !== (rootPool === null) || isolatedPool?.version !== tinypoolVersion) {
+      throw new Error('Isolated tinypool version mismatch');
+    }
+    console.log(isolatedPool === null
+      ? 'Isolated Vitest 5 built-in worker pool (no tinypool dependency)'
+      : 'Isolated tinypool resolved from Vitest: ' + isolatedPool.version);
     verifyRootPool();
     verifyLockedToolchain(root, before);
     return await useTools({ directory, root, run });

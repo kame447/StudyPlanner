@@ -5,12 +5,13 @@ import { BookshelfMaterialDialog } from './BookshelfMaterialDialog';
 import { MemoryStorage } from '../repositories/localPersistenceConcurrency.testUtils';
 
 const delivery = vi.hoisted(() => {
-  let release!: () => void, started!: () => void;
+  let release!: () => void, started!: () => void, completed!: () => void;
   return { requested: vi.fn(), starting: new Promise<void>(resolve => { started = resolve; }), started: () => started(),
+    loaded: new Promise<void>(resolve => { completed = resolve; }), completed: () => completed(),
     ready: new Promise<void>(resolve => { release = resolve; }), release: () => release() };
 });
 vi.mock('./BookshelfView', async importOriginal => {
-  delivery.requested(); delivery.started(); await delivery.ready; return await importOriginal();
+  delivery.requested(); delivery.started(); await delivery.ready; const module = await importOriginal(); delivery.completed(); return module;
 });
 vi.mock('react-dom', () => ({ createPortal: (node: unknown) => node }));
 let renderer: ReactTestRenderer;
@@ -32,7 +33,7 @@ it('keeps delivery lazy and passes current-owner entry actions to the real books
   act(() => renderer.update(<p>Home</p>));
   const current = { ...props, userId: 'current-owner', onInitialActionHandled: handledCurrent };
   act(() => renderer.update(<DeferredBookshelfView {...current} initialAction="add-material" />));
-  await act(async () => { delivery.release(); await vi.dynamicImportSettled(); });
+  await act(async () => { delivery.release(); await delivery.loaded; await vi.dynamicImportSettled(); });
   expect(renderer.root.findByType(BookshelfMaterialDialog).props.userId).toBe('current-owner');
   expect(handledCurrent).toHaveBeenCalledOnce();
   expect(handledOld).not.toHaveBeenCalled();
