@@ -140,6 +140,7 @@ This repository should prioritize a clean MVP first.
 - The current canonical roadmap and active Issue/work records define active scope, priority, checkpoint, and the next implementation step.
 - For task progress and execution order, follow the current roadmap/Issue rather than inferring status from this file or from historical task documents.
 - `docs/archive/` is historical evidence and never overrides current code, tests, or canonical domain documentation.
+- When a repository's documentation and its existing code disagree, follow the conventions used in the existing code, and in your final reply point out each inconsistency you found between the documentation and the code.
 
 ## Documentation governance
 
