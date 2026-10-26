@@ -19,6 +19,9 @@ it('keeps month/year labels and date selection without the redundant boundary ca
       const next = renderer.root.findAllByType('button').find(node =>
         node.props['aria-label']?.startsWith(`${nextDate.slice(0, 4)}年 ${Number(nextDate.slice(5, 7))}月1日`));
       expect(next).toBeDefined();
+      expect(next!.findByType('strong').children).toEqual(['1']);
+      const selected = renderer.root.findAllByType('button').find(node => node.props['aria-current'] === 'date');
+      expect(selected!.findByType('strong').children).toEqual(['31']);
       act(() => next!.props.onClick());
       expect(onChangeDay).toHaveBeenCalledWith(nextDate);
     } finally { act(() => renderer.unmount()); }

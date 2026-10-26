@@ -46,10 +46,6 @@ const TOUCH_MOVE_TOLERANCE_PX = 9;
 const POINTER_MOVE_TOLERANCE_PX = 4;
 const CLICK_SUPPRESSION_MS = 700;
 
-function distance(startX: number, startY: number, x: number, y: number): number {
-  return Math.hypot(x - startX, y - startY);
-}
-
 export function useScheduleItemActionPress<TItem>() {
   const [activeAction, setActiveAction] = useState<ActiveScheduleItemAction<TItem> | null>(null);
   const pressRef = useRef<ScheduleActionPress<TItem> | null>(null);
@@ -141,7 +137,7 @@ export function useScheduleItemActionPress<TItem>() {
     }
     const tolerance =
       press.inputKind === 'touch' ? TOUCH_MOVE_TOLERANCE_PX : POINTER_MOVE_TOLERANCE_PX;
-    if (distance(press.startX, press.startY, x, y) <= tolerance) return;
+    if (Math.hypot(x - press.startX, y - press.startY) <= tolerance) return;
 
     press.moved = true;
     if (activeAction?.key === press.key) {

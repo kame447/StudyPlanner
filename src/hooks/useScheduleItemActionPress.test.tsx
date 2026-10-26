@@ -57,6 +57,12 @@ it('permits touch jitter within the tolerance and opens at the exact threshold',
   act(() => { vi.advanceTimersByTime(700); });
   expect(press.shouldSuppressClick()).toBe(false);
 });
+it('cancels a diagonal pointer movement whose total distance exceeds the tolerance', () => {
+  start('pointer');
+  act(() => { press.move(53, 53); vi.advanceTimersByTime(SCHEDULE_LONG_PRESS_MS); });
+  expect(press.activeAction).toBeNull();
+  act(() => { expect(press.finish('a')).toBe(false); });
+});
 it('uses a quick hold threshold just longer than a normal tap', () => {
   expect(SCHEDULE_LONG_PRESS_MS).toBeGreaterThanOrEqual(160);
   expect(SCHEDULE_LONG_PRESS_MS).toBeLessThanOrEqual(180);
