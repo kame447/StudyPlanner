@@ -162,6 +162,20 @@ describe('material progress updates', () => {
     ).toBe(100);
   });
 
+  it.each([
+    [undefined, 20],
+    [Number.NaN, 20],
+    [Number.POSITIVE_INFINITY, 20],
+    [Number.NEGATIVE_INFINITY, 20],
+    [-5, 0],
+    [12.5, 12.5],
+  ])('uses the normalized total %s when clamping progress', (totalUnits, expected) => {
+    expect(calculateNextMaterialUnit(material({ totalUnits }), {
+      materialId: 'material-1',
+      toUnit: 20,
+    })).toBe(expected);
+  });
+
   it('does not go below zero', () => {
     expect(
       calculateNextMaterialUnit(material({ currentUnit: 10 }), {

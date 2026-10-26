@@ -152,10 +152,6 @@ function isWeekdayDate(dateString: string): boolean {
   return weekday !== 'sun' && weekday !== 'sat';
 }
 
-function compareDateStringsDesc(left: string, right: string): number {
-  return right.localeCompare(left);
-}
-
 export function normalizeRecurrenceRule(
   rule: Partial<RecurrenceRule> | null | undefined,
   index: number,
@@ -241,7 +237,7 @@ export function compareRecurrenceRules(left: RecurrenceRule, right: RecurrenceRu
     return left.isOverride ? -1 : 1;
   }
 
-  const startDateDiff = compareDateStringsDesc(left.startDate, right.startDate);
+  const startDateDiff = right.startDate.localeCompare(left.startDate);
 
   if (startDateDiff !== 0) {
     return startDateDiff;

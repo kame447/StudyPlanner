@@ -91,7 +91,7 @@ async function resolveMaterialDetails(
   try {
     const { payload, owner } = await workerRequest(buildMaterialMetadataDetailsEndpoint(proxyUrl), query);
     const normalized = normalizeDetailsResponse(payload);
-    if (!normalized?.candidate) return { candidate };
+    if (!normalized) return { candidate };
 
     return {
       owner,

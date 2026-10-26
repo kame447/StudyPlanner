@@ -33,10 +33,6 @@ function formatShortDate(date: string): string {
   return `${Number(month)}/${Number(day)}`;
 }
 
-function normalizeKey(value: string): string {
-  return value.trim().toLocaleLowerCase('ja');
-}
-
 function isIncompleteMaterial(material: StudyMaterial): boolean {
   if (material.status === 'archived') return false;
   if (typeof material.totalUnits !== 'number' || typeof material.currentUnit !== 'number') {
@@ -62,7 +58,7 @@ function addCandidate(
   seenTargets: Set<string>,
   candidate: StarterPromptCandidate,
 ): void {
-  const targetKey = normalizeKey(candidate.key);
+  const targetKey = candidate.key.trim().toLocaleLowerCase('ja');
   if (!targetKey || seenTargets.has(targetKey)) return;
   seenTargets.add(targetKey);
   candidates.push(candidate);

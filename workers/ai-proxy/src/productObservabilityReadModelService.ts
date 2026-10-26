@@ -105,10 +105,6 @@ function dailyId(environment: ObservabilityEnvironment, localDate: string): stri
   return `${environment}:${localDate}`;
 }
 
-function activeUserWindowId(environment: ObservabilityEnvironment, asOfDate: string): string {
-  return `${environment}:${asOfDate}`;
-}
-
 function userSummaryCollection(environment: ObservabilityEnvironment): string {
   return `${USER_SUMMARY_COLLECTION_PREFIX}_${environment}`;
 }
@@ -484,7 +480,7 @@ export class ProductObservabilityReadModelService {
       })),
       {
         collection: ACTIVE_USER_WINDOW_COLLECTION,
-        id: activeUserWindowId(params.environment, params.toDate),
+        id: `${params.environment}:${params.toDate}`,
       },
       { collection: ROLLUP_STATE_COLLECTION, id: ROLLUP_STATE_ID },
     ];
