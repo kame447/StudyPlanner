@@ -48,10 +48,6 @@ function formatWeekHeading(dateString: string): string {
   return `${date.getFullYear()}年 ${date.getMonth() + 1}月 第${Math.max(0, weekIndex) + 1}週`;
 }
 
-function dayNumber(dateString: string): number {
-  return Number(dateString.slice(-2));
-}
-
 function dateDistanceInDays(left: string, right: string): number {
   const leftDate = parseDate(left);
   const rightDate = parseDate(right);
@@ -265,7 +261,7 @@ function ScheduleDayStrip({ selectedDate, onChangeDay }: ScheduleDayStripProps) 
               aria-label={formatDayHeading(date)}
             >
               <span>{weekday}</span>
-              <strong>{dayNumber(date)}</strong>
+              <strong>{Number(date.slice(-2))}</strong>
             </button>
           </Fragment>
         );

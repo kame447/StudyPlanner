@@ -78,6 +78,23 @@ describe('home dashboard schedule semantics', () => {
     expect(dashboard.currentStreak).toBe(0);
   });
 
+  it.each([
+    ['before a recorded session', '2026-09-05', '09:00', '10:00', '2026-09-05T08:30:00', 0],
+    ['during a recorded session', '2026-09-05', '09:00', '10:00', '2026-09-05T09:30:00', 30],
+    ['after a recorded session', '2026-09-05', '09:00', '10:00', '2026-09-05T10:30:00', 60],
+    ['during an overnight session', '2026-09-04', '23:30', '00:30', '2026-09-05T00:15:00', 45],
+  ])('counts elapsed actual minutes %s', (_label, occurrenceDate, actualStartTime, actualEndTime, now, expected) => {
+    const dashboard = buildHomeDashboardModel({
+      plans: [],
+      actuals: [actual({ planId: null, occurrenceDate, actualStartTime, actualEndTime })],
+      todos: [],
+      now: new Date(now),
+    });
+
+    expect(dashboard.weekActualMinutesByNow).toBe(expected);
+    expect(dashboard.weekActualMinutes).toBe(60);
+  });
+
   it('continues to count standalone study actuals', () => {
     const standalone = actual({
       id: 'standalone',

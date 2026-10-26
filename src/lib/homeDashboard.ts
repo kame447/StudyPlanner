@@ -57,10 +57,6 @@ function plannedMinutesByNow(plan: Plan, date: string, today: string, nowTime: s
   return elapsedEntryMinutes(date, plan.startTime, plan.endTime, today, nowTime);
 }
 
-function actualMinutesByNow(actual: Actual, today: string, nowTime: string): number {
-  return elapsedEntryMinutes(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, today, nowTime);
-}
-
 function buildStudyDateSet(actuals: Actual[]): Set<string> {
   return new Set(
     actuals
@@ -158,7 +154,9 @@ export function buildHomeDashboardModel({
       0,
     );
     weekActualMinutesByNow += dayActuals.reduce(
-      (sum, actual) => sum + actualMinutesByNow(actual, today, nowTime),
+      (sum, actual) => sum + elapsedEntryMinutes(
+        actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, today, nowTime,
+      ),
       0,
     );
 
