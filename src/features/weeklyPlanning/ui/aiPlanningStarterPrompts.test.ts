@@ -102,6 +102,18 @@ describe('buildAiPlanningStarterPrompts', () => {
     expect(prompts.filter((prompt) => prompt.includes('情報処理試験'))).toHaveLength(1);
   });
 
+  it('deduplicates target keys with different surrounding whitespace and case', () => {
+    const options = buildAiPlanningStarterPromptOptions({
+      referenceDate: '2026-08-21',
+      plans: [plan({ title: '  SYSTEM DESIGN  ' })],
+      todos: [todo({ title: 'system design' })],
+      materials: [material({ name: 'System Design' })],
+    });
+
+    expect(options.filter((option) => option.target !== null)).toHaveLength(1);
+    expect(options[0]?.target).toMatchObject({ kind: 'plan', id: 'plan' });
+  });
+
   it('uses a generic prompt for an overdue task instead of telling the user to meet a past date', () => {
     const [prompt] = buildAiPlanningStarterPrompts({
       referenceDate: '2026-08-21',

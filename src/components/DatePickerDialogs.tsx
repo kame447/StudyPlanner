@@ -26,10 +26,6 @@ function getYear(dateString: string): number {
   return Number(dateString.slice(0, 4));
 }
 
-function getMonth(dateString: string): number {
-  return Number(dateString.slice(5, 7));
-}
-
 export function WeekPickerDialog({
   open,
   selectedDate,
@@ -37,7 +33,7 @@ export function WeekPickerDialog({
   onClose,
 }: WeekPickerDialogProps) {
   const activeYear = getYear(selectedDate);
-  const activeMonth = getMonth(selectedDate);
+  const activeMonth = Number(selectedDate.slice(5, 7));
   const selectedWeekStart = startOfWeek(selectedDate);
   const [year, setYear] = useState(activeYear);
   const [month, setMonth] = useState(activeMonth);

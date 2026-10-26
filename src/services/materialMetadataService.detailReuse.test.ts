@@ -75,6 +75,19 @@ describe('material search selection detail receipt', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it.each([undefined, null, 'invalid', { title: 'missing required fields' }])(
+    'keeps the original selection when the details candidate is invalid: %j',
+    async invalidCandidate => {
+      const original = candidate('one');
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ candidate: invalidCandidate }),
+      } as Response);
+      await expect(resolveMaterialMetadataCandidate(original)).resolves.toBe(original);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('resolves broad discovery and candidates beyond the four-enrichment cap only when selected', async () => {
     mocks.candidates = Array.from({ length: 6 }, (_, index) => ({ ...candidate(String(index)), ...(index === 1 ? { resolutionRequired: true } : {}) }));
     const result = await searchMaterialMetadata('series');

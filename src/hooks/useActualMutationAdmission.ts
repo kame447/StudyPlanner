@@ -20,8 +20,6 @@ declare const materialBaselineBrand: unique symbol;
 export type MaterialEditBaseline = Readonly<{ materialId: string; [materialBaselineBrand]: true }>;
 
 function planKey(ownerId: string, planId: string) { return JSON.stringify(['plan', ownerId, planId]); }
-function materialKey(ownerId: string, id: string) { return JSON.stringify(['material', ownerId, id]); }
-function subjectKey(ownerId: string, id: string) { return JSON.stringify(['subject', ownerId, id]); }
 function keysFor(target: ActualActionTarget): string[] {
   return [
     ...(target.id ? [JSON.stringify(['actual', target.userId, target.id])] : []),
@@ -73,8 +71,8 @@ export function useActualMutationAdmission(
     let currentMaterials: StudyMaterial[] = [];
     let currentSubjects: StudySubject[] = [];
     const dependencyKeys = (materialIds: string[], subjectIds: string[]) => [
-      ...materialIds.map(id => materialKey(ownerId ?? '', id)),
-      ...subjectIds.map(id => subjectKey(ownerId ?? '', id)),
+      ...materialIds.map(id => JSON.stringify(['material', ownerId ?? '', id])),
+      ...subjectIds.map(id => JSON.stringify(['subject', ownerId ?? '', id])),
     ];
     const pendingReason = (targets: ActualActionTarget[], exclusivePlanIds: string[] = [], materialIds: string[] = [], subjectIds: string[] = []) => {
       const tickets = new Set([
