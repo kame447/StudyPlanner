@@ -1011,6 +1011,11 @@ export function createWeeklyPlanningTurnDiagnosticV2(
 ): WeeklyPlanningTraceTurnDiagnosticEntry {
   const tracker: TruncationTracker = { fields: new Set(), originalCounts: {} };
   const events = input.debugTraceEvents ?? [];
+  for (const event of events) {
+    if (event.stage === 'trace_collector_truncated') {
+      markCount(tracker, 'debugTraceEvents', numberValue(record(event.data).droppedEvents) ?? 0);
+    }
+  }
   const configuration = latestEventData(events, 'runtime_configuration_evaluated');
   const prepared = latestEventData(events, 'semantic_normalizer_prepared');
   const pipelineInput = latestEventData(events, 'semantic_pipeline_input');

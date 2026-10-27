@@ -61,27 +61,28 @@ async function run(movableConference: boolean) {
 }
 
 describe('Offline incident diagnosis; model response is injected, no external calls', () => {
-  it('loses interpretation and scheduling diagnostics across isolated execution', async () => {
+  it('retains interpretation and scheduling diagnostics across isolated execution while disposing process trace', async () => {
     const r = await run(true);
     expect(r.output.result.failure).toBeUndefined();
     expect(r.recordedStages).toContain('semantic_provider_response');
     expect(r.recordedStages).toContain('semantic_validation_result');
     expect(r.afterStages).toEqual([]);
     expect(r.output).not.toHaveProperty('debugTraceEvents');
-    expect(r.output.result).not.toHaveProperty('debugTraceEvents');
+    expect(r.output.result.debugTraceEvents?.length).toBeGreaterThan(0);
     const diagnostic = createWeeklyPlanningTurnDiagnosticV2({
       id: 'offline', sessionId: 'offline', logicalConversationId: 'offline', requestId: r.payload.input.traceRequestId,
       sequence: 0, turnIndex: 0, occurredAt: '2026-10-26T08:00:24.347Z', observedAt: '2026-10-26T08:00:24.352Z',
       expireAt: '2027-04-24T08:00:25.872Z', userText,
       assistantMessage: r.output.result.message, outcome: 'preview_ready', previewCount: r.output.result.draftCandidates.length,
       dialogueRendererTrace: r.output.result.dialogueRendererTrace, responseSource: r.output.result.responseSource,
-      debugTraceEvents: r.afterStages,
+      debugTraceEvents: r.output.result.debugTraceEvents,
     });
-    expect(diagnostic.aiInterpreter.input.requests).toEqual([]);
-    expect(diagnostic.aiInterpreter.rawResponses).toEqual([]);
-    expect(diagnostic.aiInterpreter.structuredResults).toEqual([]);
-    expect(diagnostic.constraintContext.scheduler?.preview).toBeNull();
-    expect(diagnostic.diagnostics.truncation?.applied).toBe(false);
+    expect(diagnostic.aiInterpreter.input.requests.length).toBeGreaterThan(0);
+    expect(diagnostic.aiInterpreter.rawResponses.length).toBeGreaterThan(0);
+    expect(diagnostic.aiInterpreter.structuredResults.length).toBeGreaterThan(0);
+    expect(diagnostic.constraintContext.scheduler?.preview).toBeTruthy();
+    expect(diagnostic.diagnostics.truncation?.applied).toBe(true);
+    expect(diagnostic.diagnostics.truncation?.fields.length).toBeGreaterThan(0);
     expect(diagnostic.diagnostics.dialogueRenderer?.response.renderedText).toBeTruthy();
     console.log('TRACE_PROOF', JSON.stringify({ during: r.recordedStages, after: r.afterStages.length,
       returnKeys: Object.keys(r.output), requests: diagnostic.aiInterpreter.input.requests.length,
