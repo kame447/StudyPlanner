@@ -13,7 +13,7 @@ import { isPersistedWeeklyPlanningState } from '../weeklyPlanningStateCodec';
 import { createWeeklyDraftBlocksFromPreviewCandidates, createWeeklyPlanningPreviewBlocks, createWeeklyPlanningPreviewDisplayBlock } from '../preview/weeklyPlanningPreviewBlocks';
 import { hydrateWeeklyPlanningStableV5RuntimeSession, resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
 import { classifyWeeklyPlanningApprovalAvailability } from './weeklyPlanningApprovalAvailability';
-import { createWeeklyPlanningFixedEventRegistrationCandidates, weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventRegistration';
+import { createWeeklyPlanningFixedEventRegistrationCandidates, weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventOnlyInteraction';
 
 afterEach(resetWeeklyPlanningStableV5RuntimeSessionsForTest);
 

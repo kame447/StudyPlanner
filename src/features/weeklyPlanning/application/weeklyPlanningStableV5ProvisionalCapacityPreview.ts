@@ -8,7 +8,7 @@ import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningS
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
-import { weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventRegistration';
+import { weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventOnlyInteraction';
 import type {
   WeeklyPlanningStableV5PlanningEvaluation,
 } from './weeklyPlanningStableV5PlanningEvaluation';

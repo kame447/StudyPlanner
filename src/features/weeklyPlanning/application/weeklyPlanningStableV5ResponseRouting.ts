@@ -3,8 +3,10 @@ import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSch
 import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
-import { fixedEventCommunicationFacts, fixedEventOnlyInteractionStatus } from './weeklyPlanningFixedEventOnlyInteraction';
-import { createWeeklyPlanningFixedEventRegistrationCandidates, weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventRegistration';
+import {
+  createWeeklyPlanningFixedEventRegistrationCandidates, fixedEventCommunicationFacts, fixedEventOnlyInteractionStatus,
+  weeklyPlanningFixedEventRegistrationFacts,
+} from './weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { evaluateWeeklyPlanningInsufficientCapacityProposalV5 } from './weeklyPlanningStableV5CapacityProposal';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
