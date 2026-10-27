@@ -13,7 +13,7 @@ import { dispatchUserContextRouting } from './userContextRoutingDispatch';
 import { jevExecutionMode } from './decisionExecutionMarker';
 
 const metadata: DecisionMetadata = {
-  provider: 'openrouter', requestedModel: JEV_MODEL.request, servedModel: JEV_MODEL.request,
+  provider: 'openrouter', requestedModel: JEV_MODEL.request, servedModel: JEV_MODEL.responses[1],
   latencyMs: 1, inputTokens: null, outputTokens: null, costUsd: null,
   requestBytes: 40, responseBytes: 100,
 };
@@ -36,7 +36,7 @@ const catalogs: Array<{ name: string; catalog: DecisionQuestionCatalog<string> }
 
 function responseBody(catalog: DecisionQuestionCatalog<string>) {
   return {
-    model: JEV_MODEL.request,
+    model: JEV_MODEL.responses[1],
     answers: {
       [catalog.choiceAnswerKey]: {
         type: 'choice', choice: catalog.decisions[0], confidence: 1,

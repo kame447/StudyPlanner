@@ -14,7 +14,7 @@ vi.mock('../../../../src/lib/firebaseClient', () => ({
   getFirebaseAuth: () => ({ currentUser: { getIdToken: async () => 'fixture-session' } }),
 }));
 
-const metadata = { provider: 'openrouter' as const, requestedModel: JEV_MODEL.request, servedModel: JEV_MODEL.request,
+const metadata = { provider: 'openrouter' as const, requestedModel: JEV_MODEL.request, servedModel: JEV_MODEL.responses[1],
   latencyMs: 1, inputTokens: null, outputTokens: null, costUsd: null, requestBytes: 10, responseBytes: 100 };
 const context = {
   purpose: 'focused_authorization' as const, requestId: 'request-before', inputRevision: 7,
@@ -22,7 +22,7 @@ const context = {
   state: { currentUserText: 'private-input', lastAssistantMessage: null },
 };
 function body() {
-  return { model: JEV_MODEL.request, answers: {
+  return { model: JEV_MODEL.responses[1], answers: {
     authorization: { type: 'choice', choice: 'create_plan', confidence: 1, probabilities: { create_plan: 1, fallback: 0 } },
     condition_change: { type: 'noul', noul: 0 }, independent_meaning: { type: 'noul', noul: 0 },
   } };
