@@ -137,9 +137,12 @@ async function submit(page, scenario) {
     const accepted = [...trace].reverse().find(e => e.stage === 'semantic_validation_result' && e.data.accepted)?.data.parsedDocument ?? null;
     const branch = [...trace].reverse().find(e => e.stage === 'runtime_branch_selected')?.data ?? null;
     const reply = state.messages.at(-1)?.content ?? '';
-    expect(reply, 'live reply must not be the technical fallback').not.toContain('返信を作れませんでした');
     const candidates = (state.previewCandidates ?? []).map(c => ({ title: c.title, date: c.date, startTime: c.startTime, endTime: c.endTime, source: c.source }));
-    await writeFile(path.join(evidenceDir, `${scenario.name}.json`), JSON.stringify({ utterance: scenario.text, accepted, branch: branch?.branch, questionCode: branch?.basis?.questionCode ?? null, reply, candidates, calls }, null, 2));
+    // Evidence is written before judging so a failed live turn can be diagnosed.
+    const stages = trace.filter(e => /renderer|dialogue|validation|branch|error|threw|repair/.test(e.stage))
+      .map(e => ({ stage: e.stage, severity: e.severity, data: JSON.stringify(e.data).slice(0, 4000) }));
+    await writeFile(path.join(evidenceDir, `${scenario.name}.json`), JSON.stringify({ utterance: scenario.text, accepted, branch: branch?.branch, questionCode: branch?.basis?.questionCode ?? null, reply, candidates, calls, stages }, null, 2));
+    expect(reply, 'live reply must not be the technical fallback').not.toContain('返信を作れませんでした');
   }
   return state.previewCandidates ?? [];
 }

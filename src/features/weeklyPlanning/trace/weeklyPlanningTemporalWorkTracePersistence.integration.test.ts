@@ -21,7 +21,7 @@ const CONVERSATION = 'weekly-conversation-a23e4567-e89b-52d3-a456-426614174000';
 const SENTINEL = 'future-temporal-work-detail';
 const TEXT = '明日は13時40分から16時20分まで埋まっています。明日の13〜17時の間に1時間数学をしたい';
 // The new temporal instruction must be part of the actual provider request.
-const INSTRUCTION_EVIDENCE = 'preferred_window=soft only';
+const INSTRUCTION_EVIDENCE = 'must-fit clock ranges for work are hard';
 const REPAIR_EVIDENCE = 'preferred-window-hard-clock-bounds-canonicalized';
 
 function providerDocument() {

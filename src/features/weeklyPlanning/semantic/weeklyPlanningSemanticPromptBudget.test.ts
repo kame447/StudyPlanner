@@ -40,14 +40,14 @@ const baselinePendingEffort = { questionCode: 'missing_effort_estimate', graphRe
 // Full message-array hashes after the reviewed temporal/work semantics instructions.
 // Unrelated instructions and all byte ceilings retain their prior contract.
 it.each([
-  ['5', baselinePendingEffort, '0bd3b552987abba9b996e8f5ad597e13634074f4a3d137feb65638891a53689e'],
-  ['5分', baselinePendingEffort, '8ccf37c8846943210bfa6a3bb8d91fbc46d5b131e164ae7fcd417473c6c4f50c'],
-  ['15分。あと英語の締切を金曜にして', baselinePendingEffort, 'e4bb02e4e95f2492c329f6b6c4d3239884ec8994d2f7338c2abdeb7dcb1bb5b1'],
-  ['全部で60分', baselinePendingEffort, '35bedcac4e153924307a155d0d092c48b00e58c9664875171ed93a2374e4ac81'],
-  ['15分くらい', baselinePendingEffort, '84ae4bdfbc138d91a2a3496ff274fc41f4a51618ed338d6555a381cabf5f9752'],
-  ['5', { ...baselinePendingEffort, graphRevision: 1 }, '14f7a96ff4de2c3aa8afca0700187363b1e039a8625484465cc29813da672ba8'],
-  ['5', { questionCode: 'quantity_role_unresolved', graphRevision: 2 }, '2130bc014e7c898358c8946f614a6929e71bc7a6229976cb1c772c1dd07a3f6f'],
-  ['5', null, 'e762c40365bfb23bb5974e685df24fad61ef4ac9a23fd04bc41199cce95f61b0'],
+  ['5', baselinePendingEffort, '31da97126d0d51844ff8d2d8da7ed106c3988148ff1004fadcd8264024404262'],
+  ['5分', baselinePendingEffort, '4b99273d6e370acdcd4b35885da3cc4a104ce5ab2e1ed4f7c881222e640f56bb'],
+  ['15分。あと英語の締切を金曜にして', baselinePendingEffort, '4f69210de378af7e9070f4b9e1267d48c56a2e501395048c237492ec3f537535'],
+  ['全部で60分', baselinePendingEffort, '76fc07be1eca07dbd361171ee90d336b043da6477f232037edfb49ba91c37e84'],
+  ['15分くらい', baselinePendingEffort, '6f92e66d75dbb19cebac6af6f9955a40ce92cc9d86781d2ba7fcd79102845d9d'],
+  ['5', { ...baselinePendingEffort, graphRevision: 1 }, '2feaab7501aa5b26f7c25321f18ed79bf10a847b646e1fdf25af92eacb9544d8'],
+  ['5', { questionCode: 'quantity_role_unresolved', graphRevision: 2 }, '1d0ae5e603684d2853915346c5e160b16a266260a4a93f000ba638eb2f68d7a4'],
+  ['5', null, '3164195b252d08fd9710ac320a4c59055e194268185e5ae696b62ab1692d1bd4'],
 ] as const)('pins the reviewed temporal/work prompt bytes for %s / %j', (userText, pendingQuestion, sha256) => {
   const messages = createWeeklyPlanningSemanticBaseMessagesV5({ userText, publicStateSummary: { graphRevision: 2, pendingQuestion } });
   expect(createHash('sha256').update(JSON.stringify(messages)).digest('hex')).toBe(sha256);

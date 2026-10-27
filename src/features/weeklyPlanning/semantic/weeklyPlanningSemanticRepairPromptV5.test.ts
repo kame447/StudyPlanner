@@ -109,7 +109,7 @@ describe('Stable V5 semantic repair prompt', () => {
     const system = messages[0]?.content ?? '';
 
     expect(system).toContain(
-      'Relative dates symbolic.',
+      'Keep relative dates symbolic.',
     );
     expect(payload.requiredChanges).toHaveLength(1);
     expect(payload.requiredChanges?.[0]).toContain(
