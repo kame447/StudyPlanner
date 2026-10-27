@@ -30,12 +30,12 @@ export function freezeControlledCandidateQuestion(domain: ControlledCandidateDom
 }
 export function validControlledCandidateSessionRecords(state: PlanningIntakeState | undefined, ownerId: string, conversationId: string): boolean {
   const raw = state?.lastQuestionContext?.controlledCandidate;
-  if (state?.controlledCandidateProtocolVersion !== undefined && (state.controlledCandidateProtocolVersion !== 1
-    || !decodeC5Ledger(state.c5SelectionLedger, ownerId, conversationId))) return false;
+  const protocolVersion = state?.controlledCandidateProtocolVersion;
+  const ledger = protocolVersion === 1 ? decodeC5Ledger(state?.c5SelectionLedger, ownerId, conversationId) : null;
+  if (protocolVersion !== undefined && (protocolVersion !== 1 || !ledger)) return false;
   if (raw === undefined) return true;
-  if (state?.controlledCandidateProtocolVersion !== 1) return false;
+  if (protocolVersion !== 1) return false;
   const decoded = decodeControlledCandidateQuestion(raw, ownerId, conversationId);
-  const ledger = decodeC5Ledger(state?.c5SelectionLedger, ownerId, conversationId);
   const context = state?.lastQuestionContext;
   return Boolean(decoded && ledger && context && questionMatchesContext(decoded.basis.binding, context)
     && decoded.basis.binding.selectionEpoch === ledger.lastEpoch);
