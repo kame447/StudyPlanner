@@ -171,7 +171,7 @@ export function continueWeeklyPlanningStableV5RuntimeTurnCore(
     ...(!provisionalCapacityOutput && responseRoute.unregistered.length > 0
       ? { message: output.message + weeklyPlanningUnregisteredFixedEventMessage(responseRoute.unregistered) } : {}),
     ...(presentedRegistrations.length > 0 || responseRoute.unregistered.length > 0
-      ? { communicationFacts: weeklyPlanningFixedEventRegistrationFacts(presentedRegistrations, input.plans, [], responseRoute.unregistered) } : {}),
+      ? { communicationFacts: weeklyPlanningFixedEventRegistrationFacts(presentedRegistrations, input.plans, [], responseRoute.unregistered, output.draftCandidates.length) } : {}),
     interactionOutcome: { kind: 'apply' },
     ...(output.draftCandidates.length > 0 && !output.preserveExistingPreview
       ? { previewConstraintSatisfaction: projectWeeklyPlanningPreviewConstraintSatisfaction({

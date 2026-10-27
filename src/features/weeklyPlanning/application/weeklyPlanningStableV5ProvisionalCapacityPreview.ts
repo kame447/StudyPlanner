@@ -111,7 +111,7 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
   const registrations = params.registrationCandidates ?? [];
   const candidates = [...registrations, ...params.preview.candidates];
   const registrationFacts = registrations.length > 0 || (params.unregistered?.length ?? 0) > 0
-    ? weeklyPlanningFixedEventRegistrationFacts(registrations, params.input.plans, [], params.unregistered) : undefined;
+    ? weeklyPlanningFixedEventRegistrationFacts(registrations, params.input.plans, [], params.unregistered, candidates.length) : undefined;
   const overlapText = registrationFacts?.eventRegistration?.overlaps.map(overlap =>
     `${overlap.date}の${overlap.titles.join('と')}は${overlap.startTime}–${overlap.endTime}が重複しています。`).join('') ?? '';
 

@@ -130,7 +130,10 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
           '固定候補は指定日時の未保存プレビューです。previewPromotionControlLabelで明示承認を案内し、保存済みと言わない。eventRegistration.overlapsの日付・区間・両タイトルを明示。移動・分割・削除は禁止。',
         ] : []),
         ...(input.communication.eventRegistration.unregistered?.length ? [
-          'unregisteredのタイトルと未対応理由を必ず明示（multiple_intervals:複数区間、crosses_midnight:日跨ぎ）。候補なしは承認案内せずmanualEntryへ。',
+          'unregisteredのタイトルと未対応理由を必ず明示（multiple_intervals:複数区間、crosses_midnight:日跨ぎ）。',
+          input.previewCount > 0
+            ? 'プレビューがあれば承認案内。'
+            : '全候補なし。承認案内せずmanualEntryへ。',
         ] : []),
         ...(input.communication.eventRegistration.workAwaitingAuthorization?.length ? [
           'eventRegistration.workAwaitingAuthorizationの作業は、計画作成の依頼をまだ受けていないため未配置です。固定予定の候補とは区別して未配置であることを伝え、その作業も配置する場合は「この条件で予定を作って」と送る既存の依頼経路を案内してください。',

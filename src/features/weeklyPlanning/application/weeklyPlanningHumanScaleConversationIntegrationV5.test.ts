@@ -1115,7 +1115,9 @@ describe('Stable V5 human-scale conversation integration', () => {
         targetLocalId: task.localId, startTime: `${10 + i}:00`, endTime: `${11 + i}:00` };
       return task;
     });
-    const first = await runFixedHandoffReading({ conversationId, userText, document: initial, act: null });
+    const first = await runFixedHandoffReading({ conversationId, userText, document: initial, act: null,
+      acts: [{ kind: 'request_event_registration', targetPublicId: 'does-not-exist' }] });
+    expect(first.reading.document.conversationActs).toEqual([{ kind: 'request_event_registration', targetPublicId: null, targetResolution: 'unresolved' }]);
     expect(first.result.draftCandidates).toEqual([]);
     const ids = first.result.stableV5Graph!.tasks.map(task => task.id);
     const named = await runFixedHandoffReading({ conversationId, userText: '固定予定1だけ登録して',
@@ -1144,6 +1146,7 @@ describe('Stable V5 human-scale conversation integration', () => {
         { kind: 'request_event_registration', targetPublicId: null },
         { kind: 'request_event_registration', targetPublicId: ids[0] },
         { kind: 'request_event_registration', targetPublicId: ids[0] },
+        { kind: 'request_event_registration', targetPublicId: 'does-not-exist' },
       ] });
     expect(union.result.draftCandidates.map(c => [c.title, c.startTime, c.endTime]))
       .toEqual([['固定予定0', '10:00', '11:00'], ['固定予定2', '12:00', '13:00']]);
@@ -1188,9 +1191,10 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(next.result.state.shouldSavePlan).toBe(false);
   });
 
-  it.each([false, true])('discloses unsupported registration intervals, all targets unsupported=%s', async allUnsupported => {
-    const conversationId = `fixed-unsupported-${allUnsupported}`;
-    const userText = '8月17日から23日の予定です。部活と夜勤と連日予定を登録して。';
+  it.each([[false, false], [true, false], [true, true]])('discloses unsupported registration intervals, all targets unsupported=%s, study preview=%s', async (allUnsupported, studyPreview) => {
+    const conversationId = `fixed-unsupported-${allUnsupported}-${studyPreview}`;
+    const userText = '8月17日から23日の予定です。部活と夜勤と連日予定を登録して。'
+      + (studyPreview ? '数学の予定も20分作って。' : '');
     const document = fixedHandoffDocument(userText, 'fixed_task');
     document.planningIntent = 'discuss';
     const overnight = structuredClone(document.tasks[0]);
@@ -1203,19 +1207,25 @@ describe('Stable V5 human-scale conversation integration', () => {
       ...multiple.temporalConstraints[0], localId: `multiple-${i}`, targetLocalId: 'multiple', dateExpression,
     }));
     document.tasks = [...(allUnsupported ? [] : document.tasks), overnight, multiple];
+    if (studyPreview) {
+      document.planningIntent = 'create_plan';
+      const study = planningDocument({ title: '数学', amount: 20, unitCode: 'minute', unitLabel: '分', sourceText: userText }).tasks[0];
+      study.localId = 'math'; study.workloads[0].localId = 'math-work'; document.tasks.push(study);
+    }
     const clientModule = await import('../../../services/ai/openAiCompatibleClient');
-    const clientSpy = vi.spyOn(clientModule, 'createOpenAiCompatibleClient').mockReturnValue({
-      createChatCompletion: vi.fn(async request => {
+    const rendererClient = vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async request => {
         const body = JSON.parse(request.messages[request.messages.length - 1].content);
         return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(body, { actionId: body.actionId,
           actionKind: body.applicationDecision.actionKind, questionCode: body.applicationDecision.questionCode,
           groundingAcknowledgement: null, text: '夜勤は日付をまたぐため、連日予定は複数の日付や時間帯があるため、候補に含めていません。'
-            + (allUnsupported ? '「予定」から「予定を追加」で入力してください。' : '部活の候補はまだ保存していません。「この内容で仮予定にする」から確認してください。') }));
-      }),
-    });
+            + (allUnsupported && !studyPreview ? '「予定」から「予定を追加」で入力してください。'
+              : `${studyPreview ? '数学' : '部活'}の候補はまだ保存していません。「この内容で仮予定にする」から確認してください。`) }));
+      });
+    const clientSpy = vi.spyOn(clientModule, 'createOpenAiCompatibleClient').mockReturnValue({ createChatCompletion: rendererClient });
     try {
       const turn = await runFixedHandoffReading({ conversationId, userText, document, act: 'request_event_registration' });
-      expect(turn.result.draftCandidates).toEqual(allUnsupported ? [] : [expect.objectContaining({ title: '部活' })]);
+      expect(turn.result.draftCandidates).toEqual(studyPreview ? [expect.objectContaining({ durationMinutes: 20, source: 'weekly_exam_prep' })]
+        : allUnsupported ? [] : [expect.objectContaining({ title: '部活' })]);
       expect(turn.result.communicationFacts?.eventRegistration?.unregistered).toEqual([
         { taskId: turn.result.stableV5Graph!.tasks.find(task => task.title === '夜勤')!.id, title: '夜勤', reason: 'crosses_midnight' },
         { taskId: turn.result.stableV5Graph!.tasks.find(task => task.title === '連日予定')!.id, title: '連日予定', reason: 'multiple_intervals' },
@@ -1224,12 +1234,24 @@ describe('Stable V5 human-scale conversation integration', () => {
       expect(turn.result.message).toContain('連日予定は複数の日付や時間帯があるため');
       expect(turn.result.state.shouldSavePlan).toBe(false);
       expect(turn.result.responseSource).toBe('ai');
-      expect(turn.result.state.shouldCreateDraft).toBe(!allUnsupported);
-      if (allUnsupported) {
+      expect(turn.result.state.shouldCreateDraft).toBe(!allUnsupported || studyPreview);
+      if (allUnsupported && !studyPreview) {
         expect(turn.result.communicationFacts?.statusReason).toBe('fixed_event_manual_entry');
         expect(turn.result.communicationFacts?.manualEntry).toMatchObject({ navigationLabel: '予定', actionLabel: '予定を追加' });
         expect(turn.result.message).toContain('「予定」から「予定を追加」');
         expect(turn.result.message).not.toContain('この内容で仮予定にする');
+      } else if (studyPreview) {
+        expect(turn.result.communicationFacts?.statusReason).toBe('fixed_event_registration_preview');
+        expect(turn.result.communicationFacts).not.toHaveProperty('manualEntry');
+        expect(turn.result.communicationFacts?.eventRegistration?.candidates).toEqual([]);
+        expect(turn.result.message).toContain('数学の候補');
+        expect(turn.result.message).toContain('この内容で仮予定にする');
+        const sent = rendererClient.mock.calls[0][0];
+        const body = JSON.parse(sent.messages[sent.messages.length - 1].content);
+        expect(body.applicationDecision.previewCount).toBe(1);
+        expect(body.applicationDecision.communication.eventRegistration.candidates).toEqual([]);
+        expect(sent.messages[sent.messages.length - 1].content).toContain('プレビューがあれば承認案内');
+        expect(sent.messages[sent.messages.length - 1].content).not.toContain('候補なしは承認案内せずmanualEntryへ');
       }
     } finally { clientSpy.mockRestore(); }
   });
@@ -1718,9 +1740,11 @@ describe('Stable V5 human-scale conversation integration', () => {
       resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
       expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toHaveLength(1);
 
-      const nextText = '分かりました';
+      const nextText = 'その対象を登録して';
       const next = await runFixedHandoffReading({ conversationId, userText: nextText,
-        document: noNewEventFacts(), act: null });
+        document: noNewEventFacts(), act: null,
+        acts: [{ kind: 'request_event_registration', targetPublicId: 'does-not-exist' }] });
+      expect(next.reading.document.conversationActs).toEqual([{ kind: 'request_event_registration', targetPublicId: null, targetResolution: 'unresolved' }]);
       expect(next.result.preserveExistingPreview).toBe(true);
       expect(next.result.state.draftGenerationIntent).toBe('not_requested');
       expect(next.result.state.lastQuestionContext).toBeUndefined();
@@ -1802,6 +1826,11 @@ describe('Stable V5 human-scale conversation integration', () => {
       expect(stored[0].aiInterpreter.structuredResults).toEqual(expect.arrayContaining([
         expect.objectContaining({ accepted: true, structuredResult: expect.objectContaining({
           conversationActs: [{ kind: 'request_event_registration', targetPublicId: null }],
+        }) }),
+      ]));
+      expect(stored[1].aiInterpreter.structuredResults).toEqual(expect.arrayContaining([
+        expect.objectContaining({ accepted: true, structuredResult: expect.objectContaining({
+          conversationActs: [{ kind: 'request_event_registration', targetPublicId: null, targetResolution: 'unresolved' }],
         }) }),
       ]));
       expect(stored[0].diagnostics.dialogueRenderer.request.promptContext).toEqual(context);

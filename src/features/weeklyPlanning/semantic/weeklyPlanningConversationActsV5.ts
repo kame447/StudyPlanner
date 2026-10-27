@@ -46,7 +46,7 @@ export function sanitizeWeeklyPlanningConversationActsV5(value: unknown): Weekly
   });
   return { acts, diagnostics };
 }
-/** Recheck current public task/component IDs; unknown named resume must not become explicit null. */
+/** Recheck current public task/component IDs; unknown resume/registration targets must not become explicit null. */
 export function resolveWeeklyPlanningConversationActTargetsV5(params: {
   acts: readonly SemanticConversationActV5[];
   publicStateSummary?: Record<string, unknown>;
@@ -59,7 +59,7 @@ export function resolveWeeklyPlanningConversationActTargetsV5(params: {
     if (act.targetPublicId === null || known.has(act.targetPublicId)) return act;
     diagnostics.push(`conversationActs[${index}].targetPublicId:degraded-unknown-topic`);
     return { ...act, targetPublicId: null,
-      ...(act.kind === 'resume_topic' ? { targetResolution: 'unresolved' as const } : {}) };
+      ...(act.kind === 'resume_topic' || act.kind === 'request_event_registration' ? { targetResolution: 'unresolved' as const } : {}) };
   });
   return { acts, diagnostics };
 }

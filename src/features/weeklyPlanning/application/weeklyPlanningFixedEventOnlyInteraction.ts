@@ -87,7 +87,7 @@ export function projectWeeklyPlanningFixedEventRegistration(params: {
   registrationActs: readonly SemanticConversationActV5[];
   currentTurnId: string;
 }): { candidates: WeeklyDraftCandidate[]; unregistered: WeeklyPlanningUnregisteredFixedEvent[] } {
-  const acts = params.registrationActs.filter(act => act.kind === 'request_event_registration');
+  const acts = params.registrationActs.filter(act => act.kind === 'request_event_registration' && act.targetResolution !== 'unresolved');
   const unregistered: WeeklyPlanningUnregisteredFixedEvent[] = [];
   if (acts.length === 0 || params.compilation.status === 'needs_resolution'
     || params.compilation.issues.some(issue => issue.blocking)) return { candidates: [], unregistered };
@@ -131,6 +131,7 @@ export function projectWeeklyPlanningFixedEventRegistration(params: {
 export function weeklyPlanningFixedEventRegistrationFacts(
   candidates: WeeklyDraftCandidate[], plans: Plan[], workAwaitingAuthorization: string[] = [],
   unregistered: WeeklyPlanningUnregisteredFixedEvent[] = [],
+  previewCandidateCount = candidates.length,
 ): WeeklyPlanningFixedEventCommunicationFacts {
   const overlaps: NonNullable<WeeklyPlanningFixedEventCommunicationFacts['eventRegistration']>['overlaps'] = [];
   candidates.forEach((candidate, index) => {
@@ -143,7 +144,7 @@ export function weeklyPlanningFixedEventRegistrationFacts(
         titles: [candidate.title, other.title] });
     });
   });
-  return { ...fixedEventCommunicationFacts(candidates.length > 0 ? 'fixed_event_registration_preview' : 'fixed_event_manual_entry'), eventRegistration: { eventCreatedByTurn: false, candidates, overlaps,
+  return { ...fixedEventCommunicationFacts(previewCandidateCount > 0 ? 'fixed_event_registration_preview' : 'fixed_event_manual_entry'), eventRegistration: { eventCreatedByTurn: false, candidates, overlaps,
     ...(unregistered.length > 0 ? { unregistered } : {}),
     ...(workAwaitingAuthorization.length > 0 ? { workAwaitingAuthorization } : {}),
   } };
