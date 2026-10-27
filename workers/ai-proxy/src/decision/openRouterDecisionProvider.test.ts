@@ -98,6 +98,31 @@ describe('OpenRouter Decisions contract and gates', () => {
       .toMatchObject({ status: 'evaluated', metadata: { requestedModel: '~typesafe/jev-latest', servedModel: model } });
   });
 
+  it.each([
+    ['2026-10-27T00:00:00.000Z', '20261027', '20261028'],
+    ['2026-10-27T23:59:59.999Z', '20261027', '20261028'],
+    ['2026-12-31T23:59:59.999Z', '20261231', '20270101'],
+    ['2028-02-28T23:59:59.999Z', '20280228', '20280229'],
+    ['2028-02-29T23:59:59.999Z', '20280229', '20280301'],
+  ])('accepts today but rejects tomorrow snapshots at UTC %s', async (now, today, tomorrow) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(now));
+    const todayModel = `typesafe/jev-1.15-${today}`;
+    expect(await adapter({ ...decisionResponse(), model: todayModel }).provider.evaluate(state))
+      .toMatchObject({ status: 'evaluated', metadata: { servedModel: todayModel } });
+
+    const tomorrowModel = `typesafe/jev-1.15-${tomorrow}`;
+    const { provider, fetchMock } = adapter({ ...decisionResponse(), model: tomorrowModel });
+    const result = await provider.evaluate(state);
+    expect(result).toMatchObject({
+      status: 'unavailable', reason: 'model_mismatch',
+      metadata: { servedModel: null, inputTokens: 320, outputTokens: 40, costUsd: 0.00001344 },
+    });
+    expect(gateDecision(result)).toEqual({ status: 'unavailable', reason: 'model_mismatch' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(result)).not.toContain(tomorrowModel);
+  });
+
   it.each(['typesafe/jev-latest', '~typesafe/jev-latest', 'typesafe/jev-1.13', 'typesafe/jev-1.13-20260917', 'typesafe/jev-1.14-20990101', 'typesafe/jev-1.15-20261340', 'typesafe/jev-2.0', 'typesafe/jev-1.014', 'typesafe/jev-1.9999999999999999999999999', 'typesafe/jev-router', 'other/jev-1.15', null])('rejects an unsupported model %s', async (model) => {
     expect(await adapter({ ...decisionResponse(), model }).provider.evaluate(state))
       .toMatchObject({ status: 'unavailable', reason: 'model_mismatch' });

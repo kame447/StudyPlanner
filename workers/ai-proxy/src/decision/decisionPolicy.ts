@@ -22,7 +22,7 @@ export function isSupportedJevServedModel(model: unknown): model is string {
   const day = Number(date.slice(6, 8));
   const timestamp = Date.UTC(year, month - 1, day);
   return timestamp >= Date.UTC(2026, 9, 14)
-    && timestamp <= Date.now() + 86_400_000
+    && timestamp <= Date.now()
     && new Date(timestamp).toISOString().slice(0, 10)
       === `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
 }
