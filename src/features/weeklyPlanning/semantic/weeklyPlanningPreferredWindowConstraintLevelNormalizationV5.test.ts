@@ -80,6 +80,18 @@ describe('Stable V5 preferred-window constraint-level normalization', () => {
     expect(JSON.parse(result.rawResponse).tasks[0].temporalConstraints[1].localId).toBe('constraint-1__latest_end_2');
   });
 
+  it('keeps a hard window hard when explicit clocks accompany a named period', () => {
+    const value = JSON.parse(response('preferred_window', 'hard'));
+    Object.assign(value.tasks[0].temporalConstraints[0], { namedTimePeriod: 'afternoon', startTime: '13:00', endTime: '17:00' });
+    const result = normalizeWeeklyPlanningPreferredWindowConstraintLevelsV5(JSON.stringify(value));
+    expect(JSON.parse(result.rawResponse).tasks[0].temporalConstraints.map((c: Record<string, unknown>) =>
+      [c.kind, c.constraintLevel, c.namedTimePeriod, c.startTime, c.endTime])).toEqual([
+      ['earliest_start', 'hard', null, '13:00', null],
+      ['latest_end', 'hard', null, null, '17:00'],
+    ]);
+    expect(result.repairs).toEqual(['preferred-window-hard-clock-bounds-canonicalized:0:0']);
+  });
+
   it('retains the existing soft canonicalization for named-period-only windows', () => {
     const value = JSON.parse(response('preferred_window', 'hard'));
     value.tasks[0].temporalConstraints[0].namedTimePeriod = 'afternoon';

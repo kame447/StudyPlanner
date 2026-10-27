@@ -208,45 +208,51 @@ function findWorkItemFragments(params: {
   // into five-minute pieces without adding or losing requested time.
   if (params.duration % quantum !== 0) return null;
   const windows = workItemClockWindows(params);
-  const windowsByDate = new Map([...windows.windowsByDate].map(([date, values]) => [date, [...values]]));
-  for (const preference of preferredPlacementsForWorkItem({
+  // Explicit preferences keep their rank, then the base windows. Within a tier the
+  // ordered dates (reserve day last, load balance) precede segment length.
+  const tiers = preferredPlacementsForWorkItem({
     placements: params.context.input.preferredPlacements ?? [], item: params.item, dates: params.dates,
-  })) {
-    for (const date of preference.dates) {
-      const preferred = preferredPlacementWindows({
-        placement: preference, date, windowsByDate: windows.windowsByDate,
-        hardAvailableByDate: preference.window ? windows.hardAvailableByDate : windows.dateOnlyHardAvailableByDate,
-        notBefore: params.notBefore,
-      });
-      windowsByDate.set(date, [...(windowsByDate.get(date) ?? []), ...preferred]);
-    }
-  }
-  const segments = freePlacementSegments({
-    dates: params.dates, windowsByDate, busy: params.context.busy,
-    breakMinutes: params.context.breakMinutes, notBefore: params.notBefore,
-  });
+  }).map((preference) => new Map(preference.dates.map((date) => [date, preferredPlacementWindows({
+    placement: preference, date, windowsByDate: windows.windowsByDate,
+    hardAvailableByDate: preference.window ? windows.hardAvailableByDate : windows.dateOnlyHardAvailableByDate,
+    notBefore: params.notBefore,
+  })])));
+  tiers.push(windows.windowsByDate);
   const capacities = new Map((params.context.input.dailyCapacityLimits ?? [])
     .map((limit) => [limit.date, Math.max(0, limit.maxMinutes - (params.context.dayLoads.get(limit.date) ?? 0))]));
   const usableMinutes = (segment: MinuteInterval) => Math.floor(
     Math.min(segment.end - segment.start, capacities.get(segment.date) ?? Infinity) / quantum,
   ) * quantum;
-  const selected: MinuteInterval[] = [];
   const datePriority = new Map(params.dates.map((date, index) => [date, index]));
+  const selected: MinuteInterval[] = [];
+  const unusable = new Set<string>();
   let remaining = params.duration;
-  while (remaining > 0) {
-    segments.sort((left, right) => usableMinutes(right) - usableMinutes(left)
-      || datePriority.get(left.date)! - datePriority.get(right.date)! || left.start - right.start);
-    const segment = segments.shift();
-    if (!segment || usableMinutes(segment) < MIN_USEFUL_FRAGMENT_MINUTES) return null;
-    let duration = Math.min(remaining, usableMinutes(segment));
-    if (remaining > duration && remaining - duration < MIN_USEFUL_FRAGMENT_MINUTES) {
-      duration = remaining - MIN_USEFUL_FRAGMENT_MINUTES;
+  for (const windowsByDate of tiers) {
+    while (remaining > 0) {
+      // Selected fragments are separate sittings: keep the break on both sides of each.
+      const segment = freePlacementSegments({
+        dates: params.dates, windowsByDate, busy: [...params.context.busy,
+          ...selected.map((fragment) => ({ ...fragment, start: fragment.start - params.context.breakMinutes }))],
+        breakMinutes: params.context.breakMinutes, notBefore: params.notBefore,
+      }).filter((candidate) => usableMinutes(candidate) >= MIN_USEFUL_FRAGMENT_MINUTES
+        && !unusable.has(`${candidate.date}:${candidate.start}`))
+        .sort((left, right) => datePriority.get(left.date)! - datePriority.get(right.date)!
+          || usableMinutes(right) - usableMinutes(left) || left.start - right.start)[0];
+      if (!segment) break;
+      let duration = Math.min(remaining, usableMinutes(segment));
+      if (remaining > duration && remaining - duration < MIN_USEFUL_FRAGMENT_MINUTES) {
+        duration = remaining - MIN_USEFUL_FRAGMENT_MINUTES;
+      }
+      if (duration < MIN_USEFUL_FRAGMENT_MINUTES) {
+        unusable.add(`${segment.date}:${segment.start}`);
+        continue;
+      }
+      selected.push({ date: segment.date, start: segment.start, end: segment.start + duration });
+      remaining -= duration;
+      if (capacities.has(segment.date)) capacities.set(segment.date, capacities.get(segment.date)! - duration);
     }
-    if (duration < MIN_USEFUL_FRAGMENT_MINUTES) return null;
-    selected.push({ date: segment.date, start: segment.start, end: segment.start + duration });
-    remaining -= duration;
-    if (capacities.has(segment.date)) capacities.set(segment.date, capacities.get(segment.date)! - duration);
   }
+  if (remaining > 0) return null;
   return selected.sort((left, right) => left.date.localeCompare(right.date) || left.start - right.start);
 }
 
@@ -306,7 +312,9 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
       chunkIndex,
     });
     addPlacedSlot({ slot: placed, busy: params.context.busy, dayLoads: params.context.dayLoads });
-    return candidate;
+    // A fragment states its own amount; the item label carries the whole amount.
+    return slots.length === 1 ? candidate
+      : { ...candidate, title: `${candidate.field} ${placed.end - placed.start}分（${chunkIndex + 1}/${slots.length}）` };
   });
   return { candidates, failedWorkItemId: null };
 }

@@ -324,7 +324,7 @@ describe('Stable V5 temporal and work semantics through accepted typed input', (
     expect(actual.observed.totalMinutes).toBe(60);
   });
 
-  it('uses the fewest largest free segments and emits fragments in chronological order', () => {
+  it('uses the largest free segments of a date and emits fragments in chronological order', () => {
     const actual = run(document(120, [
       [TOMORROW, '08:00', '08:30'], [TOMORROW, '09:00', '09:45'],
       [TOMORROW, '11:00', '12:15'], [TOMORROW, '13:00', '13:30'],
@@ -400,6 +400,51 @@ describe('Stable V5 temporal and work semantics through accepted typed input', (
       slot('09:00', '09:30', 30),
       slot('09:00', '09:30', 30, AFTER_TOMORROW), slot('11:00', '11:30', 30, AFTER_TOMORROW),
     ]);
+  });
+
+  it('fills normal days before the reserve day even when the reserve gap is longer', () => {
+    const reserveDate = '2026-11-03';
+    const value = document(90, [[TOMORROW, '09:00', '09:45'], [TOMORROW, '11:00', '11:45'], [reserveDate, '09:00', '10:00']]);
+    for (const date of ['2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02']) {
+      value.availabilityDeclarations.push({
+        ...value.availabilityDeclarations[0], localId: `busy-${date}`, kind: 'unavailable',
+        dateExpression: date, startTime: '00:00', endTime: '23:59',
+      });
+    }
+    const actual = run(value, reserveDate);
+    expect(actual.result.status, actual.evidence).toBe('ready');
+    expect(actual.placed).toEqual([slot('09:00', '09:45', 45), slot('11:00', '11:45', 45)]);
+  });
+
+  it('keeps a soft preferred window first when fragments are needed', () => {
+    const value = document(60, [
+      [TOMORROW, '09:00', '09:30'], [TOMORROW, '11:00', '11:30'],
+      [TOMORROW, '15:00', '15:30'], [TOMORROW, '17:00', '17:30'],
+    ]);
+    value.tasks[0].temporalConstraints = [temporal('preferred_window', '15:00', '18:00', 'soft')];
+    const actual = run(value);
+    expect(actual.result.status, actual.evidence).toBe('ready');
+    expect(actual.placed).toEqual([slot('15:00', '15:30', 30), slot('17:00', '17:30', 30)]);
+  });
+
+  it('keeps the configured break between fragments of the same work', () => {
+    // 09:00-09:30 and 09:35-10:05 are only five minutes apart; a second sitting would start too soon.
+    expectInsufficient(run(document(60, [[TOMORROW, '09:00', '09:30'], [TOMORROW, '09:35', '10:05']])));
+  });
+
+  it('labels each fragment with its own amount', () => {
+    const actual = run(document(60, [[TOMORROW, '09:00', '09:30'], [TOMORROW, '11:00', '11:30']]));
+    expect(actual.result.candidates.map(({ title }) => title)).toEqual(['学習 30分（1/2）', '学習 30分（2/2）']);
+  });
+
+  it('documents the bounded greedy fallback: it may fail closed although a three-way split exists', () => {
+    // 30+30+30 would fit, but the fallback takes 45 first on the earlier day. Nothing is placed or fabricated.
+    const value = document(90, [[TOMORROW, '09:00', '09:45'], [TOMORROW, '11:00', '11:45'], [AFTER_TOMORROW, '09:00', '09:30']]);
+    for (const [date, capacityMinutes] of [[TOMORROW, 60], [AFTER_TOMORROW, 30]] as const) value.availabilityDeclarations.push({
+      ...value.availabilityDeclarations[0], localId: `capacity-${date}`, kind: 'capacity', dateExpression: date,
+      startTime: null, endTime: null, capacityMinutes,
+    });
+    expectInsufficient(run(value, AFTER_TOMORROW));
   });
 
   it('does not round a non-quantum total into fabricated fragmented time', () => {

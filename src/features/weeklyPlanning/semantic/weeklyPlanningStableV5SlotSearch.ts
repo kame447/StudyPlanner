@@ -232,7 +232,8 @@ export function freePlacementSegments(params: {
       const free: MinuteInterval[] = [];
       let cursor = window.start;
       for (const conflict of conflicts) {
-        if (conflict.end <= cursor) continue;
+        // The break follows busy time even when the window itself starts inside it.
+        if (conflict.end + params.breakMinutes <= cursor) continue;
         if (conflict.start >= window.end) break;
         if (conflict.start > cursor) free.push({ date, start: cursor, end: conflict.start });
         cursor = Math.max(cursor, conflict.end + params.breakMinutes);

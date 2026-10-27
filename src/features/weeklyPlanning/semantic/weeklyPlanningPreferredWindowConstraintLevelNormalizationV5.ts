@@ -9,7 +9,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Preserve explicit hard clock bounds using the existing one-sided contract.
- * Named-period-only preferences retain their existing soft canonicalization.
+ * Named-period-only preferences (no explicit clock) retain their existing soft canonicalization.
  * This consumes typed fields only, never utterance text.
  */
 export function normalizeWeeklyPlanningPreferredWindowConstraintLevelsV5(
@@ -56,11 +56,12 @@ export function normalizeWeeklyPlanningPreferredWindowConstraintLevelsV5(
       }
       const hasStart = typeof constraint.startTime === 'string' && constraint.startTime.length > 0;
       const hasEnd = typeof constraint.endTime === 'string' && constraint.endTime.length > 0;
-      if (constraint.namedTimePeriod === null && (hasStart || hasEnd) && typeof constraint.localId === 'string') {
+      if ((hasStart || hasEnd) && typeof constraint.localId === 'string') {
+        // Explicit clocks win over a redundant named period, as in temporal clock canonicalization.
         const bounds: Record<string, unknown>[] = [];
-        if (hasStart) bounds.push({ ...constraint, kind: 'earliest_start', endTime: null });
+        if (hasStart) bounds.push({ ...constraint, kind: 'earliest_start', namedTimePeriod: null, endTime: null });
         if (hasEnd) bounds.push({
-          ...constraint, kind: 'latest_end', startTime: null,
+          ...constraint, kind: 'latest_end', namedTimePeriod: null, startTime: null,
           localId: hasStart ? uniqueEndId(constraint.localId) : constraint.localId,
         });
         changed = true;
