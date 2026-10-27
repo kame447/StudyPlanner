@@ -126,14 +126,18 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
         '追加作業への任意の勧誘は終了しています。現在の発話に自然に応じ、新しい作業や学習を勧誘する質問を足さないでください。予定の作成・保存は行っていません。',
       ] : []),
       ...(input.communication?.eventRegistration ? [
+        ...(input.previewCount > 0 ? [
+          'プレビューがあれば承認案内。まだ保存していないと明言し、previewPromotionControlLabelを「」で括った行動の一文にする。ボタン名だけで終えない。',
+        ] : []),
+        ...(input.previewCount > input.communication.eventRegistration.candidates.length ? [
+          '固定候補以外の日時は入力に無い。日付・時刻を書かず、固定予定の日付（明日等）を掛けない。日時はプレビューで確認するよう案内。',
+        ] : []),
         ...(input.communication.eventRegistration.candidates.length > 0 ? [
-          '固定候補は指定日時の未保存プレビューです。previewPromotionControlLabelで明示承認を案内し、保存済みと言わない。eventRegistration.overlapsの日付・区間・両タイトルを明示。移動・分割・削除は禁止。',
+          '固定候補は指定日時。overlapsの日付・区間・両タイトルを明示。移動・分割・削除禁止。',
         ] : []),
         ...(input.communication.eventRegistration.unregistered?.length ? [
           'unregisteredのタイトルと未対応理由を必ず明示（multiple_intervals:複数区間、crosses_midnight:日跨ぎ）。',
-          input.previewCount > 0
-            ? 'プレビューがあれば承認案内。'
-            : '全候補なし。承認案内せずmanualEntryへ。',
+          ...(input.previewCount === 0 ? ['全候補なし。承認案内せずmanualEntryへ。'] : []),
         ] : []),
         ...(input.communication.eventRegistration.workAwaitingAuthorization?.length ? [
           'eventRegistration.workAwaitingAuthorizationの作業は、計画作成の依頼をまだ受けていないため未配置です。固定予定の候補とは区別して未配置であることを伝え、その作業も配置する場合は「この条件で予定を作って」と送る既存の依頼経路を案内してください。',
