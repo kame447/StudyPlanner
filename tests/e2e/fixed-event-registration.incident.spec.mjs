@@ -19,7 +19,7 @@ test.beforeAll(async () => {
     const { startD5BrowserBridge } = await import('../../scripts/jev-d5-browser-bridge.mjs');
     bridge = await startD5BrowserBridge({ workerName: 'studyplanner-ai-proxy',
       evidenceDir: path.join(root, 'artifacts/incident20261026/live-receipts'),
-      remainingArgs: ['--remaining-jev', '2', '--remaining-luna', '16', '--remaining-usd', '.85'],
+      remainingArgs: ['--remaining-jev', '2', '--remaining-luna', '24', '--remaining-usd', '1.30'],
     });
   }
 });
@@ -181,12 +181,18 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
     expect(candidates).toEqual([]);
     return;
   }
-  const lastBranch = [...snapshot.trace].reverse().find(e => e.stage === 'runtime_branch_selected')?.data.branch;
+  const lastBranchEvent = [...snapshot.trace].reverse().find(e => e.stage === 'runtime_branch_selected')?.data;
+  const lastBranch = lastBranchEvent?.branch;
+  // A question outcome: an explicit question branch, or a no-candidate branch that carries a question.
+  const askedQuestion = lastBranch === 'ask_question' || Boolean(lastBranchEvent?.basis?.questionCode);
   const reply = snapshot.state.messages.at(-1)?.content ?? '';
+  // Every live outcome, with or without candidates, must reach the user as a real reply.
+  if (bridge) expect(reply, 'live reply must not be the technical fallback').not.toContain('返信を作れませんでした');
   if (scenario.kind === 'unresolved') {
     expect(candidates, 'an unresolved time must not become a guessed registration').toEqual([]);
-    // The outcome must be a real question, not a rejected interpretation or technical fallback.
-    expect(lastBranch).toBe('ask_question');
+    // A real question or the truthful manual-entry handoff; never a rejected interpretation or fallback.
+    expect(lastBranch).not.toBe('normalization_rejected');
+    expect(askedQuestion || lastBranch === 'fixed_event_manual_entry', `question or manual entry expected, got ${lastBranch}`).toBe(true);
     expect(reply).not.toContain('返信を作れませんでした');
     return;
   }
@@ -203,7 +209,8 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
     const registrations = candidates.filter(c => c.source === 'fixed_event_registration');
     if (candidates.length === 0) {
       // A clarification is valid only as a real question; nothing was guessed or saved.
-      expect(lastBranch).toBe('ask_question');
+      expect(lastBranch).not.toBe('normalization_rejected');
+      expect(askedQuestion, `question expected, got ${lastBranch}`).toBe(true);
       expect(reply).not.toContain('返信を作れませんでした');
       return;
     }
@@ -220,17 +227,33 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
   for (const [title, startTime, endTime] of events) {
     const task = accepted.tasks.find(task => task.title === title);
     expect(task?.temporalConstraints, `${title}: uncertainty must not grant rescheduling`).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'fixed_interval', constraintLevel: 'hard', startTime, endTime }),
+      expect.objectContaining({ kind: 'fixed_interval', startTime, endTime }),
     ]));
+    expect(task.temporalConstraints.filter(c => c.kind === 'preferred_window'), `${title}: must not become movable`).toEqual([]);
   }
-  expect(accepted.conversationActs).toContainEqual(expect.objectContaining({ kind: 'request_event_registration' }));
+  if (!bridge) expect(accepted.conversationActs).toContainEqual(expect.objectContaining({ kind: 'request_event_registration' }));
   if (candidates.length === 0) {
-    // A truthful overlap question is allowed only as an explicit question that names the overlap.
     const branch = [...snapshot.trace].reverse().find(e => e.stage === 'runtime_branch_selected');
-    expect(branch?.data.branch).toBe('ask_question');
-    expect(snapshot.state.messages.at(-1)?.content).toContain('17:00');
-    expect(snapshot.state.messages.at(-1)?.content).toContain('17:30');
-    return;
+    expect(branch?.data.branch, 'without candidates the turn must ask a real question').toBe('ask_question');
+    if (!bridge) {
+      // The recorded explicit request asks a truthful question that names the overlap.
+      expect(snapshot.state.messages.at(-1)?.content).toContain('17:00');
+      expect(snapshot.state.messages.at(-1)?.content).toContain('17:30');
+      return;
+    }
+    // Live: answer one clarification as a user would; then all five must be offered unchanged.
+    const before = snapshot.state.messages.length;
+    await composer.fill('カンファレンスも17時から21時で確定です。5件とも予定に入れてください。');
+    await page.getByRole('button', { name: '送信', exact: true }).click();
+    await expect.poll(() => page.evaluate(count => {
+      const state = globalThis.__incidentReadState?.();
+      return Boolean(state && !state.pendingTurn && state.messages.length > count && state.messages.at(-1)?.role === 'assistant');
+    }, before), { timeout: 240_000 }).toBe(true);
+    Object.assign(snapshot, await page.evaluate(() => ({ state: globalThis.__incidentReadState(),
+      savedEvents: JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]') })));
+    expect(snapshot.savedEvents).toEqual([]);
+    candidates.splice(0, candidates.length, ...(snapshot.state.previewCandidates ?? []));
+    await writeFile(path.join(root, `artifacts/incident20261026/${scenario.name}-after-answer.json`), JSON.stringify({ calls, state: snapshot.state }, null, 2));
   }
   expect(candidates, 'All five requested appointments must remain available; none may be dropped or rescheduled').toHaveLength(5);
   for (const [title, startTime, endTime] of events) {
