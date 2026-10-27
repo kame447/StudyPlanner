@@ -19,7 +19,7 @@ test.beforeAll(async () => {
     const { startD5BrowserBridge } = await import('../../scripts/jev-d5-browser-bridge.mjs');
     bridge = await startD5BrowserBridge({ workerName: 'studyplanner-ai-proxy',
       evidenceDir: path.join(root, 'artifacts/incident20261026/live-receipts'),
-      remainingArgs: ['--remaining-jev', '2', '--remaining-luna', '12', '--remaining-usd', '.70'],
+      remainingArgs: ['--remaining-jev', '2', '--remaining-luna', '16', '--remaining-usd', '.85'],
     });
   }
 });
@@ -225,10 +225,19 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
   for (const [title, startTime, endTime] of events) {
     expect(candidates.find(c => c.title === title)).toMatchObject({ date: '2026-10-27', startTime, endTime, source: 'fixed_event_registration' });
   }
+  // A renderer repair appends a plain-text instruction; read the structured prompt it repairs.
   const rendererPrompts = calls.filter(c => c.schema === 'weekly_planning_stable_v5_dialogue_response')
-    .map(c => JSON.parse(c.request.messages.filter(m => m.role === 'user').at(-1).content));
+    .flatMap(c => c.request.messages.filter(m => m.role === 'user').flatMap(m => {
+      try { const value = JSON.parse(m.content); return value?.applicationDecision ? [value] : []; } catch { return []; }
+    }));
   const overlaps = rendererPrompts.at(-1)?.applicationDecision.communication?.eventRegistration?.overlaps ?? [];
   expect(overlaps).toContainEqual(expect.objectContaining({ date: '2026-10-27', startTime: '17:00', endTime: '17:30' }));
+  if (bridge) {
+    // A correct real-model reply must reach the user instead of the technical fallback.
+    const reply = snapshot.state.messages.at(-1)?.content ?? '';
+    expect(reply).not.toContain('返信を作れませんでした');
+    expect(reply).toContain('17');
+  }
   if (!scenario.approve) return;
 
   // Explicit approval is the only save boundary; it saves each appointment once, unchanged.
@@ -237,7 +246,14 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
   await expect(dialog).toBeVisible();
   for (const [title] of events) await expect(dialog.getByText(title, { exact: false }).first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: path.join(root, `artifacts/incident20261026/${scenario.name}-preview.png`), fullPage: true });
+  // Overlapping appointments are shown side by side; neither hides the other's end.
+  const band = dialog.locator('[title="バンドBの合わせ 16:00-17:30"]').first();
+  const conference = dialog.locator('[title="カンファレンス 17:00-21:00"]').first();
+  await expect(band).toBeVisible(); await expect(conference).toBeVisible();
+  const [bandBox, conferenceBox] = [await band.boundingBox(), await conference.boundingBox()];
+  expect(bandBox.x + bandBox.width <= conferenceBox.x + 1 || conferenceBox.x + conferenceBox.width <= bandBox.x + 1,
+    `overlapping blocks must not cover each other: ${JSON.stringify({ bandBox, conferenceBox })}`).toBe(true);
+  await dialog.screenshot({ path: path.join(root, `artifacts/incident20261026/${scenario.name}-preview.png`) });
   await dialog.getByRole('button', { name: 'この内容で仮予定にする' }).click();
   expect(await readSaved(page)).toEqual([]);
   const save = dialog.getByRole('button', { name: 'この内容で保存' });
