@@ -72,7 +72,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'conversation_act',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Explanation, topic changes and returns are additive utterance meaning; formal question priority and state remain application-owned.',
-    instruction: 'Additive conversationActs; no mutation/authority; keep facts. answer_pending_question: delta; ask_about_pending_question: current question meaning; topic_shift/resume_topic: shift/return. decline_additional_work: optional only. request_event_registration: explicit fixed-event registration, manual only. targetPublicId: existing task/component/null; planning only: [].',
+    instruction: 'Additive conversationActs; no mutation/authority; keep facts. answer_pending_question: delta; ask_about_pending_question: current question meaning; topic_shift/resume_topic: shift/return. decline_additional_work: optional only. request_event_registration: add events to own calendar; preview, no save. targetPublicId: existing task/component/null; planning only: [].',
   },
   {
     id: 'explicit_recurrence_sources',

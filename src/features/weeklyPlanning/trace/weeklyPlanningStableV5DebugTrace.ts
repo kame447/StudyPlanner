@@ -374,6 +374,7 @@ function previewProjection(data: Record<string, unknown>): Record<string, unknow
 function outputProjection(value: unknown): Record<string, unknown> {
   const output = record(value);
   const state = record(output.state);
+  const candidates = Array.isArray(output.draftCandidates) ? output.draftCandidates : [];
   return {
     message: stringValue(output.message),
     stateStatus: stringValue(output.stateStatus) ?? stringValue(state.status),
@@ -384,6 +385,8 @@ function outputProjection(value: unknown): Record<string, unknown> {
       stringValue(output.draftGenerationIntent) ?? stringValue(state.draftGenerationIntent),
     previewCandidateCount: numberValue(output.previewCandidateCount)
       ?? (Array.isArray(output.draftCandidates) ? output.draftCandidates.length : 0),
+    ...(candidates.some(candidate => record(candidate).source === 'fixed_event_registration')
+      ? { draftCandidates: compactUnknown(candidates) } : {}),
     failure: compactUnknown(output.failure),
   };
 }

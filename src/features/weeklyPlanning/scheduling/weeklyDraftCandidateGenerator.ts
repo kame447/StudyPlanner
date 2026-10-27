@@ -28,7 +28,7 @@ export interface WeeklyDraftCandidateGeneratorInput {
   existingPlanBufferMinutes?: number;
 }
 
-export interface WeeklyDraftCandidate {
+interface WeeklyDraftCandidateBase {
   allocationBreakdown?: import('../semantic/weeklyPlanningAllocationBreakdown').WeeklyPlanningAllocationBreakdown;
   stableKey: string;
   date: string;
@@ -36,13 +36,26 @@ export interface WeeklyDraftCandidate {
   endTime: string;
   durationMinutes: number;
   title: string;
-  field: string;
-  year: number;
-  estimatedMinutes: number;
-  source: 'weekly_exam_prep';
   approvalStatus: 'unapproved';
   workItemKey: string;
 }
+
+export interface WeeklyStudyDraftCandidate extends WeeklyDraftCandidateBase {
+  source: 'weekly_exam_prep';
+  field: string;
+  year: number;
+  estimatedMinutes: number;
+}
+
+export interface WeeklyFixedEventRegistrationCandidate extends WeeklyDraftCandidateBase {
+  source: 'fixed_event_registration';
+  allocationBreakdown?: never;
+  field?: never;
+  year?: never;
+  estimatedMinutes?: never;
+}
+
+export type WeeklyDraftCandidate = WeeklyStudyDraftCandidate | WeeklyFixedEventRegistrationCandidate;
 
 export interface WeeklyDraftCandidateConflict {
   workItemKey?: string;
@@ -73,7 +86,7 @@ export interface WeeklyDraftCandidateDiagnostics {
 }
 
 export interface WeeklyDraftCandidateGeneratorResult {
-  candidates: WeeklyDraftCandidate[];
+  candidates: WeeklyStudyDraftCandidate[];
   diagnostics: WeeklyDraftCandidateDiagnostics;
 }
 
@@ -502,7 +515,7 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
     planningStartDate: input.planningStartDate,
     planningDayCount: input.planningDayCount,
   });
-  const candidates: WeeklyDraftCandidate[] = [];
+  const candidates: WeeklyStudyDraftCandidate[] = [];
   const unscheduledItems: WeeklyPlanningRemainingWorkItem[] = [];
   let reserveDayUsed = false;
   const decisionTrace = floatingConstraints.map(

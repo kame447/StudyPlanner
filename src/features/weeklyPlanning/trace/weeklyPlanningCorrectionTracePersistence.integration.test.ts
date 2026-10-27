@@ -596,13 +596,13 @@ it('keeps an oversized real accepted-reference turn with explicit partial-eviden
 it.each([false, true])('persists explicit local B/session with pending A/total through retry and Worker (oversized=%s)', async oversized => {
   const turn = await generatedExactReferenceTurn(oversized, true);
   const { entry, stored } = await persistGeneratedExactReference(turn);
-  // Baseline22e42203 full system at transport, then the existing explicit1500B
+  // Reviewed registration-act system at transport, then the existing explicit1500B
   // trace prefix through append/retry/Worker. Full requestBytes remain below.
   for (const [index, messages] of [turn.requests[1].messages, entry.aiInterpreter.input.requests[1].messages,
     (stored.aiInterpreter as WeeklyPlanningTraceTurnDiagnosticEntry['aiInterpreter']).input.requests[1].messages].entries()) {
     const system = messages.find(message => message.role === 'system')!.content;
     expect(createHash('sha256').update(system).digest('hex')).toBe(index === 0
-      ? '6fd5883202646033dfb7f209ed5529341381f7922de579cb319e24a5c50c9c3c'
+      ? '7d6ae17aaa905f6c3e51e7e4877f73a79192113dd820cdd5db89ddf4d08b7d90'
       : '8177d24affeb6bccf24121045bce6dddc344f0af250f58cbcf7c784f85b85046');
     if (index > 0) expect(system).toContain('…[trace truncated]');
   }
@@ -645,12 +645,12 @@ const SELF_REFERENCE_SENTINEL = 'future-h-self-reference-safe-field';
 const TRANSPORT_ONLY_CREDENTIAL = 'synthetic-h-transport-only';
 const SELF_REFERENCE_WEEK = '2026-10-11';
 
-function selfReferenceFixture(target: 'self' | 'local') {
+function selfReferenceFixture(target: 'self' | 'local', userText = SELF_REFERENCE_TEXT) {
   const task = (localId: string, title: string): WeeklyPlanningSemanticDocumentV5['tasks'][number] => ({
     localId, existingPublicId: null, category: 'study', decompositionStatus: 'atomic', title,
     study: { purpose: 'self_study', activityKind: 'reading', contextLabel: null, components: [] },
     workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [],
-    durableContextSignals: [], sourceText: SELF_REFERENCE_TEXT,
+    durableContextSignals: [], sourceText: userText,
   });
   const base = (): WeeklyPlanningSemanticDocumentV5 => ({
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -672,15 +672,15 @@ function selfReferenceFixture(target: 'self' | 'local') {
       temporalConstraints: [{
         localId: 'new-deadline', targetLocalId, kind: 'deadline', constraintLevel: 'hard',
         dateExpression: 'tomorrow', namedTimePeriod: null, startTime: '13:00', endTime: null,
-        precision: 'exact', sourceText: SELF_REFERENCE_TEXT,
+        precision: 'exact', sourceText: userText,
       }],
       effortEstimates: [{
         localId: 'new-effort', targetLocalId, kind: 'session_duration', minutes: 60,
-        unitCode: 'session', precision: 'exact', sourceText: SELF_REFERENCE_TEXT,
+        unitCode: 'session', precision: 'exact', sourceText: userText,
       }],
       recurrence: [{
         localId: 'new-recurrence', targetLocalId, kind: 'times_per_week', count: 2, days: [],
-        sourceText: SELF_REFERENCE_TEXT,
+        sourceText: userText,
       }],
     }],
   };
@@ -703,8 +703,17 @@ function checkpointRoundtrip(graph: ReturnType<typeof selfReferenceFixture>['gra
   return restored!.graph;
 }
 
-async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair' | 'date_repair', oversized = false) {
-  const fixture = selfReferenceFixture(mode === 'local' ? 'local' : 'self');
+async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair' | 'date_repair' | 'fixed_interval_repair', oversized = false) {
+  const userText = mode === 'fixed_interval_repair'
+    ? '資料は明日の13時から14時の予定になりそう。登録してください。1回60分、週2回です。'
+    : SELF_REFERENCE_TEXT;
+  const fixture = selfReferenceFixture(mode === 'local' ? 'local' : 'self', userText);
+  if (mode === 'fixed_interval_repair') {
+    Object.assign(fixture.document.tasks[0].temporalConstraints[0], {
+      kind: 'fixed_interval', endTime: '14:00', precision: 'approximate',
+    });
+    fixture.document.conversationActs = [{ kind: 'request_event_registration', targetPublicId: null }];
+  }
   const graph = checkpointRoundtrip(fixture.graph);
   const before = structuredClone(graph);
   const compact = JSON.stringify(fixture.document);
@@ -712,8 +721,9 @@ async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair' | 'd
   const acceptedRaw = oversized ? `{${' '.repeat(6_000)}${compact.slice(1)}` : compact;
   const dateRepairInitial = structuredClone(fixture.document);
   dateRepairInitial.tasks[0].temporalConstraints[0].dateExpression = '明日';
-  const isRepair = mode === 'repair' || mode === 'date_repair';
-  const scripted = mode === 'date_repair' ? [JSON.stringify(dateRepairInitial), acceptedRaw]
+  if (mode === 'fixed_interval_repair') dateRepairInitial.tasks[0].temporalConstraints[0].constraintLevel = 'soft';
+  const isRepair = mode === 'repair' || mode === 'date_repair' || mode === 'fixed_interval_repair';
+  const scripted = mode === 'date_repair' || mode === 'fixed_interval_repair' ? [JSON.stringify(dateRepairInitial), acceptedRaw]
     : mode === 'repair' ? ['not-json', acceptedRaw] : [acceptedRaw];
   const requests: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
   const bodies: Record<string, unknown>[] = [];
@@ -740,7 +750,7 @@ async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair' | 'd
     createWeeklyPlanningSemanticNormalizerV5(client),
   ).run({
     graph, conversationId: canonicalIds.logicalConversationId, turnId: requestId,
-    expectedRevision: graph.revision, userText: SELF_REFERENCE_TEXT,
+    expectedRevision: graph.revision, userText,
     schedulerContext: { ownerId: 'trace-user', currentDate: '2026-10-10',
       planningStartDate: SELF_REFERENCE_WEEK, planningEndDate: '2026-10-17', timeZone: 'Asia/Tokyo' },
   });
@@ -800,22 +810,23 @@ async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair' | 'd
     expect(facts[0].targetFactId).toBe(fixture.ownId);
     expect(facts[0].taskId).toBe(fixture.ownId);
     expect(facts[0].source).toMatchObject({ conversationId: canonicalIds.logicalConversationId,
-      turnId: requestId, sourceText: SELF_REFERENCE_TEXT });
+      turnId: requestId, sourceText: userText });
   }
   expect(restored.recurrences[0].days).toEqual([]);
   expect(restored.tasks).toEqual(graph.tasks);
-  return { fixture, result, events, acceptedRaw, requestId, attempt, requests, expectedParsed };
+  return { fixture, result, events, acceptedRaw, requestId, attempt, requests, expectedParsed, userText };
 }
 
 async function persistGeneratedSelfReference(turn: Awaited<ReturnType<typeof generatedSelfReferenceTurn>>) {
   const input = { ...traceInput({ requestId: turn.requestId, debugTraceEvents: turn.events }),
-    userText: SELF_REFERENCE_TEXT, assistantMessage: '条件を確認しました。', outcome: turn.result.status };
+    userText: turn.userText, assistantMessage: '条件を確認しました。', outcome: turn.result.status };
   await recordWeeklyPlanningStableV5TurnTrace(input);
   expect(repositoryState.attempts).toHaveLength(1);
   expect(repositoryState.successfulWrites).toHaveLength(0);
   const queued = listWeeklyPlanningTraceOutboxItems({ userId: input.userId, conversationId: input.conversationId });
   expect(queued).toHaveLength(1);
   expect(queued[0].input).toEqual(input);
+  expect(JSON.stringify(queued[0].input)).toContain('request_event_registration: add events to own calendar; preview, no save');
   expect(measureWeeklyPlanningTraceJsonBytes(queued[0])).toBeLessThanOrEqual(192 * 1024);
   expect(JSON.stringify(queued)).not.toContain(TRANSPORT_ONLY_CREDENTIAL);
   resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
@@ -939,5 +950,52 @@ it.each([false, true])('persists actual validator-addressed date repair through 
   } else {
     expect(accepted.structuredResult).toEqual({ ...turn.expectedParsed, futureSelfReferenceTraceField: SELF_REFERENCE_SENTINEL });
     expect(JSON.stringify(stored)).toContain(SELF_REFERENCE_SENTINEL);
+  }
+});
+
+it.each([false, true])('persists the actual fixed-interval repair directive through outbox and Worker (oversized=%s)', async oversized => {
+  resetSelfReferenceWorld();
+  const turn = await generatedSelfReferenceTurn('fixed_interval_repair', oversized);
+  expect(turn.result.normalization.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
+  expect(turn.result.graph.temporalConstraints[0]).toMatchObject({
+    kind: 'fixed_interval', constraintLevel: 'hard', dateExpression: 'tomorrow',
+    startTime: '13:00', endTime: '14:00', precision: 'approximate',
+  });
+  const { entry, stored } = await persistGeneratedSelfReference(turn);
+  expect(entry.aiInterpreter.input.requests.map(request => request.attempt)).toEqual(['initial', 'repair']);
+  const repairMessages = turn.requests[1].messages;
+  const actualDirective = repairMessages[repairMessages.length - 1].content;
+  expect(actualDirective).toContain('change only constraintLevel to hard');
+  expect(actualDirective).toContain('Preserve kind, clock times, other facts and conversationActs');
+  const actPreservation = 'current-turn facts, conversationActs and schema-valid fields';
+  expect(actualDirective).toContain(actPreservation);
+  expect(JSON.stringify(entry.aiInterpreter.input.requests[1])).toContain(actPreservation);
+  expect(JSON.stringify(stored)).toContain(actPreservation);
+  const system = turn.requests[0].messages[0].content;
+  expect(system).toContain('request_event_registration: add events to own calendar; preview, no save');
+  expect(JSON.stringify(turn.events)).toContain('request_event_registration: add events to own calendar; preview, no save');
+  // Existing diagnostics keep a bounded prefix, not the full policy. Preserve
+  // its exact excerpt, request size and explicit truncation through the Worker.
+  for (const request of [entry.aiInterpreter.input.requests[0],
+    (stored.aiInterpreter as WeeklyPlanningTraceTurnDiagnosticEntry['aiInterpreter']).input.requests[0]]) {
+    expect(request.messages[0].content).toContain('…[trace truncated]');
+    expect(createHash('sha256').update(request.messages[0].content).digest('hex'))
+      .toBe('8177d24affeb6bccf24121045bce6dddc344f0af250f58cbcf7c784f85b85046');
+    expect(request.requestBytes).toBe(measureWeeklyPlanningTraceJsonBytes(turn.requests[0]));
+  }
+  expect(entry.diagnostics.truncation?.fields).toContain('aiInterpreter.input.requests[0].messages[0].content');
+  expect(JSON.stringify(entry.aiInterpreter.input.requests[1])).toContain('change only constraintLevel to hard');
+  expect(JSON.stringify(stored)).toContain('change only constraintLevel to hard');
+  expect(entry.aiInterpreter.structuredResults[0]).toMatchObject({ attempt: 'initial', accepted: false });
+  const accepted = entry.aiInterpreter.structuredResults.find(result => result.attempt === 'repair' && result.accepted)!;
+  if (oversized) {
+    expect(accepted.structuredResult).toMatchObject({ traceTruncated: true });
+    expect(entry.diagnostics.truncation).toMatchObject({ applied: true });
+    expect(JSON.stringify(stored)).not.toContain('x'.repeat(48 * 1024));
+  } else {
+    expect(accepted.structuredResult).toEqual({ ...turn.expectedParsed, futureSelfReferenceTraceField: SELF_REFERENCE_SENTINEL });
+    expect(JSON.stringify(stored)).toContain(SELF_REFERENCE_SENTINEL);
+    expect((accepted.structuredResult as WeeklyPlanningSemanticDocumentV5).conversationActs)
+      .toEqual([{ kind: 'request_event_registration', targetPublicId: null }]);
   }
 });

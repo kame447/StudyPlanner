@@ -1,4 +1,5 @@
 import type { WeeklyPlanningSemanticTurnObservation } from './trace/weeklyPlanningSemanticCensusTypes';
+import type { WeeklyPlanningStableV5DebugTraceEvent } from './trace/weeklyPlanningStableV5DebugTrace';
 import type { ControlledCandidateCommitRejection } from '../../../shared/controlledCandidateCommit';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from './application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
@@ -110,6 +111,8 @@ export interface WeeklyPlanningTurnExecutionResult {
   failure?: WeeklyPlanningTurnFailure;
   responseSource?: WeeklyPlanningTraceResponseSource;
   dialogueRendererTrace?: WeeklyPlanningDialogueRendererTrace;
+  /** Bounded invocation evidence returned by isolated execution; never planning authority. */
+  debugTraceEvents?: WeeklyPlanningStableV5DebugTraceEvent[];
   observability?: WeeklyPlanningTurnObservability;
   /**
    * Set by the Stable V5 dialogue step for the message that presents the pending

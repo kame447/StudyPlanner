@@ -14,7 +14,7 @@ import { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/we
 import { withRepairSafePreview } from './weeklyPlanningStableV5ResultProjection';
 import { collectUserPlanningContextFactsV5 } from '../semantic/weeklyPlanningDurableContextSignalsV5';
 import { userUtteranceContextFactsV5 } from './weeklyPlanningStableV5ContextFacts';
-import { clearWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+import { clearWeeklyPlanningStableV5DebugTrace, readWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalContext';
 
 export interface IsolatedWeeklyPlanningTurnInput {
@@ -77,7 +77,8 @@ export async function executeIsolatedWeeklyPlanningTurn(
         getSession: (conversationId) => conversationId === session.conversationId ? structuredClone(session) : null,
       },
     });
-    return { result, stagedContextFacts: result.failure ? [] : stagedContextFacts,
+    return { result: { ...result, debugTraceEvents: readWeeklyPlanningStableV5DebugTrace(input.traceRequestId) },
+      stagedContextFacts: result.failure ? [] : stagedContextFacts,
       observedDate: input.requestContext.currentDate };
   } finally {
     // Instrumentation is bounded, never a session authority. Dispose the invocation trace.

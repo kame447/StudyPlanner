@@ -31,10 +31,10 @@ export interface WeeklyPlanningPreviewBlock {
   endTime: string;
   durationMinutes: number;
   title: string;
-  field: string;
-  year: number;
-  estimatedMinutes: number;
-  source: 'weekly_exam_prep';
+  field?: string;
+  year?: number;
+  estimatedMinutes?: number;
+  source: WeeklyDraftCandidate['source'];
   status: 'preview';
   isSaved: false;
   workItemKey: string;
@@ -258,9 +258,9 @@ export function createWeeklyPlanningPreviewDisplayBlock(
     startTime: block.startTime,
     endTime: block.endTime,
     title: block.title,
-    subject: block.field,
+    subject: block.field ?? '',
     type: block.planType ?? 'study',
-    label: block.field,
+    label: block.field ?? block.title,
     materialId: null,
     memo: stableV5Memo(block),
     source: 'ai',
@@ -306,9 +306,9 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
       startTime: candidate.startTime,
       endTime: candidate.endTime,
       title: candidate.title,
-      subject: candidate.field,
+      subject: candidate.field ?? '',
       type: stableV5Metadata?.planType ?? 'study' as const,
-      label: candidate.field,
+      label: candidate.field ?? candidate.title,
       materialId: null,
       materialName: '',
       memo,

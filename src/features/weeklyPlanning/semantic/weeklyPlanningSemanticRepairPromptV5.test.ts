@@ -18,6 +18,28 @@ function repairPayload(messages: Array<{ role: string; content: string }>): {
 }
 
 describe('Stable V5 semantic repair prompt', () => {
+  it('repairs a soft fixed interval locally without granting movement or losing registration intent', () => {
+    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
+      baseMessages: [{ role: 'system', content: 'normalize' }],
+      invalidResponse: '{}',
+      validationErrors: [
+        'document.tasks[4].temporalConstraints[0].constraintLevel:soft-fixed-interval-use-preferred-window',
+        'document.tasks[4].temporalConstraints[0].dateExpression:canonical-expression',
+      ],
+    });
+    const changes = repairPayload(messages).requiredChanges ?? [];
+    expect(changes).toHaveLength(2);
+    expect(changes[0]).toContain('even if tentative or expected');
+    expect(changes[0]).toContain('keep fixed_interval and its startTime/endTime');
+    expect(changes[0]).toContain('change only constraintLevel to hard');
+    expect(changes[0]).toContain('precision=approximate or uncertainties');
+    expect(changes[0]).toContain('Preserve kind, clock times, other facts and conversationActs');
+    expect(changes[0]).toContain('Preserve unrelated supported current-turn facts');
+    expect(changes[0]).toContain('current-turn facts, conversationActs and schema-valid fields');
+    expect(changes[1]).toContain('Encode dateExpression in Stable V5 canonical syntax');
+    expect(changes.join('\n').match(/Correct every listed validation failure/g)).toHaveLength(1);
+  });
+
   it('keeps dangling-correction repair local, bound, compact, and preservation-safe', () => {
     const invalidResponse = JSON.stringify({
       tasks: [{

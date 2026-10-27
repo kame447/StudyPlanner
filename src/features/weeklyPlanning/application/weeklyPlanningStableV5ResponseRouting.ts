@@ -1,9 +1,14 @@
+import type { SemanticConversationActV5 } from '../semantic/weeklyPlanningConversationActsV5';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
-import { fixedEventCommunicationFacts, fixedEventOnlyInteractionStatus } from './weeklyPlanningFixedEventOnlyInteraction';
+import {
+  projectWeeklyPlanningFixedEventRegistration, fixedEventCommunicationFacts, fixedEventOnlyInteractionStatus,
+  weeklyPlanningFixedEventRegistrationFacts, weeklyPlanningUnregisteredFixedEventMessage, type WeeklyPlanningUnregisteredFixedEvent,
+} from './weeklyPlanningFixedEventOnlyInteraction';
+import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { evaluateWeeklyPlanningInsufficientCapacityProposalV5 } from './weeklyPlanningStableV5CapacityProposal';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
@@ -31,6 +36,8 @@ export type WeeklyPlanningStableV5PrePreviewRoute =
   | {
       kind: 'schedule_preview';
       schedulerInput: GenericSchedulerInput;
+      registrationCandidates: WeeklyDraftCandidate[];
+      unregistered: WeeklyPlanningUnregisteredFixedEvent[];
     };
 
 function traceRuntimeBranch(params: {
@@ -86,7 +93,7 @@ function routeBeforePreview(params: {
   graph: WeeklyPlanningFactGraphV5;
   evaluation: WeeklyPlanningStableV5PlanningEvaluation;
   declinedAdditionalWork?: boolean;
-  requestedEventRegistration?: boolean;
+  registrationActs?: readonly SemanticConversationActV5[];
 }): WeeklyPlanningStableV5PrePreviewRoute {
   const { input, graph, evaluation } = params;
   const {
@@ -175,13 +182,33 @@ function routeBeforePreview(params: {
     return respond(output);
   }
 
+  const { candidates: registrationCandidates, unregistered } = projectWeeklyPlanningFixedEventRegistration({
+    graph, compilation, registrationActs: params.registrationActs ?? [], currentTurnId: input.traceRequestId,
+  });
+  if ((registrationCandidates.length > 0 || unregistered.length > 0) && (!schedulerInput?.movableWorkItems.length || !authorized)) {
+    const workAwaitingAuthorization = !authorized
+      ? [...new Set(schedulerInput?.movableWorkItems.map(item => item.label) ?? [])] : [];
+    const output = {
+      ...projectStableV5CompatibilityOutput({
+        previousState: input.previousState, userText: input.userText,
+        message: `${registrationCandidates.length > 0 ? `${registrationCandidates.length}件の仮予定候補を作りました。` : ''}${weeklyPlanningUnregisteredFixedEventMessage(unregistered)}${workAwaitingAuthorization.length > 0 ? `${workAwaitingAuthorization.join('・')}はまだ配置していません。学習の仮予定も作る場合は「この条件で予定を作って」と送ってください。` : ''}${registrationCandidates.length > 0 ? '内容を確認して、問題なければ下の「この内容で仮予定にする」ボタンを押してください。' : '「予定」から「予定を追加」で入力してください。'}`,
+        draftCandidates: registrationCandidates, authorized, groundingRecords,
+        repairAgenda: repairDecision.agenda, learningStrategyProposalRecords: learningStrategyProposals.records,
+      }),
+      communicationFacts: weeklyPlanningFixedEventRegistrationFacts(registrationCandidates, input.plans, workAwaitingAuthorization, unregistered),
+    };
+    traceRuntimeBranch({ requestId: input.traceRequestId, branch: 'fixed_event_registration_preview',
+      basis: { graphRevision: graph.revision }, output });
+    return respond(output);
+  }
+
   const fixedEventStatus = fixedEventOnlyInteractionStatus({
     graph,
     compilation,
     semanticChanged,
     previousQuestionSlot: input.previousState?.lastQuestionContext?.targetSlot,
     declinedAdditionalWork: params.declinedAdditionalWork ?? false,
-    requestedEventRegistration: params.requestedEventRegistration ?? false,
+    requestedEventRegistration: params.registrationActs?.some(act => act.kind === 'request_event_registration') ?? false,
     previousOptionalInvitationClosed: input.previousState?.status === 'needs_scope'
       && !input.previousState.lastQuestionContext,
   });
@@ -315,6 +342,8 @@ function routeBeforePreview(params: {
   return {
     kind: 'schedule_preview',
     schedulerInput,
+    registrationCandidates,
+    unregistered,
   };
 }
 
