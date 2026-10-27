@@ -783,8 +783,7 @@ function isPreviewCandidateStableV5(value: unknown, graphRevision: number): bool
     && typeof value.title === 'string'
     && (value.source === 'fixed_event_registration'
       ? value.field === undefined && value.year === undefined && value.estimatedMinutes === undefined
-        && value.allocationBreakdown === undefined && isRecord(value.stableV5Metadata)
-        && value.stableV5Metadata.planType === 'other'
+        && value.allocationBreakdown === undefined
       : value.source === 'weekly_exam_prep' && typeof value.field === 'string'
         && typeof value.year === 'number' && Number.isInteger(value.year)
         && isPositiveInteger(value.estimatedMinutes))

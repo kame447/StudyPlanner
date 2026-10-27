@@ -17,14 +17,17 @@ import { createWeeklyPlanningFixedEventRegistrationCandidates, weeklyPlanningFix
 
 afterEach(resetWeeklyPlanningStableV5RuntimeSessionsForTest);
 
-function fixture() {
+function fixture(category: 'study' | 'non_study' = 'non_study') {
   const result = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
     graph: createEmptyWeeklyPlanningFactGraphV5(),
     context: { conversationId: 'registration', turnId: 'turn-1', expectedRevision: 0 },
     document: {
       schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'create_plan', planningWindow: null,
-      tasks: ['部活', 'ゼミ'].map((title, i) => ({ localId: `task-${i}`, category: 'non_study', title, study: null,
-        workloads: [], effortEstimates: [], recurrence: [], sourceText: `${title}の予定を入れて`,
+      tasks: ['部活', 'ゼミ'].map((title, i) => ({ localId: `task-${i}`, category, title,
+        study: category === 'study' ? { purpose: 'self_study', contextLabel: title, components: [] } : null,
+        workloads: category === 'study' ? [{ localId: `work-${i}`, quantityRole: 'target',
+          amount: i === 0 ? 90 : 240, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
+          perOccurrence: false, periodExpression: null, sourceText: `${title}の予定を入れて` }] : [], effortEstimates: [], recurrence: [], sourceText: `${title}の予定を入れて`,
         temporalConstraints: [{ localId: `time-${i}`, targetLocalId: `task-${i}`, kind: 'fixed_interval',
           constraintLevel: 'hard', dateExpression: '2026-10-27', namedTimePeriod: null,
           startTime: i === 0 ? '16:00' : '17:00', endTime: i === 0 ? '17:30' : '21:00', precision: 'exact', sourceText: title }],
@@ -57,8 +60,9 @@ it('keeps overlapping registration intervals and reports their exact intersectio
   expect(createWeeklyPlanningFixedEventRegistrationCandidates({ ...input, requested: false })).toEqual([]);
 });
 
-it('round-trips the new source through the Stable checkpoint shape while the legacy candidate codec rejects it', () => {
-  const input = fixture();
+it.each(['non_study', 'study'] as const)('round-trips a %s registration through the Stable checkpoint shape while the legacy candidate codec rejects it', category => {
+  const input = fixture(category);
+  const planType = category === 'study' ? 'study' : 'other';
   const candidates = createWeeklyPlanningFixedEventRegistrationCandidates({ ...input, requested: true });
   const state = { ...createInitialPlanningState('2026-10-26'), previewCandidates: candidates };
   const format = { kind: 'stable_v5_session_v1' as const, ownerId: 'owner', weekStartDate: state.weekStartDate,
@@ -73,10 +77,15 @@ it('round-trips the new source through the Stable checkpoint shape while the leg
   for (const extra of [{ field: 'fake study' }, { year: 2026 }, { estimatedMinutes: 30 }]) {
     expect(isPersistedWeeklyPlanningState({ ...state, previewCandidates: [{ ...candidates[0], ...extra }] }, format)).toBe(false);
   }
+  const unsupportedType = structuredClone(candidates[0]) as WeeklyDraftCandidate & { stableV5Metadata: { planType: string } };
+  unsupportedType.stableV5Metadata.planType = 'school-event';
+  expect(isPersistedWeeklyPlanningState({ ...state, previewCandidates: [unsupportedType] }, format)).toBe(false);
+  const promoted = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: 'owner', createdAt: '2026-10-26T10:00:00.000Z' });
+  expect(promoted.map(block => block.type)).toEqual([planType, planType]);
   const preview = createWeeklyPlanningPreviewBlocks(candidates);
   expect(preview.map(block => createWeeklyPlanningPreviewDisplayBlock(block, 'owner'))).toEqual([
-    expect.objectContaining({ type: 'other', title: '部活', subject: '', startTime: '16:00', endTime: '17:30' }),
-    expect.objectContaining({ type: 'other', title: 'ゼミ', subject: '', startTime: '17:00', endTime: '21:00' }),
+    expect.objectContaining({ type: planType, title: '部活', subject: '', startTime: '16:00', endTime: '17:30' }),
+    expect.objectContaining({ type: planType, title: 'ゼミ', subject: '', startTime: '17:00', endTime: '21:00' }),
   ]);
 });
 

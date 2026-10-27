@@ -84,7 +84,6 @@ export function createWeeklyPlanningFixedEventRegistrationCandidates(params: {
   if (!input) return [];
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
   return active.tasks.flatMap(task => {
-    if (task.category !== 'non_study') return [];
     const reservations = input.fixedTaskReservations.filter(entry => entry.taskId === task.id);
     // Multiple dates/intervals are not a single resolved fixed-event request.
     if (reservations.length !== 1) return [];
@@ -94,7 +93,8 @@ export function createWeeklyPlanningFixedEventRegistrationCandidates(params: {
     const stableV5Metadata: WeeklyPlanningStableV5PreviewProvenance = {
       runtime: 'stable_v5', conversationId: task.source.conversationId,
       graphRevision: params.graph.revision, taskId: task.id,
-      sourceFactRefs: [task.id, reservation.temporalConstraintFactId], planType: 'other',
+      sourceFactRefs: [task.id, reservation.temporalConstraintFactId],
+      planType: task.category === 'study' ? 'study' : 'other',
     };
     return [{
       stableKey: `stable-v5:${params.graph.revision}:${workItemKey}`,
