@@ -273,6 +273,14 @@ All four new containers reached their real browser tests; the Chromium job compl
 - With only that test updated, the same adjacent-plan case passed in 77 ms; all 12 scheduled-student cases and the Home add-flow, next-plan presentation and unplanned-session regressions passed together: 4 files, 36 tests, 3.13 seconds, exit 0. The same installed dependency tree and one-worker configuration were used, with no production, dependency, clock, runner or heap-setting changes. This focused evidence does not replace the integration owner's full `npm run verify`.
 - Permissions/cleanup: ordinary test maintenance on the active feature branch; no temporary repository probe, workflow, package installation or persistent setting is needed. Preserve the failing and successful logs and diagnose the actual assertion before applying this pattern to another OOM.
 
+## Shared Mac CPU contention during full verification
+
+- Verified 2026-10-28 for [#851](https://github.com/kame447/StudyPlanner/pull/851#issuecomment-6452877320) and [#873](https://github.com/kame447/StudyPlanner/issues/873). Concurrent full verification produced timeouts in the session-reducer property, Firestore large measurement and App fixed-event handoff tests. Similar timings alone do not establish an environment failure: inspect the failed contract and rerun the affected files unchanged in isolation first.
+- Evidence: #851's six suspect files passed 71 isolated tests; #873's three observed failing files passed 12 isolated tests. With other agents paused, both full suites passed without production, assertion or timeout changes. The #873 pre-prompt snapshot passed 1,102 files / 11,840 tests plus fresh app/Worker types and production build; that does not validate later product changes.
+- Serialize heavy local runs over ORRERY Mail. Wait for the preceding owner's explicit `VERIFY_DONE`, run the checks, then release the slot. Do not infer release from elapsed time or start a concurrent browser/build workload without coordination.
+- Installed Vitest 5.0.5 supports the command-scoped environment option `VITEST_MAX_WORKERS=2`. After confirming the installed implementation, use `VITEST_MAX_WORKERS=2 npm run verify` on this shared host. It bounds parallelism without skipping files, weakening assertions, increasing timeouts, or changing repository configuration. Keep required environment options for Worker log/type generation separately scoped to the same command.
+- Preserve both failed/interrupted and successful logs, exact content hashes, dependency/runtime identities and failure classification in the owning Issue. A focused pass is not a replacement for the final full verification. If the same test still fails in isolation or the serialized run, diagnose that failure rather than attributing it to contention. No persistent setting or temporary workflow needs cleanup.
+
 ## Maintenance rule for new tooling knowledge
 
 Add a new entry when at least one of these is true:

@@ -83,6 +83,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'dialogue/weeklyPlanningStableV5CurrentTurnGrounding.ts',
   'dialogue/weeklyPlanningStableV5DialoguePrompt.ts',
   'dialogue/weeklyPlanningStableV5DialogueValidation.ts',
+  // #873: pure typed session-confirmation presentation; type-only dialogue contract edge.
+  'dialogue/weeklyPlanningStableV5SessionAcknowledgement.ts',
   'dialogue/weeklyPlanningStableV5TurnDialogue.ts',
   'dialogue/weeklyPlanningStableV5TurnDialogueTrace.ts',
   'trace/weeklyPlanningStableV5TraceRuntime.ts',

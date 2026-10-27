@@ -126,6 +126,8 @@ export function recordWeeklyPlanningDialogueRendererResponseV5(params: {
       reason: params.rendered.status === 'fallback' ? params.rendered.reason : null,
       rawResponse: params.rendered.rawResponse,
       selfRepairNotice: params.selfRepairNotice,
+      ...(params.rendered.status === 'rendered' && params.rendered.applicationAcknowledgement
+        ? { applicationAcknowledgement: params.rendered.applicationAcknowledgement } : {}),
     },
   });
 }

@@ -171,5 +171,6 @@ export function createWeeklyPlanningStableV5CurrentTurnGrounding(params: {
   return {
     mode: sameQuestionStillPending || acceptedFacts.some(fact => fact.kind === 'effort_estimate') ? 'required_before_resume' : 'recommended',
     acceptedFacts,
+    ...(params.graph.correctionIntents.some(fact => fact.source.turnId === params.turnId) ? { hasCorrections: true as const } : {}),
   };
 }

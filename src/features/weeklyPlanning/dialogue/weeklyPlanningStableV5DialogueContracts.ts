@@ -188,6 +188,8 @@ export interface WeeklyPlanningStableV5DialogueGroundingFact {
 export interface WeeklyPlanningStableV5DialogueCurrentTurnGrounding {
   mode: 'none' | 'recommended' | 'required_before_resume';
   acceptedFacts: WeeklyPlanningStableV5DialogueGroundingFact[];
+  /** Read from this turn's typed lifecycle intent, never inferred from user prose. */
+  hasCorrections?: true;
 }
 
 /** Read-only evidence from this turn's selected, successfully compiled schedule. */
@@ -252,6 +254,7 @@ export type WeeklyPlanningStableV5DialogueRenderResult =
       text: string;
       rawResponse: string;
       recoveryVerified?: true;
+      applicationAcknowledgement?: import('./weeklyPlanningStableV5SessionAcknowledgement').WeeklyPlanningApplicationSessionAcknowledgement;
     }
   | {
       status: 'fallback';

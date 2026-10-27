@@ -1,4 +1,5 @@
 import { composeDurationMinutes, parseJapaneseInteger } from '../../../services/durationConversion';
+import { applicationSessionAcknowledgement } from './weeklyPlanningStableV5SessionAcknowledgement';
 import {
   groundedDateExpressionsFromPlanningInformation,
 } from './weeklyPlanningDialogueDateGrounding';
@@ -361,6 +362,34 @@ function activeEffortDisplayFacts(input: WeeklyPlanningStableV5DialogueRenderInp
 type EffortDisplayTuple = { kind: string; minutes: number; approximate: boolean; unitLabel: string | null;
   workloadContext: { amount: number; unitLabel: string } | null; span: { start: number; end: number } };
 
+/** Display-only session wording. Each repeated value remains an independent claim. */
+function continuousSessionDisplayTuples(display: string, labelEnd: number,
+  input: WeeklyPlanningStableV5DialogueRenderInput): EffortDisplayTuple[] {
+  const duration = `${DISPLAY_NUMBER}(?:時間(?:半|${DISPLAY_NUMBER}分)?|分)`;
+  const value = `(?:(?:約|およそ|だいたい|大体)\\s*)?${duration}(?:くらい|ぐらい|ほど|前後|程度)?`;
+  const perSession = '(?:[1一]\\s*回(?:あたり|当たり|につき)?|回(?:あたり|当たり|につき))';
+  const match = new RegExp(`連続で\\s*(?<primary>${value})(?:\\s*\\(\\s*${perSession}(?<repeat>${EFFORT_VALUE_CONNECTOR.source.slice(1, -1)}${value})\\s*\\))?`, 'u')
+    .exec(display.slice(labelEnd));
+  if (!match || !AFFIRMATIVE_EFFORT_ENDING.test(display.slice(labelEnd + match.index + match[0].length).trim())) return [];
+  let prefix = display.slice(0, labelEnd + match.index);
+  // Only the existing typed date projection licenses a date in this connector.
+  // User prose is never read here and cannot authorize an effort measurement.
+  for (const date of groundedDateExpressionsFromPlanningInformation(input.planningInformation)) {
+    prefix = prefix.split(normalizeSafetyText(date)).join('');
+  }
+  if (!EFFORT_SUBJECT_CONNECTOR.test(prefix)) return [];
+  const tuples: EffortDisplayTuple[] = [];
+  for (const [index, text] of [match.groups!.primary, match.groups!.repeat].entries()) {
+    if (text === undefined) continue;
+    const mentions = displayQuantityMentions(text);
+    if (!mentions || mentions.length !== 1 || mentions[0].form !== 'duration') return [];
+    const start = labelEnd + match.index + (index === 0 ? match[0].indexOf(text) : match[0].lastIndexOf(text));
+    tuples.push({ kind: 'session_duration', minutes: mentions[0].minutes, approximate: mentions[0].approximate,
+      unitLabel: '回', workloadContext: null, span: { start, end: start + text.length } });
+  }
+  return tuples;
+}
+
 /** Recognize a bounded displayed tuple before comparing it to any expected value. */
 function positiveEffortDisplayTuples(display: string, labelEnd: number, scope: Record<string, unknown>,
   input: WeeklyPlanningStableV5DialogueRenderInput): EffortDisplayTuple[] {
@@ -374,7 +403,7 @@ function positiveEffortDisplayTuples(display: string, labelEnd: number, scope: R
       return { pattern: new RegExp(`(?:[1一]\\s*${literal}(?:あたり|当たり|につき)?|${literal}(?:あたり|当たり|につき))`, 'u'), kind, unitLabel: unit };
     }),
   ];
-  const tuples: EffortDisplayTuple[] = [];
+  const tuples: EffortDisplayTuple[] = continuousSessionDisplayTuples(assertion, labelEnd, input);
   for (const marker of markers) {
     const match = marker.pattern.exec(assertion.slice(labelEnd));
     if (!match) continue;
@@ -578,6 +607,10 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
       const labelEnd = Math.max(...displayedLabels.map(label => segment.lastIndexOf(label) + label.length));
       return effortAssertionVariants(display, labelEnd, data, input).some(assertion => {
         assertion = withoutNegatedEffortContrast(assertion, labelEnd, data, input);
+        const sessionClaims = continuousSessionDisplayTuples(assertion, labelEnd, input);
+        if (sessionClaims.length) return data.kind === 'session_duration'
+          && sessionClaims.every(claim => claim.minutes === data.minutes
+            && claim.approximate === (data.precision === 'approximate'));
         const mentions = displayQuantityMentions(assertion);
         if (!mentions) return false;
         const durations = mentions.filter(mention => mention.form !== 'bare');
@@ -794,9 +827,24 @@ export function parseWeeklyPlanningStableV5DialogueRendererResponse(
     return { status: 'fallback', reason: 'action_contract_mismatch', rawResponse };
   }
 
-  const text = parsed.text.replace(/\r\n/g, '\n').trim();
+  let text = parsed.text.replace(/\r\n/g, '\n').trim();
+  const applicationAcknowledgement = parsed.groundingAcknowledgement === null
+    ? applicationSessionAcknowledgement(input) : null;
+  if (applicationAcknowledgement) {
+    // Model prose is kept intact or rejected, never stripped to salvage a reply.
+    const echoesApplicationSentence = text.startsWith(applicationAcknowledgement.text);
+    let body = normalizeSafetyText(echoesApplicationSentence ? text.slice(applicationAcknowledgement.text.length) : text);
+    for (const label of groundedDisplayLabels(input).map(normalizeSafetyText).sort((a, b) => b.length - a.length)) {
+      if (label) body = body.split(label).join('');
+    }
+    body = body.replace(CLOCK_EXPRESSION, '');
+    if (new RegExp(`${DISPLAY_NUMBER}\\s*(?:時間|分)`, 'u').test(body)) {
+      return { status: 'fallback', reason: 'grounding_contract_mismatch', rawResponse };
+    }
+    if (!echoesApplicationSentence) text = applicationAcknowledgement.text + text;
+  }
   if (groundingAcknowledgementMismatch(
-    parsed.groundingAcknowledgement,
+    applicationAcknowledgement ?? parsed.groundingAcknowledgement,
     text,
     input,
   )) {
@@ -808,5 +856,6 @@ export function parseWeeklyPlanningStableV5DialogueRendererResponse(
     return { status: 'fallback', reason: validationError, rawResponse };
   }
 
-  return { status: 'rendered', text, rawResponse };
+  return { status: 'rendered', text, rawResponse,
+    ...(applicationAcknowledgement ? { applicationAcknowledgement } : {}) };
 }

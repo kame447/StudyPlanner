@@ -1,4 +1,5 @@
 import { providerFailureFromError } from '../../../../shared/aiProviderFailure';
+import { applicationSessionAcknowledgement, APPLICATION_SESSION_BODY_INSTRUCTION } from './weeklyPlanningStableV5SessionAcknowledgement';
 import type { ChatMessage, OpenAiCompatibleClient, JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
@@ -210,23 +211,32 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
           return verifyRecoveryReply({ client, input, rendered: initial, promptContext });
         }
         if (initial.status !== 'fallback') {
+          if (initial.applicationAcknowledgement) promptContext.applicationAcknowledgement = initial.applicationAcknowledgement;
           return initial;
         }
         const repairInstruction = initial.reason === 'repeated_question_text'
           ? REPEATED_QUESTION_REPAIR_INSTRUCTION
           : initial.reason === 'grounding_contract_mismatch'
-            ? GROUNDING_ACK_REPAIR_INSTRUCTION
+            ? applicationSessionAcknowledgement(input) ? APPLICATION_SESSION_BODY_INSTRUCTION : GROUNDING_ACK_REPAIR_INSTRUCTION
             : null;
         if (!repairInstruction || budgetRetried) return initial;
-        return await requestDialogueRender({
+        const repairMessage: ChatMessage = { role: 'user', content: repairInstruction };
+        if (applicationSessionAcknowledgement(input)) {
+          promptContext.repair = { reason: initial.reason, initialRawResponse: initial.rawResponse, appendedMessages: [repairMessage] };
+        }
+        const repaired = await requestDialogueRender({
           client,
           input,
           messages: [
             ...baseMessages,
-            { role: 'user', content: repairInstruction },
+            repairMessage,
           ],
           maxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
         });
+        if (repaired.status === 'rendered' && repaired.applicationAcknowledgement) {
+          promptContext.applicationAcknowledgement = repaired.applicationAcknowledgement;
+        }
+        return repaired;
       } catch (error) {
         return { status: 'fallback', reason: 'provider_error', providerFailure: providerFailureFromError(error), rawResponse: null };
       }
