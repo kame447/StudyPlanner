@@ -2,11 +2,14 @@ import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import { sanitizeWeeklyPlanningConversationActsV5 } from './weeklyPlanningConversationActsV5';
 
 const AVAILABILITY_DATE_REPRESENTATION_ERROR =
   /^document\.availabilityDeclarations\[(\d+)]\.dateExpression:canonical-expression$/;
 const TEMPORAL_DATE_REPRESENTATION_ERROR =
   /^document\.tasks\[(\d+)]\.temporalConstraints\[(\d+)]\.dateExpression:canonical-expression(?:-required)?$/;
+const FIXED_INTERVAL_LEVEL_ERROR =
+  /^document\.tasks\[(\d+)]\.temporalConstraints\[(\d+)]\.constraintLevel:soft-fixed-interval-use-preferred-window$/;
 
 const REPRESENTATION_ONLY_ERROR_PATTERNS = [
   /^document\.planningWindow:/,
@@ -99,6 +102,17 @@ function redactCanonicalDateRepresentations(
       }
     }
     if (isRecord(fact)) fact.dateExpression = '__REPAIRABLE_CANONICAL_DATE__';
+  }
+}
+
+function redactFixedIntervalLevels(document: MutableRecord, errors: readonly string[]): void {
+  for (const error of errors) {
+    const match = FIXED_INTERVAL_LEVEL_ERROR.exec(error);
+    if (!match || !Array.isArray(document.tasks)) continue;
+    const task = document.tasks[Number(match[1])];
+    if (!isRecord(task) || !Array.isArray(task.temporalConstraints)) continue;
+    const constraint = task.temporalConstraints[Number(match[2])];
+    if (isRecord(constraint)) constraint.constraintLevel = '__REPAIRABLE_CONSTRAINT_LEVEL__';
   }
 }
 
@@ -217,8 +231,24 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
   if (
     !params.initialDocument
     || !params.repairedDocument
-    || !isRepresentationOnlySemanticRepairV5(params.initialErrors)
   ) {
+    return [];
+  }
+
+  const guardedRepair = params.initialErrors.length > 0 && params.initialErrors.every(error =>
+    FIXED_INTERVAL_LEVEL_ERROR.test(error)
+    || REPRESENTATION_ONLY_ERROR_PATTERNS.some(pattern => pattern.test(error)));
+  if (!guardedRepair) {
+    const acts = sanitizeWeeklyPlanningConversationActsV5(params.initialDocument.conversationActs);
+    if (acts.diagnostics.length > 0
+      || params.initialErrors.some(error => /^(?:document\.)?conversationActs(?:\[|:|\.)/.test(error))) return [];
+    const remaining = sanitizeWeeklyPlanningConversationActsV5(params.repairedDocument.conversationActs).acts.map(stableSerialize);
+    // Repair may recover supported omissions, but cannot erase valid existing acts.
+    for (const act of acts.acts) {
+      const index = remaining.indexOf(stableSerialize(act));
+      if (index < 0) return ['semantic-repair-preservation:repair changed unrelated conversation acts'];
+      remaining.splice(index, 1);
+    }
     return [];
   }
 
@@ -238,6 +268,8 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
   redactUserContextDateRepresentation(repaired, userContextDateIndexes);
   redactCanonicalDateRepresentations(initial, params.initialErrors);
   redactCanonicalDateRepresentations(repaired, params.initialErrors);
+  redactFixedIntervalLevels(initial, params.initialErrors);
+  redactFixedIntervalLevels(repaired, params.initialErrors);
 
   const availabilityClockIds = idsMatching(
     params.initialErrors,

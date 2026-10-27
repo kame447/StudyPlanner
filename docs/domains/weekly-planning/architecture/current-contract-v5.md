@@ -75,6 +75,8 @@ For a representation-only semantic repair, compare both provider documents after
 
 Canonical-date representation errors may permit only the validator-addressed `dateExpression` fields of availability declarations or task temporal constraints to change during that existing repair. Preserve the other semantic content and current-turn evidence; an unrelated date field is not repair authority. The repaired document still passes normal validation, including whether its new date representation is valid. This comparison exception neither interprets dates nor adds a repair call.
 
+When the errors consist only of those representation errors and `soft-fixed-interval-use-preferred-window`, the same comparison additionally permits only the addressed constraint's `constraintLevel` to change; its kind, clock bounds, precision and all other facts remain preserved. Repair instructions keep a tentative stated appointment as `fixed_interval` with `hard` level, representing tentativeness through precision or uncertainty rather than movement authority. Across other repair errors too, valid initial conversation acts without act validation failures must remain unchanged; supported omitted acts may be added, but existing acts cannot be deleted or replaced.
+
 ## Time semantics
 
 Natural-language time meaning belongs to AI; calendar arithmetic and scheduler-facing temporal compilation belong to the deterministic application.

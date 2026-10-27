@@ -10,6 +10,9 @@ const PRESERVE_VALID_MEANING_CLAUSE =
 function repairDirectivesForErrors(errors: string[]): string[] {
   const directives: string[] = [];
 
+  if (errors.some((error) => error.endsWith('.constraintLevel:soft-fixed-interval-use-preferred-window'))) {
+    directives.push('For an appointment with a stated clock interval, even if tentative or expected, keep fixed_interval and its startTime/endTime; change only constraintLevel to hard. Express tentativeness with precision=approximate or uncertainties, not a movable preferred_window. Preserve kind, clock times, other facts and conversationActs.');
+  }
   if (errors.some((error) =>
     error.includes(':missing-start')
     || error.includes(':missing-end')
