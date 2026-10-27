@@ -25,8 +25,11 @@ import {
 import {
   findPlacementSlot,
   findPreferredPlacementSlot,
+  freePlacementSegments,
+  preferredPlacementWindows,
   preferredPlacementsForWorkItem,
 } from './weeklyPlanningStableV5SlotSearch';
+import { WEEKLY_PLANNING_STABLE_V5_SESSION_QUANTUM_MINUTES } from './weeklyPlanningStableV5ExecutionPolicy';
 
 export interface WeeklyPlanningPlacementRuntimeContextV5 {
   input: GenericSchedulerInput;
@@ -41,29 +44,7 @@ export interface WeeklyPlanningPlacementRuntimeContextV5 {
   namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
 }
 
-const DEFAULT_SESSION_MINUTES = 60;
 const MIN_USEFUL_FRAGMENT_MINUTES = 30;
-
-function sessionChunks(item: GenericPlanningWorkItem): number[] {
-  const total = item.estimatedMinutes ?? 0;
-  if (total <= 0) return [];
-  if (item.splitPolicy !== 'splittable' || total <= 120) return [total];
-
-  const chunks: number[] = [];
-  let remaining = total;
-  while (remaining > DEFAULT_SESSION_MINUTES) {
-    chunks.push(DEFAULT_SESSION_MINUTES);
-    remaining -= DEFAULT_SESSION_MINUTES;
-  }
-  if (remaining > 0) {
-    if (remaining < MIN_USEFUL_FRAGMENT_MINUTES && chunks.length > 0) {
-      chunks[chunks.length - 1] += remaining;
-    } else {
-      chunks.push(remaining);
-    }
-  }
-  return chunks;
-}
 
 function eligibleDates(params: {
   input: GenericSchedulerInput;
@@ -215,6 +196,60 @@ function orderedDates(params: {
   });
 }
 
+function findWorkItemFragments(params: {
+  context: WeeklyPlanningPlacementRuntimeContextV5;
+  item: GenericPlanningWorkItem;
+  dates: string[];
+  duration: number;
+  notBefore?: WeeklyPlanningPlacementNotBeforeV5;
+}): MinuteInterval[] | null {
+  const quantum = WEEKLY_PLANNING_STABLE_V5_SESSION_QUANTUM_MINUTES;
+  // Fragments keep the exact accepted total; non-quantum totals cannot be rounded
+  // into five-minute pieces without adding or losing requested time.
+  if (params.duration % quantum !== 0) return null;
+  const windows = workItemClockWindows(params);
+  const windowsByDate = new Map([...windows.windowsByDate].map(([date, values]) => [date, [...values]]));
+  for (const preference of preferredPlacementsForWorkItem({
+    placements: params.context.input.preferredPlacements ?? [], item: params.item, dates: params.dates,
+  })) {
+    for (const date of preference.dates) {
+      const preferred = preferredPlacementWindows({
+        placement: preference, date, windowsByDate: windows.windowsByDate,
+        hardAvailableByDate: preference.window ? windows.hardAvailableByDate : windows.dateOnlyHardAvailableByDate,
+        notBefore: params.notBefore,
+      });
+      windowsByDate.set(date, [...(windowsByDate.get(date) ?? []), ...preferred]);
+    }
+  }
+  const segments = freePlacementSegments({
+    dates: params.dates, windowsByDate, busy: params.context.busy,
+    breakMinutes: params.context.breakMinutes, notBefore: params.notBefore,
+  });
+  const capacities = new Map((params.context.input.dailyCapacityLimits ?? [])
+    .map((limit) => [limit.date, Math.max(0, limit.maxMinutes - (params.context.dayLoads.get(limit.date) ?? 0))]));
+  const usableMinutes = (segment: MinuteInterval) => Math.floor(
+    Math.min(segment.end - segment.start, capacities.get(segment.date) ?? Infinity) / quantum,
+  ) * quantum;
+  const selected: MinuteInterval[] = [];
+  const datePriority = new Map(params.dates.map((date, index) => [date, index]));
+  let remaining = params.duration;
+  while (remaining > 0) {
+    segments.sort((left, right) => usableMinutes(right) - usableMinutes(left)
+      || datePriority.get(left.date)! - datePriority.get(right.date)! || left.start - right.start);
+    const segment = segments.shift();
+    if (!segment || usableMinutes(segment) < MIN_USEFUL_FRAGMENT_MINUTES) return null;
+    let duration = Math.min(remaining, usableMinutes(segment));
+    if (remaining > duration && remaining - duration < MIN_USEFUL_FRAGMENT_MINUTES) {
+      duration = remaining - MIN_USEFUL_FRAGMENT_MINUTES;
+    }
+    if (duration < MIN_USEFUL_FRAGMENT_MINUTES) return null;
+    selected.push({ date: segment.date, start: segment.start, end: segment.start + duration });
+    remaining -= duration;
+    if (capacities.has(segment.date)) capacities.set(segment.date, capacities.get(segment.date)! - duration);
+  }
+  return selected.sort((left, right) => left.date.localeCompare(right.date) || left.start - right.start);
+}
+
 export function scheduleWeeklyPlanningWorkItemV5(params: {
   context: WeeklyPlanningPlacementRuntimeContextV5;
   item: GenericPlanningWorkItem;
@@ -224,8 +259,8 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
   globalCandidates: WeeklyDraftCandidate[];
   globalNotBefore?: WeeklyPlanningPlacementNotBeforeV5;
 }): { candidates: WeeklyDraftCandidate[]; failedWorkItemId: string | null } {
-  const chunks = sessionChunks(params.item);
-  if (chunks.length === 0) return { candidates: [], failedWorkItemId: params.item.id };
+  const duration = params.item.estimatedMinutes ?? 0;
+  if (duration <= 0) return { candidates: [], failedWorkItemId: params.item.id };
 
   const rawAllowedDates = eligibleDates({
     input: params.context.input,
@@ -243,44 +278,35 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
     graph: params.context.graph,
     item: params.item,
   });
-  const itemCandidates: WeeklyDraftCandidate[] = [];
+  const preferredDate = preferredTaskDistributedDateV5({
+    taskIndex: params.taskOrdinal, sessionIndex: params.taskPosition.index,
+    sessionCount: params.taskPosition.count, dates: params.context.dates,
+  });
+  const allowedDates = orderedDates({
+    context: params.context, allowedDates: rawAllowedDates, preferredDate, durationMinutes: duration,
+  });
+  const slot = findWorkItemSlot({
+    context: params.context, item: params.item, dates: allowedDates,
+    duration, notBefore: effectiveNotBefore, preferLongSegment,
+  });
+  const slots = slot ? [slot] : params.item.splitPolicy === 'splittable'
+    ? findWorkItemFragments({ context: params.context, item: params.item, dates: allowedDates,
+        duration, notBefore: effectiveNotBefore })
+    : null;
+  if (!slots) return { candidates: [], failedWorkItemId: params.item.id };
 
-  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
-    const duration = chunks[chunkIndex];
-    const sessionIndex = chunks.length > 1 ? chunkIndex : params.taskPosition.index;
-    const sessionCount = chunks.length > 1 ? chunks.length : params.taskPosition.count;
-    const preferredDate = preferredTaskDistributedDateV5({
-      taskIndex: params.taskOrdinal,
-      sessionIndex,
-      sessionCount,
-      dates: params.context.dates,
-    });
-    const allowedDates = orderedDates({
-      context: params.context,
-      allowedDates: rawAllowedDates,
-      preferredDate,
-      durationMinutes: duration,
-    });
-    const slot = findWorkItemSlot({
-      context: params.context,
-      item: params.item,
-      dates: allowedDates,
-      duration,
-      notBefore: effectiveNotBefore,
-      preferLongSegment,
-    });
-    if (!slot) return { candidates: itemCandidates, failedWorkItemId: params.item.id };
-
-    itemCandidates.push(createPlacementCandidate({
+  // Search is speculative. Publish and reserve only after the entire item fits.
+  const candidates = slots.map((placed, chunkIndex) => {
+    const candidate = createPlacementCandidate({
       input: params.context.input,
       graph: params.context.graph,
       item: params.item,
-      slot,
-      duration,
+      slot: placed,
+      duration: placed.end - placed.start,
       chunkIndex,
-    }));
-    addPlacedSlot({ slot, busy: params.context.busy, dayLoads: params.context.dayLoads });
-  }
-
-  return { candidates: itemCandidates, failedWorkItemId: null };
+    });
+    addPlacedSlot({ slot: placed, busy: params.context.busy, dayLoads: params.context.dayLoads });
+    return candidate;
+  });
+  return { candidates, failedWorkItemId: null };
 }

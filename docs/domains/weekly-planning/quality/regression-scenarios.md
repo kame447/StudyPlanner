@@ -50,6 +50,20 @@ sleep endを自動的にstudy-available startとみなさない。
 
 `atomic` work itemをscheduler都合で分割しない。splittableとtypedに確定したworkのみmechanical chunkingを許可する。
 
+splittableは許可であり強制ではない。連続枠があれば1ブロックで置き、収まらない時だけ30分以上の断片へ分ける（例: 30分×2の空きに60分）。accepted `session_duration`が総量以上の作業は1回で置けなければ分割せず失敗する。総量は保存し、部分配置はしない。
+
+Evidence owners:
+- `src/features/weeklyPlanning/semantic/weeklyPlanningTemporalWorkSemanticsV5.test.ts`
+- `tests/e2e/ai-planning-temporal-work-semantics.spec.mjs`
+
+### SCHED-009: hard placement window is not a fixed block
+
+「X〜Yの間にN分」はhard `earliest_start` + `latest_end`の配置窓とN分の作業量であり、X〜Y全体の固定予定ではない。窓外へfallbackしない。soft `preferred_window`は従来どおり順位付けだけに使い、窓外へのfallbackを許す。時刻付きhard `preferred_window`の受信形はsoftへ下げず、この組へ正規化する。
+
+Evidence owners:
+- `src/features/weeklyPlanning/semantic/weeklyPlanningTemporalWorkSemanticsV5.test.ts`
+- `tests/e2e/ai-planning-temporal-work-semantics.spec.mjs`
+
 ### SCHED-007: hard temporal bounds may extend the fallback horizon
 
 明示的なplanning windowがなくても、単純なper-occurrence recurrenceに適用されるactive hard `deadline` / `latest_end`等がdefault 7日より先にある場合、そのhard endまで計画可能期間を切り捨てない。

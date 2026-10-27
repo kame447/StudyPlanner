@@ -314,7 +314,7 @@ describe('typed task hard-clock placement controls', () => {
     })).toEqual(scheduled);
   });
 
-  it('fails closed when the remaining hard-clock interval cannot fit the current single chunk', () => {
+  it('splits permitted work across days while retaining both hard clock bounds', () => {
     const value = hardClockScopeGraph({ kind: 'earliest_start', dateExpression: null, time: '21:30' });
     value.temporalConstraints.push({
       ...value.temporalConstraints[0], id: 'hard-clock-end', kind: 'latest_end',
@@ -322,13 +322,18 @@ describe('typed task hard-clock placement controls', () => {
     });
     value.factLifecycles.push(active('hard-clock-end'));
     const { input, scheduled } = placeHardClockScope(value);
-    // This intrinsic one-hour item is one current chunk; the typed 21:30–22:00 window has only30 minutes.
+    // Each eligible day has30 safe minutes; splittable work may use two such days.
     expect(input.movableWorkItems[0]).toMatchObject({
       baseEstimatedMinutes: 60, estimatedMinutes: 60, estimateBasis: 'intrinsic_duration', splitPolicy: 'splittable',
     });
-    expect(scheduled.status).toBe('insufficient_capacity');
-    expect(scheduled.candidates).toEqual([]);
-    expect(scheduled.unscheduledWorkItemIds).toEqual([input.movableWorkItems[0].id]);
+    expect(scheduled.status).toBe('ready');
+    expect(scheduled.candidates).toHaveLength(2);
+    expect(new Set(scheduled.candidates.map(candidate => candidate.date)).size).toBe(2);
+    for (const candidate of scheduled.candidates) {
+      expect(candidate).toMatchObject({ startTime: '21:30', endTime: '22:00', durationMinutes: 30 });
+      expect(candidate.date >= input.horizon.startDate && candidate.date <= input.horizon.endDate).toBe(true);
+    }
+    expect(scheduled.unscheduledWorkItemIds).toEqual([]);
   });
 
   it('preserves date clipping before an absolute earliest clock', () => {

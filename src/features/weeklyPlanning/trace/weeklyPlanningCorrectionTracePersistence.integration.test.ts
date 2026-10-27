@@ -602,7 +602,7 @@ it.each([false, true])('persists explicit local B/session with pending A/total t
     (stored.aiInterpreter as WeeklyPlanningTraceTurnDiagnosticEntry['aiInterpreter']).input.requests[1].messages].entries()) {
     const system = messages.find(message => message.role === 'system')!.content;
     expect(createHash('sha256').update(system).digest('hex')).toBe(index === 0
-      ? '7d6ae17aaa905f6c3e51e7e4877f73a79192113dd820cdd5db89ddf4d08b7d90'
+      ? '5ae22ee5c493ef4a0f50848acf40bc9cc530468d3ee1c668ddb566d0ae8fb239'
       : '8177d24affeb6bccf24121045bce6dddc344f0af250f58cbcf7c784f85b85046');
     if (index > 0) expect(system).toContain('…[trace truncated]');
   }

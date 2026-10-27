@@ -272,6 +272,7 @@ function executionPolicySlices(params: {
     : splitWeeklyPlanningSessionMinutesV5({ totalMinutes: total, policy, profile });
   if (chunks.length <= 1) return [{
     ...params.item,
+    splitPolicy: explicitSessionMinutes === null ? params.item.splitPolicy : 'atomic',
     sourceFactRefs: [...new Set([...params.item.sourceFactRefs, ...session.sourceFactIds])],
   }];
 
@@ -312,7 +313,7 @@ function executionPolicySlices(params: {
       estimatedMinutes: durationMinutes,
       baseEstimatedMinutes,
       plannedSessions: undefined,
-      splitPolicy: 'atomic',
+      splitPolicy: explicitSessionMinutes === null ? params.item.splitPolicy : 'atomic',
       sourceFactRefs: [...new Set([...params.item.sourceFactRefs, ...session.sourceFactIds])],
     };
   });
