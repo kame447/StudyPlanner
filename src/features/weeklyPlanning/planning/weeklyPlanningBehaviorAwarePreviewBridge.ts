@@ -11,7 +11,7 @@ import type {
 } from '../preview/weeklyPlanningPreviewCompatibility';
 import {
   createWeeklyDraftCandidatesFromRemainingWorkItems,
-  type WeeklyDraftCandidate,
+  type WeeklyStudyDraftCandidate,
   type WeeklyDraftCandidateDiagnostics,
   type WeeklyDraftCandidateSessionPolicy,
 } from '../scheduling/weeklyDraftCandidateGenerator';
@@ -34,7 +34,7 @@ export type {
   BehaviorAwarePreviewMetadata,
 };
 
-export interface BehaviorAwarePreviewCandidate extends WeeklyDraftCandidate {
+export interface BehaviorAwarePreviewCandidate extends WeeklyStudyDraftCandidate {
   behaviorMetadata: BehaviorAwarePreviewMetadata;
 }
 

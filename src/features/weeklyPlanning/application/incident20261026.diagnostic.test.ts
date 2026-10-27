@@ -52,8 +52,7 @@ async function run(movableConference: boolean) {
     if (request.purpose === 'weekly_planning_semantic_normalizer') return JSON.stringify(reading(movableConference));
     recordedStages = readWeeklyPlanningStableV5DebugTrace(payload.input.traceRequestId).map(e => e.stage);
     const prompt = JSON.parse([...request.messages].reverse().find(m => m.role === 'user')!.content);
-    const text = movableConference ? '候補が3件できています。「この内容で仮予定にする」から進められます。'
-      : '指定された予定は「予定」から「予定を追加」を開いて入力できます。';
+    const text = '候補を作りました。「この内容で仮予定にする」から進められます。';
     return JSON.stringify({ actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind,
       questionCode: prompt.applicationDecision.questionCode, groundingAcknowledgement: null, text });
   } };
@@ -89,24 +88,34 @@ describe('Offline incident diagnosis; model response is injected, no external ca
       responses: diagnostic.aiInterpreter.rawResponses.length, truncated: diagnostic.diagnostics.truncation?.applied,
       rendererRetained: Boolean(diagnostic.diagnostics.dialogueRenderer) }));
   });
-  it('correct fixed-event interpretation still produces no registration candidates', async () => {
+  it('projects all five fixed events unchanged, reports overlap, and does not save', async () => {
     const r = await run(false);
     expect(r.output.result.failure).toBeUndefined();
     expect(r.output.result.stableV5Graph?.tasks).toHaveLength(5);
-    expect(r.output.result.draftCandidates).toEqual([]);
-    expect(r.output.result.communicationFacts?.statusReason).toBe('fixed_event_manual_entry');
+    expect(r.output.result.draftCandidates.map(c => [c.title, c.date, c.startTime, c.endTime, c.source]))
+      .toEqual(events.map(([title, start, end]) => [title, '2026-10-27', start, end, 'fixed_event_registration']));
+    expect(r.output.result.draftCandidates.every(c => c.approvalStatus === 'unapproved')).toBe(true);
+    expect(r.output.result.state.shouldSavePlan).toBe(false);
+    expect(r.output.result.communicationFacts?.eventRegistration).toEqual({ eventCreatedByTurn: false, candidates: r.output.result.draftCandidates,
+      overlaps: [{ date: '2026-10-27', startTime: '17:00', endTime: '17:30', titles: ['バンドBの合わせ', 'カンファレンス'] }] });
     console.log('FIXED_PROOF', JSON.stringify({ tasks: r.output.result.stableV5Graph?.tasks.length,
       candidates: r.output.result.draftCandidates.length, communication: r.output.result.communicationFacts, calls: r.calls }));
   });
-  it('one movable conference reproduces three conference chunks while fixed events disappear from preview', async () => {
+  it('retains four fixed registrations alongside unchanged conference allocation', async () => {
     const r = await run(true);
     expect(r.output.result.failure).toBeUndefined();
     const candidates = r.output.result.draftCandidates;
     console.log('MIXED_PROOF', JSON.stringify({ tasks: r.output.result.stableV5Graph?.tasks.length,
       candidates: candidates.map(c => ({ title: c.title, date: c.date, start: c.startTime, end: c.endTime, minutes: c.durationMinutes })),
       communication: r.output.result.communicationFacts, calls: r.calls }));
-    expect(candidates).toHaveLength(3);
-    expect(candidates.every(c => c.title.includes('カンファレンス'))).toBe(true);
-    expect(candidates.reduce((n, c) => n + c.durationMinutes, 0)).toBe(240);
+    expect(candidates).toHaveLength(7);
+    const fixed = candidates.filter(c => c.source === 'fixed_event_registration');
+    expect(fixed.map(c => [c.title, c.date, c.startTime, c.endTime])).toEqual(
+      events.slice(0, 4).map(([title, start, end]) => [title, '2026-10-27', start, end]));
+    const movable = candidates.filter(c => c.source !== 'fixed_event_registration');
+    expect(movable.map(c => c.durationMinutes)).toEqual([60, 90, 90]);
+    expect(movable.every(c => c.title.includes('カンファレンス'))).toBe(true);
+    expect(movable.reduce((n, c) => n + c.durationMinutes, 0)).toBe(240);
+    expect(movable.every(c => fixed.every(f => c.endTime <= f.startTime || c.startTime >= f.endTime))).toBe(true);
   });
 });

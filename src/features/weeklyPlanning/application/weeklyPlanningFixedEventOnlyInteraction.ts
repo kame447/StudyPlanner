@@ -2,11 +2,17 @@ import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/week
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { GenericSchedulerInputCompilationResult } from '../semantic/weeklyPlanningGenericSchedulerInput';
 
-export type WeeklyPlanningFixedEventStatusReason = 'fixed_event_manual_entry' | 'no_additional_work';
+export type WeeklyPlanningFixedEventStatusReason = 'fixed_event_manual_entry' | 'no_additional_work' | 'fixed_event_registration_preview';
 
 /** Turn-local explanation facts, never an event write or save capability. */
 export interface WeeklyPlanningFixedEventCommunicationFacts {
   statusReason: WeeklyPlanningFixedEventStatusReason;
+  eventRegistration?: {
+    eventCreatedByTurn: false;
+    candidates: import('../scheduling/weeklyDraftCandidateGenerator').WeeklyDraftCandidate[];
+    workAwaitingAuthorization?: string[];
+    overlaps: Array<{ date: string; startTime: string; endTime: string; titles: [string, string] }>;
+  };
   manualEntry?: {
     navigationLabel: '予定';
     actionLabel: '予定を追加';
@@ -14,7 +20,8 @@ export interface WeeklyPlanningFixedEventCommunicationFacts {
   };
 }
 
-/** Fixed commitments constrain placement; they are not savable event candidates.
+/** Busy-only commitments retain the optional-invitation/manual-entry fallback.
+ * Explicit resolved task registration is projected before this fallback.
  * Close only an optional invitation after the compiler proves no movable work.
  * No user prose, rendered reply, comparison mode or persistence API is read. */
 export function fixedEventOnlyInteractionStatus(params: {

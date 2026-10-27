@@ -3,11 +3,13 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from './App';
 import { AiPlanningView } from './components/AiPlanningView';
-import { MonthEventDialog } from './components/MonthEventDialog';
+import { AiPlanningPreviewDialog } from './components/AiPlanningPreviewDialog';
+import { WeekView } from './components/WeekView';
+import { DayView } from './components/DayView';
 import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
 import { PrimaryBottomNav } from './components/PrimaryBottomNav';
 import { QuickAddMenu } from './components/QuickAddMenu';
-import { TimeWheelPicker } from './components/TimeRangeFields';
+import { createPlannerBackedWeeklyPlanningApprovalPlanRepository } from './features/weeklyPlanning/application/weeklyPlanningApprovalLocalRepository';
 import type { WeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import { loadWeeklyPlanningRuntimeModule } from './features/weeklyPlanning/application/weeklyPlanningRuntimeModule';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
@@ -31,6 +33,7 @@ vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));
 vi.mock('./lib/aiConfig', () => ({
+  getCloudflareAiProxyUrl: () => '',
   getAiConfig: () => ({ provider: 'openai', baseUrl: 'https://example.invalid/v1', model: 'test-model', apiKey: 'test-key' }),
   getAiConfigValidationMessage: () => undefined,
 }));
@@ -80,14 +83,7 @@ function Harness() {
 function text(node: ReactTestInstance): string { return node.children.map(child => typeof child === 'object' ? text(child) : String(child)).join(''); }
 function button(label: string) { return renderer!.root.findAllByType('button').find(node => text(node) === label)!; }
 function application(): WeeklyPlanningApplication { return renderer!.root.findByType(AiPlanningView).props.application; }
-const click = async (node: ReactTestInstance) => { await act(async () => { node.props.onClick(); await microtasks(); }); };
-async function openManualEntry() {
-  await click(renderer!.root.findByProps({ 'aria-label': 'クイック追加メニューを開く' }));
-  await click(button('予定を追加'));
-  await act(async () => { await vi.dynamicImportSettled(); });
-  expect(renderer!.root.findAllByType(MonthEventDialog)).toHaveLength(1);
-  expect(renderer!.root.findByProps({ 'aria-label': 'タイトル' }).props.value).toBe('');
-}
+const click = async (node: ReactTestInstance) => { await act(async () => { node.props.onClick({ currentTarget: node }); await microtasks(); }); };
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-08-12T00:00:00Z'));
   const storage = new MemoryStorage();
@@ -95,12 +91,16 @@ beforeEach(async () => {
     matchMedia: () => ({ matches: true }), requestAnimationFrame: () => 1, cancelAnimationFrame() {},
     addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout, performance });
   vi.stubGlobal('localStorage', storage);
-  vi.stubGlobal('document', { documentElement: { dataset: {}, style: {} }, body: { style: {} } });
+  vi.stubGlobal('document', { documentElement: { dataset: {}, style: {} }, body: { style: {} },
+    addEventListener() {}, removeEventListener() {} });
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden'); }));
   vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'false');
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-  saveWeeklyApprovedPlan.mockReset().mockRejectedValue(new Error('AI plan save forbidden'));
-  completeWeeklyApprovalOperation.mockReset().mockRejectedValue(new Error('AI approval forbidden'));
+  const approval = createPlannerBackedWeeklyPlanningApprovalPlanRepository();
+  saveWeeklyApprovedPlan.mockReset().mockImplementation(async draft => {
+    return state.projectPlanSave(() => approval.saveApprovedPlan(draft));
+  });
+  completeWeeklyApprovalOperation.mockReset().mockImplementation(operation => approval.completeOperation(operation));
   showNotice.mockReset();
   boundary.provider.mockReset().mockImplementation(async request => {
     if (request.responseFormat?.json_schema.name === 'weekly_planning_semantic_document_v5') return JSON.stringify(document);
@@ -108,7 +108,7 @@ beforeEach(async () => {
       const body = JSON.parse(request.messages[request.messages.length - 1].content);
       return JSON.stringify({ actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
         questionCode: body.applicationDecision.questionCode, groundingAcknowledgement: null,
-        text: '部活の時間を確認しました。保存する場合は「予定」から「予定を追加」を開いて入力できます。' });
+        text: '部活の登録候補を作りました。まだ保存していません。内容を確認して「この内容で仮予定にする」から進めてください。' });
     }
     throw new Error(`Unexpected provider schema: ${request.responseFormat?.json_schema.name}`);
   });
@@ -121,7 +121,8 @@ afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers();
 });
 
-it('hands an actual AI fixed-event turn to the existing manual entry and saves only after explicit user input', async () => {
+it.each([390, 1280])('previews fixed events and saves once only after explicit approval, retaining the same plan after reload at %ipx', async width => {
+  Object.assign(window, { innerWidth: width });
   const fixture = createLocalFixture();
   boundary.repository = fixture.repository;
   const savePlan = vi.spyOn(fixture.repository, 'upsertPlan');
@@ -158,12 +159,12 @@ it('hands an actual AI fixed-event turn to the existing manual entry and saves o
   expect(semanticRequest.messages[semanticRequest.messages.length - 1].content).toContain(USER_TEXT);
   const rendererRequest = boundary.provider.mock.calls[1][0];
   const rendererBody = JSON.parse(rendererRequest.messages[rendererRequest.messages.length - 1].content);
-  expect(rendererBody.applicationDecision.communication).toMatchObject({ statusReason: 'fixed_event_manual_entry',
-    manualEntry: { navigationLabel: '予定', actionLabel: '予定を追加', eventCreatedByTurn: false } });
+  expect(rendererBody.applicationDecision.communication).toMatchObject({ statusReason: 'fixed_event_registration_preview',
+    eventRegistration: { eventCreatedByTurn: false, overlaps: [] } });
   expect(application().state.messages[application().state.messages.length - 1].content)
     .toBe(JSON.parse(await boundary.provider.mock.results[1].value).text);
   expect(application().state.intakeState?.lastQuestionContext).toBeUndefined();
-  expect(application().state.previewCandidates).toEqual([]);
+  expect(application().state.previewCandidates).toEqual([expect.objectContaining({ title: '部活', date: DATE, startTime: '10:30', endTime: '12:00', source: 'fixed_event_registration' })]);
   expect(application().pendingDraftBlocks).toEqual([]);
   expect(application().approvalAvailability).toMatchObject({ kind: 'blocked', reason: 'no_draft_blocks' });
   expect(application().exportConversationSnapshot()!.graph.temporalConstraints).toHaveLength(1);
@@ -173,39 +174,51 @@ it('hands an actual AI fixed-event turn to the existing manual entry and saves o
   expect(await fixture.repository.getPlans('owner-handoff')).toEqual([]);
   expect(await fixture.repository.getMonthEvents('owner-handoff')).toEqual([]);
 
-  await click(button('予定'));
-  await openManualEntry(); assertNoWrites();
-  await click(button('閉じる'));
-  expect(renderer!.root.findAllByType(MonthEventDialog)).toHaveLength(0);
+  class PreviewTrigger { closest() { return this; } }
+  vi.stubGlobal('Element', PreviewTrigger);
+  await act(async () => {
+    renderer!.root.findByProps({ className: 'ai-planning-view-shell-v2 ' }).props.onClickCapture({
+      target: new PreviewTrigger(), preventDefault() {}, stopPropagation() {},
+    });
+  });
+  expect(renderer!.root.findByType(AiPlanningPreviewDialog).props.blocks).toEqual([
+    expect.objectContaining({ title: '部活', date: DATE, startTime: '10:30', endTime: '12:00', type: 'other', subject: '' }),
+  ]);
+  expect(button('この内容で保存').props.disabled).toBe(true);
+  await click(button('この内容で仮予定にする'));
+  expect(application().pendingDraftBlocks).toHaveLength(1);
+  expect(application().approvalAvailability.kind).toBe('eligible');
   assertNoWrites();
-  await openManualEntry();
-  await act(async () => { renderer!.root.findByProps({ 'aria-label': 'タイトル' }).props.onChange({ target: { value: '手動で入力した部活' } }); });
-  await act(async () => { renderer!.root.findByProps({ type: 'checkbox' }).props.onChange({ target: { checked: false } }); });
-  await act(async () => { renderer!.root.findAllByType(TimeWheelPicker).find(node => node.props.role === 'start')!.props.onChange('10:30'); });
-  await act(async () => { renderer!.root.findAllByType(TimeWheelPicker).find(node => node.props.role === 'end')!.props.onChange('12:00'); });
-  assertNoWrites();
-  expect(button('保存').props.disabled).toBe(false);
-  await click(button('保存'));
-  await act(async () => { await vi.waitFor(() => expect(state.monthEvents).toHaveLength(1)); });
-  expect(saveEvent).toHaveBeenCalledTimes(1);
-  expect(writeEvents).not.toHaveBeenCalled(); // Legacy arrays are not the canonical writer.
+  expect(button('この内容で保存').props.disabled).toBe(false);
+  await click(button('この内容で保存'));
+  expect(renderer!.root.findAllByType(AiPlanningPreviewDialog)).toHaveLength(0);
+  await act(async () => { await vi.waitFor(() => expect(state.plans).toHaveLength(1)); });
+  expect(saveWeeklyApprovedPlan).toHaveBeenCalledTimes(1);
+  expect(completeWeeklyApprovalOperation).toHaveBeenCalledTimes(1);
+  expect(savePlan).toHaveBeenCalledTimes(1);
+  expect(saveEvent).not.toHaveBeenCalled();
+  expect(writePlans).not.toHaveBeenCalled();
   expect(eventWrites()).toHaveLength(1);
-  expect(eventWrites()[0]).toEqual([expect.objectContaining({ userId: 'owner-handoff',
-    kind: 'general', title: '手動で入力した部活', date: DATE, startTime: '10:30', endTime: '12:00',
-    provenance: expect.objectContaining({ legacy: expect.objectContaining({ kind: 'month-event' }) }) })]);
-  expect(savePlan).not.toHaveBeenCalled(); expect(writePlans).not.toHaveBeenCalled();
-  expect(saveWeeklyApprovedPlan).not.toHaveBeenCalled(); expect(completeWeeklyApprovalOperation).not.toHaveBeenCalled();
+  const saved = await fixture.repository.getPlans('owner-handoff');
+  expect(saved).toEqual([expect.objectContaining({ userId: 'owner-handoff', title: '部活', date: DATE,
+    startTime: '10:30', endTime: '12:00', type: 'other', sourceType: 'weekly-planning' })]);
+  // Repeated approval must not duplicate a completed operation or its plan.
+  await act(async () => { await application().approveDraftBlocks(); });
+  expect(await fixture.repository.getPlans('owner-handoff')).toEqual(saved);
+  expect(savePlan).toHaveBeenCalledTimes(1);
   const freshRepository = createLocalPlannerRepository(fixture.storage);
-  const saved = await freshRepository.getMonthEvents('owner-handoff');
-  expect(saved).toHaveLength(1);
-  expect(saved[0]).toMatchObject({ userId: 'owner-handoff', title: '手動で入力した部活', date: DATE,
-    endDate: DATE, startTime: '10:30', endTime: '12:00', repeat: 'none' });
-  expect(saved[0].id).toBeTruthy();
-  expect(eventWrites()[0][0].provenance.legacy.id).toBe(saved[0].id);
-  expect(await freshRepository.getPlans('owner-handoff')).toEqual([]);
+  expect(await freshRepository.getPlans('owner-handoff')).toEqual(saved);
+  expect(await freshRepository.getMonthEvents('owner-handoff')).toEqual([]);
   boundary.repository = freshRepository;
   await act(async () => { await state.loadPlannerData('owner-handoff'); });
-  expect(state.monthEvents).toEqual(saved);
+  expect(state.plans).toEqual(saved);
+  await click(button('予定'));
+  await act(async () => { state.setViewMode('week'); await vi.dynamicImportSettled(); });
+  expect(renderer!.root.findByType(WeekView).props.plans).toEqual(saved);
+  expect(text(renderer!.root.findByType(WeekView))).toContain('部活');
+  await act(async () => { state.setViewMode('day'); await vi.dynamicImportSettled(); });
+  expect(renderer!.root.findByType(DayView).props.plans).toEqual(saved);
+  expect(text(renderer!.root.findByType(DayView))).toContain('部活');
   expect(eventWrites()).toHaveLength(1);
   expect(boundary.provider).toHaveBeenCalledTimes(2);
 });

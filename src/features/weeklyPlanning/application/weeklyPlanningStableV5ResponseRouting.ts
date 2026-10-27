@@ -4,6 +4,8 @@ import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/w
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import { fixedEventCommunicationFacts, fixedEventOnlyInteractionStatus } from './weeklyPlanningFixedEventOnlyInteraction';
+import { createWeeklyPlanningFixedEventRegistrationCandidates, weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventRegistration';
+import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { evaluateWeeklyPlanningInsufficientCapacityProposalV5 } from './weeklyPlanningStableV5CapacityProposal';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
@@ -31,6 +33,7 @@ export type WeeklyPlanningStableV5PrePreviewRoute =
   | {
       kind: 'schedule_preview';
       schedulerInput: GenericSchedulerInput;
+      registrationCandidates: WeeklyDraftCandidate[];
     };
 
 function traceRuntimeBranch(params: {
@@ -175,6 +178,26 @@ function routeBeforePreview(params: {
     return respond(output);
   }
 
+  const registrationCandidates = createWeeklyPlanningFixedEventRegistrationCandidates({
+    graph, compilation, requested: params.requestedEventRegistration ?? false,
+  });
+  if (registrationCandidates.length > 0 && (!schedulerInput?.movableWorkItems.length || !authorized)) {
+    const workAwaitingAuthorization = !authorized
+      ? [...new Set(schedulerInput?.movableWorkItems.map(item => item.label) ?? [])] : [];
+    const output = {
+      ...projectStableV5CompatibilityOutput({
+        previousState: input.previousState, userText: input.userText,
+        message: `${registrationCandidates.length}件の仮予定候補を作りました。${workAwaitingAuthorization.length > 0 ? `${workAwaitingAuthorization.join('・')}はまだ配置していません。学習の仮予定も作る場合は「この条件で予定を作って」と送ってください。` : ''}内容を確認して、問題なければ下の「この内容で仮予定にする」ボタンを押してください。`,
+        draftCandidates: registrationCandidates, authorized, groundingRecords,
+        repairAgenda: repairDecision.agenda, learningStrategyProposalRecords: learningStrategyProposals.records,
+      }),
+      communicationFacts: weeklyPlanningFixedEventRegistrationFacts(registrationCandidates, input.plans, workAwaitingAuthorization),
+    };
+    traceRuntimeBranch({ requestId: input.traceRequestId, branch: 'fixed_event_registration_preview',
+      basis: { graphRevision: graph.revision }, output });
+    return respond(output);
+  }
+
   const fixedEventStatus = fixedEventOnlyInteractionStatus({
     graph,
     compilation,
@@ -315,6 +338,7 @@ function routeBeforePreview(params: {
   return {
     kind: 'schedule_preview',
     schedulerInput,
+    registrationCandidates,
   };
 }
 

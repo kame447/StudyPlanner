@@ -67,7 +67,7 @@ An aside keeps the current graph-derived pending question and values, without in
 
 The renderer consumes this typed communication goal rather than independently classifying explanation intent from raw text. Normal replies remain AI-rendered. No conversation mode, new act authority in PlanningState, the Fact Graph or Plan, advice lifecycle, budget-completion feature or alternate semantic runtime is introduced by these four acts. Diagnostic/outbox traces retain the actual request and bounded act/goal evidence under the existing size and explicit-truncation contract; they are not a second planning state.
 
-The two additional fixed-event acts, declining additional work and requesting event registration, use the same validated additive envelope. They only select the [fixed-event optional-closure/manual-entry boundary](current-contract-v5.md#fixed-event-only-closure-and-manual-entry); they do not weaken the ordinary question identity rules or grant event creation/save permission.
+The two additional fixed-event acts, declining additional work and requesting event registration, use the same validated additive envelope. They select the [fixed-event application boundary](current-contract-v5.md#fixed-event-registration-and-busy-only-closure); ordinary question identity and explicit approval/save remain with their existing application owners.
 
 ## Consultation routing boundary — planned Issue #246
 

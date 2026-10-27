@@ -125,6 +125,12 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       ...(input.communication?.statusReason === 'no_additional_work' ? [
         '追加作業への任意の勧誘は終了しています。現在の発話に自然に応じ、新しい作業や学習を勧誘する質問を足さないでください。予定の作成・保存は行っていません。',
       ] : []),
+      ...(input.communication?.eventRegistration ? [
+        '固定予定の登録候補は指定どおりの日時でプレビューにあります。まだ保存していません。previewPromotionControlLabelの明示承認を案内し、保存済みとは言わないでください。eventRegistration.overlapsにある日付・重複区間・両方のタイトルを明示し、勝手に移動・分割・削除しないでください。',
+        ...(input.communication.eventRegistration.workAwaitingAuthorization?.length ? [
+          'eventRegistration.workAwaitingAuthorizationの作業は、計画作成の依頼をまだ受けていないため未配置です。固定予定の候補とは区別して未配置であることを伝え、その作業も配置する場合は「この条件で予定を作って」と送る既存の依頼経路を案内してください。',
+        ] : []),
+      ] : []),
       '質問はquestionTarget/questionIntentの対象、requestedInformation、allowedChoices、measurement、mode、progressBasisを守って一つだけ聞く。questionCodeだけで目的を変更しない。',
       'applicationDecision.communication.goal=explain_questionの場合は、同じ質問を繰り返さずquestionIntentの目的を短く説明してください。その際もrequestedInformationに複数の必要情報があるなら一部を落とさず、同じ一つの確認として全部を分かるようにしてください。',
       'schedulable_work_detailはmode/progressBasis厳守。existing_target_progress=現在進捗のみ、別作業は聞かない。open_ended_session=この計画期間の取組枠を相談。完成率/総時間は不要。空き枠を聞き、未定なら仮配分を提案。registered_material_target_scope=保存済みtotal/current/remainingを再質問せず、knownUnitLabelのまま短く示し、今回が残り全部か別範囲かだけ聞く。known_bounded_quantityのみknownUnitLabel数量可。known_registered_material_progressは保存値/単位をそのまま使用。completion_progress_without_known_unitは具体的な単位/総量を発明しない。open_ended_sessionでは完成率の質問へ戻らない。ユーザー提示単位を優先。missing_task_identity=作業自体。all_requested_work_complete=完了済みとして同じ進捗を聞き直さず、追加作業/制約だけ聞く。',

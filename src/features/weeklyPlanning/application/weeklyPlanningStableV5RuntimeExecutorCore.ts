@@ -1,4 +1,5 @@
 import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
+import { weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventRegistration';
 import { planWeeklyPlanningInteraction, classifyWeeklyPlanningInteraction } from './weeklyPlanningInteractionDecision';
 import {
   withWeeklyPlanningProvisionalTimeboxStateV5,
@@ -111,24 +112,30 @@ export function continueWeeklyPlanningStableV5RuntimeTurnCore(
     });
     return {
       ...output,
-      observability: semanticObservability,
+      observability: { ...semanticObservability,
+        previewCount: output.draftCandidates.length > 0 ? output.draftCandidates.length : null },
       interactionOutcome: classifyWeeklyPlanningInteraction({ plan: interactionPlan, output,
         previousQuestion: input.previousState?.lastQuestionContext, presentation: semanticTurn.pendingQuestionPresentation }),
     };
   }
 
-  const preview = executeWeeklyPlanningStableV5Preview({
+  const scheduledPreview = executeWeeklyPlanningStableV5Preview({
     input,
     graph: createWeeklyPlanningPlacementGraphViewV5(evaluation.activeGraph),
     schedulerInput: responseRoute.schedulerInput,
     requestContext,
     retainPartialCapacityEvidence: Boolean(evaluation.provisionalTimeboxProjection.source),
   });
+  const registrationCandidates = responseRoute.registrationCandidates;
+  const preview = scheduledPreview.status === 'ready' && registrationCandidates.length > 0
+    ? { ...scheduledPreview, candidates: [...registrationCandidates, ...scheduledPreview.candidates] }
+    : scheduledPreview;
 
   const provisionalCapacityOutput = projectWeeklyPlanningProvisionalCapacityPreviewV5({
     input,
     evaluation,
-    preview,
+    preview: scheduledPreview,
+    registrationCandidates,
   });
   const routedOutput = provisionalCapacityOutput
     ?? weeklyPlanningStableV5ResponseRouter.afterPreview({
@@ -141,6 +148,7 @@ export function continueWeeklyPlanningStableV5RuntimeTurnCore(
     output: routedOutput,
     evaluation,
   });
+  const presentedRegistrations = output.draftCandidates.filter(candidate => candidate.source === 'fixed_event_registration');
   const compiled = evaluation.compilation.input;
   const selection = compiled?.sourceSelections.find((entry) =>
     entry.kind === 'existing_plans' && entry.status === 'selected'
@@ -159,6 +167,8 @@ export function continueWeeklyPlanningStableV5RuntimeTurnCore(
     : [];
   return {
     ...output,
+    ...(presentedRegistrations.length > 0
+      ? { communicationFacts: weeklyPlanningFixedEventRegistrationFacts(presentedRegistrations, input.plans) } : {}),
     interactionOutcome: { kind: 'apply' },
     ...(output.draftCandidates.length > 0 && !output.preserveExistingPreview
       ? { previewConstraintSatisfaction: projectWeeklyPlanningPreviewConstraintSatisfaction({
