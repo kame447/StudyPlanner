@@ -156,7 +156,7 @@ npx wrangler secret put OPENROUTER_API_KEY --config workers/ai-proxy/wrangler.js
 
 既定値は `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` です。`shadow` はWorkerの `waitUntil` 内で比較記録だけを行い、既存LLMの応答を待たせず、Jevから正式状態を書き換えません。`canary` は明示した5・25・100%でのみ選択されます。現在の閾値は未校正なので、日本語gold/holdout評価と#152の該当security gateが完了するまで本番canaryを有効化しません。rollbackは `off` へ戻してWorkerを再デプロイします。今回の実装自体はデプロイや本番有効化を行いません。
 
-モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。要求は固定release `typesafe/jev-1.14`、応答は `typesafe/jev-1.14` / `typesafe/jev-1.14-20261014` のみ許可し、`latest` や未検証snapshotへの自動追従はしません。モデル更新時はrequest ID、response allowlist、catalog/gateの校正を合わせて見直します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。OpenRouter応答はstream読取中に32,768 bytesで打ち切り、上限超過時は残りをbufferせずcancelします。
+モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。本番の要求はOpenRouterの安定最新版エイリアス `~typesafe/jev-latest` で、新しいJev 1.x releaseへ自動追従します。応答の `model` はJev 1.14以上の同一major releaseまたは妥当な日付付きsnapshotに限定し、旧版・別モデル・不正/未来日付の識別子は拒否して既存生成LLMへ戻します。`JEV_MODEL.responses` は既知のテスト用識別子であり、固定allowlistではありません。未知major versionは自動採用しません。モデル更新で判断分布や料金が変わる可能性は残るため、判定品質の再評価や使用料金の監視は別途必要です。既存の事前登録済み評価（Unit 0）は検証済みのJev 1.13に固定したまま維持します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。OpenRouter応答はstream読取中に32,768 bytesで打ち切り、上限超過時は残りをbufferせずcancelします。
 
 [PR #848](https://github.com/kame447/StudyPlanner/pull/848) は本番Workerのモデル固定を更新したもので、事前登録済みUnit 0評価の `scripts/jev-contextual-unit0-budget.mjs` は比較条件を保持するため1.13のままです。この評価snapshotを本番設定と混同せず、モデル固定の更新だけで品質改善や本番有効化を確認済みとは扱いません。
 

@@ -71,7 +71,7 @@ beforeEach(() => {
         return [key, { type: 'choice', choice, confidence: 0.999,
           probabilities: Object.fromEntries(options.map(option => [option, option === choice ? 0.9996 : 0.0004 / (options.length - 1)])) }];
       }));
-      return Response.json({ model: JEV_MODEL.request, answers });
+      return Response.json({ model: JEV_MODEL.responses[1], answers });
     }
     if (url === 'https://api.openai.com/v1/chat/completions') {
       sends.luna += 1;
