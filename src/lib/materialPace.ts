@@ -350,7 +350,7 @@ export function calculateNextMaterialUnit(
   material: StudyMaterial,
   update: ActualMaterialProgressUpdate,
 ): number | null {
-  if (material.paceEnabled !== true || update.materialId !== material.id) {
+  if (material.paceEnabled !== true) {
     return null;
   }
 

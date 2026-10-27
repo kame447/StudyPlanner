@@ -174,10 +174,6 @@ function isValidLearningRecord(
   return record.durationMinutes > 0;
 }
 
-function safePlannedMinutes(plan: Plan): number {
-  return Math.max(0, getPlannedMinutes(plan));
-}
-
 function filterRecordsByMaterial(
   records: NormalizedStudyRecordForDisplay[],
   materialFilter: string,
@@ -380,7 +376,7 @@ function buildDailyBuckets({
   plans.forEach((plan) => {
     plannedByDate.set(
       plan.date,
-      (plannedByDate.get(plan.date) ?? 0) + safePlannedMinutes(plan),
+      (plannedByDate.get(plan.date) ?? 0) + getPlannedMinutes(plan),
     );
   });
 
@@ -496,7 +492,7 @@ function summarizeRange({
   return {
     actualMinutes: sumStudyRecordMinutes(records),
     plannedMinutes: rangePlans.reduce(
-      (sum, plan) => sum + safePlannedMinutes(plan),
+      (sum, plan) => sum + getPlannedMinutes(plan),
       0,
     ),
   };
@@ -648,7 +644,7 @@ export function buildLearningReportModel({
   });
   const actualMinutes = sumStudyRecordMinutes(records);
   const plannedMinutes = rangePlans.reduce(
-    (sum, plan) => sum + safePlannedMinutes(plan),
+    (sum, plan) => sum + getPlannedMinutes(plan),
     0,
   );
   const breakdown = buildBreakdown({ records, subjects, materials });
