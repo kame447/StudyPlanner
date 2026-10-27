@@ -2,7 +2,7 @@ import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
-import { sanitizeWeeklyPlanningConversationActsV5 } from './weeklyPlanningConversationActsV5';
+import { sanitizeWeeklyPlanningConversationActsV5, type SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
 
 const AVAILABILITY_DATE_REPRESENTATION_ERROR =
   /^document\.availabilityDeclarations\[(\d+)]\.dateExpression:canonical-expression$/;
@@ -34,7 +34,6 @@ const REQUIRED_ARRAY_KEYS = [
   'relations',
   'availabilityDeclarations',
   'constraintSourceRequests',
-  'userContextFacts',
   'uncertainties',
   'corrections',
   'decisions',
@@ -45,7 +44,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneDocument(document: WeeklyPlanningSemanticDocumentV5): MutableRecord {
-  return structuredClone(document) as unknown as MutableRecord;
+  const clone = structuredClone(document) as unknown as MutableRecord;
+  for (const key of ['userContextFacts', 'conversationActs']) {
+    if (clone[key] === undefined) clone[key] = [];
+  }
+  return clone;
 }
 
 function idsMatching(
@@ -198,6 +201,42 @@ export function isRepresentationOnlySemanticRepairV5(
       REPRESENTATION_ONLY_ERROR_PATTERNS.some((pattern) => pattern.test(error)));
 }
 
+function isPreservationGuardedRepair(errors: readonly string[]): boolean {
+  return errors.length > 0 && errors.every(error => FIXED_INTERVAL_LEVEL_ERROR.test(error)
+    || REPRESENTATION_ONLY_ERROR_PATTERNS.some(pattern => pattern.test(error)));
+}
+
+function changedAddressedFixedInterval(params: {
+  initial: WeeklyPlanningSemanticDocumentV5;
+  repaired: WeeklyPlanningSemanticDocumentV5;
+  errors: readonly string[];
+}): boolean {
+  for (const error of params.errors) {
+    const match = FIXED_INTERVAL_LEVEL_ERROR.exec(error);
+    if (!match) continue;
+    const task = params.initial.tasks[Number(match[1])];
+    const constraint = task?.temporalConstraints?.[Number(match[2])];
+    if (!constraint?.localId) return true;
+    const candidates = params.repaired.tasks.flatMap(task =>
+      Array.isArray(task?.temporalConstraints) ? task.temporalConstraints
+        .filter(candidate => candidate?.localId === constraint.localId).map(candidate => ({ task, constraint: candidate })) : []);
+    if (candidates.length !== 1 || candidates[0].task.localId !== task.localId) return true;
+    const before: MutableRecord = { ...constraint };
+    const after: MutableRecord = { ...candidates[0].constraint };
+    delete before.constraintLevel;
+    delete after.constraintLevel;
+    if (params.errors.some(error => {
+      const date = TEMPORAL_DATE_REPRESENTATION_ERROR.exec(error);
+      return date?.[1] === match[1] && date?.[2] === match[2];
+    })) {
+      delete before.dateExpression;
+      delete after.dateExpression;
+    }
+    if (after.kind !== 'fixed_interval' || stableSerialize(before) !== stableSerialize(after)) return true;
+  }
+  return false;
+}
+
 /** The provider's document as written (after pre-parse normalization), before validation. */
 export function readWeeklyPlanningSemanticProviderDocumentV5(
   rawResponse: string,
@@ -209,6 +248,7 @@ export function readWeeklyPlanningSemanticProviderDocumentV5(
     if (typeof value.planningIntent !== 'string') return null;
     if (value.planningWindow !== null && !isRecord(value.planningWindow)) return null;
     if (REQUIRED_ARRAY_KEYS.some((key) => !Array.isArray(value[key]))) return null;
+    if (value.userContextFacts !== undefined && !Array.isArray(value.userContextFacts)) return null;
     return structuredClone(value) as unknown as WeeklyPlanningSemanticDocumentV5;
   } catch {
     return null;
@@ -219,7 +259,7 @@ export function readWeeklyPlanningRepresentationRepairBaselineV5(params: {
   rawResponse: string;
   validationErrors: readonly string[];
 }): WeeklyPlanningSemanticDocumentV5 | null {
-  if (!isRepresentationOnlySemanticRepairV5(params.validationErrors)) return null;
+  if (!isPreservationGuardedRepair(params.validationErrors)) return null;
   return readWeeklyPlanningSemanticProviderDocumentV5(params.rawResponse);
 }
 
@@ -227,17 +267,22 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
   initialDocument: WeeklyPlanningSemanticDocumentV5 | null;
   repairedDocument: WeeklyPlanningSemanticDocumentV5 | null;
   initialErrors: readonly string[];
+  initialConversationActs?: readonly SemanticConversationActV5[];
 }): string[] {
   if (
     !params.initialDocument
     || !params.repairedDocument
   ) {
-    return [];
+    return params.initialErrors.some(error => FIXED_INTERVAL_LEVEL_ERROR.test(error))
+      || (params.initialConversationActs?.length ?? params.initialDocument?.conversationActs?.length ?? 0) > 0
+      ? ['semantic-repair-preservation:comparison-document-unavailable'] : [];
   }
 
-  const guardedRepair = params.initialErrors.length > 0 && params.initialErrors.every(error =>
-    FIXED_INTERVAL_LEVEL_ERROR.test(error)
-    || REPRESENTATION_ONLY_ERROR_PATTERNS.some(pattern => pattern.test(error)));
+  if (changedAddressedFixedInterval({ initial: params.initialDocument, repaired: params.repairedDocument,
+    errors: params.initialErrors })) {
+    return ['semantic-repair-preservation:representation-only repair changed unrelated semantic facts'];
+  }
+  const guardedRepair = isPreservationGuardedRepair(params.initialErrors);
   if (!guardedRepair) {
     const acts = sanitizeWeeklyPlanningConversationActsV5(params.initialDocument.conversationActs);
     if (acts.diagnostics.length > 0

@@ -103,6 +103,16 @@ function document(params: {
 }
 
 describe('Stable V5 targeted semantic repair preservation', () => {
+  it.each(['level', 'act'] as const)('fails closed when %s preservation has no comparison document', kind => {
+    expect(validateWeeklyPlanningSemanticRepairPreservationV5({
+      initialDocument: null, repairedDocument: document({ canonicalWindow: true }),
+      initialErrors: kind === 'level'
+        ? ['document.tasks[0].temporalConstraints[0].constraintLevel:soft-fixed-interval-use-preferred-window']
+        : ['document.relations'],
+      initialConversationActs: kind === 'act' ? [{ kind: 'request_event_registration', targetPublicId: null }] : [],
+    })).toEqual(['semantic-repair-preservation:comparison-document-unavailable']);
+  });
+
   it.each(['preserved', 'deleted', 'changed'] as const)(
     'applies the act invariant in the real single-repair normalizer for a missing deadline: %s', async change => {
       const initial = document({ canonicalWindow: true });

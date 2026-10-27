@@ -35,6 +35,7 @@ describe('Stable V5 semantic repair prompt', () => {
     expect(changes[0]).toContain('precision=approximate or uncertainties');
     expect(changes[0]).toContain('Preserve kind, clock times, other facts and conversationActs');
     expect(changes[0]).toContain('Preserve unrelated supported current-turn facts');
+    expect(changes[0]).toContain('current-turn facts, conversationActs and schema-valid fields');
     expect(changes[1]).toContain('Encode dateExpression in Stable V5 canonical syntax');
     expect(changes.join('\n').match(/Correct every listed validation failure/g)).toHaveLength(1);
   });

@@ -596,13 +596,13 @@ it('keeps an oversized real accepted-reference turn with explicit partial-eviden
 it.each([false, true])('persists explicit local B/session with pending A/total through retry and Worker (oversized=%s)', async oversized => {
   const turn = await generatedExactReferenceTurn(oversized, true);
   const { entry, stored } = await persistGeneratedExactReference(turn);
-  // Baseline22e42203 full system at transport, then the existing explicit1500B
+  // Reviewed registration-act system at transport, then the existing explicit1500B
   // trace prefix through append/retry/Worker. Full requestBytes remain below.
   for (const [index, messages] of [turn.requests[1].messages, entry.aiInterpreter.input.requests[1].messages,
     (stored.aiInterpreter as WeeklyPlanningTraceTurnDiagnosticEntry['aiInterpreter']).input.requests[1].messages].entries()) {
     const system = messages.find(message => message.role === 'system')!.content;
     expect(createHash('sha256').update(system).digest('hex')).toBe(index === 0
-      ? '6fd5883202646033dfb7f209ed5529341381f7922de579cb319e24a5c50c9c3c'
+      ? '7d6ae17aaa905f6c3e51e7e4877f73a79192113dd820cdd5db89ddf4d08b7d90'
       : '8177d24affeb6bccf24121045bce6dddc344f0af250f58cbcf7c784f85b85046');
     if (index > 0) expect(system).toContain('…[trace truncated]');
   }
@@ -826,6 +826,7 @@ async function persistGeneratedSelfReference(turn: Awaited<ReturnType<typeof gen
   const queued = listWeeklyPlanningTraceOutboxItems({ userId: input.userId, conversationId: input.conversationId });
   expect(queued).toHaveLength(1);
   expect(queued[0].input).toEqual(input);
+  expect(JSON.stringify(queued[0].input)).toContain('request_event_registration: add events to own calendar; preview, no save');
   expect(measureWeeklyPlanningTraceJsonBytes(queued[0])).toBeLessThanOrEqual(192 * 1024);
   expect(JSON.stringify(queued)).not.toContain(TRANSPORT_ONLY_CREDENTIAL);
   resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
@@ -966,6 +967,23 @@ it.each([false, true])('persists the actual fixed-interval repair directive thro
   const actualDirective = repairMessages[repairMessages.length - 1].content;
   expect(actualDirective).toContain('change only constraintLevel to hard');
   expect(actualDirective).toContain('Preserve kind, clock times, other facts and conversationActs');
+  const actPreservation = 'current-turn facts, conversationActs and schema-valid fields';
+  expect(actualDirective).toContain(actPreservation);
+  expect(JSON.stringify(entry.aiInterpreter.input.requests[1])).toContain(actPreservation);
+  expect(JSON.stringify(stored)).toContain(actPreservation);
+  const system = turn.requests[0].messages[0].content;
+  expect(system).toContain('request_event_registration: add events to own calendar; preview, no save');
+  expect(JSON.stringify(turn.events)).toContain('request_event_registration: add events to own calendar; preview, no save');
+  // Existing diagnostics keep a bounded prefix, not the full policy. Preserve
+  // its exact excerpt, request size and explicit truncation through the Worker.
+  for (const request of [entry.aiInterpreter.input.requests[0],
+    (stored.aiInterpreter as WeeklyPlanningTraceTurnDiagnosticEntry['aiInterpreter']).input.requests[0]]) {
+    expect(request.messages[0].content).toContain('…[trace truncated]');
+    expect(createHash('sha256').update(request.messages[0].content).digest('hex'))
+      .toBe('8177d24affeb6bccf24121045bce6dddc344f0af250f58cbcf7c784f85b85046');
+    expect(request.requestBytes).toBe(measureWeeklyPlanningTraceJsonBytes(turn.requests[0]));
+  }
+  expect(entry.diagnostics.truncation?.fields).toContain('aiInterpreter.input.requests[0].messages[0].content');
   expect(JSON.stringify(entry.aiInterpreter.input.requests[1])).toContain('change only constraintLevel to hard');
   expect(JSON.stringify(stored)).toContain('change only constraintLevel to hard');
   expect(entry.aiInterpreter.structuredResults[0]).toMatchObject({ attempt: 'initial', accepted: false });

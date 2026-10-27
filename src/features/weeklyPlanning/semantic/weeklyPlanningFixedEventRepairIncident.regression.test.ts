@@ -18,8 +18,8 @@ function safeRepair(): WeeklyPlanningSemanticDocumentV5 {
   return document;
 }
 
-async function normalizeRepair(response: string) {
-  const queued = [initial, response];
+async function normalizeRepair(response: string, firstResponse = initial) {
+  const queued = [firstResponse, response];
   const requests: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0][] = [];
   const client: OpenAiCompatibleClient = { async createChatCompletion(request) {
     requests.push(request);
@@ -35,6 +35,71 @@ async function normalizeRepair(response: string) {
 }
 
 describe('Recorded real-provider fixed-event repair, no network', () => {
+  it('fails closed on an unavailable initial document while retaining separately validated registration acts', async () => {
+    const first: Partial<WeeklyPlanningSemanticDocumentV5> = safeRepair();
+    delete first.relations;
+    const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(first), { currentUserText: fixture.original.text });
+    expect(validation.providerDocument).toBeNull();
+    expect(validation.parsedDocument).toBeNull();
+    expect(validation.conversationActs).toEqual(first.conversationActs);
+    const response = safeRepair();
+    response.conversationActs = [];
+    const result = await normalizeRepair(JSON.stringify(response), JSON.stringify(first));
+    expect(result.status).toBe('rejected');
+    expect(result.document).toBeNull();
+    expect(result.diagnostics.validationErrors).toContain('repair:semantic-repair-preservation:comparison-document-unavailable');
+  });
+
+  it.each([false, true])('preserves a fixed interval when the initial optional userContextFacts is omitted (destructive=%s)', async destructive => {
+    const first = safeRepair();
+    first.tasks[4].temporalConstraints[0].constraintLevel = 'soft';
+    delete first.userContextFacts;
+    const response = safeRepair();
+    if (destructive) {
+      response.tasks[4].temporalConstraints[0].kind = 'preferred_window';
+      response.tasks[4].temporalConstraints[0].constraintLevel = 'soft';
+      response.conversationActs = [];
+    }
+    expect(validateWeeklyPlanningSemanticResponseV5(JSON.stringify(first), { currentUserText: fixture.original.text }).errors)
+      .toEqual(['document.tasks[4].temporalConstraints[0].constraintLevel:soft-fixed-interval-use-preferred-window']);
+    const result = await normalizeRepair(JSON.stringify(response), JSON.stringify(first));
+    expect(result.status).toBe(destructive ? 'rejected' : 'accepted');
+    if (destructive) expect(result.document).toBeNull();
+    else {
+      expect(result.document?.tasks[4].temporalConstraints[0]).toEqual(response.tasks[4].temporalConstraints[0]);
+      expect(result.document?.conversationActs).toEqual(response.conversationActs);
+    }
+  });
+
+  it.each(['preserved', 'kind', 'clock', 'precision', 'target', 'removed', 'reordered', 'reordered_kind'] as const)(
+    'keeps the addressed interval immutable even with a missing-deadline repair: %s', async change => {
+      const first = safeRepair();
+      first.tasks[4].temporalConstraints[0].constraintLevel = 'soft';
+      first.tasks[0].temporalConstraints.push({
+        ...first.tasks[0].temporalConstraints[0], localId: 'missing-deadline', kind: 'deadline',
+        dateExpression: null, startTime: null, endTime: null,
+      });
+      const response = safeRepair();
+      const conference = response.tasks[4].temporalConstraints[0];
+      if (change === 'kind' || change === 'reordered_kind') { conference.kind = 'preferred_window'; conference.constraintLevel = 'soft'; }
+      if (change === 'clock') conference.startTime = '18:00';
+      if (change === 'precision') conference.precision = 'exact';
+      if (change === 'target') conference.targetLocalId = response.tasks[0].localId;
+      if (change === 'removed') response.tasks[4].temporalConstraints = [];
+      if (change === 'reordered' || change === 'reordered_kind') response.tasks.reverse();
+      const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(first), { currentUserText: fixture.original.text });
+      expect(validation.errors).toEqual(expect.arrayContaining([
+        'document.tasks[0].temporalConstraints[1]:missing-deadline',
+        'document.tasks[4].temporalConstraints[0].constraintLevel:soft-fixed-interval-use-preferred-window',
+      ]));
+      const result = await normalizeRepair(JSON.stringify(response), JSON.stringify(first));
+      const valid = change === 'preserved' || change === 'reordered';
+      expect(result.status).toBe(valid ? 'accepted' : 'rejected');
+      if (!valid) expect(result.document).toBeNull();
+      else expect(result.document?.conversationActs).toEqual(first.conversationActs);
+    },
+  );
+
   it('isolates the soft-fixed-interval rejection after date encoding is normalized', () => {
     const document = JSON.parse(initial);
     for (const task of document.tasks) for (const time of task.temporalConstraints) time.dateExpression = 'tomorrow';
