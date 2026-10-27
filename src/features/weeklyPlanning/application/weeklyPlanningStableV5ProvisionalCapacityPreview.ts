@@ -8,7 +8,7 @@ import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningS
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
-import { weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventOnlyInteraction';
+import { weeklyPlanningFixedEventRegistrationFacts, weeklyPlanningUnregisteredFixedEventMessage, type WeeklyPlanningUnregisteredFixedEvent } from './weeklyPlanningFixedEventOnlyInteraction';
 import type {
   WeeklyPlanningStableV5PlanningEvaluation,
 } from './weeklyPlanningStableV5PlanningEvaluation';
@@ -99,6 +99,7 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
   evaluation: WeeklyPlanningStableV5PlanningEvaluation;
   preview: WeeklyPlanningStableV5PreviewSchedulerResult;
   registrationCandidates?: WeeklyDraftCandidate[];
+  unregistered?: WeeklyPlanningUnregisteredFixedEvent[];
 }): WeeklyPlanningTurnExecutionResult | null {
   const decision = provisionalCapacityDecision({
     evaluation: params.evaluation,
@@ -109,8 +110,8 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
   // Registration is independent of the capacity decision and cannot authorize it.
   const registrations = params.registrationCandidates ?? [];
   const candidates = [...registrations, ...params.preview.candidates];
-  const registrationFacts = registrations.length > 0
-    ? weeklyPlanningFixedEventRegistrationFacts(registrations, params.input.plans) : undefined;
+  const registrationFacts = registrations.length > 0 || (params.unregistered?.length ?? 0) > 0
+    ? weeklyPlanningFixedEventRegistrationFacts(registrations, params.input.plans, [], params.unregistered) : undefined;
   const overlapText = registrationFacts?.eventRegistration?.overlaps.map(overlap =>
     `${overlap.date}の${overlap.titles.join('と')}は${overlap.startTime}–${overlap.endTime}が重複しています。`).join('') ?? '';
 
@@ -127,7 +128,7 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
       ? `${partlyOmittedLabels.join('・')}の一部は容量不足のため候補に入れていません。` : '',
   ].join('') || '容量不足のため候補に入らなかった作業があります。';
   const message = withStableV5GroundingProposal({
-    message: `空き時間内で指定された優先順位に沿って${candidates.length}件の仮予定候補を作りました。${omittedText}${overlapText}内容を確認して、必要なら条件を修正してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。`,
+    message: `空き時間内で指定された優先順位に沿って${candidates.length}件の仮予定候補を作りました。${omittedText}${overlapText}${weeklyPlanningUnregisteredFixedEventMessage(params.unregistered ?? [])}内容を確認して、必要なら条件を修正してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。`,
     records: params.evaluation.groundingRecords,
     currentTurnId: params.input.traceRequestId,
   });

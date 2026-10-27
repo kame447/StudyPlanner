@@ -13,7 +13,7 @@ import { isPersistedWeeklyPlanningState } from '../weeklyPlanningStateCodec';
 import { createWeeklyDraftBlocksFromPreviewCandidates, createWeeklyPlanningPreviewBlocks, createWeeklyPlanningPreviewDisplayBlock } from '../preview/weeklyPlanningPreviewBlocks';
 import { hydrateWeeklyPlanningStableV5RuntimeSession, resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
 import { classifyWeeklyPlanningApprovalAvailability } from './weeklyPlanningApprovalAvailability';
-import { createWeeklyPlanningFixedEventRegistrationCandidates, weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventOnlyInteraction';
+import { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventOnlyInteraction';
 
 afterEach(resetWeeklyPlanningStableV5RuntimeSessionsForTest);
 
@@ -45,7 +45,7 @@ function fixture(category: 'study' | 'non_study' = 'non_study') {
 
 it('keeps overlapping registration intervals and reports their exact intersection with candidates and existing plans', () => {
   const input = fixture();
-  const candidates = createWeeklyPlanningFixedEventRegistrationCandidates({ ...input, requested: true });
+  const candidates = projectWeeklyPlanningFixedEventRegistration({ ...input, registrationActs: [{ kind: 'request_event_registration', targetPublicId: null }], currentTurnId: 'turn-1' }).candidates;
   expect(candidates.map(c => [c.title, c.startTime, c.endTime])).toEqual([['部活', '16:00', '17:30'], ['ゼミ', '17:00', '21:00']]);
   for (const candidate of candidates) {
     expect(candidate).not.toHaveProperty('field'); expect(candidate).not.toHaveProperty('year');
@@ -57,13 +57,13 @@ it('keeps overlapping registration intervals and reports their exact intersectio
     { date: '2026-10-27', startTime: '17:00', endTime: '17:30', titles: ['部活', 'ゼミ'] },
     { date: '2026-10-27', startTime: '20:30', endTime: '21:00', titles: ['ゼミ', '既存予定'] },
   ] });
-  expect(createWeeklyPlanningFixedEventRegistrationCandidates({ ...input, requested: false })).toEqual([]);
+  expect(projectWeeklyPlanningFixedEventRegistration({ ...input, registrationActs: [], currentTurnId: 'turn-1' }).candidates).toEqual([]);
 });
 
 it.each(['non_study', 'study'] as const)('round-trips a %s registration through the Stable checkpoint shape while the legacy candidate codec rejects it', category => {
   const input = fixture(category);
   const planType = category === 'study' ? 'study' : 'other';
-  const candidates = createWeeklyPlanningFixedEventRegistrationCandidates({ ...input, requested: true });
+  const candidates = projectWeeklyPlanningFixedEventRegistration({ ...input, registrationActs: [{ kind: 'request_event_registration', targetPublicId: null }], currentTurnId: 'turn-1' }).candidates;
   const state = { ...createInitialPlanningState('2026-10-26'), previewCandidates: candidates };
   const format = { kind: 'stable_v5_session_v1' as const, ownerId: 'owner', weekStartDate: state.weekStartDate,
     conversationId: 'registration', graphRevision: input.graph.revision };
@@ -94,7 +94,7 @@ it('fails closed on an unsupported Worker candidate, clears the pending turn and
   const dispatch = (action: WeeklyPlanningAction) => { state = weeklyPlanningReducer(state, action); return state; };
   const session = createWeeklyPlanningControllerSession('owner', state.weekStartDate, 'registration');
   const { graph, compilation } = fixture();
-  const candidate = createWeeklyPlanningFixedEventRegistrationCandidates({ graph, compilation, requested: true })[0];
+  const candidate = projectWeeklyPlanningFixedEventRegistration({ graph, compilation, registrationActs: [{ kind: 'request_event_registration', targetPublicId: null }], currentTurnId: 'turn-1' }).candidates[0];
   const input = { session, ownerId: 'owner', userText: '予定を入れて', getState: () => state, dispatch,
     now: () => '2026-10-26T10:00:00.000Z' };
   await expect(submitWeeklyPlanningControlledTurn({ ...input, execute: async () => ({
@@ -116,7 +116,7 @@ it('fails closed on an unsupported Worker candidate, clears the pending turn and
 
 it('requires a fresh graph revision before approving fixed-event registration candidates', () => {
   const input = fixture();
-  const candidates = createWeeklyPlanningFixedEventRegistrationCandidates({ ...input, requested: true });
+  const candidates = projectWeeklyPlanningFixedEventRegistration({ ...input, registrationActs: [{ kind: 'request_event_registration', targetPublicId: null }], currentTurnId: 'turn-1' }).candidates;
   const publish = (revision: number) => hydrateWeeklyPlanningStableV5RuntimeSession({ ownerId: 'owner',
     weekStartDate: '2026-10-26', conversationId: 'registration', graph: { ...input.graph, revision } });
   publish(input.graph.revision);
@@ -124,4 +124,16 @@ it('requires a fresh graph revision before approving fixed-event registration ca
   expect(classifyWeeklyPlanningApprovalAvailability({ blocks, userId: 'owner' })).toMatchObject({ kind: 'eligible', reason: 'current_session' });
   publish(input.graph.revision + 1);
   expect(classifyWeeklyPlanningApprovalAvailability({ blocks, userId: 'owner' })).toMatchObject({ kind: 'recompute_required', reason: 'state_revision_mismatch' });
+});
+
+it('detects an overlap with an existing plan ending at midnight', () => {
+  const input = fixture();
+  const candidate = { ...projectWeeklyPlanningFixedEventRegistration({ ...input,
+    registrationActs: [{ kind: 'request_event_registration', targetPublicId: null }], currentTurnId: 'turn-1' }).candidates[0],
+    startTime: '23:00', endTime: '23:30', title: '夜の予定', durationMinutes: 30 };
+  const existing = createPlanFromDraft({ ...createEmptyPlanDraft('owner', '2026-10-27'),
+    title: '既存の夜の予定', type: 'other', startTime: '22:00', endTime: '00:00' });
+  expect(weeklyPlanningFixedEventRegistrationFacts([candidate], [existing]).eventRegistration?.overlaps).toEqual([
+    { date: '2026-10-27', startTime: '23:00', endTime: '23:30', titles: ['夜の予定', '既存の夜の予定'] },
+  ]);
 });

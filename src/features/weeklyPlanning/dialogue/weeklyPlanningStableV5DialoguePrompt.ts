@@ -126,7 +126,12 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
         '追加作業への任意の勧誘は終了しています。現在の発話に自然に応じ、新しい作業や学習を勧誘する質問を足さないでください。予定の作成・保存は行っていません。',
       ] : []),
       ...(input.communication?.eventRegistration ? [
-        '固定予定の登録候補は指定どおりの日時でプレビューにあります。まだ保存していません。previewPromotionControlLabelの明示承認を案内し、保存済みとは言わないでください。eventRegistration.overlapsにある日付・重複区間・両方のタイトルを明示し、勝手に移動・分割・削除しないでください。',
+        ...(input.communication.eventRegistration.candidates.length > 0 ? [
+          '固定候補は指定日時の未保存プレビューです。previewPromotionControlLabelで明示承認を案内し、保存済みと言わない。eventRegistration.overlapsの日付・区間・両タイトルを明示。移動・分割・削除は禁止。',
+        ] : []),
+        ...(input.communication.eventRegistration.unregistered?.length ? [
+          'unregisteredのタイトルと未対応理由を必ず明示（multiple_intervals:複数区間、crosses_midnight:日跨ぎ）。候補なしは承認案内せずmanualEntryへ。',
+        ] : []),
         ...(input.communication.eventRegistration.workAwaitingAuthorization?.length ? [
           'eventRegistration.workAwaitingAuthorizationの作業は、計画作成の依頼をまだ受けていないため未配置です。固定予定の候補とは区別して未配置であることを伝え、その作業も配置する場合は「この条件で予定を作って」と送る既存の依頼経路を案内してください。',
         ] : []),

@@ -1,5 +1,5 @@
 import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
-import { weeklyPlanningFixedEventRegistrationFacts } from './weeklyPlanningFixedEventOnlyInteraction';
+import { weeklyPlanningFixedEventRegistrationFacts, weeklyPlanningUnregisteredFixedEventMessage } from './weeklyPlanningFixedEventOnlyInteraction';
 import { planWeeklyPlanningInteraction, classifyWeeklyPlanningInteraction } from './weeklyPlanningInteractionDecision';
 import {
   withWeeklyPlanningProvisionalTimeboxStateV5,
@@ -101,9 +101,9 @@ export function continueWeeklyPlanningStableV5RuntimeTurnCore(
     declinedAdditionalWork: semantic.normalization.document?.conversationActs?.some(
       act => act.kind === 'decline_additional_work',
     ) ?? false,
-    requestedEventRegistration: semantic.normalization.document?.conversationActs?.some(
+    registrationActs: semantic.normalization.document?.conversationActs?.filter(
       act => act.kind === 'request_event_registration',
-    ) ?? false,
+    ) ?? [],
   });
   if (responseRoute.kind === 'respond') {
     const output = withProvisionalTimeboxState({
@@ -136,6 +136,7 @@ export function continueWeeklyPlanningStableV5RuntimeTurnCore(
     evaluation,
     preview: scheduledPreview,
     registrationCandidates,
+    unregistered: responseRoute.unregistered,
   });
   const routedOutput = provisionalCapacityOutput
     ?? weeklyPlanningStableV5ResponseRouter.afterPreview({
@@ -167,8 +168,10 @@ export function continueWeeklyPlanningStableV5RuntimeTurnCore(
     : [];
   return {
     ...output,
-    ...(presentedRegistrations.length > 0
-      ? { communicationFacts: weeklyPlanningFixedEventRegistrationFacts(presentedRegistrations, input.plans) } : {}),
+    ...(!provisionalCapacityOutput && responseRoute.unregistered.length > 0
+      ? { message: output.message + weeklyPlanningUnregisteredFixedEventMessage(responseRoute.unregistered) } : {}),
+    ...(presentedRegistrations.length > 0 || responseRoute.unregistered.length > 0
+      ? { communicationFacts: weeklyPlanningFixedEventRegistrationFacts(presentedRegistrations, input.plans, [], responseRoute.unregistered) } : {}),
     interactionOutcome: { kind: 'apply' },
     ...(output.draftCandidates.length > 0 && !output.preserveExistingPreview
       ? { previewConstraintSatisfaction: projectWeeklyPlanningPreviewConstraintSatisfaction({
