@@ -1,0 +1,585 @@
+{
+  "provenance": {
+    "sourceCommit": "36fc102e20381b75a42b4b94fe00b335c1db3a6f",
+    "recordedOn": "2026-10-26",
+    "providerModel": "gpt-6-luna",
+    "meaning": "Fresh live reproduction, not the missing historical 17:00 response."
+  },
+  "original": {
+    "text": "明日の予定にいれて欲しいんだけど、バンドAの合わせが9~10:30\nバンドBの合わせが16~17:30で、全体ゼミが13~15、15~16時が領域ゼミで17~21時までカンファレンスになりそうです",
+    "calls": [
+      {
+        "schema": "weekly_planning_semantic_document_v5",
+        "status": 200,
+        "provider": "unknown",
+        "response": {
+          "content": "{\n  \"schemaVersion\": \"weekly-planning-semantic-v5\",\n  \"planningIntent\": \"create_plan\",\n  \"planningWindow\": {\n    \"localId\": \"window-tomorrow\",\n    \"kind\": \"relative_day\",\n    \"value\": \"tomorrow\",\n    \"start\": null,\n    \"end\": null,\n    \"sourceText\": \"明日の予定\"\n  },\n  \"tasks\": [\n    {\n      \"localId\": \"task-バンドA-rehearsal\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"バンドAの合わせ\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-バンドA-rehearsal\",\n          \"targetLocalId\": \"task-バンドA-rehearsal\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"hard\",\n          \"dateExpression\": \"明日\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"09:00\",\n          \"endTime\": \"10:30\",\n          \"precision\": \"exact\",\n          \"sourceText\": \"バンドAの合わせが9~10:30\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"バンドAの合わせが9~10:30\"\n    },\n    {\n      \"localId\": \"task-ikimonogakari-rehearsal\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"バンドBの合わせ\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-ikimonogakari-rehearsal\",\n          \"targetLocalId\": \"task-ikimonogakari-rehearsal\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"hard\",\n          \"dateExpression\": \"明日\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"16:00\",\n          \"endTime\": \"17:30\",\n          \"precision\": \"exact\",\n          \"sourceText\": \"バンドBの合わせが16~17:30\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"バンドBの合わせが16~17:30\"\n    },\n    {\n      \"localId\": \"task-general-seminar\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"全体ゼミ\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-general-seminar\",\n          \"targetLocalId\": \"task-general-seminar\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"hard\",\n          \"dateExpression\": \"明日\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"13:00\",\n          \"endTime\": \"15:00\",\n          \"precision\": \"exact\",\n          \"sourceText\": \"全体ゼミが13~15\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"全体ゼミが13~15\"\n    },\n    {\n      \"localId\": \"task-field-seminar\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"領域ゼミ\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-field-seminar\",\n          \"targetLocalId\": \"task-field-seminar\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"hard\",\n          \"dateExpression\": \"明日\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"15:00\",\n          \"endTime\": \"16:00\",\n          \"precision\": \"exact\",\n          \"sourceText\": \"15~16時が領域ゼミ\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"15~16時が領域ゼミ\"\n    },\n    {\n      \"localId\": \"task-conference\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"カンファレンス\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-conference\",\n          \"targetLocalId\": \"task-conference\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"soft\",\n          \"dateExpression\": \"明日\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"17:00\",\n          \"endTime\": \"21:00\",\n          \"precision\": \"approximate\",\n          \"sourceText\": \"17~21時までカンファレンスになりそうです\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"17~21時までカンファレンスになりそうです\"\n    }\n  ],\n  \"relations\": [],\n  \"availabilityDeclarations\": [],\n  \"constraintSourceRequests\": [],\n  \"userContextFacts\": [],\n  \"conversationActs\": [\n    {\n      \"kind\": \"request_event_registration\",\n      \"targetPublicId\": null\n    }\n  ],\n  \"uncertainties\": [],\n  \"corrections\": [],\n  \"decisions\": []\n}",
+          "usage": {
+            "prompt_tokens": 4312,
+            "completion_tokens": 2090,
+            "total_tokens": 6402,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 4309,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 778,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        },
+        "presentation": null
+      },
+      {
+        "schema": "weekly_planning_semantic_document_v5",
+        "status": 200,
+        "provider": "unknown",
+        "response": {
+          "content": "{\"schemaVersion\":\"weekly-planning-semantic-v5\",\"planningIntent\":\"create_plan\",\"planningWindow\":{\"localId\":\"window-tomorrow\",\"kind\":\"relative_day\",\"value\":\"tomorrow\",\"start\":null,\"end\":null,\"sourceText\":\"明日の予定\"},\"tasks\":[{\"localId\":\"task-バンドA-rehearsal\",\"existingPublicId\":null,\"decompositionStatus\":\"atomic\",\"category\":\"non_study\",\"title\":\"バンドAの合わせ\",\"study\":null,\"workloads\":[],\"effortEstimates\":[],\"temporalConstraints\":[{\"localId\":\"time-バンドA-rehearsal\",\"targetLocalId\":\"task-バンドA-rehearsal\",\"kind\":\"fixed_interval\",\"constraintLevel\":\"hard\",\"dateExpression\":\"tomorrow\",\"namedTimePeriod\":null,\"startTime\":\"09:00\",\"endTime\":\"10:30\",\"precision\":\"exact\",\"sourceText\":\"バンドAの合わせが9~10:30\"}],\"recurrence\":[],\"durableContextSignals\":[],\"sourceText\":\"バンドAの合わせが9~10:30\"},{\"localId\":\"task-ikimonogakari-rehearsal\",\"existingPublicId\":null,\"decompositionStatus\":\"atomic\",\"category\":\"non_study\",\"title\":\"バンドBの合わせ\",\"study\":null,\"workloads\":[],\"effortEstimates\":[],\"temporalConstraints\":[{\"localId\":\"time-ikimonogakari-rehearsal\",\"targetLocalId\":\"task-ikimonogakari-rehearsal\",\"kind\":\"fixed_interval\",\"constraintLevel\":\"hard\",\"dateExpression\":\"tomorrow\",\"namedTimePeriod\":null,\"startTime\":\"16:00\",\"endTime\":\"17:30\",\"precision\":\"exact\",\"sourceText\":\"バンドBの合わせが16~17:30\"}],\"recurrence\":[],\"durableContextSignals\":[],\"sourceText\":\"バンドBの合わせが16~17:30\"},{\"localId\":\"task-general-seminar\",\"existingPublicId\":null,\"decompositionStatus\":\"atomic\",\"category\":\"non_study\",\"title\":\"全体ゼミ\",\"study\":null,\"workloads\":[],\"effortEstimates\":[],\"temporalConstraints\":[{\"localId\":\"time-general-seminar\",\"targetLocalId\":\"task-general-seminar\",\"kind\":\"fixed_interval\",\"constraintLevel\":\"hard\",\"dateExpression\":\"tomorrow\",\"namedTimePeriod\":null,\"startTime\":\"13:00\",\"endTime\":\"15:00\",\"precision\":\"exact\",\"sourceText\":\"全体ゼミが13~15\"}],\"recurrence\":[],\"durableContextSignals\":[],\"sourceText\":\"全体ゼミが13~15\"},{\"localId\":\"task-field-seminar\",\"existingPublicId\":null,\"decompositionStatus\":\"atomic\",\"category\":\"non_study\",\"title\":\"領域ゼミ\",\"study\":null,\"workloads\":[],\"effortEstimates\":[],\"temporalConstraints\":[{\"localId\":\"time-field-seminar\",\"targetLocalId\":\"task-field-seminar\",\"kind\":\"fixed_interval\",\"constraintLevel\":\"hard\",\"dateExpression\":\"tomorrow\",\"namedTimePeriod\":null,\"startTime\":\"15:00\",\"endTime\":\"16:00\",\"precision\":\"exact\",\"sourceText\":\"15~16時が領域ゼミ\"}],\"recurrence\":[],\"durableContextSignals\":[],\"sourceText\":\"15~16時が領域ゼミ\"},{\"localId\":\"task-conference\",\"existingPublicId\":null,\"decompositionStatus\":\"atomic\",\"category\":\"non_study\",\"title\":\"カンファレンス\",\"study\":null,\"workloads\":[],\"effortEstimates\":[],\"temporalConstraints\":[{\"localId\":\"time-conference\",\"targetLocalId\":\"task-conference\",\"kind\":\"preferred_window\",\"constraintLevel\":\"soft\",\"dateExpression\":\"tomorrow\",\"namedTimePeriod\":null,\"startTime\":\"17:00\",\"endTime\":\"21:00\",\"precision\":\"approximate\",\"sourceText\":\"17~21時までカンファレンスになりそうです\"}],\"recurrence\":[],\"durableContextSignals\":[],\"sourceText\":\"17~21時までカンファレンスになりそうです\"}],\"relations\":[],\"availabilityDeclarations\":[],\"constraintSourceRequests\":[],\"userContextFacts\":[],\"conversationActs\":[],\"uncertainties\":[],\"corrections\":[],\"decisions\":[]}",
+          "usage": {
+            "prompt_tokens": 5474,
+            "completion_tokens": 1352,
+            "total_tokens": 6826,
+            "prompt_tokens_details": {
+              "cached_tokens": 4309,
+              "cache_write_tokens": 1162,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 450,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        },
+        "presentation": null
+      },
+      {
+        "schema": "weekly_planning_stable_v5_dialogue_response",
+        "status": 502,
+        "provider": "unknown",
+        "response": {
+          "error": "OpenAI response content was empty.",
+          "providerFailure": {
+            "kind": "empty_response",
+            "httpStatus": 502,
+            "upstreamStatus": 200,
+            "completion": {
+              "finishReason": "length",
+              "refusalPresent": false,
+              "requestedMaxCompletionTokens": 1600,
+              "effectiveMaxCompletionTokens": 1600,
+              "reasoningTokens": 1600,
+              "textTokens": null
+            }
+          }
+        },
+        "presentation": {
+          "actionId": "stable-v5:weekly-conversation-bd76c800-e80c-4038-8d5e-1ae3b19fdf4f:request:1:missing_schedulable_work",
+          "facts": [
+            {
+              "factId": "wpf_window_nj2o4h1niopal",
+              "kind": "planning_window",
+              "sourceText": "明日の予定",
+              "data": {
+                "kind": "relative_day",
+                "value": "tomorrow",
+                "start": null,
+                "end": null
+              }
+            },
+            {
+              "factId": "wpf_task_13k3njn1q88f8f",
+              "kind": "task",
+              "sourceText": "バンドAの合わせが9~10:30",
+              "data": {
+                "category": "non_study",
+                "title": "バンドAの合わせ"
+              }
+            },
+            {
+              "factId": "wpf_task_1u283mj1dhltxj",
+              "kind": "task",
+              "sourceText": "バンドBの合わせが16~17:30",
+              "data": {
+                "category": "non_study",
+                "title": "バンドBの合わせ"
+              }
+            },
+            {
+              "factId": "wpf_task_let48ayj2zcm",
+              "kind": "task",
+              "sourceText": "全体ゼミが13~15",
+              "data": {
+                "category": "non_study",
+                "title": "全体ゼミ"
+              }
+            },
+            {
+              "factId": "wpf_task_mytb1a1wy2t9u",
+              "kind": "task",
+              "sourceText": "15~16時が領域ゼミ",
+              "data": {
+                "category": "non_study",
+                "title": "領域ゼミ"
+              }
+            },
+            {
+              "factId": "wpf_task_18hgufi1ip4qrm",
+              "kind": "task",
+              "sourceText": "17~21時までカンファレンスになりそうです",
+              "data": {
+                "category": "non_study",
+                "title": "カンファレンス"
+              }
+            },
+            {
+              "factId": "wpf_temporal_yhjzjs175wfno",
+              "kind": "temporal_constraint",
+              "sourceText": "バンドAの合わせが9~10:30",
+              "data": {
+                "taskId": "wpf_task_13k3njn1q88f8f",
+                "targetFactId": "wpf_task_13k3njn1q88f8f",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "09:00",
+                "endTime": "10:30",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_skcnhapq0gbe",
+              "kind": "temporal_constraint",
+              "sourceText": "バンドBの合わせが16~17:30",
+              "data": {
+                "taskId": "wpf_task_1u283mj1dhltxj",
+                "targetFactId": "wpf_task_1u283mj1dhltxj",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "16:00",
+                "endTime": "17:30",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1lr52cv6g867v",
+              "kind": "temporal_constraint",
+              "sourceText": "全体ゼミが13~15",
+              "data": {
+                "taskId": "wpf_task_let48ayj2zcm",
+                "targetFactId": "wpf_task_let48ayj2zcm",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1vj1q6r117gukn",
+              "kind": "temporal_constraint",
+              "sourceText": "15~16時が領域ゼミ",
+              "data": {
+                "taskId": "wpf_task_mytb1a1wy2t9u",
+                "targetFactId": "wpf_task_mytb1a1wy2t9u",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "15:00",
+                "endTime": "16:00",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1kj5hdhrun4c9",
+              "kind": "temporal_constraint",
+              "sourceText": "17~21時までカンファレンスになりそうです",
+              "data": {
+                "taskId": "wpf_task_18hgufi1ip4qrm",
+                "targetFactId": "wpf_task_18hgufi1ip4qrm",
+                "kind": "preferred_window",
+                "constraintLevel": "soft",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "17:00",
+                "endTime": "21:00",
+                "precision": "approximate"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "schema": "weekly_planning_stable_v5_dialogue_response",
+        "status": 200,
+        "provider": "unknown",
+        "response": {
+          "content": "{\"actionId\":\"stable-v5:weekly-conversation-bd76c800-e80c-4038-8d5e-1ae3b19fdf4f:request:1:missing_schedulable_work\",\"actionKind\":\"question\",\"questionCode\":\"missing_schedulable_work\",\"groundingAcknowledgement\":{\"factIds\":[\"wpf_window_nj2o4h1niopal\",\"wpf_task_13k3njn1q88f8f\",\"wpf_task_1u283mj1dhltxj\",\"wpf_task_let48ayj2zcm\",\"wpf_task_mytb1a1wy2t9u\",\"wpf_task_18hgufi1ip4qrm\",\"wpf_temporal_yhjzjs175wfno\",\"wpf_temporal_skcnhapq0gbe\",\"wpf_temporal_1lr52cv6g867v\",\"wpf_temporal_1vj1q6r117gukn\",\"wpf_temporal_1kj5hdhrun4c9\"],\"text\":\"明日は、バンドAの合わせが9〜10:30、全体ゼミが13〜15時、領域ゼミが15〜16時、バンドBの合わせが16〜17:30で、17〜21時はカンファレンスになりそうなんだね。\"},\"text\":\"明日は、バンドAの合わせが9〜10:30、全体ゼミが13〜15時、領域ゼミが15〜16時、バンドBの合わせが16〜17:30で、17〜21時はカンファレンスになりそうなんだね。バンドAの合わせに向けた時間は、明日のどの空き時間に取るのがよさそう？まだ決まっていなければ、空き時間から一緒に仮で考えよう。\"}",
+          "usage": {
+            "prompt_tokens": 3184,
+            "completion_tokens": 1048,
+            "total_tokens": 4232,
+            "prompt_tokens_details": {
+              "cached_tokens": 3181,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 607,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        },
+        "presentation": {
+          "actionId": "stable-v5:weekly-conversation-bd76c800-e80c-4038-8d5e-1ae3b19fdf4f:request:1:missing_schedulable_work",
+          "facts": [
+            {
+              "factId": "wpf_window_nj2o4h1niopal",
+              "kind": "planning_window",
+              "sourceText": "明日の予定",
+              "data": {
+                "kind": "relative_day",
+                "value": "tomorrow",
+                "start": null,
+                "end": null
+              }
+            },
+            {
+              "factId": "wpf_task_13k3njn1q88f8f",
+              "kind": "task",
+              "sourceText": "バンドAの合わせが9~10:30",
+              "data": {
+                "category": "non_study",
+                "title": "バンドAの合わせ"
+              }
+            },
+            {
+              "factId": "wpf_task_1u283mj1dhltxj",
+              "kind": "task",
+              "sourceText": "バンドBの合わせが16~17:30",
+              "data": {
+                "category": "non_study",
+                "title": "バンドBの合わせ"
+              }
+            },
+            {
+              "factId": "wpf_task_let48ayj2zcm",
+              "kind": "task",
+              "sourceText": "全体ゼミが13~15",
+              "data": {
+                "category": "non_study",
+                "title": "全体ゼミ"
+              }
+            },
+            {
+              "factId": "wpf_task_mytb1a1wy2t9u",
+              "kind": "task",
+              "sourceText": "15~16時が領域ゼミ",
+              "data": {
+                "category": "non_study",
+                "title": "領域ゼミ"
+              }
+            },
+            {
+              "factId": "wpf_task_18hgufi1ip4qrm",
+              "kind": "task",
+              "sourceText": "17~21時までカンファレンスになりそうです",
+              "data": {
+                "category": "non_study",
+                "title": "カンファレンス"
+              }
+            },
+            {
+              "factId": "wpf_temporal_yhjzjs175wfno",
+              "kind": "temporal_constraint",
+              "sourceText": "バンドAの合わせが9~10:30",
+              "data": {
+                "taskId": "wpf_task_13k3njn1q88f8f",
+                "targetFactId": "wpf_task_13k3njn1q88f8f",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "09:00",
+                "endTime": "10:30",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_skcnhapq0gbe",
+              "kind": "temporal_constraint",
+              "sourceText": "バンドBの合わせが16~17:30",
+              "data": {
+                "taskId": "wpf_task_1u283mj1dhltxj",
+                "targetFactId": "wpf_task_1u283mj1dhltxj",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "16:00",
+                "endTime": "17:30",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1lr52cv6g867v",
+              "kind": "temporal_constraint",
+              "sourceText": "全体ゼミが13~15",
+              "data": {
+                "taskId": "wpf_task_let48ayj2zcm",
+                "targetFactId": "wpf_task_let48ayj2zcm",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1vj1q6r117gukn",
+              "kind": "temporal_constraint",
+              "sourceText": "15~16時が領域ゼミ",
+              "data": {
+                "taskId": "wpf_task_mytb1a1wy2t9u",
+                "targetFactId": "wpf_task_mytb1a1wy2t9u",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "15:00",
+                "endTime": "16:00",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1kj5hdhrun4c9",
+              "kind": "temporal_constraint",
+              "sourceText": "17~21時までカンファレンスになりそうです",
+              "data": {
+                "taskId": "wpf_task_18hgufi1ip4qrm",
+                "targetFactId": "wpf_task_18hgufi1ip4qrm",
+                "kind": "preferred_window",
+                "constraintLevel": "soft",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "17:00",
+                "endTime": "21:00",
+                "precision": "approximate"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "explicit": {
+    "text": "明日の予定にいれて欲しいんだけど、バンドAの合わせが9~10:30\nバンドBの合わせが16~17:30で、全体ゼミが13~15、15~16時が領域ゼミで17~21時までカンファレンスになりそうです\n5件とも指定した開始・終了時刻の固定予定として登録してください。学習作業ではないので、分割・移動しないでください。重なっている予定は勝手に変更せず確認してください。",
+    "calls": [
+      {
+        "schema": "weekly_planning_semantic_document_v5",
+        "status": 200,
+        "provider": "unknown",
+        "response": {
+          "content": "{\n  \"schemaVersion\": \"weekly-planning-semantic-v5\",\n  \"planningIntent\": \"create_plan\",\n  \"planningWindow\": {\n    \"localId\": \"window-tomorrow\",\n    \"kind\": \"relative_day\",\n    \"value\": \"tomorrow\",\n    \"start\": null,\n    \"end\": null,\n    \"sourceText\": \"明日の予定にいれて欲しいんだけど\"\n  },\n  \"tasks\": [\n    {\n      \"localId\": \"event-バンドA-rehearsal\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"バンドAの合わせ\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-バンドA-rehearsal\",\n          \"targetLocalId\": \"event-バンドA-rehearsal\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"hard\",\n          \"dateExpression\": \"tomorrow\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"09:00\",\n          \"endTime\": \"10:30\",\n          \"precision\": \"exact\",\n          \"sourceText\": \"バンドAの合わせが9~10:30\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"バンドAの合わせが9~10:30\"\n    },\n    {\n      \"localId\": \"event-ikimono-rehearsal\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"バンドBの合わせ\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-ikimono-rehearsal\",\n          \"targetLocalId\": \"event-ikimono-rehearsal\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"hard\",\n          \"dateExpression\": \"tomorrow\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"16:00\",\n          \"endTime\": \"17:30\",\n          \"precision\": \"exact\",\n          \"sourceText\": \"バンドBの合わせが16~17:30\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"バンドBの合わせが16~17:30\"\n    },\n    {\n      \"localId\": \"event-overall-seminar\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"全体ゼミ\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-overall-seminar\",\n          \"targetLocalId\": \"event-overall-seminar\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"hard\",\n          \"dateExpression\": \"tomorrow\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"13:00\",\n          \"endTime\": \"15:00\",\n          \"precision\": \"exact\",\n          \"sourceText\": \"全体ゼミが13~15\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"全体ゼミが13~15\"\n    },\n    {\n      \"localId\": \"event-domain-seminar\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"領域ゼミ\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-domain-seminar\",\n          \"targetLocalId\": \"event-domain-seminar\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"hard\",\n          \"dateExpression\": \"tomorrow\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"15:00\",\n          \"endTime\": \"16:00\",\n          \"precision\": \"exact\",\n          \"sourceText\": \"15~16時が領域ゼミ\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"15~16時が領域ゼミ\"\n    },\n    {\n      \"localId\": \"event-conference\",\n      \"existingPublicId\": null,\n      \"decompositionStatus\": \"atomic\",\n      \"category\": \"non_study\",\n      \"title\": \"カンファレンス\",\n      \"study\": null,\n      \"workloads\": [],\n      \"effortEstimates\": [],\n      \"temporalConstraints\": [\n        {\n          \"localId\": \"time-conference\",\n          \"targetLocalId\": \"event-conference\",\n          \"kind\": \"fixed_interval\",\n          \"constraintLevel\": \"hard\",\n          \"dateExpression\": \"tomorrow\",\n          \"namedTimePeriod\": null,\n          \"startTime\": \"17:00\",\n          \"endTime\": \"21:00\",\n          \"precision\": \"exact\",\n          \"sourceText\": \"17~21時までカンファレンスになりそうです\"\n        }\n      ],\n      \"recurrence\": [],\n      \"durableContextSignals\": [],\n      \"sourceText\": \"17~21時までカンファレンスになりそうです\"\n    }\n  ],\n  \"relations\": [],\n  \"availabilityDeclarations\": [],\n  \"constraintSourceRequests\": [],\n  \"userContextFacts\": [],\n  \"conversationActs\": [\n    {\n      \"kind\": \"request_event_registration\",\n      \"targetPublicId\": null\n    }\n  ],\n  \"uncertainties\": [\n    {\n      \"localId\": \"uncertainty-event-overlap\",\n      \"targetLocalId\": \"event-conference\",\n      \"field\": \"overlap\",\n      \"reason\": \"カンファレンスとバンドBの合わせが17:00〜17:30に重なっています。確認が必要です。\",\n      \"sourceText\": \"重なっている予定は勝手に変更せず確認してください。\"\n    }\n  ],\n  \"corrections\": [],\n  \"decisions\": []\n}",
+          "usage": {
+            "prompt_tokens": 4363,
+            "completion_tokens": 2174,
+            "total_tokens": 6537,
+            "prompt_tokens_details": {
+              "cached_tokens": 3972,
+              "cache_write_tokens": 388,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 761,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        },
+        "presentation": null
+      },
+      {
+        "schema": "weekly_planning_stable_v5_dialogue_response",
+        "status": 200,
+        "provider": "unknown",
+        "response": {
+          "content": "{\"actionId\":\"stable-v5:weekly-conversation-2db5390c-4ceb-4876-946c-2df9b3068976:request:1:semantic_uncertainty\",\"actionKind\":\"question\",\"questionCode\":\"semantic_uncertainty\",\"groundingAcknowledgement\":{\"factIds\":[\"wpf_window_7oi0pp1aanqdl\",\"wpf_task_72dup4nzg78c\",\"wpf_task_10j2qi3185fd5j\",\"wpf_task_epufz61hxi6ly\",\"wpf_task_vgxont1fmbgzx\",\"wpf_task_2whm9xu21joh\",\"wpf_temporal_1dcob2sb4co5s\",\"wpf_temporal_xxvmkf1phszvn\",\"wpf_temporal_1550pe62dti3u\",\"wpf_temporal_1tnvdt15euuip\",\"wpf_temporal_1kszcyxln2i1p\"],\"text\":\"明日の予定として、バンドAの合わせは9:00〜10:30、全体ゼミは13:00〜15:00、領域ゼミは15:00〜16:00、バンドBの合わせは16:00〜17:30、カンファレンスは17:00〜21:00ですね。5件とも固定予定として扱い、分割・移動はしません。\"},\"text\":\"明日の予定として、バンドAの合わせは9:00〜10:30、全体ゼミは13:00〜15:00、領域ゼミは15:00〜16:00、バンドBの合わせは16:00〜17:30、カンファレンスは17:00〜21:00ですね。5件とも固定予定として扱い、分割・移動はしません。バンドBの合わせとカンファレンスが17:00〜17:30に重なっています。この重なりはどう扱えばよいですか？\"}",
+          "usage": {
+            "prompt_tokens": 3363,
+            "completion_tokens": 1060,
+            "total_tokens": 4423,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 3360,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 585,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        },
+        "presentation": {
+          "actionId": "stable-v5:weekly-conversation-2db5390c-4ceb-4876-946c-2df9b3068976:request:1:semantic_uncertainty",
+          "facts": [
+            {
+              "factId": "wpf_window_7oi0pp1aanqdl",
+              "kind": "planning_window",
+              "sourceText": "明日の予定にいれて欲しいんだけど",
+              "data": {
+                "kind": "relative_day",
+                "value": "tomorrow",
+                "start": null,
+                "end": null
+              }
+            },
+            {
+              "factId": "wpf_task_72dup4nzg78c",
+              "kind": "task",
+              "sourceText": "バンドAの合わせが9~10:30",
+              "data": {
+                "category": "non_study",
+                "title": "バンドAの合わせ"
+              }
+            },
+            {
+              "factId": "wpf_task_10j2qi3185fd5j",
+              "kind": "task",
+              "sourceText": "バンドBの合わせが16~17:30",
+              "data": {
+                "category": "non_study",
+                "title": "バンドBの合わせ"
+              }
+            },
+            {
+              "factId": "wpf_task_epufz61hxi6ly",
+              "kind": "task",
+              "sourceText": "全体ゼミが13~15",
+              "data": {
+                "category": "non_study",
+                "title": "全体ゼミ"
+              }
+            },
+            {
+              "factId": "wpf_task_vgxont1fmbgzx",
+              "kind": "task",
+              "sourceText": "15~16時が領域ゼミ",
+              "data": {
+                "category": "non_study",
+                "title": "領域ゼミ"
+              }
+            },
+            {
+              "factId": "wpf_task_2whm9xu21joh",
+              "kind": "task",
+              "sourceText": "17~21時までカンファレンスになりそうです",
+              "data": {
+                "category": "non_study",
+                "title": "カンファレンス"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1dcob2sb4co5s",
+              "kind": "temporal_constraint",
+              "sourceText": "バンドAの合わせが9~10:30",
+              "data": {
+                "taskId": "wpf_task_72dup4nzg78c",
+                "targetFactId": "wpf_task_72dup4nzg78c",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "09:00",
+                "endTime": "10:30",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_xxvmkf1phszvn",
+              "kind": "temporal_constraint",
+              "sourceText": "バンドBの合わせが16~17:30",
+              "data": {
+                "taskId": "wpf_task_10j2qi3185fd5j",
+                "targetFactId": "wpf_task_10j2qi3185fd5j",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "16:00",
+                "endTime": "17:30",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1550pe62dti3u",
+              "kind": "temporal_constraint",
+              "sourceText": "全体ゼミが13~15",
+              "data": {
+                "taskId": "wpf_task_epufz61hxi6ly",
+                "targetFactId": "wpf_task_epufz61hxi6ly",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1tnvdt15euuip",
+              "kind": "temporal_constraint",
+              "sourceText": "15~16時が領域ゼミ",
+              "data": {
+                "taskId": "wpf_task_vgxont1fmbgzx",
+                "targetFactId": "wpf_task_vgxont1fmbgzx",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "15:00",
+                "endTime": "16:00",
+                "precision": "exact"
+              }
+            },
+            {
+              "factId": "wpf_temporal_1kszcyxln2i1p",
+              "kind": "temporal_constraint",
+              "sourceText": "17~21時までカンファレンスになりそうです",
+              "data": {
+                "taskId": "wpf_task_2whm9xu21joh",
+                "targetFactId": "wpf_task_2whm9xu21joh",
+                "kind": "fixed_interval",
+                "constraintLevel": "hard",
+                "dateExpression": "tomorrow",
+                "namedTimePeriod": null,
+                "startTime": "17:00",
+                "endTime": "21:00",
+                "precision": "exact"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

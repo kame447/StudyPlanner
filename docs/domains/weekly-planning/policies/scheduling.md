@@ -1,7 +1,7 @@
 # Weekly Planning Scheduling Policy
 
 Status: canonical / current Stable V5 scheduling behavior
-Updated: 2026-10-11
+Updated: 2026-10-28
 
 References:
 - [Current contract](../architecture/current-contract-v5.md)
@@ -112,6 +112,21 @@ schedulerは作業の意味構造を勝手に作らない。
 - breakdownが計画結果へ影響する場合はsemantic/dialogue layerで解決する
 
 current schedulerのsession chunking定数は実装policyであり、作業のatomicityより強くない。
+
+### 連続優先と分割のfallback
+
+固定予定は開始/終了時刻の占有であり、可動作業は作業総量を空き時間へ置くものである。可動作業の`splittable`は分割の**許可**であって強制ではない。
+
+- 明示的な1回の長さ（accepted `session_duration`）がない時間workは、既存のsession policyの上限以内なら1つの連続ブロックとして扱う。上限を超える総量はsession policyの回数に分ける（例: 180分 → 90分×2）。総量120分以下を常に分割不可とする閾値や、120分超を60分へ強制分割する定数は持たない。
+- 配置はまず各ブロック全体の連続枠を探す。見つからず、そのブロックが`splittable`の場合だけ、同じhard date/clock bound、busy、break、notBefore、daily capacityの下で30分以上・5分刻みの断片に分ける。断片はexplicit preferenceの順位を先に使い、その中では既存の日付優先順（予備日は最後、負荷分散）を空きの長さより優先する。同じ日では長い空きから使う。同じ作業の断片同士の前後にもbreakを置き、時刻順に並べ、合計はブロックの総量と一致させる。30分未満の残りを作る分け方はしない。各断片の表示名はその断片の時間と順番（例: 学習 30分（1/2））を示す。
+- 断片化は上記の順で貪欲に選ぶ限定的なfallbackであり、すべての可能な分け方を探索しない。見つからない場合は配置可能な分け方が別にあっても`insufficient_capacity`になり得る（安全側に失敗し、何も確定しない）。
+- 総量を置けない場合は断片を一部だけ確定せず、既存の`insufficient_capacity`とする。時間を捏造したり、windowやdeadlineの外へ置いたりしない。
+- accepted `session_duration`は1回の長さを所有する。その長さで作った各回、および長さが総量以上の作業（「連続で1時間」「一気に」「試験1回」）は`atomic`であり、断りなく分割しない。`mock_exam`は従来どおりatomic。
+- 内容数量（ページ・問題等）のsession分配は従来どおり。
+
+### hard配置窓
+
+「明日の13〜17時の間に1時間」は、13〜17をhardな配置窓、60分を作業量として表す。typed表現は同じ日付のhard `earliest_start`（startTime）とhard `latest_end`（endTime）の組であり、4時間の`fixed_interval`ではない。`preferred_window`はsoftな希望だけを表す。providerが時刻付きの`preferred_window`をhardで返した場合は、softへ下げずに上記の組へ正規化する（時刻帯名だけのhard指定は従来どおりsoftへ正規化され、残件）。予定の確度（「なりそう」等）は移動可否とは独立である。
 
 ## Progress and target basis
 

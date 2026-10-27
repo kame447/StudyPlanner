@@ -465,6 +465,22 @@ function temporalConstraintIssues(params: {
 }): GenericSchedulerInputIssue[] {
   const issues: GenericSchedulerInputIssue[] = [];
   for (const constraint of params.graph.temporalConstraints) {
+    const hardClockKind = constraint.constraintLevel === 'hard'
+      && ['earliest_start', 'latest_end', 'deadline'].includes(constraint.kind);
+    if (hardClockKind && (
+      (constraint.kind === 'earliest_start' ? constraint.endTime !== null : constraint.startTime !== null)
+      || (constraint.namedTimePeriod !== null && (constraint.startTime !== null || constraint.endTime !== null))
+    )) {
+      issues.push({
+        domain: 'temporal_constraint', code: 'invalid_time_interval', blocking: true, factId: constraint.id,
+        details: {
+          taskId: constraint.taskId, targetFactId: constraint.targetFactId, boundKind: constraint.kind,
+          expression: constraint.dateExpression, namedTimePeriod: constraint.namedTimePeriod,
+          startTime: constraint.startTime, endTime: constraint.endTime,
+        },
+      });
+      continue;
+    }
     if (constraint.kind === 'preferred_window') {
       let code: Extract<GenericSchedulerInputIssue, { domain: 'temporal_constraint' }>['code'] | null = null;
       if (constraint.constraintLevel === 'unknown') {

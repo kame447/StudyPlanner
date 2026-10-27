@@ -60,6 +60,7 @@ function addKnownDateFields(
 
 export function groundedDateExpressionsFromPlanningInformation(
   planningInformation: Record<string, unknown> | null,
+  eventRegistration?: { candidates: readonly { date: string }[]; overlaps: readonly { date: string }[] },
 ): string[] {
   const grounded = new Set<string>();
 
@@ -88,6 +89,8 @@ export function groundedDateExpressionsFromPlanningInformation(
     arrayField(planningInformation, 'availabilityDeclarations'),
     ['dateExpression'],
   );
+  addKnownDateFields(grounded, eventRegistration?.candidates ?? [], ['date']);
+  addKnownDateFields(grounded, eventRegistration?.overlaps ?? [], ['date']);
 
   return [...grounded];
 }

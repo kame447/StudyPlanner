@@ -127,7 +127,7 @@ Record<
   },
   preferred_window_constraint_level: {
     category: 'representation_repair',
-    owningInvariant: 'preferred_window meaning has soft constraint level and cannot carry the contradictory hard wire value',
+    owningInvariant: 'explicit hard clock windows preserve both bounds while preferred_window remains a soft-only canonical representation',
   },
   temporal_clock_raw: {
     category: 'canonicalization_bridge',

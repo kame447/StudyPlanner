@@ -12,6 +12,7 @@ import {
   createWeeklyPlanningPlacementGraphViewV5,
 } from './weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
+import { distributeGenericSchedulerWorkItemsV5 } from './weeklyPlanningSchedulerWorkDistributionV5';
 
 const WEEK = [
   '2026-08-17',
@@ -174,8 +175,14 @@ function intervalsOverlap(
 
 describe('Stable V5 distribution adversarial audit', () => {
   it('does not collapse a generic long workload onto the first day', () => {
+    // The compiler's sitting policy owns distribution; placement no longer
+    // invents three60-minute sessions from a single supplied180-minute item.
+    const items = distributeGenericSchedulerWorkItemsV5({
+      graph: createWeeklyPlanningActiveSchedulerGraphViewV5(graph()), items: [longWorkItem()],
+      startDate: WEEK[0], endDate: WEEK[6],
+    });
     const result = scheduleWeeklyPlanningStableV5Preview({
-      input: input({ items: [longWorkItem()] }),
+      input: input({ items }),
       graph: placementGraph(),
     });
 
@@ -183,9 +190,8 @@ describe('Stable V5 distribution adversarial audit', () => {
     expect(result.candidates.map((candidate) => candidate.date)).toEqual([
       '2026-08-17',
       '2026-08-18',
-      '2026-08-19',
     ]);
-    expect(result.candidates.map((candidate) => candidate.durationMinutes)).toEqual([60, 60, 60]);
+    expect(result.candidates.map((candidate) => candidate.durationMinutes)).toEqual([90, 90]);
     expect(result.candidates.some((candidate) => candidate.date === '2026-08-23')).toBe(false);
   });
 

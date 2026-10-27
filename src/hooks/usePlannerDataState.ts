@@ -1462,12 +1462,6 @@ export function usePlannerDataState({
 
     const occurrenceDate = actual.occurrenceDate;
     requireLinkedTarget(plan.id, occurrenceDate);
-    const destination = { userId, planId: plan.id, occurrenceDate };
-    const destinationReason = actualAdmission.reason(destination);
-    if (destinationReason) {
-      showNotice(destinationReason, 'error');
-      throw new ActualMutationAdmissionError(destinationReason);
-    }
     const existingLinkedActual = actualAdmission.current().find(
       (item) =>
         item.id !== actual.id &&
@@ -2060,7 +2054,10 @@ export function usePlannerDataState({
       throw new Error('時間割のタイトルを入れてください。');
     }
 
-    if (draft.weekInterval === 2 && !normalizeTimetableDate(draft.weekIntervalAnchorDate)) {
+    const weekIntervalAnchorDate = draft.weekInterval === 2
+      ? normalizeTimetableDate(draft.weekIntervalAnchorDate)
+      : null;
+    if (draft.weekInterval === 2 && !weekIntervalAnchorDate) {
       showNotice('隔週の授業は基準日を設定してください。', 'error');
       throw new Error('隔週の授業は基準日を設定してください。');
     }
@@ -2085,10 +2082,7 @@ export function usePlannerDataState({
           ? draft.alternatingWeek
           : 'both',
       weekInterval: draft.weekInterval === 2 ? 2 : 1,
-      weekIntervalAnchorDate:
-        draft.weekInterval === 2
-          ? normalizeTimetableDate(draft.weekIntervalAnchorDate)
-          : null,
+      weekIntervalAnchorDate,
       memo: draft.memo.trim(),
       ...(currentTemplate?.excludedDates ? { excludedDates: currentTemplate.excludedDates } : {}),
       createdAt: currentTemplate?.createdAt ?? now,

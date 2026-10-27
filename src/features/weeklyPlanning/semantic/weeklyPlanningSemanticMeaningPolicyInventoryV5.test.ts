@@ -14,6 +14,12 @@ function instructionFor(id: string): string {
 }
 
 describe('Stable V5 semantic meaning-rule inventory', () => {
+  it('recognizes requests to add events to the user calendar without granting save authority', () => {
+    const acts = instructionFor('conversation_act');
+    expect(acts).toContain('add events to own calendar; preview, no save');
+    expect(acts).not.toContain('manual only');
+  });
+
   it('assigns every always-on rule a unique stable ID and an explicit retention basis', () => {
     const ids = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.map((rule) => rule.id);
     expect(new Set(ids).size).toBe(ids.length);

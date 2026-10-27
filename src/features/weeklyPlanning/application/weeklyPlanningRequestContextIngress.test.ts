@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveWeeklyPlanningRequestContextAtIngress } from './weeklyPlanningRequestContextIngress';
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('weekly planning request-context ingress', () => {
   it('passes a captured request context through unchanged', () => {
+    const ambientTimeZone = vi.spyOn(Intl, 'DateTimeFormat');
     const requestContext = {
       startedAtIso: '2026-08-30T12:34:56.000Z',
       timeZone: 'America/Los_Angeles',
@@ -24,6 +27,7 @@ describe('weekly planning request-context ingress', () => {
       source: 'captured_request',
     });
     expect(result.context).toBe(requestContext);
+    expect(ambientTimeZone).not.toHaveBeenCalled();
   });
 
   it('upgrades a legacy direct caller once at ingress', () => {
@@ -40,5 +44,18 @@ describe('weekly planning request-context ingress', () => {
       notBeforeTime: '00:00',
       weekStartsOn: 'sunday',
     }));
+  });
+
+  it.each(['America/Los_Angeles', ''])('uses the legacy ambient timezone or Tokyo fallback: %s', (timeZone) => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockReturnValue({
+      resolvedOptions: () => ({ timeZone }),
+    } as Intl.DateTimeFormat);
+
+    const result = resolveWeeklyPlanningRequestContextAtIngress({ selectedDate: '2026-08-11' });
+
+    expect(result.source).toBe('legacy_direct_caller');
+    expect(result.context.timeZone).toBe(timeZone || 'Asia/Tokyo');
+    expect(result.context.weekStartsOn).toBe('monday');
+    expect(Intl.DateTimeFormat).toHaveBeenCalledTimes(1);
   });
 });

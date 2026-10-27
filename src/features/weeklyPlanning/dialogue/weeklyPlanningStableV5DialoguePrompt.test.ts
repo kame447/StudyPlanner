@@ -161,6 +161,40 @@ describe('Stable V5 dialogue prompt', () => {
       .not.toContain('conversationReferences');
   });
 
+  it.each([[1, 1], [1, 2], [0, 1], [0, 0]])('keeps preview wording grounded with %s fixed candidates and %s total candidates', (fixedCount, previewCount) => {
+    const renderInput = input();
+    renderInput.actionKind = previewCount > 0 ? 'preview_ready' : 'status';
+    renderInput.previewCount = previewCount;
+    renderInput.previewPromotionControlLabel = previewCount > 0 ? 'この内容で仮予定にする' : undefined;
+    renderInput.communication = { goal: previewCount > 0 ? 'present_preview' : 'acknowledge', askQuestion: false,
+      statusReason: previewCount > 0 ? 'fixed_event_registration_preview' : 'fixed_event_manual_entry',
+      eventRegistration: { eventCreatedByTurn: false, overlaps: [],
+        candidates: Array.from({ length: fixedCount }, (_, i) => ({ stableKey: `fixed-${i}`, workItemKey: `fixed-event-${i}`, date: '2026-10-28',
+          title: 'ゼミ', startTime: '13:00', endTime: '15:00', durationMinutes: 120,
+          source: 'fixed_event_registration', approvalStatus: 'unapproved' })),
+        ...(fixedCount === 0 ? { unregistered: [{ taskId: 'night', title: '夜勤', reason: 'crosses_midnight' }] } : {}),
+      } };
+    const before = structuredClone(renderInput);
+    const { userPrompt } = createWeeklyPlanningStableV5DialoguePrompt(renderInput);
+    const payload = JSON.parse(userPrompt);
+    if (previewCount > 0) {
+      expect(payload.request).toContain('まだ保存していないと明言');
+      expect(payload.request).toContain('previewPromotionControlLabelを「」で括った行動の一文');
+      expect(payload.request).toContain('ボタン名だけで終えない');
+    } else {
+      expect(payload.request).toContain('全候補なし。承認案内せずmanualEntryへ');
+      expect(payload.request).not.toContain('previewPromotionControlLabelを「」で括った行動の一文');
+    }
+    if (previewCount > fixedCount) {
+      expect(payload.request).toContain('固定候補以外の日時は入力に無い');
+      expect(payload.request).toContain('日付・時刻を書かず、固定予定の日付（明日等）を掛けない');
+      expect(payload.request).toContain('日時はプレビューで確認');
+    } else expect(payload.request).not.toContain('固定候補以外の日時は入力に無い');
+    expect(payload.applicationDecision.previewCount).toBe(previewCount);
+    expect(payload.applicationDecision.communication).toEqual(renderInput.communication);
+    expect(renderInput).toEqual(before);
+  });
+
   it('allows semantic invariants to take precedence over the old compactness target', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
     const payload = JSON.parse(prompt.userPrompt) as { request: string };

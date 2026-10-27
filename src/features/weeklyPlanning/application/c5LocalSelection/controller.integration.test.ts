@@ -7,7 +7,7 @@ import { parseWeeklyPlanningStableV5PersistedSession } from '../weeklyPlanningSt
 import { cancelWeeklyPlanningControlledTurn, clearWeeklyPlanningControlledConversation, resetWeeklyPlanningControlledSession } from '../../weeklyPlanningTurnController';
 import { readC5RuntimeGraph, recoverC5ControlledTurn, hasC5Recovery } from './controlledCommit';
 import { c5ControllerHarness, resolution, OWNER, WEEK } from './controller.testUtils';
-import { captureC5Question, narrowC5EffortBasis, serializeC5Value, serializeC5ApplicationState } from './basis';
+import { captureC5Question, narrowC5EffortBasis, serializeC5Value, serializeC5ApplicationState, validC5SessionRecords } from './basis';
 
 let memory: ReturnType<typeof createMemoryStorageHarness>;
 let restore: () => void;
@@ -278,4 +278,30 @@ describe('C5 actual controller / reducer / runtime / acknowledged storage', () =
       ...h.getState().intakeState!.lastQuestionContext!, targetSlot: 'stable_v5:ambiguous_planning_window', c5: undefined } } });
     const choose = vi.spyOn(h.options, 'choose'); await h.submit('来週'); expect(choose).not.toHaveBeenCalled();
   });
+});
+
+
+it.each([
+  ['unchanged', true], ['absent state', true], ['neither record', true], ['ledger only', true],
+  ['snapshot only', false], ['invalid ledger without snapshot', false], ['ledger owner', false],
+  ['ledger conversation', false], ['epoch', false], ['snapshot payload', false], ['action', false],
+  ['topic', false], ['graph revision', false], ['turn', false], ['message', false], ['planning revision', false],
+] as const)('preserves C5 session admission for %s', async (change, expected) => {
+  const h = c5ControllerHarness(); await h.present();
+  const state = structuredClone(h.getState().intakeState!);
+  const context = state.lastQuestionContext!;
+  if (change === 'neither record' || change === 'snapshot only') delete state.c5SelectionLedger;
+  if (change === 'neither record' || change === 'ledger only' || change === 'invalid ledger without snapshot') delete context.c5;
+  if (change === 'invalid ledger without snapshot') state.c5SelectionLedger = { ...state.c5SelectionLedger!, lastEpoch: -1 };
+  if (change === 'ledger owner') state.c5SelectionLedger = { ...state.c5SelectionLedger!, ownerId: 'other-owner' };
+  if (change === 'ledger conversation') state.c5SelectionLedger = { ...state.c5SelectionLedger!, conversationId: 'other-conversation' };
+  if (change === 'epoch') state.c5SelectionLedger = { ...state.c5SelectionLedger!, lastEpoch: state.c5SelectionLedger!.lastEpoch + 1 };
+  if (change === 'snapshot payload') context.c5 = { ...context.c5!, payloadSerialization: 'corrupt' };
+  if (change === 'action') context.actionId = 'other-question';
+  if (change === 'topic') context.topicId = 'other-target';
+  if (change === 'graph revision') context.presentation!.graphRevision++;
+  if (change === 'turn') context.presentation!.turnId = 'other-turn';
+  if (change === 'message') context.presentation!.assistantMessageId = 'other-message';
+  if (change === 'planning revision') context.presentation!.planningStateRevision++;
+  expect(validC5SessionRecords(change === 'absent state' ? undefined : state, OWNER, h.conversationId)).toBe(expected);
 });

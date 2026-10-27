@@ -174,11 +174,12 @@ export function captureC5Question(params: {
 /** Old sessions have neither record and remain ineligible until a new presenting commit. */
 export function validC5SessionRecords(state: PlanningIntakeState | undefined, ownerId: string, conversationId: string): boolean {
   if (!state) return true;
-  if (state.c5SelectionLedger !== undefined && !decodeC5Ledger(state.c5SelectionLedger, ownerId, conversationId)) return false;
+  const rawLedger = state.c5SelectionLedger;
+  const ledger = rawLedger === undefined ? null : decodeC5Ledger(rawLedger, ownerId, conversationId);
+  if (rawLedger !== undefined && !ledger) return false;
   const snapshot = state.lastQuestionContext?.c5;
   if (snapshot === undefined) return true;
   const decoded = decodeC5Snapshot(snapshot, ownerId, conversationId);
-  const ledger = decodeC5Ledger(state.c5SelectionLedger, ownerId, conversationId);
   const context = state.lastQuestionContext;
   return Boolean(decoded && ledger && decoded.selectionEpoch === ledger.lastEpoch
     && context?.actionId === decoded.question.id && context.topicId === decoded.target.id

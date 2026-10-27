@@ -235,8 +235,8 @@ function resolveHardClockBounds(params: {
     if (constraint.constraintLevel !== 'hard'
       || (constraint.kind !== 'earliest_start'
         && constraint.kind !== 'latest_end' && constraint.kind !== 'deadline')) continue;
-    // C2 handles only an explicit one-sided clock. Other accepted shapes remain a documented release gap;
-    // do not partially reinterpret a named period or the opposite endpoint as this supported shape.
+    // Scheduler-input temporalConstraintIssues blocks two-clock or mixed named/clock
+    // shapes as invalid_time_interval; never partially interpret an unsupported bound.
     if (constraint.namedTimePeriod !== null
       || (constraint.kind === 'earliest_start' ? constraint.endTime !== null : constraint.startTime !== null)) continue;
     const clock = constraint.kind === 'earliest_start' ? constraint.startTime : constraint.endTime;

@@ -221,10 +221,6 @@ function mergeDimensions(
     );
 }
 
-function isPlanningPurpose(key: string): boolean {
-  return key.startsWith('weekly_planning') || key.startsWith('planning_');
-}
-
 function validateEventCursor(cursor: FirestoreOrderedCursor | null | undefined): void {
   if (!cursor) return;
   if (!Number.isFinite(new Date(cursor.orderedValue).getTime())
@@ -415,7 +411,7 @@ export class ProductObservabilityAdminAnalysisService {
       (entry) => entry.aiByOperationKind ?? [],
     );
     const planningAggregate = byPurpose
-      .filter((entry) => isPlanningPurpose(entry.key))
+      .filter((entry) => entry.key.startsWith('weekly_planning') || entry.key.startsWith('planning_'))
       .reduce(
         (aggregate, entry) => mergeAiAggregate(aggregate, entry.aggregate),
         emptyAiAggregate(),

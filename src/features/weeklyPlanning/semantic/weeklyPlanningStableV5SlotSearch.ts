@@ -185,6 +185,66 @@ function intersectPlacementWindows(
   });
 }
 
+export function preferredPlacementWindows(params: {
+  placement: PreferredPlacement;
+  date: string;
+  windowsByDate: Map<string, PlacementWindow[]>;
+  hardAvailableByDate: Map<string, PlacementWindow[]>;
+  notBefore?: WeeklyPlanningPlacementNotBeforeV5;
+  restrictToBaseWindows?: boolean;
+}): PlacementWindow[] {
+  const baseWindows = clampPlacementWindowsToNotBefore({
+    date: params.date, windows: params.windowsByDate.get(params.date) ?? [], notBefore: params.notBefore,
+  });
+  const hardAvailable = params.hardAvailableByDate.get(params.date);
+  if (!params.placement.window) return hardAvailable ?? baseWindows;
+  const preferred = clampPlacementWindowsToNotBefore({
+    date: params.date, windows: [params.placement.window], notBefore: params.notBefore,
+  });
+  const restriction = params.restrictToBaseWindows ? baseWindows : hardAvailable;
+  return restriction === undefined
+    ? preferred
+    : preferred.flatMap((window) => intersectPlacementWindows(restriction, window));
+}
+
+/** Enumerate the same free windows used by slot search, without reserving any time. */
+export function freePlacementSegments(params: {
+  dates: readonly string[];
+  windowsByDate: Map<string, PlacementWindow[]>;
+  busy: readonly MinuteInterval[];
+  breakMinutes: number;
+  notBefore?: WeeklyPlanningPlacementNotBeforeV5;
+}): MinuteInterval[] {
+  return params.dates.flatMap((date) => {
+    const windows = clampPlacementWindowsToNotBefore({
+      date, windows: params.windowsByDate.get(date) ?? [], notBefore: params.notBefore,
+    }).sort((left, right) => left.start - right.start || left.end - right.end);
+    // Preference and base windows may overlap; they describe one supply of time.
+    const merged: PlacementWindow[] = [];
+    for (const window of windows) {
+      const previous = merged[merged.length - 1];
+      if (previous && window.start <= previous.end) previous.end = Math.max(previous.end, window.end);
+      else merged.push({ ...window });
+    }
+    const conflicts = params.busy.filter((interval) => interval.date === date)
+      .sort((left, right) => left.start - right.start);
+    return merged.flatMap((window) => {
+      const free: MinuteInterval[] = [];
+      let cursor = window.start;
+      for (const conflict of conflicts) {
+        // The break follows busy time even when the window itself starts inside it.
+        if (conflict.end + params.breakMinutes <= cursor) continue;
+        if (conflict.start >= window.end) break;
+        if (conflict.start > cursor) free.push({ date, start: cursor, end: conflict.start });
+        cursor = Math.max(cursor, conflict.end + params.breakMinutes);
+        if (cursor >= window.end) break;
+      }
+      if (cursor < window.end) free.push({ date, start: cursor, end: window.end });
+      return free;
+    });
+  });
+}
+
 export function findPreferredPlacementSlot(params: {
   placements: PreferredPlacement[];
   duration: number;
@@ -199,31 +259,7 @@ export function findPreferredPlacementSlot(params: {
   for (const placement of params.placements) {
     for (const date of placement.dates) {
       if (params.notBefore && date < params.notBefore.date) continue;
-      const baseWindows = clampPlacementWindowsToNotBefore({
-        date,
-        windows: params.windowsByDate.get(date) ?? [],
-        notBefore: params.notBefore,
-      });
-      const hardAvailable = params.hardAvailableByDate.get(date);
-      let windows: PlacementWindow[];
-      if (placement.window) {
-        const preferredWindows = clampPlacementWindowsToNotBefore({
-          date,
-          windows: [placement.window],
-          notBefore: params.notBefore,
-        });
-        if (params.restrictToBaseWindows) {
-          windows = preferredWindows.flatMap((preferred) =>
-            intersectPlacementWindows(baseWindows, preferred));
-        } else {
-          windows = hardAvailable === undefined
-            ? preferredWindows
-            : preferredWindows.flatMap((preferred) =>
-                intersectPlacementWindows(hardAvailable, preferred));
-        }
-      } else {
-        windows = hardAvailable ?? baseWindows;
-      }
+      const windows = preferredPlacementWindows({ ...params, placement, date });
       const slot = findPlacementSlot({
         dates: [date],
         duration: params.duration,

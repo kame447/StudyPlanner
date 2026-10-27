@@ -168,3 +168,21 @@ describe('Home progress inclusion preferences', () => {
     expect(dashboard.weekActualMinutes).toBe(45);
   });
 });
+
+
+it.each([
+  ['25:00', '10:00', 0], ['09:00', '10:60', 0], ['12:30', '12:30', 0],
+  ['23:30', '00:30', 60], ['23:30', '00:00', 30], ['23:30', '24:00', 30],
+  ['00:00', '00:00', 1440], ['00:00', '24:00', 1440],
+] as const)('preserves dashboard totals for %s–%s', (startTime, endTime, minutes) => {
+  const dashboard = buildHomeDashboardModel({
+    plans: [plan({ startTime, endTime })],
+    actuals: [actual({ actualStartTime: startTime, actualEndTime: endTime })],
+    todos: [], now: new Date('2026-09-05T12:00:00'),
+  });
+  expect(dashboard.weekPlannedMinutes).toBe(minutes);
+  expect(dashboard.weekActualMinutes).toBe(minutes);
+  expect(dashboard.weekDays.find(day => day.date === '2026-09-05')).toMatchObject({
+    plannedMinutes: minutes, actualMinutes: minutes,
+  });
+});

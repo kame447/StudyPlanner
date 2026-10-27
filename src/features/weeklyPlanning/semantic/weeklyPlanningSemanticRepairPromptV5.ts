@@ -5,11 +5,14 @@ function unique(values: string[]): string[] {
 }
 
 const PRESERVE_VALID_MEANING_CLAUSE =
-  'Correct every listed validation failure. Treat listed validation failures cumulatively. Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response. Re-read userText for supported omissions.';
+  'Correct every listed validation failure. Treat listed validation failures cumulatively. Preserve unrelated supported current-turn facts, conversationActs and schema-valid fields from the invalid response. Re-read userText for supported omissions.';
 
 function repairDirectivesForErrors(errors: string[]): string[] {
   const directives: string[] = [];
 
+  if (errors.some((error) => error.endsWith('.constraintLevel:soft-fixed-interval-use-preferred-window'))) {
+    directives.push('For an appointment with a stated clock interval, even if tentative or expected, keep fixed_interval and its startTime/endTime; change only constraintLevel to hard. Express tentativeness with precision=approximate or uncertainties, not a movable preferred_window. Preserve kind, clock times, other facts and conversationActs.');
+  }
   if (errors.some((error) =>
     error.includes(':missing-start')
     || error.includes(':missing-end')

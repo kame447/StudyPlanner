@@ -290,6 +290,35 @@ class FakeIdentityStore {
 }
 
 describe('ProductObservabilityAdminAnalysisService', () => {
+  it.each([
+    ['planning_outline', true],
+    ['weekly_planning', true],
+    ['weekly_planningExtra', true],
+    ['xplanning_outline', false],
+    ['xweekly_planning', false],
+    ['planning', false],
+    ['Weekly_planning', false],
+  ] as const)('classifies planning purpose %s by its exact prefix', async (key, included) => {
+    const readModel = new FakeReadModel();
+    readModel.getDailyRollups = async () => overview().daily.map((day) => ({
+      ...day,
+      aiByPurpose: [{ key, aggregate: day.ai }],
+    }));
+    const service = new ProductObservabilityAdminAnalysisService(
+      env,
+      new FakeFirestore() as never,
+      readModel as never,
+    );
+
+    const analysis = await service.getAiAnalysis({
+      environment: 'production',
+      fromDate: '2026-08-28',
+      toDate: '2026-08-29',
+    });
+
+    expect(analysis.planningEfficiency.requestCount).toBe(included ? 3 : 0);
+  });
+
   it('merges daily AI dimensions and derives planning efficiency per turn server-side', async () => {
     const service = new ProductObservabilityAdminAnalysisService(
       env,

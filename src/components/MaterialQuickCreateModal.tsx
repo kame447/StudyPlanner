@@ -56,10 +56,12 @@ function MaterialQuickCreateModalSession({
   const [isCustomDuration, setIsCustomDuration] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const endTime = isValidQuickEntryStartTime(startTime) && isValidQuickEntryDuration(durationMinutes)
+  const isValidDate = isValidQuickEntryDate(date);
+  const isValidStartTime = isValidQuickEntryStartTime(startTime);
+  const endTime = isValidStartTime && isValidQuickEntryDuration(durationMinutes)
     ? resolveQuickEntryEndTime(startTime, durationMinutes)
     : null;
-  const canSave = isValidQuickEntryDate(date) && Boolean(endTime) && !isSubmitting;
+  const canSave = isValidDate && Boolean(endTime) && !isSubmitting;
 
   function applyDurationOption(value: DurationOptionValue) {
     if (value === 'custom') {
@@ -89,11 +91,11 @@ function MaterialQuickCreateModalSession({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!isValidQuickEntryDate(date)) {
+    if (!isValidDate) {
       setError('有効な日付を入力してください。');
       return;
     }
-    if (!isValidQuickEntryStartTime(startTime)) {
+    if (!isValidStartTime) {
       setError('有効な開始時間を入力してください。');
       return;
     }
