@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
@@ -14,6 +14,8 @@ const events = [
 let bridge;
 test.describe.configure({ retries: 0 });
 test.beforeAll(async () => {
+  // Evidence files are written here; a clean CI checkout has no artifacts directory.
+  await mkdir(path.join(root, 'artifacts/incident20261026'), { recursive: true });
   if (process.env.INCIDENT_LIVE === '1') {
     process.env.JEV_D5_LIVE = '1';
     const { startD5BrowserBridge } = await import('../../scripts/jev-d5-browser-bridge.mjs');
