@@ -241,6 +241,21 @@ function publishEstimate(
 }
 
 describe('ProductObservabilityActiveUserSnapshotService', () => {
+  it('selects dirty sources lexically without mutating caller input', async () => {
+    const firestore = new MemorySnapshotFirestore();
+    const sources: ObservabilityActiveUserDirtySource[] = [
+      { ...TODAY_SOURCE, revision: 2 },
+      { ...TODAY_SOURCE, environment: 'preview', revision: 2 },
+      { ...TODAY_SOURCE, environment: 'preview', revision: 10 },
+    ];
+    const before = copy(sources);
+
+    const result = await service(firestore).runBatch(sources);
+
+    expect(result).toMatchObject({ published: true, completedSource: before[2] });
+    expect(sources).toEqual(before);
+  });
+
   it('publishes exact counts only after the complete 30-day scan', async () => {
     const firestore = new MemorySnapshotFirestore();
     firestore.addActorDay('today-a', actorDay({
