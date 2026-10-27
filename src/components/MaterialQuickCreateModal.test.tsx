@@ -54,6 +54,8 @@ describe('MaterialQuickCreateModal', () => {
       expect(onSavePlan).not.toHaveBeenCalled();
       expect(onSaveStandaloneActual).not.toHaveBeenCalled();
       expect(onClose).not.toHaveBeenCalled();
+      expect(JSON.stringify(renderer.toJSON())).toContain(type === 'date'
+        ? '有効な日付を入力してください。' : '有効な開始時間を入力してください。');
       expect(input().props.value).toBe(value);
       act(() => input().props.onChange({ target: { value: type === 'date' ? '2028-02-29' : '19:00' } }));
       expect(root.findByProps({ type: 'submit' }).props.disabled).toBe(false);

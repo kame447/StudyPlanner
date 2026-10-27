@@ -7,19 +7,20 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const script = fileURLToPath(new URL('./run-locked-mutation-tests.mjs', import.meta.url));
 const roots = [];
+const applicationOverrides = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).overrides;
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
 
-function execute(mode = 'success') {
+function execute(mode = 'success', vitestVersion = '3.2.7') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mutation-launcher-fixture-'));
   roots.push(root);
   const packages = {};
-  for (const [name, version] of [['vitest', '3.2.7'], ['typescript', '5.9.3'], ['tinypool', '2.1.2']]) {
+  for (const [name, version] of [['vitest', vitestVersion], ['typescript', '5.9.3'], ...(/^5\./.test(vitestVersion) ? [] : [['tinypool', '2.1.2']])]) {
     const directory = path.join(root, 'node_modules', name);
     fs.mkdirSync(directory, { recursive: true });
-    fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ name, version, exports: name === 'tinypool' ? { './package.json': './package.json' } : undefined }));
+    fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ name, version, dependencies: name === 'vitest' && mode === 'root-modern-pool-dependency' ? { tinypool: '2.1.2' } : undefined, exports: name === 'tinypool' ? { './package.json': './package.json' } : undefined }));
     packages['node_modules/' + name] = { version };
   }
-  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture', overrides: { 'vitest@3.2.7': { tinypool: '2.1.2' } } }));
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture', overrides: { ...applicationOverrides, ...(/^5\./.test(vitestVersion) ? {} : { 'vitest@3.2.7': { tinypool: '2.1.2' } }) } }));
   fs.writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages }));
   if (mode === 'root-shadowed-pool' || mode === 'root-unversioned-pool') {
     const nested = path.join(root, 'node_modules/vitest/node_modules/tinypool');
@@ -36,7 +37,7 @@ function execute(mode = 'success') {
     const manifest = JSON.parse(fs.readFileSync(path.join(prefix, 'package.json'), 'utf8'));
     fs.writeFileSync('isolated-manifest.json', JSON.stringify(manifest));
     if (process.env.FIXTURE_MODE === 'install-failure') process.exit(2);
-    if (process.env.FIXTURE_MODE !== 'missing-pool') {
+    if (process.env.FIXTURE_MODE !== 'missing-pool' && !args.includes('vitest@5.0.5')) {
       const pool = path.join(prefix, 'node_modules/tinypool');
       fs.mkdirSync(pool, { recursive: true });
       const version = process.env.FIXTURE_MODE === 'wrong-pool' ? '1.1.1' : manifest.overrides['vitest@3.2.7'].tinypool;
@@ -47,7 +48,8 @@ function execute(mode = 'success') {
       const dir = path.join(prefix, 'node_modules', name);
       fs.mkdirSync(dir, {recursive:true});
       fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
-        name, version: process.env.FIXTURE_MODE === 'wrong-version' ? '0.0.0' : version
+        name, version: process.env.FIXTURE_MODE === 'wrong-version' ? '0.0.0' : version,
+        dependencies: name === 'vitest' && process.env.FIXTURE_MODE === 'modern-pool-dependency' ? { tinypool: '2.1.2' } : undefined
       }));
     }
     if (process.env.FIXTURE_MODE === 'shadowed-pool') {
@@ -87,12 +89,36 @@ describe('isolated mutation launcher integration', () => {
     const { root, result, prefix } = execute();
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(fs.readFileSync(path.join(root, 'install-args.json'), 'utf8')))
-      .toEqual(expect.arrayContaining(['vitest@3.2.7', 'typescript@5.9.3', '@stryker-mutator/core@9.6.1']));
-    expect(JSON.parse(fs.readFileSync(path.join(root, 'isolated-manifest.json'), 'utf8')).overrides).toEqual({ 'vitest@3.2.7': { tinypool: '2.1.2' } });
+      .toEqual(expect.arrayContaining(['vitest@3.2.7', 'typescript@5.9.3', '@stryker-mutator/core@10.1.1', '@stryker-mutator/instrumenter@10.1.1', '@stryker-mutator/vitest-runner@10.1.1', '@stryker-mutator/typescript-checker@10.1.1']));
+    expect(JSON.parse(fs.readFileSync(path.join(root, 'isolated-manifest.json'), 'utf8')).overrides).toEqual({ ...applicationOverrides, 'vitest@3.2.7': { tinypool: '2.1.2' } });
     expect(result.stdout).toContain('Isolated tinypool resolved from Vitest: 2.1.2');
     expect(fs.existsSync(prefix)).toBe(false);
     expect(fs.readFileSync(path.join(root, 'report.txt'), 'utf8')).toBe('retained');
     expect(JSON.parse(fs.readFileSync(path.join(root, 'node_modules/typescript/package.json'), 'utf8')).version).toBe('5.9.3');
+  });
+  it('supports the locked Vitest 5 built-in pool without installing tinypool', () => {
+    const { root, result, prefix } = execute('success', '5.0.5');
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Vitest 5 built-in worker pool');
+    const overrides = JSON.parse(fs.readFileSync(path.join(root, 'isolated-manifest.json'), 'utf8')).overrides;
+    expect(overrides).toEqual(applicationOverrides);
+    expect(overrides).not.toHaveProperty('vitest@3.2.7');
+    expect(fs.existsSync(path.join(root, 'node_modules/tinypool'))).toBe(false);
+    expect(fs.existsSync(prefix)).toBe(false);
+    expect(fs.readFileSync(path.join(root, 'report.txt'), 'utf8')).toBe('retained');
+  });
+  it.each(['root-modern-pool-dependency', 'modern-pool-dependency'])('rejects an unexpected %s', mode => {
+    const { root, result, prefix } = execute(mode, '5.0.5');
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Unexpected tinypool dependency in Vitest 5');
+    expect(fs.existsSync(path.join(root, 'report.txt'))).toBe(false);
+    if (prefix) expect(fs.existsSync(prefix)).toBe(false);
+  });
+  it.each(['wrong-version', 'drift', 'runner-failure'])('preserves fail-closed guards for Vitest 5: %s', mode => {
+    const { result, prefix } = execute(mode, '5.0.5');
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain({ 'wrong-version': 'version mismatch', drift: 'before=5.9.3, after=5.6.3', 'runner-failure': 'Mutation tool command failed: 3' }[mode]);
+    expect(fs.existsSync(prefix)).toBe(false);
   });
   it.each(['root-shadowed-pool', 'root-unversioned-pool'])('rejects %s before installing or executing tools', mode => {
     const { root, result, prefix } = execute(mode);

@@ -8,6 +8,7 @@ import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningS
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
+import { weeklyPlanningFixedEventRegistrationFacts, weeklyPlanningUnregisteredFixedEventMessage, type WeeklyPlanningUnregisteredFixedEvent } from './weeklyPlanningFixedEventOnlyInteraction';
 import type {
   WeeklyPlanningStableV5PlanningEvaluation,
 } from './weeklyPlanningStableV5PlanningEvaluation';
@@ -97,6 +98,8 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   evaluation: WeeklyPlanningStableV5PlanningEvaluation;
   preview: WeeklyPlanningStableV5PreviewSchedulerResult;
+  registrationCandidates?: WeeklyDraftCandidate[];
+  unregistered?: WeeklyPlanningUnregisteredFixedEvent[];
 }): WeeklyPlanningTurnExecutionResult | null {
   const decision = provisionalCapacityDecision({
     evaluation: params.evaluation,
@@ -104,6 +107,13 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
   });
   const schedulerInput = params.evaluation.compilation.input;
   if (!decision || !schedulerInput) return null;
+  // Registration is independent of the capacity decision and cannot authorize it.
+  const registrations = params.registrationCandidates ?? [];
+  const candidates = [...registrations, ...params.preview.candidates];
+  const registrationFacts = registrations.length > 0 || (params.unregistered?.length ?? 0) > 0
+    ? weeklyPlanningFixedEventRegistrationFacts(registrations, params.input.plans, [], params.unregistered, candidates.length) : undefined;
+  const overlapText = registrationFacts?.eventRegistration?.overlaps.map(overlap =>
+    `${overlap.date}の${overlap.titles.join('と')}は${overlap.startTime}–${overlap.endTime}が重複しています。`).join('') ?? '';
 
   // Extent comes from candidate task identity, never from a display-label match.
   const partlyScheduled = new Set(decision.partlyScheduledTaskIds);
@@ -118,7 +128,7 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
       ? `${partlyOmittedLabels.join('・')}の一部は容量不足のため候補に入れていません。` : '',
   ].join('') || '容量不足のため候補に入らなかった作業があります。';
   const message = withStableV5GroundingProposal({
-    message: `空き時間内で指定された優先順位に沿って${params.preview.candidates.length}件の仮予定候補を作りました。${omittedText}内容を確認して、必要なら条件を修正してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。`,
+    message: `空き時間内で指定された優先順位に沿って${candidates.length}件の仮予定候補を作りました。${omittedText}${overlapText}${weeklyPlanningUnregisteredFixedEventMessage(params.unregistered ?? [])}内容を確認して、必要なら条件を修正してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。`,
     records: params.evaluation.groundingRecords,
     currentTurnId: params.input.traceRequestId,
   });
@@ -126,7 +136,7 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
     previousState: params.input.previousState,
     userText: params.input.userText,
     message,
-    draftCandidates: params.preview.candidates,
+    draftCandidates: candidates,
     authorized: true,
     groundingRecords: params.evaluation.groundingRecords,
     repairAgenda: params.evaluation.repairDecision.agenda,
@@ -134,6 +144,7 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
   });
   const output: WeeklyPlanningTurnExecutionResult = {
     ...compatibilityOutput,
+    ...(registrationFacts ? { communicationFacts: registrationFacts } : {}),
     // This disclosure is application-owned: omitting lower-priority work is a
     // deterministic scheduling decision, not wording the dialogue model may hide.
     responseSource: 'system',

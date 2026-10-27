@@ -22,6 +22,11 @@ describe('Stable V5 preview authorization', () => {
     })).toBe(true);
   });
 
+  it.each(['not_requested', 'user_authorized'] as const)('checks durable study authorization before updating a draft-ready preview: %s', previousDraftGenerationIntent => {
+    expect(isWeeklyPlanningStableV5PreviewAuthorized({ previousStatus: 'draft_ready', previousDraftGenerationIntent,
+      planningIntent: 'update_plan', semanticChanged: true })).toBe(previousDraftGenerationIntent === 'user_authorized');
+  });
+
   it('still accepts a pure create_plan turn when no machine question was pending', () => {
     expect(isWeeklyPlanningStableV5PreviewAuthorized({
       previousStatus: 'revision_pending',

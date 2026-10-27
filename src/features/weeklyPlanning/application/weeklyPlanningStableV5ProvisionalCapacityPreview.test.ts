@@ -142,6 +142,29 @@ function runtimeInput() {
 }
 
 describe('Stable V5 provisional capacity preview policy', () => {
+  const registration = (id: string, startTime = '09:00', endTime = '10:00'): WeeklyDraftCandidate => ({
+    stableKey: id, date: '2026-09-05', startTime, endTime, durationMinutes: 60,
+    title: id, source: 'fixed_event_registration', approvalStatus: 'unapproved', workItemKey: id,
+  });
+
+  it('appends fixed registrations only after capacity permission and discloses overlaps in system output', () => {
+    const registrations = [registration('部活'), registration('ゼミ', '09:30', '10:30')];
+    const input = { ...runtimeInput(), plans: [] };
+    const scheduled = preview({ candidateTaskId: 'task-math', unscheduledWorkItemId: 'item-english' });
+    const output = projectWeeklyPlanningProvisionalCapacityPreviewV5({ input,
+      evaluation: evaluation('current_directive'), preview: scheduled, registrationCandidates: registrations });
+    expect(output?.draftCandidates).toEqual([...registrations, ...scheduled.candidates]);
+    expect(output?.message).toContain('3件');
+    expect(output?.message).toContain('2026-09-05の部活とゼミは09:30–10:00が重複しています。');
+    expect(output?.state.shouldSavePlan).toBe(false);
+    expect(output?.communicationFacts?.eventRegistration?.overlaps).toHaveLength(1);
+    expect(projectWeeklyPlanningProvisionalCapacityPreviewV5({ input, evaluation: evaluation(null),
+      preview: scheduled, registrationCandidates: registrations })).toBeNull();
+    expect(projectWeeklyPlanningProvisionalCapacityPreviewV5({ input, evaluation: evaluation('current_directive'),
+      preview: preview({ candidateTaskId: 'task-english', unscheduledWorkItemId: 'item-math' }),
+      registrationCandidates: registrations })).toBeNull();
+  });
+
   it('surfaces a partial draft only when omitted work is explicitly lower priority', () => {
     const output = projectWeeklyPlanningProvisionalCapacityPreviewV5({
       input: runtimeInput(),

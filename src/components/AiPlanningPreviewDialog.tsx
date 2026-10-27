@@ -11,6 +11,7 @@ import {
   sortByDateTime,
 } from '../lib/date';
 import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
+import { buildLanes, type WeekViewLane } from '../lib/weekViewLayout';
 import type { Plan } from '../types/domain';
 import { DragUndoRedoControls } from './DragUndoRedoControls';
 import { TimelineDragOverlay } from './TimelineDragOverlay';
@@ -40,8 +41,19 @@ interface AiPlanningPreviewDialogProps {
 
 interface PreviewGroup {
   date: string;
-  blocks: WeeklyPlanDraftBlock[];
-  existingPlans: Plan[];
+  blocks: Array<WeeklyPlanDraftBlock & WeekViewLane>;
+  existingPlans: Array<Plan & WeekViewLane>;
+}
+
+function previewGroupForDate(date: string, blocks: WeeklyPlanDraftBlock[], plans: Plan[]): PreviewGroup {
+  const entries = buildLanes([
+    ...blocks.filter(block => block.date === date).map(block => ({ ...block, previewKind: 'draft' as const })),
+    ...sortByDateTime(plans.filter(plan => plan.date === date)).map(plan => ({ ...plan, previewKind: 'existing' as const })),
+  ]);
+  return { date,
+    blocks: entries.filter(entry => entry.previewKind === 'draft'),
+    existingPlans: entries.filter(entry => entry.previewKind === 'existing'),
+  };
 }
 
 interface PreviewActionPress {
@@ -77,13 +89,21 @@ function overviewMarkerStyle(hour: number): CSSProperties {
   return { top: `${(hour / 24) * 100}%` };
 }
 
-function overviewBlockStyle(startTime: string, endTime: string): CSSProperties {
+function previewLaneStyle(entry?: WeekViewLane): CSSProperties {
+  if (!entry || entry.laneCount === 1) return {};
+  const laneWidth = 100 / entry.laneCount;
+  return { left: `calc(${entry.lane * laneWidth}% + 2px)`, width: `calc(${laneWidth}% - 4px)`,
+    right: 'auto', minWidth: 0 };
+}
+
+function overviewBlockStyle(startTime: string, endTime: string, entry?: WeekViewLane): CSSProperties {
   const start = Math.max(0, minutesFromTime(startTime));
   const end = Math.min(MINUTES_PER_DAY, parseTimeToMinutes(endTime, 'end'));
   const duration = Math.max(end - start, 1);
   return {
     top: `${(start / MINUTES_PER_DAY) * 100}%`,
     height: `max(${(duration / MINUTES_PER_DAY) * 100}%, 12px)`,
+    ...previewLaneStyle(entry),
   };
 }
 
@@ -91,13 +111,14 @@ function detailMarkerStyle(hour: number): CSSProperties {
   return { top: `${hour * DAY_DETAIL_HOUR_HEIGHT}px` };
 }
 
-function detailBlockStyle(startTime: string, endTime: string): CSSProperties {
+function detailBlockStyle(startTime: string, endTime: string, entry?: WeekViewLane): CSSProperties {
   const start = Math.max(0, minutesFromTime(startTime));
   const end = Math.min(MINUTES_PER_DAY, parseTimeToMinutes(endTime, 'end'));
   const duration = Math.max(end - start, 1);
   return {
     top: `${(start / 60) * DAY_DETAIL_HOUR_HEIGHT}px`,
     height: `${Math.max((duration / 60) * DAY_DETAIL_HOUR_HEIGHT, 24)}px`,
+    ...previewLaneStyle(entry),
   };
 }
 
@@ -173,20 +194,12 @@ export function AiPlanningPreviewDialog({
   );
   const groups = useMemo<PreviewGroup[]>(
     () =>
-      pageDates.map((date) => ({
-        date,
-        blocks: editableBlocks.filter((block) => block.date === date),
-        existingPlans: sortByDateTime(plans.filter((plan) => plan.date === date)),
-      })),
+      pageDates.map(date => previewGroupForDate(date, editableBlocks, plans)),
     [editableBlocks, pageDates, plans],
   );
   const selectedGroup = useMemo<PreviewGroup | null>(() => {
     if (!selectedDate) return null;
-    return {
-      date: selectedDate,
-      blocks: editableBlocks.filter((block) => block.date === selectedDate),
-      existingPlans: sortByDateTime(plans.filter((plan) => plan.date === selectedDate)),
-    };
+    return previewGroupForDate(selectedDate, editableBlocks, plans);
   }, [editableBlocks, plans, selectedDate]);
   const activeActionBlock = useMemo(
     () =>
@@ -523,7 +536,7 @@ export function AiPlanningPreviewDialog({
                               key={plan.id}
                               data-motion-key={`plan:${plan.id}`}
                               data-motion-signature={`${plan.startTime}-${plan.endTime} ${plan.title}`}
-                              style={overviewBlockStyle(plan.startTime, plan.endTime)}
+                              style={overviewBlockStyle(plan.startTime, plan.endTime, plan)}
                               title={`${plan.title} ${plan.startTime}-${plan.endTime}`}
                             >
                               <strong>{plan.title}</strong>
@@ -569,7 +582,7 @@ export function AiPlanningPreviewDialog({
                                 data-motion-signature={`${block.date} ${block.startTime}-${block.endTime} ${block.title}`}
                                 key={block.id}
                                 style={{
-                                  ...overviewBlockStyle(block.startTime, block.endTime),
+                                  ...overviewBlockStyle(block.startTime, block.endTime, block),
                                   pointerEvents: dragDescriptor ? 'auto' : 'none',
                                   overflow: 'hidden',
                                   zIndex: isActionActive ? 6 : undefined,
@@ -759,7 +772,7 @@ export function AiPlanningPreviewDialog({
                         key={plan.id}
                         data-motion-key={`plan:${plan.id}`}
                         data-motion-signature={`${plan.startTime}-${plan.endTime} ${plan.title}`}
-                        style={detailBlockStyle(plan.startTime, plan.endTime)}
+                        style={detailBlockStyle(plan.startTime, plan.endTime, plan)}
                       >
                         <strong>{plan.title}</strong>
                         <small>{plan.startTime}-{plan.endTime}</small>
@@ -802,7 +815,7 @@ export function AiPlanningPreviewDialog({
                           data-motion-key={`block:${block.id}`}
                           data-motion-signature={`${block.date} ${block.startTime}-${block.endTime} ${block.title}`}
                           key={block.id}
-                          style={detailBlockStyle(block.startTime, block.endTime)}
+                          style={detailBlockStyle(block.startTime, block.endTime, block)}
                           title={`${block.title} ${block.startTime}-${block.endTime}`}
                           aria-label={`${block.title} ${block.startTime}から${block.endTime}。長押しで操作、長押しして動かすと移動`}
                           onPointerDown={

@@ -92,10 +92,6 @@ function calendarDayNumber(date: string): number {
   return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
 }
 
-function calendarDayDistance(startDate: string, endDate: string): number {
-  return Math.max(0, calendarDayNumber(endDate) - calendarDayNumber(startDate));
-}
-
 function pointKey(point: ScheduleOccurrencePoint): string {
   return `${point.date}T${point.time}`;
 }
@@ -309,7 +305,10 @@ function monthEventOccurrences(params: {
       continue;
     }
 
-    const spanDays = calendarDayDistance(event.date, getMonthEventEndDate(event));
+    const spanDays = Math.max(
+      0,
+      calendarDayNumber(getMonthEventEndDate(event)) - calendarDayNumber(event.date),
+    );
     let candidateDate = addDays(params.startDate, -spanDays);
     while (candidateDate <= params.endDate) {
       if (getMonthEventOccurrenceStartDate(event, candidateDate) === candidateDate) {

@@ -105,10 +105,6 @@ function dailyId(environment: ObservabilityEnvironment, localDate: string): stri
   return `${environment}:${localDate}`;
 }
 
-function activeUserWindowId(environment: ObservabilityEnvironment, asOfDate: string): string {
-  return `${environment}:${asOfDate}`;
-}
-
 function userSummaryCollection(environment: ObservabilityEnvironment): string {
   return `${USER_SUMMARY_COLLECTION_PREFIX}_${environment}`;
 }
@@ -397,9 +393,9 @@ export class ProductObservabilityReadModelService {
     fromDate: string;
     toDate: string;
   }): Promise<ObservabilityOverviewReadModel> {
-    listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
+    const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
     const [{ daily, activeUsers, checkpoint }, registeredUsers] = await Promise.all([
-      this.getPeriodSnapshot(params),
+      this.getPeriodSnapshot(params, dates),
       registeredUsersForPeriod(this.firestore, params.fromDate, params.toDate),
     ]);
     const period = aggregateOverviewPeriod(daily);
@@ -463,7 +459,8 @@ export class ProductObservabilityReadModelService {
     daily: ObservabilityDailyRollup[];
     activeUsers: ObservabilityActiveUserWindows | null;
   }> {
-    const { daily, activeUsers } = await this.getPeriodSnapshot(params);
+    const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
+    const { daily, activeUsers } = await this.getPeriodSnapshot(params, dates);
     return { daily, activeUsers };
   }
 
@@ -471,12 +468,11 @@ export class ProductObservabilityReadModelService {
     environment: ObservabilityEnvironment;
     fromDate: string;
     toDate: string;
-  }): Promise<{
+  }, dates: readonly string[]): Promise<{
     daily: ObservabilityDailyRollup[];
     activeUsers: ObservabilityActiveUserWindows | null;
     checkpoint: ObservabilityRollupCheckpoint;
   }> {
-    const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
     const keys: FirestoreTransactionDocumentKey[] = [
       ...dates.map((localDate) => ({
         collection: DAILY_ROLLUP_COLLECTION,
@@ -484,7 +480,7 @@ export class ProductObservabilityReadModelService {
       })),
       {
         collection: ACTIVE_USER_WINDOW_COLLECTION,
-        id: activeUserWindowId(params.environment, params.toDate),
+        id: `${params.environment}:${params.toDate}`,
       },
       { collection: ROLLUP_STATE_COLLECTION, id: ROLLUP_STATE_ID },
     ];

@@ -323,9 +323,10 @@ export function createOpenAiCompatibleClient(
         }
 
         const idToken = await firebaseAuth.currentUser.getIdToken();
+        const parsedSemanticCensus = parseSemanticCensusJoin(semanticCensus);
 
         const proxyBody = {
-          ...(parseSemanticCensusJoin(semanticCensus) ? { semanticCensus: parseSemanticCensusJoin(semanticCensus) } : {}),
+          ...(parsedSemanticCensus ? { semanticCensus: parsedSemanticCensus } : {}),
           ...(capturedDecisionContext ? { decisionContext: capturedDecisionContext } : {}),
           ...(purpose ? { purpose } : { model: config.model }),
           temperature,

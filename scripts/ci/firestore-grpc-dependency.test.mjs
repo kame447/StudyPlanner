@@ -7,7 +7,7 @@ const manifest = JSON.parse(fs.readFileSync(new URL('../../package.json', import
 
 describe('temporary Firestore gRPC security bridge', () => {
   it('limits the patched transport override to the reviewed Firestore version', () => {
-    expect(manifest.overrides['@firebase/firestore@4.14.0']).toEqual({ '@grpc/grpc-js': '1.13.6' });
+    expect(manifest.overrides['@firebase/firestore@4.15.0']).toEqual({ '@grpc/grpc-js': '1.13.6' });
     expect(manifest.overrides['@firebase/firestore']).toBeUndefined();
   });
 

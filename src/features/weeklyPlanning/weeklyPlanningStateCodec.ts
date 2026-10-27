@@ -781,11 +781,12 @@ function isPreviewCandidateStableV5(value: unknown, graphRevision: number): bool
     && isTime(value.endTime)
     && isPositiveInteger(value.durationMinutes)
     && typeof value.title === 'string'
-    && typeof value.field === 'string'
-    && typeof value.year === 'number'
-    && Number.isInteger(value.year)
-    && isPositiveInteger(value.estimatedMinutes)
-    && value.source === 'weekly_exam_prep'
+    && (value.source === 'fixed_event_registration'
+      ? value.field === undefined && value.year === undefined && value.estimatedMinutes === undefined
+        && value.allocationBreakdown === undefined
+      : value.source === 'weekly_exam_prep' && typeof value.field === 'string'
+        && typeof value.year === 'number' && Number.isInteger(value.year)
+        && isPositiveInteger(value.estimatedMinutes))
     && value.approvalStatus === 'unapproved'
     && isNonEmptyString(value.workItemKey)
     && (value.allocationBreakdown === undefined || isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))

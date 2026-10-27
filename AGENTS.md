@@ -47,6 +47,8 @@ Do not stop or produce a final response merely because:
 
 A failed relevant check cannot be converted into completion by reporting the failure. It must route back to diagnosis and correction unless one of the explicit stop conditions below applies.
 
+- When an action requires approval or is blocked, pause only that action and its dependants. Continue useful independent work already within the authorized scope and fixed plan; do not broaden scope, bypass the blocker or treat silence as approval.
+
 A final response is allowed only when one of these conditions is true:
 
 1. All requested completion criteria are satisfied and verified on the exact current state.
@@ -140,6 +142,7 @@ This repository should prioritize a clean MVP first.
 - The current canonical roadmap and active Issue/work records define active scope, priority, checkpoint, and the next implementation step.
 - For task progress and execution order, follow the current roadmap/Issue rather than inferring status from this file or from historical task documents.
 - `docs/archive/` is historical evidence and never overrides current code, tests, or canonical domain documentation.
+- When a repository's documentation and its existing code disagree, follow the conventions used in the existing code, and in your final reply point out each inconsistency you found between the documentation and the code.
 
 ## Documentation governance
 
@@ -361,13 +364,19 @@ AI must:
 
 - Prioritize clarity
 - Use descriptive names
-- Avoid unnecessary abstraction early
+- Avoid unnecessary abstraction early. Keep single-use logic at its call site unless it hides genuine complexity; extract a helper when reuse or that complexity justifies it.
 - Add comments only where they help understanding
 - Keep files reasonably scoped
 - Follow existing project conventions once established
 - A large file is not automatically wrong, but split it when it owns independent responsibilities or independent reasons to change
 - Do not refactor only to move code between files; improve responsibility, encapsulation, dependency direction, or testability
 - Remove dead compatibility surfaces only after verifying they have no production, test, migration, or persisted-data responsibility
+
+### Proportional refactoring
+
+- Before refactoring, audit the entire agreed scope, record what to change, retain or defer, and fix the responsibility boundaries, implementation scope and verification criteria. Then implement the minimum coherent change; do not add newly discovered candidates opportunistically.
+- Before adding complexity for speculative, highly unlikely concurrency or security-boundary scenarios, explain the concrete failure, its estimated likelihood and supporting evidence (or explicitly say it is unknown), and the expected code and maintenance cost. Obtain the user’s approval before adding that scope; “theoretically safer” is not permission to expand it silently.
+- Validate external data once at its entry point, then pass validated, typed values internally instead of repeating the same checks at every layer. A new trust boundary still validates its input; this does not remove required authorization, state-dependent invariants, or existing security protections.
 
 ## Test audit policy
 

@@ -1,7 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type { ReactNode } from 'react';
 import { readFileSync } from 'node:fs';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest';
 import { RADIAL_POP_MS, RADIAL_REVEAL_MS, ScheduleItemRadialMenu, type ScheduleItemRadialMenuProps } from './ScheduleItemRadialMenu';
 import { SCHEDULE_ITEM_ACTION_INTENT_EVENT, type ActiveScheduleItemAction } from '../hooks/useScheduleItemActionPress';
 import { SCHEDULE_RADIAL_ACTION_LABELS, SCHEDULE_RADIAL_ACTION_ORDER } from '../lib/scheduleRadialActions';
@@ -22,7 +22,7 @@ let origin: FocusTarget;
 let reduced: boolean;
 let nodes: Map<string, FocusTarget>;
 let safePadding: Record<string, string>;
-let intent: ReturnType<typeof vi.fn>;
+let intent: Mock<EventListener>;
 const click = () => ({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
 const items = () => renderer!.root.findAllByProps({ role: 'menuitem' });
 const menu = () => renderer!.root.findByProps({ role: 'menu' });

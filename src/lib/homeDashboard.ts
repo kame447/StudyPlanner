@@ -50,15 +50,11 @@ function timeNowLabel(now: Date): string {
 }
 
 function studyMinutes(actual: Actual): number {
-  return Math.max(0, getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime));
+  return getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime);
 }
 
 function plannedMinutesByNow(plan: Plan, date: string, today: string, nowTime: string): number {
   return elapsedEntryMinutes(date, plan.startTime, plan.endTime, today, nowTime);
-}
-
-function actualMinutesByNow(actual: Actual, today: string, nowTime: string): number {
-  return elapsedEntryMinutes(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, today, nowTime);
 }
 
 function buildStudyDateSet(actuals: Actual[]): Set<string> {
@@ -158,7 +154,9 @@ export function buildHomeDashboardModel({
       0,
     );
     weekActualMinutesByNow += dayActuals.reduce(
-      (sum, actual) => sum + actualMinutesByNow(actual, today, nowTime),
+      (sum, actual) => sum + elapsedEntryMinutes(
+        actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, today, nowTime,
+      ),
       0,
     );
 
@@ -166,7 +164,7 @@ export function buildHomeDashboardModel({
       date,
       label: getWeekdayLabel(date),
       plannedMinutes: dayPlans.reduce(
-        (sum, plan) => sum + Math.max(0, getEntryDurationMinutes(plan.startTime, plan.endTime)),
+        (sum, plan) => sum + getEntryDurationMinutes(plan.startTime, plan.endTime),
         0,
       ),
       actualMinutes: dayActuals.reduce((sum, actual) => sum + studyMinutes(actual), 0),

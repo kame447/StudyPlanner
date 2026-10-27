@@ -26,6 +26,16 @@ on:
       - 'scripts/ci/run-locked-mutation-tests.mjs'
       - 'scripts/ci/run-locked-mutation-tests.test.mjs'
       - 'scripts/ci/mutation-capacity.test.mjs'
+      - 'scripts/ci/isolated-mutation-toolchain.mjs'
+      - 'scripts/ci/mutation-partition.mjs'
+      - 'scripts/ci/mutation-partition.test.mjs'
+      - 'scripts/ci/run-mutation-partition.mjs'
+      - 'scripts/ci/mutation-partition-worker.mjs'
+      - 'scripts/ci/mutation-partition-worker.test.mjs'
+      - 'scripts/ci/mutation-partition-reporter.mjs'
+      - 'scripts/ci/mutation-partition-reporter.test.mjs'
+      - 'scripts/ci/mutation-partition-plugin.mjs'
+      - 'scripts/ci/mutation-partition-workflow.test.mjs'
       - 'scripts/ci/prepare-j1-worker-fixture.mjs'
       - 'scripts/ci/prepare-j1-worker-fixture.test.mjs'
       - 'scripts/ci/test-intelligence-workflow.test.mjs'
@@ -38,6 +48,10 @@ permissions:
 concurrency:
   group: test-intelligence-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+  MUTATION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   coverage:
@@ -81,11 +95,104 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  mutation-plan:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.suite == 'all' || inputs.suite == 'mutation' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Snapshot application manifests
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+      - name: Snapshot installed locked dependencies
+        run: node scripts/ci/locked-test-toolchain.mjs snapshot /tmp/studyplanner-toolchain.json
+      - name: Inventory complete mutation scope and prove disjoint ranges
+        run: npm run test:mutation:weekly-planning -- --partition plan
+      - name: Verify installed locked dependencies did not change
+        if: always()
+        run: node scripts/ci/locked-test-toolchain.mjs verify /tmp/studyplanner-toolchain.json
+      - name: Verify mutation tools did not mutate manifests
+        if: always()
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+      - name: Upload complete inventory and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-weekly-planning-inventory-${{ github.sha }}-${{ github.run_attempt }}
+          path: reports/stryker/inventory/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  mutation-shard:
+    needs: mutation-plan
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.suite == 'all' || inputs.suite == 'mutation' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        shard: [a, b]
+    env:
+      MUTATION_SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Snapshot application manifests
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+      - name: Snapshot installed locked dependencies
+        run: node scripts/ci/locked-test-toolchain.mjs snapshot /tmp/studyplanner-toolchain.json
+      - name: Download this attempt's complete inventory
+        uses: actions/download-artifact@v8
+        with:
+          name: mutation-weekly-planning-inventory-${{ github.sha }}-${{ github.run_attempt }}
+          path: reports/stryker/inventory/
+      - name: Record mutation runner capacity
+        run: |
+          mkdir -p reports/stryker/shards/${{ matrix.shard }}
+          nproc | tee reports/stryker/shards/${{ matrix.shard }}/cpu-count.txt
+          free -m | tee reports/stryker/shards/${{ matrix.shard }}/memory-mb.txt
+      - name: Execute assigned mutation population
+        run: npm run test:mutation:weekly-planning -- --partition shard "$MUTATION_SHARD"
+      - name: Verify installed locked dependencies did not change
+        if: always()
+        run: node scripts/ci/locked-test-toolchain.mjs verify /tmp/studyplanner-toolchain.json
+      - name: Verify mutation tools did not mutate manifests
+        if: always()
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+      - name: Upload shard report and partial diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-weekly-planning-shard-${{ matrix.shard }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: reports/stryker/shards/${{ matrix.shard }}/
+          if-no-files-found: ignore
+          retention-days: 30
+
   mutation:
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.suite == 'all' || inputs.suite == 'mutation' || inputs.suite == 'mutation-issue152' }}
+    needs: [mutation-plan, mutation-shard]
+    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.suite == 'all' || inputs.suite == 'mutation' || inputs.suite == 'mutation-issue152') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      MUTATION_PLAN_RESULT: ${{ needs.mutation-plan.result }}
+      MUTATION_SHARDS_RESULT: ${{ needs.mutation-shard.result }}
       MUTATION_CONFIG: ${{ inputs.suite == 'mutation-issue152' && 'stryker.issue152.config.mjs' || 'stryker.config.mjs' }}
       MUTATION_ARTIFACT: ${{ inputs.suite == 'mutation-issue152' && 'mutation-issue152' || 'mutation-weekly-planning' }}
     steps:
@@ -105,13 +212,36 @@ jobs:
       - name: Snapshot installed locked dependencies
         run: node scripts/ci/locked-test-toolchain.mjs snapshot /tmp/studyplanner-toolchain.json
       - name: Record mutation runner capacity
+        if: inputs.suite == 'mutation-issue152'
         shell: bash
         run: |
           mkdir -p reports/stryker
           nproc | tee reports/stryker/cpu-count.txt
           free -m | tee reports/stryker/memory-mb.txt
       - name: Run isolated pinned mutation toolchain
+        if: inputs.suite == 'mutation-issue152'
         run: npm run test:mutation:weekly-planning -- "$MUTATION_CONFIG"
+      - name: Download this attempt's complete inventory
+        if: inputs.suite != 'mutation-issue152'
+        uses: actions/download-artifact@v8
+        with:
+          name: mutation-weekly-planning-inventory-${{ github.sha }}-${{ github.run_attempt }}
+          path: reports/stryker/inventory/
+      - name: Download this attempt's shard a
+        if: inputs.suite != 'mutation-issue152'
+        uses: actions/download-artifact@v8
+        with:
+          name: mutation-weekly-planning-shard-a-${{ github.sha }}-${{ github.run_attempt }}
+          path: reports/stryker/shards/a/
+      - name: Download this attempt's shard b
+        if: inputs.suite != 'mutation-issue152'
+        uses: actions/download-artifact@v8
+        with:
+          name: mutation-weekly-planning-shard-b-${{ github.sha }}-${{ github.run_attempt }}
+          path: reports/stryker/shards/b/
+      - name: Validate complete union and enforce the sole global mutation score
+        if: inputs.suite != 'mutation-issue152'
+        run: npm run test:mutation:weekly-planning -- --partition aggregate
       - name: Verify installed locked dependencies did not change
         if: always()
         run: node scripts/ci/locked-test-toolchain.mjs verify /tmp/studyplanner-toolchain.json
@@ -124,6 +254,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.MUTATION_ARTIFACT }}-${{ github.sha }}
+          overwrite: true
           path: reports/stryker/
           if-no-files-found: ignore
           retention-days: 30

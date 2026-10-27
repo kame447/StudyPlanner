@@ -8,9 +8,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * preferred_window already carries soft-preference meaning. A hard level is a
- * contradictory wire representation, not a distinct supported semantic state.
- * Normalize only that exact typed contradiction; never infer preference from text.
+ * Preserve explicit hard clock bounds using the existing one-sided contract.
+ * Named-period-only preferences (no explicit clock) retain their existing soft canonicalization.
+ * This consumes typed fields only, never utterance text.
  */
 export function normalizeWeeklyPlanningPreferredWindowConstraintLevelsV5(
   rawResponse: string,
@@ -26,22 +26,54 @@ export function normalizeWeeklyPlanningPreferredWindowConstraintLevelsV5(
   }
 
   const repairs: string[] = [];
+  const localIds = new Set<string>();
+  const pending: unknown[] = [parsed];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (Array.isArray(value)) pending.push(...value);
+    else if (isRecord(value)) {
+      if (typeof value.localId === 'string') localIds.add(value.localId);
+      pending.push(...Object.values(value));
+    }
+  }
+  const uniqueEndId = (localId: string): string => {
+    const base = `${localId}__latest_end`;
+    let id = base;
+    for (let suffix = 1; localIds.has(id); suffix += 1) id = `${base}_${suffix}`;
+    localIds.add(id);
+    return id;
+  };
   let changed = false;
   parsed.tasks.forEach((task, taskIndex) => {
     if (!isRecord(task) || !Array.isArray(task.temporalConstraints)) return;
-    task.temporalConstraints.forEach((constraint, constraintIndex) => {
+    task.temporalConstraints = task.temporalConstraints.flatMap((constraint, constraintIndex) => {
       if (
         !isRecord(constraint)
         || constraint.kind !== 'preferred_window'
         || constraint.constraintLevel !== 'hard'
       ) {
-        return;
+        return [constraint];
+      }
+      const hasStart = typeof constraint.startTime === 'string' && constraint.startTime.length > 0;
+      const hasEnd = typeof constraint.endTime === 'string' && constraint.endTime.length > 0;
+      if ((hasStart || hasEnd) && typeof constraint.localId === 'string') {
+        // Explicit clocks win over a redundant named period, as in temporal clock canonicalization.
+        const bounds: Record<string, unknown>[] = [];
+        if (hasStart) bounds.push({ ...constraint, kind: 'earliest_start', namedTimePeriod: null, endTime: null });
+        if (hasEnd) bounds.push({
+          ...constraint, kind: 'latest_end', namedTimePeriod: null, startTime: null,
+          localId: hasStart ? uniqueEndId(constraint.localId) : constraint.localId,
+        });
+        changed = true;
+        repairs.push(`preferred-window-hard-clock-bounds-canonicalized:${taskIndex}:${constraintIndex}`);
+        return bounds;
       }
       constraint.constraintLevel = 'soft';
       changed = true;
       repairs.push(
         `preferred-window-constraint-level-canonicalized:${taskIndex}:${constraintIndex}:soft`,
       );
+      return [constraint];
     });
   });
 

@@ -1,5 +1,8 @@
 name: Weekly Planning Resumable Conversation Command
 
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+
 on:
   push:
     branches:

@@ -1,5 +1,8 @@
 name: Live Account Browser Verification
 
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+
 on:
   workflow_dispatch:
 

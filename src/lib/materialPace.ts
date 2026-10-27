@@ -75,14 +75,6 @@ function parsePositiveProgressInput(value: string | undefined): number | undefin
     : undefined;
 }
 
-function clampUnit(value: number, totalUnits?: number): number {
-  const lowerBounded = Math.max(0, value);
-
-  return isFiniteNumber(totalUnits)
-    ? Math.min(lowerBounded, Math.max(0, totalUnits))
-    : lowerBounded;
-}
-
 function toLocalDate(dateString: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
     return null;
@@ -358,7 +350,7 @@ export function calculateNextMaterialUnit(
   material: StudyMaterial,
   update: ActualMaterialProgressUpdate,
 ): number | null {
-  if (material.paceEnabled !== true || update.materialId !== material.id) {
+  if (material.paceEnabled !== true) {
     return null;
   }
 
@@ -375,7 +367,8 @@ export function calculateNextMaterialUnit(
       ? normalizedUpdate.toUnit
       : currentUnit + (normalizedUpdate.deltaUnits ?? 0);
 
-  return clampUnit(nextUnit, totalUnits);
+  const lowerBounded = Math.max(0, nextUnit);
+  return totalUnits === undefined ? lowerBounded : Math.min(lowerBounded, totalUnits);
 }
 
 export function applyMaterialProgressUpdate(

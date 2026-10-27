@@ -23,10 +23,6 @@ import type {
 
 const MAX_MONTH_EVENT_LANES = 3;
 
-function getCalendarDayNumber(dateString: string): string {
-  return Number.parseInt(dateString.slice(-2), 10).toString();
-}
-
 function getHolidayLabelLengthClass(holidayName: string): string {
   const holidayLength = [...holidayName].length;
 
@@ -392,7 +388,7 @@ export function MonthGridPanel({
                           .filter(Boolean)
                           .join(' ')}
                       >
-                        {getCalendarDayNumber(cell.date)}
+                        {Number.parseInt(cell.date.slice(-2), 10).toString()}
                       </strong>
                       {holidayName ? (
                         <span

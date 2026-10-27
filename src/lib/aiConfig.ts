@@ -116,10 +116,7 @@ function normalizeAiConfig(
   candidate: Partial<AiConfig> | undefined,
   fallback: AiConfig,
 ): AiConfig {
-  const provider =
-    candidate?.provider && isAiProvider(candidate.provider)
-      ? candidate.provider
-      : fallback.provider;
+  const provider = candidate?.provider ?? fallback.provider;
   const defaults = getProviderDefaults(provider);
 
   return {

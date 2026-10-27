@@ -43,6 +43,7 @@ const searchXml = `<rss xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><it
 
 function mockCatalogFlow(options: {
   cache?: 'hit' | 'miss' | 'read-failure';
+  catalog?: { name: string; fields: Record<string, unknown> };
   writeFailure?: boolean;
   provider?: 'success' | 'empty' | 'failure' | 'network-failure';
   providerXml?: string;
@@ -65,12 +66,12 @@ function mockCatalogFlow(options: {
       }
       if (url.pathname.endsWith(':runQuery')) {
         operations.push('catalog-query');
-        return Response.json(options.cache === 'hit' ? [{ document: catalogDocument }] : []);
+        return Response.json(options.cache === 'hit' ? [{ document: options.catalog ?? catalogDocument }] : []);
       }
       operations.push('catalog-get');
       if (options.cache === 'read-failure') return new Response(null, { status: 503 });
       return options.cache === 'hit'
-        ? Response.json(catalogDocument)
+        ? Response.json(options.catalog ?? catalogDocument)
         : new Response(null, { status: 404 });
     }
     if (url.hostname === 'ndlsearch.ndl.go.jp' && url.pathname === '/api/opensearch') {
@@ -123,6 +124,59 @@ function requestMetadata(endpoint: 'search' | 'details', query = '9784023315686'
     { getToken: async () => 'test-service-token' },
   );
 }
+
+describe('admitted catalog projection', () => {
+  it.each(['absent', 'empty', 'populated'] as const)('preserves optional presence and the response allowlist: %s', async (mode) => {
+    const optional = mode === 'absent' ? {} : {
+      publisher: mode === 'empty' ? '' : '出版社',
+      publishedYear: mode === 'empty' ? 0 : 2023,
+      edition: mode === 'empty' ? '' : '改訂版',
+      isbn10: mode === 'empty' ? '' : '4023315680',
+      isbn13: mode === 'empty' ? '' : '9784023315686',
+      pageCount: mode === 'empty' ? 0 : 381,
+      tableOfContents: mode === 'empty' ? [] : ['序章', '本編'],
+    };
+    const expected = { catalogEntryId: catalogCandidate.catalogEntryId, title: '教材', authors: ['著者'], ...optional };
+    const fields: Record<string, unknown> = {
+      catalogEntryId: catalogDocument.fields.catalogEntryId,
+      title: catalogDocument.fields.title,
+      authors: catalogDocument.fields.authors,
+      coverImageUrl: { stringValue: 'https://private.example/stored-cover' },
+      privateNotes: { stringValue: 'private-catalog-metadata' },
+      subjectHint: { stringValue: 'not-in-catalog-response' },
+    };
+    for (const [key, value] of Object.entries(optional)) {
+      fields[key] = Array.isArray(value)
+        ? { arrayValue: { values: value.map((item) => ({ stringValue: item })) } }
+        : typeof value === 'number' ? { integerValue: String(value) } : { stringValue: value };
+    }
+    const { operations } = mockCatalogFlow({ cache: 'hit', catalog: { ...catalogDocument, fields } });
+
+    const response = await requestMetadata('search');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      results: [{ ...expected, ...(mode === 'populated' ? { coverImageUrl } : {}) }], cacheHit: true,
+    });
+    expect(operations).toEqual(['auth', 'catalog-get', ...(mode === 'populated' ? ['cover'] : [])]);
+  });
+
+  it.each([
+    ['pageCount', { integerValue: '-1' }],
+    ['tableOfContents', { arrayValue: { values: [{ integerValue: '1' }] } }],
+    ['publisher', { integerValue: '1' }],
+  ])('rejects an invalid stored %s before projection and preserves provider fallback', async (key, invalidValue) => {
+    const { operations } = mockCatalogFlow({ cache: 'hit', catalog: {
+      ...catalogDocument, fields: { ...catalogDocument.fields, [String(key)]: invalidValue },
+    } });
+
+    const response = await requestMetadata('search');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ results: [{ ...catalogCandidate, coverImageUrl }], cacheHit: false });
+    expect(operations).toEqual(['auth', 'catalog-get', 'catalog-query', 'ndl-search', 'catalog-write', 'cover']);
+  });
+});
 
 describe.each(['search', 'details'] as const)('material metadata %s catalog policy', (endpoint) => {
   const enrichment = endpoint === 'details' ? ['ndl-details', 'catalog-write', 'cover'] : ['cover'];

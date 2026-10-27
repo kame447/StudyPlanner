@@ -37,18 +37,18 @@ import {
 
 const baselinePendingEffort = { questionCode: 'missing_effort_estimate', graphRevision: 2,
   targetFactId: 'math-work', effortMeasurement: 'duration_per_unit' };
-// Entire message-array UTF-8 bytes generated from Git object22e42203a4df82b5432d4290b7b5ea3a4246b8c9.
-// Pin the baseline independently of current assembly, without requiring Git history in CI.
+// Full message-array hashes after the reviewed temporal/work semantics instructions.
+// Unrelated instructions and all byte ceilings retain their prior contract.
 it.each([
-  ['5', baselinePendingEffort, 'd987f3301fcf973391beae941f403553335078f70825a894d8da4e0e042aace5'],
-  ['5分', baselinePendingEffort, 'f3906375232e1a455cc023247b3fab48e25906faecc302ed45f1c48d38055dc5'],
-  ['15分。あと英語の締切を金曜にして', baselinePendingEffort, 'f8b55c0e878418566b48f4705a722efd394fd27cf4a72ce527942cc0dbdb9b19'],
-  ['全部で60分', baselinePendingEffort, '35e00d933c1ae0da2a549010a9deda87da11fa9af7f096903d42ebe20b3b30b6'],
-  ['15分くらい', baselinePendingEffort, '67b57f971a165707b7ec0ce365f8ec714f774ecf9bd1241f0a1c10935b52f0e0'],
-  ['5', { ...baselinePendingEffort, graphRevision: 1 }, '1f64276bf1b6155835b015eea62342d538b22b8adc4920360d02e12b592c4ed7'],
-  ['5', { questionCode: 'quantity_role_unresolved', graphRevision: 2 }, '5b11346e7d74775901c8eb8b0ab1ecee63f263e549bd09571036104c52a425a0'],
-  ['5', null, '21401918ddf4407830955a8cc5f832c69134e9588569dc93658b261e0a21158b'],
-] as const)('keeps generic prompt bytes identical to22e42203 for %s / %j', (userText, pendingQuestion, sha256) => {
+  ['5', baselinePendingEffort, '31da97126d0d51844ff8d2d8da7ed106c3988148ff1004fadcd8264024404262'],
+  ['5分', baselinePendingEffort, '4b99273d6e370acdcd4b35885da3cc4a104ce5ab2e1ed4f7c881222e640f56bb'],
+  ['15分。あと英語の締切を金曜にして', baselinePendingEffort, '4f69210de378af7e9070f4b9e1267d48c56a2e501395048c237492ec3f537535'],
+  ['全部で60分', baselinePendingEffort, '76fc07be1eca07dbd361171ee90d336b043da6477f232037edfb49ba91c37e84'],
+  ['15分くらい', baselinePendingEffort, '6f92e66d75dbb19cebac6af6f9955a40ce92cc9d86781d2ba7fcd79102845d9d'],
+  ['5', { ...baselinePendingEffort, graphRevision: 1 }, '2feaab7501aa5b26f7c25321f18ed79bf10a847b646e1fdf25af92eacb9544d8'],
+  ['5', { questionCode: 'quantity_role_unresolved', graphRevision: 2 }, '1d0ae5e603684d2853915346c5e160b16a266260a4a93f000ba638eb2f68d7a4'],
+  ['5', null, '3164195b252d08fd9710ac320a4c59055e194268185e5ae696b62ab1692d1bd4'],
+] as const)('pins the reviewed temporal/work prompt bytes for %s / %j', (userText, pendingQuestion, sha256) => {
   const messages = createWeeklyPlanningSemanticBaseMessagesV5({ userText, publicStateSummary: { graphRevision: 2, pendingQuestion } });
   expect(createHash('sha256').update(JSON.stringify(messages)).digest('hex')).toBe(sha256);
 });

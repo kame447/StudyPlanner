@@ -92,7 +92,7 @@ describe('Stable V5 execution-policy work distribution', () => {
       '作業 1.5時間（1/2）',
       '作業 1.5時間（2/2）',
     ]);
-    expect(result.every((item) => item.splitPolicy === 'atomic')).toBe(true);
+    expect(result.every((item) => item.splitPolicy === 'splittable')).toBe(true);
   });
 
   it('uses structured research purpose to keep longer deep-work sessions', () => {

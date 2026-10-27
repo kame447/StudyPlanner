@@ -162,6 +162,20 @@ describe('material progress updates', () => {
     ).toBe(100);
   });
 
+  it.each([
+    [undefined, 20],
+    [Number.NaN, 20],
+    [Number.POSITIVE_INFINITY, 20],
+    [Number.NEGATIVE_INFINITY, 20],
+    [-5, 0],
+    [12.5, 12.5],
+  ])('uses the normalized total %s when clamping progress', (totalUnits, expected) => {
+    expect(calculateNextMaterialUnit(material({ totalUnits }), {
+      materialId: 'material-1',
+      toUnit: 20,
+    })).toBe(expected);
+  });
+
   it('does not go below zero', () => {
     expect(
       calculateNextMaterialUnit(material({ currentUnit: 10 }), {
@@ -182,15 +196,12 @@ describe('material progress updates', () => {
     ).toBe(current);
   });
 
-  it('ignores updates for a different materialId', () => {
+  it.each(['material-other', ''])('ignores updates for rejected materialId %j', (materialId) => {
     const current = material({ currentUnit: 10 });
+    const update = { materialId, deltaUnits: 5 };
 
-    expect(
-      applyMaterialProgressUpdate(current, {
-        materialId: 'material-other',
-        deltaUnits: 5,
-      }),
-    ).toBe(current);
+    expect(calculateNextMaterialUnit(current, update)).toBeNull();
+    expect(applyMaterialProgressUpdate(current, update)).toBe(current);
   });
 
   it('treats missing currentUnit as zero', () => {
