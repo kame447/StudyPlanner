@@ -8,7 +8,18 @@ const term: TimetableTerm = { id: 'term', userId: 'owner', year: 2026, kind: 'cu
 const classes: ScheduleTemplate[] = ['A', 'B'].map((title, index) => ({ id: title, userId: 'owner', title, subject: 'Math', type: 'study', weekday: index === 0 ? 'mon' : 'tue', startTime: '12:00', endTime: '13:00', termId: 'term', periodNumber: 1, memo: '', active: true, createdAt: STAMP, updatedAt: STAMP }));
 let renderer: ReactTestRenderer;
 afterEach(() => { act(() => renderer?.unmount()); vi.restoreAllMocks(); });
-function mount(termOverrides: Partial<TimetableTerm> = {}) { const activeTerm = { ...term, ...termOverrides }; const gate = deferred(); const save = vi.fn(() => gate.promise); const remove = vi.fn(() => gate.promise); act(() => { renderer = create(<TimetableView userId="owner" activeTerm={activeTerm} timetableTerms={[activeTerm]} timetablePeriods={[{ id: 'period', userId: 'owner', termId: 'term', periodNumber: 1, label: '1', startTime: '12:00', endTime: '13:00', createdAt: STAMP, updatedAt: STAMP }]} scheduleTemplates={classes} onActivateTerm={async () => term} onDeleteTerm={async () => { }} onClearTermData={async () => { }} onSaveTimetablePeriod={vi.fn()} onDeleteTimetablePeriod={async () => { }} onSaveScheduleTemplate={save} onDeleteScheduleTemplate={remove}/>); }); return { gate, save, remove }; }
+function mount(termOverrides: Partial<TimetableTerm> = {}) { const activeTerm = { ...term, ...termOverrides }; const gate = deferred(); const save = vi.fn(() => gate.promise); const remove = vi.fn(() => gate.promise); const savePeriod = vi.fn().mockResolvedValue(undefined); act(() => { renderer = create(<TimetableView userId="owner" activeTerm={activeTerm} timetableTerms={[activeTerm]} timetablePeriods={[{ id: 'period', userId: 'owner', termId: 'term', periodNumber: 1, label: '1', startTime: '12:00', endTime: '13:00', createdAt: STAMP, updatedAt: STAMP }]} scheduleTemplates={classes} onActivateTerm={async () => term} onDeleteTerm={async () => { }} onClearTermData={async () => { }} onSaveTimetablePeriod={savePeriod} onDeleteTimetablePeriod={async () => { }} onSaveScheduleTemplate={save} onDeleteScheduleTemplate={remove}/>); }); return { gate, save, remove, savePeriod }; }
+it.each([['11:30', '11:30'], ['', null]] as const)('projects only the six period draft fields for start %s', async (raw, startTime) => {
+  const { savePeriod } = mount();
+  await act(async () => {
+    renderer.root.findByProps({ 'aria-label': '1限 開始時刻' }).props.onChange({ target: { value: raw } });
+  });
+  expect(savePeriod).toHaveBeenCalledExactlyOnceWith({
+    userId: 'owner', termId: 'term', periodNumber: 1, label: '1',
+    startTime, endTime: '13:00',
+  }, 'period');
+});
+
 function open(title: string) { act(() => renderer.root.findByProps({ 'aria-label': `${title === 'A' ? '月' : '火'}曜 1限 ${title}の詳細` }).props.onClick({ detail: 0 })); act(() => renderer.root.findAllByType('button').find(node => node.children.includes('編集'))!.props.onClick()); }
 function titleInput() { return renderer.root.findAllByType('input').find(node => node.props.autoComplete === 'off')!; }
 it('an earlier save cannot dismiss the newer editor draft', async () => { const { gate } = mount(); open('A'); let saving!: Promise<void>; await act(async () => { saving = renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); }); act(() => renderer.root.findAllByType('button').find(node => node.children.includes('閉じる'))!.props.onClick()); open('B'); act(() => titleInput().props.onChange({ target: { value: 'New unsaved B' } })); await act(async () => { gate.resolve(); await saving; }); expect(renderer.root.findAllByType('form')).toHaveLength(1); expect(titleInput().props.value).toBe('New unsaved B'); });

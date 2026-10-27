@@ -143,3 +143,16 @@ describe('bookshelfMaterialDetails', () => {
     ).toBe(0);
   });
 });
+
+
+it.each([
+  ['25:00', '10:00', 0], ['09:00', '10:60', 0], ['12:30', '12:30', 0],
+  ['23:30', '00:30', 60], ['23:30', '00:00', 30], ['23:30', '24:00', 30],
+  ['00:00', '00:00', 1440], ['00:00', '24:00', 1440],
+] as const)('preserves material totals for %s–%s', (startTime, endTime, minutes) => {
+  const summary = buildMaterialActivitySummary(material,
+    [createPlan('plan', '2026-08-24', startTime, endTime)],
+    [createActual('actual', '2026-08-24', startTime, endTime)], '2026-08-24');
+  expect(summary.plannedMinutes).toBe(minutes);
+  expect(summary.actualMinutes).toBe(minutes);
+});

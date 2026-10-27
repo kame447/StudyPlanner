@@ -196,15 +196,12 @@ describe('material progress updates', () => {
     ).toBe(current);
   });
 
-  it('ignores updates for a different materialId', () => {
+  it.each(['material-other', ''])('ignores updates for rejected materialId %j', (materialId) => {
     const current = material({ currentUnit: 10 });
+    const update = { materialId, deltaUnits: 5 };
 
-    expect(
-      applyMaterialProgressUpdate(current, {
-        materialId: 'material-other',
-        deltaUnits: 5,
-      }),
-    ).toBe(current);
+    expect(calculateNextMaterialUnit(current, update)).toBeNull();
+    expect(applyMaterialProgressUpdate(current, update)).toBe(current);
   });
 
   it('treats missing currentUnit as zero', () => {

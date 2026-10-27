@@ -71,11 +71,11 @@ export function buildMaterialActivitySummary(
     );
   const actualMinutes = materialActuals.reduce(
     (sum, actual) =>
-      sum + Math.max(0, getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime)),
+      sum + getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime),
     0,
   );
   const plannedMinutes = materialPlans.reduce(
-    (sum, plan) => sum + Math.max(0, getEntryDurationMinutes(plan.startTime, plan.endTime)),
+    (sum, plan) => sum + getEntryDurationMinutes(plan.startTime, plan.endTime),
     0,
   );
 

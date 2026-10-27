@@ -197,21 +197,6 @@ function comparePeriods(left: DisplayPeriod, right: DisplayPeriod): number {
   return left.periodNumber - right.periodNumber;
 }
 
-function makePeriodDraft(
-  userId: string,
-  termId: string,
-  period: DisplayPeriod,
-): TimetablePeriodDraft {
-  return {
-    userId,
-    termId,
-    periodNumber: period.periodNumber,
-    label: period.label,
-    startTime: period.startTime,
-    endTime: period.endTime,
-  };
-}
-
 function getTemplatePatternLabel(template: ScheduleTemplate): string {
   const labels: string[] = [];
 
@@ -473,7 +458,14 @@ export function TimetableView({
 
   async function persistPeriods(periods: DisplayPeriod[]) {
     for (const period of periods) {
-      await onSaveTimetablePeriod(makePeriodDraft(userId, activeTermId, period), period.id);
+      await onSaveTimetablePeriod({
+        userId,
+        termId: activeTermId,
+        periodNumber: period.periodNumber,
+        label: period.label,
+        startTime: period.startTime,
+        endTime: period.endTime,
+      }, period.id);
     }
   }
 
