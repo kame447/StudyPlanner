@@ -393,9 +393,9 @@ export class ProductObservabilityReadModelService {
     fromDate: string;
     toDate: string;
   }): Promise<ObservabilityOverviewReadModel> {
-    listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
+    const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
     const [{ daily, activeUsers, checkpoint }, registeredUsers] = await Promise.all([
-      this.getPeriodSnapshot(params),
+      this.getPeriodSnapshot(params, dates),
       registeredUsersForPeriod(this.firestore, params.fromDate, params.toDate),
     ]);
     const period = aggregateOverviewPeriod(daily);
@@ -459,7 +459,8 @@ export class ProductObservabilityReadModelService {
     daily: ObservabilityDailyRollup[];
     activeUsers: ObservabilityActiveUserWindows | null;
   }> {
-    const { daily, activeUsers } = await this.getPeriodSnapshot(params);
+    const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
+    const { daily, activeUsers } = await this.getPeriodSnapshot(params, dates);
     return { daily, activeUsers };
   }
 
@@ -467,12 +468,11 @@ export class ProductObservabilityReadModelService {
     environment: ObservabilityEnvironment;
     fromDate: string;
     toDate: string;
-  }): Promise<{
+  }, dates: readonly string[]): Promise<{
     daily: ObservabilityDailyRollup[];
     activeUsers: ObservabilityActiveUserWindows | null;
     checkpoint: ObservabilityRollupCheckpoint;
   }> {
-    const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
     const keys: FirestoreTransactionDocumentKey[] = [
       ...dates.map((localDate) => ({
         collection: DAILY_ROLLUP_COLLECTION,
