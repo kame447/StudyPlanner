@@ -99,6 +99,25 @@ describe('weeklyPlanningTurnStagingLifecycle', () => {
     expect(services.rollbackRuntimeGraph).toHaveBeenCalledWith(graphReceipt);
   });
 
+  it('restores the previous user context when no newer context has been committed', async () => {
+    const scope = { ownerId: 'user-1', currentDate: '2026-07-24' };
+    const previous = exportUserPlanningContextSnapshotV1(scope);
+    stageUserPlanningContextFactsV1({
+      ownerId: scope.ownerId, conversationId: pending.conversationId, requestId: pending.requestId,
+      observedDate: scope.currentDate, now: pending.startedAt,
+      facts: [{ localId: 'context-old', kind: 'concern', label: '数学', value: '優先',
+        dateExpression: null, sourceText: '数学を優先したい' }],
+    });
+    const lifecycle = createWeeklyPlanningTurnStagingLifecycle(createServices({ hasStagedGraph: () => false }));
+    const prepared = lifecycle.prepare({ ownerId: scope.ownerId, pending });
+    expect(exportUserPlanningContextSnapshotV1(scope).records).toEqual([
+      expect.objectContaining({ label: '数学' }),
+    ]);
+    await Promise.resolve();
+    prepared?.rollback();
+    expect(exportUserPlanningContextSnapshotV1(scope)).toEqual(previous);
+  });
+
   it('refuses to roll an older user context preparation over a newer context commit', () => {
     stageUserPlanningContextFactsV1({
       ownerId: 'user-1',

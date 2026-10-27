@@ -46,13 +46,6 @@ function cloneSession(
   };
 }
 
-function sameGraphSnapshot(
-  left: WeeklyPlanningFactGraphV5,
-  right: WeeklyPlanningFactGraphV5,
-): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 function sameScope(
   session: WeeklyPlanningStableV5RuntimeSession,
   ownerId: string,
@@ -245,7 +238,7 @@ export function rollbackWeeklyPlanningStableV5RuntimeGraphFinalize(
   const current = sessions.get(receipt.conversationId);
   if (!current || current.ownerId !== receipt.ownerId) return false;
   if (current.updatedAt !== receipt.finalizedUpdatedAt
-    || !sameGraphSnapshot(current.graph, receipt.finalizedGraph)) {
+    || JSON.stringify(current.graph) !== JSON.stringify(receipt.finalizedGraph)) {
     return false;
   }
   sessions.set(receipt.conversationId, {

@@ -10,6 +10,7 @@ import {
   finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt,
   getWeeklyPlanningStableV5RuntimeSession,
   hasWeeklyPlanningStableV5StagedGraph,
+  hydrateWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
   rollbackWeeklyPlanningStableV5RuntimeGraphFinalize,
 } from './weeklyPlanningStableV5RuntimeSession';
@@ -109,6 +110,21 @@ describe('Stable V5 runtime Graph atomicity', () => {
 
     expect(rollbackWeeklyPlanningStableV5RuntimeGraphFinalize(first.receipt)).toBe(false);
     expect(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION_ID)?.graph).toEqual(secondGraph);
+  });
+
+  it('does not overwrite a restored graph that differs despite the same update timestamp', () => {
+    commitWeeklyPlanningStableV5RuntimeGraph({ ownerId: OWNER_ID, conversationId: CONVERSATION_ID,
+      graph: graphForRequest('request-1', 1) });
+    const { receipt } = finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt({
+      ownerId: OWNER_ID, conversationId: CONVERSATION_ID, requestId: 'request-1',
+    });
+    const restored = hydrateWeeklyPlanningStableV5RuntimeSession({
+      ownerId: OWNER_ID, weekStartDate: WEEK_START, conversationId: CONVERSATION_ID,
+      graph: graphForRequest('request-2', 2), updatedAt: receipt.finalizedUpdatedAt,
+    });
+    expect(restored.updatedAt).toBe(receipt.finalizedUpdatedAt);
+    expect(rollbackWeeklyPlanningStableV5RuntimeGraphFinalize(receipt)).toBe(false);
+    expect(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION_ID)).toEqual(restored);
   });
 
   it('discards a staged Graph without changing the committed conversation state', () => {
