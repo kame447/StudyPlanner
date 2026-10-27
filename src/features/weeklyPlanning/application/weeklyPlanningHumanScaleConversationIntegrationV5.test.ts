@@ -1068,15 +1068,17 @@ describe('Stable V5 human-scale conversation integration', () => {
     const userText = '8月17日から23日の予定です。8月17日の10:30から12:00は部活なので、その予定を入れてください。';
     const first = await runFixedHandoffReading({ conversationId, userText,
       document: fixedHandoffDocument(userText, representation), act: 'request_event_registration' });
-    expect(first.result.draftCandidates).toEqual([]);
-    expect(first.result.state.shouldCreateDraft).toBe(false);
+    expect(first.result.draftCandidates).toEqual(representation === 'fixed_task' ? [expect.objectContaining({
+      title: '部活', date: '2026-08-17', startTime: '10:30', endTime: '12:00', source: 'fixed_event_registration',
+    })] : []);
+    expect(first.result.state.shouldCreateDraft).toBe(representation === 'fixed_task');
     expect(first.result.stableV5Graph![representation === 'fixed_task' ? 'temporalConstraints' : 'availabilityDeclarations'])
       .toHaveLength(1);
     // Baseline's expected missing boundary: facts were accepted, but the old
     // missing-work invitation must not remain after a complete fixed-only turn.
     expect(first.result.state.lastQuestionContext).toBeUndefined();
     expect(first.result.state.questions).toEqual([]);
-    expect(first.result).toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
+    expect(first.result).toHaveProperty('communicationFacts.statusReason', representation === 'fixed_task' ? 'fixed_event_registration_preview' : 'fixed_event_manual_entry');
     expect(first.reading.document.conversationActs).toEqual(first.raw.conversationActs);
     const firstGraph = structuredClone(first.result.stableV5Graph!);
     for (const [text, act, status] of [
@@ -1084,17 +1086,174 @@ describe('Stable V5 human-scale conversation integration', () => {
       ['その予定を登録したいです', 'request_event_registration', 'fixed_event_manual_entry'],
       ['ほかの作業は追加しません', 'decline_additional_work', 'no_additional_work'],
     ] as const) {
-      const next = await runFixedHandoffReading({ conversationId, userText: text, document: noNewEventFacts(), act });
-      expect(next.result.draftCandidates).toEqual([]);
+      const next = await runFixedHandoffReading({ conversationId, userText: text, document: noNewEventFacts(), act,
+        ...(representation === 'fixed_task' && act === 'request_event_registration'
+          ? { acts: [{ kind: act, targetPublicId: firstGraph.tasks[0].id }] } : {}),
+      });
+      expect(next.result.draftCandidates).toEqual(representation === 'fixed_task' && act === 'request_event_registration'
+        ? first.result.draftCandidates : []);
       expect(next.result.state.lastQuestionContext).toBeUndefined();
       expect(next.result.state.questions).toEqual([]);
-      expect(next.result).toHaveProperty('communicationFacts.statusReason', status);
+      expect(next.result).toHaveProperty('communicationFacts.statusReason', representation === 'fixed_task' && act === 'request_event_registration' ? 'fixed_event_registration_preview' : status);
       expect(next.reading.document.conversationActs).toEqual(next.raw.conversationActs);
       expect(next.result.stableV5Graph!.tasks).toEqual(firstGraph.tasks);
       expect(next.result.stableV5Graph!.workloads).toEqual(firstGraph.workloads);
       expect(next.result.stableV5Graph!.temporalConstraints).toEqual(firstGraph.temporalConstraints);
       expect(next.result.stableV5Graph!.availabilityDeclarations).toEqual(firstGraph.availabilityDeclarations);
     }
+  });
+
+  it('scopes registration acts to named tasks or current-turn contributions while older commitments stay busy', async () => {
+    const conversationId = 'fixed-registration-target-scope';
+    const userText = '8月17日から23日の予定です。8月17日の固定予定を5件伝えます。';
+    const initial = fixedHandoffDocument(userText, 'fixed_task');
+    initial.planningIntent = 'discuss';
+    initial.tasks = Array.from({ length: 5 }, (_, i) => {
+      const task = structuredClone(initial.tasks[0]);
+      task.localId = `busy-${i}`; task.title = `固定予定${i}`;
+      task.temporalConstraints[0] = { ...task.temporalConstraints[0], localId: `time-${i}`,
+        targetLocalId: task.localId, startTime: `${10 + i}:00`, endTime: `${11 + i}:00` };
+      return task;
+    });
+    const first = await runFixedHandoffReading({ conversationId, userText, document: initial, act: null,
+      acts: [{ kind: 'request_event_registration', targetPublicId: 'does-not-exist' }] });
+    expect(first.reading.document.conversationActs).toEqual([{ kind: 'request_event_registration', targetPublicId: null, targetResolution: 'unresolved' }]);
+    expect(first.result.draftCandidates).toEqual([]);
+    const ids = first.result.stableV5Graph!.tasks.map(task => task.id);
+    const named = await runFixedHandoffReading({ conversationId, userText: '固定予定1だけ登録して',
+      document: noNewEventFacts(), act: null,
+      acts: [{ kind: 'request_event_registration', targetPublicId: ids[1] }] });
+    expect(named.result.draftCandidates).toEqual([expect.objectContaining({ title: '固定予定1',
+      date: '2026-08-17', startTime: '11:00', endTime: '12:00' })]);
+    const unchanged = await runFixedHandoffReading({ conversationId, userText: '登録して',
+      document: noNewEventFacts(), act: 'request_event_registration' });
+    expect(unchanged.result.draftCandidates).toEqual([]);
+    const added = fixedHandoffDocument('新しい予定を登録して', 'fixed_task');
+    added.planningIntent = 'discuss'; added.planningWindow = null;
+    added.tasks[0].title = '追加予定';
+    added.tasks[0].temporalConstraints[0].startTime = '16:00';
+    added.tasks[0].temporalConstraints[0].endTime = '17:00';
+    const newOnly = await runFixedHandoffReading({ conversationId, userText: '新しい予定を登録して',
+      document: added, act: 'request_event_registration' });
+    expect(newOnly.result.draftCandidates).toEqual([expect.objectContaining({ title: '追加予定', startTime: '16:00', endTime: '17:00' })]);
+    const updated = fixedHandoffDocument('固定予定2に締切を加えて登録して', 'fixed_task');
+    updated.planningIntent = 'discuss'; updated.planningWindow = null;
+    updated.tasks[0].title = '固定予定2'; updated.tasks[0].existingPublicId = ids[2];
+    updated.tasks[0].temporalConstraints = [{ ...updated.tasks[0].temporalConstraints[0],
+      localId: 'updated-deadline', kind: 'deadline', startTime: null, endTime: '20:00' }];
+    const union = await runFixedHandoffReading({ conversationId, userText: '固定予定2に締切を加えて登録して',
+      document: updated, act: null, acts: [
+        { kind: 'request_event_registration', targetPublicId: null },
+        { kind: 'request_event_registration', targetPublicId: ids[0] },
+        { kind: 'request_event_registration', targetPublicId: ids[0] },
+        { kind: 'request_event_registration', targetPublicId: 'does-not-exist' },
+      ] });
+    expect(union.result.draftCandidates.map(c => [c.title, c.startTime, c.endTime]))
+      .toEqual([['固定予定0', '10:00', '11:00'], ['固定予定2', '12:00', '13:00']]);
+    expect(union.result.stableV5Graph!.tasks).toHaveLength(6);
+    expect(union.result.state.shouldSavePlan).toBe(false);
+    // A later authorized study plan must still avoid every earlier busy commitment.
+    const study = planningDocument({ title: '数学', amount: 60, unitCode: 'minute', unitLabel: '分', sourceText: '数学1時間を配置して' });
+    study.planningWindow = { ...study.planningWindow!, start: '2026-08-17', end: '2026-08-17', value: '2026-08-17' };
+    const placed = await runFixedHandoffReading({ conversationId, userText: '8月17日から23日で数学1時間を配置して', document: study, act: null });
+    expect(placed.result.draftCandidates).toHaveLength(1);
+    expect(placed.result.draftCandidates[0]).toMatchObject({ durationMinutes: 60 });
+    const candidate = placed.result.draftCandidates[0];
+    expect(candidate.source).not.toBe('fixed_event_registration');
+    expect((candidate.endTime <= '10:00' || candidate.startTime >= '15:00')
+      && (candidate.endTime <= '16:00' || candidate.startTime >= '17:00')).toBe(true);
+  });
+
+  it.each([false, true])('keeps study update authorization separate from registration previews, prior study authorization=%s', async authorized => {
+    const conversationId = `fixed-registration-update-authorization-${authorized}`;
+    const userText = '8月17日から23日の予定です。部活を登録して。数学の学習条件は30分です。';
+    const initial = fixedHandoffDocument(userText, 'fixed_task');
+    initial.planningIntent = authorized ? 'create_plan' : 'discuss';
+    const study = planningDocument({ title: '数学', amount: 30, unitCode: 'minute', unitLabel: '分', sourceText: userText }).tasks[0];
+    study.localId = 'math'; study.workloads[0].localId = 'math-work'; initial.tasks.push(study);
+    const first = await runFixedHandoffReading({ conversationId, userText, document: initial, act: 'request_event_registration' });
+    expect(first.result.state.status).toBe('draft_ready');
+    expect(first.result.state.draftGenerationIntent).toBe(authorized ? 'user_authorized' : 'not_requested');
+    expect(first.result.draftCandidates).toHaveLength(authorized ? 2 : 1);
+    const graph = first.result.stableV5Graph!;
+    const math = graph.tasks.find(task => task.title === '数学')!;
+    const work = graph.workloads.find(fact => fact.taskId === math.id)!;
+    const update = planningDocument({ title: '数学', amount: 20, unitCode: 'minute', unitLabel: '分', sourceText: '数学は20分です' });
+    update.planningIntent = 'update_plan'; update.planningWindow = null;
+    update.tasks[0].existingPublicId = math.id;
+    update.corrections = [{ localId: 'replace-duration', target: { kind: 'workload', publicId: work.id, localId: null, mention: null },
+      operation: 'replace', replacementLocalId: update.tasks[0].workloads[0].localId, sourceText: '数学は20分です' }];
+    const next = await runFixedHandoffReading({ conversationId, userText: '数学は20分です', document: update, act: null });
+    expect(next.result.state.draftGenerationIntent).toBe(authorized ? 'user_authorized' : 'not_requested');
+    expect(next.result.draftCandidates).toEqual(authorized
+      ? [expect.objectContaining({ durationMinutes: 20 })] : []);
+    expect(next.result.draftCandidates.every(c => c.source !== 'fixed_event_registration')).toBe(true);
+    expect(next.result.state.shouldSavePlan).toBe(false);
+  });
+
+  it.each([[false, false], [true, false], [true, true]])('discloses unsupported registration intervals, all targets unsupported=%s, study preview=%s', async (allUnsupported, studyPreview) => {
+    const conversationId = `fixed-unsupported-${allUnsupported}-${studyPreview}`;
+    const userText = '8月17日から23日の予定です。部活と夜勤と連日予定を登録して。'
+      + (studyPreview ? '数学の予定も20分作って。' : '');
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    document.planningIntent = 'discuss';
+    const overnight = structuredClone(document.tasks[0]);
+    overnight.localId = 'overnight'; overnight.title = '夜勤';
+    overnight.temporalConstraints[0] = { ...overnight.temporalConstraints[0], localId: 'overnight-time',
+      targetLocalId: 'overnight', startTime: '23:00', endTime: '01:00' };
+    const multiple = structuredClone(document.tasks[0]);
+    multiple.localId = 'multiple'; multiple.title = '連日予定';
+    multiple.temporalConstraints = ['2026-08-17', '2026-08-18'].map((dateExpression, i) => ({
+      ...multiple.temporalConstraints[0], localId: `multiple-${i}`, targetLocalId: 'multiple', dateExpression,
+    }));
+    document.tasks = [...(allUnsupported ? [] : document.tasks), overnight, multiple];
+    if (studyPreview) {
+      document.planningIntent = 'create_plan';
+      const study = planningDocument({ title: '数学', amount: 20, unitCode: 'minute', unitLabel: '分', sourceText: userText }).tasks[0];
+      study.localId = 'math'; study.workloads[0].localId = 'math-work'; document.tasks.push(study);
+    }
+    const clientModule = await import('../../../services/ai/openAiCompatibleClient');
+    const rendererClient = vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async request => {
+        const body = JSON.parse(request.messages[request.messages.length - 1].content);
+        return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(body, { actionId: body.actionId,
+          actionKind: body.applicationDecision.actionKind, questionCode: body.applicationDecision.questionCode,
+          groundingAcknowledgement: null, text: '夜勤は日付をまたぐため、連日予定は複数の日付や時間帯があるため、候補に含めていません。'
+            + (allUnsupported && !studyPreview ? '「予定」から「予定を追加」で入力してください。'
+              : `${studyPreview ? '数学' : '部活'}の候補はまだ保存していません。「この内容で仮予定にする」から確認してください。`) }));
+      });
+    const clientSpy = vi.spyOn(clientModule, 'createOpenAiCompatibleClient').mockReturnValue({ createChatCompletion: rendererClient });
+    try {
+      const turn = await runFixedHandoffReading({ conversationId, userText, document, act: 'request_event_registration' });
+      expect(turn.result.draftCandidates).toEqual(studyPreview ? [expect.objectContaining({ durationMinutes: 20, source: 'weekly_exam_prep' })]
+        : allUnsupported ? [] : [expect.objectContaining({ title: '部活' })]);
+      expect(turn.result.communicationFacts?.eventRegistration?.unregistered).toEqual([
+        { taskId: turn.result.stableV5Graph!.tasks.find(task => task.title === '夜勤')!.id, title: '夜勤', reason: 'crosses_midnight' },
+        { taskId: turn.result.stableV5Graph!.tasks.find(task => task.title === '連日予定')!.id, title: '連日予定', reason: 'multiple_intervals' },
+      ]);
+      expect(turn.result.message).toContain('夜勤は日付をまたぐため');
+      expect(turn.result.message).toContain('連日予定は複数の日付や時間帯があるため');
+      expect(turn.result.state.shouldSavePlan).toBe(false);
+      expect(turn.result.responseSource).toBe('ai');
+      expect(turn.result.state.shouldCreateDraft).toBe(!allUnsupported || studyPreview);
+      if (allUnsupported && !studyPreview) {
+        expect(turn.result.communicationFacts?.statusReason).toBe('fixed_event_manual_entry');
+        expect(turn.result.communicationFacts?.manualEntry).toMatchObject({ navigationLabel: '予定', actionLabel: '予定を追加' });
+        expect(turn.result.message).toContain('「予定」から「予定を追加」');
+        expect(turn.result.message).not.toContain('この内容で仮予定にする');
+      } else if (studyPreview) {
+        expect(turn.result.communicationFacts?.statusReason).toBe('fixed_event_registration_preview');
+        expect(turn.result.communicationFacts).not.toHaveProperty('manualEntry');
+        expect(turn.result.communicationFacts?.eventRegistration?.candidates).toEqual([]);
+        expect(turn.result.message).toContain('数学の候補');
+        expect(turn.result.message).toContain('この内容で仮予定にする');
+        const sent = rendererClient.mock.calls[0][0];
+        const body = JSON.parse(sent.messages[sent.messages.length - 1].content);
+        expect(body.applicationDecision.previewCount).toBe(1);
+        expect(body.applicationDecision.communication.eventRegistration.candidates).toEqual([]);
+        expect(sent.messages[sent.messages.length - 1].content).toContain('プレビューがあれば承認案内');
+        expect(sent.messages[sent.messages.length - 1].content).not.toContain('候補なしは承認案内せずmanualEntryへ');
+      }
+    } finally { clientSpy.mockRestore(); }
   });
 
   it('treats busy-only evidence without registration as an optional invitation that an explicit decline can close', async () => {
@@ -1130,6 +1289,21 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(declined.result.stableV5Graph!.temporalConstraints).toEqual(first.result.stableV5Graph!.temporalConstraints);
   });
 
+  it.each(['startTime', 'endTime'] as const)('asks for an unresolved fixed-event %s before generating a registration preview', async field => {
+    const userText = '8月17日から23日の予定です。8月17日の部活を登録したいです。';
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    document.tasks[0].temporalConstraints = [];
+    document.uncertainties = [{ localId: 'missing-event-time', targetLocalId: document.tasks[0].localId,
+      field, reason: '部活の時刻が未確定', sourceText: userText }];
+    const turn = await runFixedHandoffReading({ conversationId: `fixed-missing-${field}`, userText, document, act: 'request_event_registration' });
+    expect(turn.result.draftCandidates).toEqual([]);
+    expect(turn.result.state.lastQuestionContext).toBeDefined();
+    expect(turn.result.state.questions).toHaveLength(1);
+    expect(turn.result.state.shouldCreateDraft).toBe(false);
+    expect(turn.result.state.shouldSavePlan).toBe(false);
+    expect(turn.result.communicationFacts).toBeUndefined();
+  });
+
   it('keeps independent schedulable study work when a fixed-event registration is requested in the same turn', async () => {
     const conversationId = 'fixed-handoff-with-study';
     const userText = '8月17日から23日の予定です。8月17日の10:30から12:00は部活なので予定を入れて、数学も20分勉強したいです。';
@@ -1139,9 +1313,171 @@ describe('Stable V5 human-scale conversation integration', () => {
     document.tasks.push(study);
     const mixed = await runFixedHandoffReading({ conversationId, userText, document, act: 'request_event_registration' });
     expect(mixed.result.stableV5Graph!.tasks).toHaveLength(2);
-    expect(mixed.result.draftCandidates.length).toBeGreaterThan(0);
+    expect(mixed.result.draftCandidates).toHaveLength(2);
+    const fixed = mixed.result.draftCandidates.find(c => c.source === 'fixed_event_registration')!;
+    const studyCandidate = mixed.result.draftCandidates.find(c => c.source === 'weekly_exam_prep')!;
+    expect(fixed).toMatchObject({ title: '部活', date: '2026-08-17', startTime: '10:30', endTime: '12:00' });
+    expect(studyCandidate.durationMinutes).toBe(20);
+    expect(studyCandidate.date !== fixed.date || studyCandidate.endTime <= fixed.startTime || studyCandidate.startTime >= fixed.endTime).toBe(true);
     expect(mixed.result).not.toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
     expect(mixed.result).not.toHaveProperty('communicationFacts.statusReason', 'no_additional_work');
+  });
+
+  it.each([true, false])('keeps fixed study occupancy without duplicating its workload, registration act=%s', async requested => {
+    const conversationId = `fixed-study-registration-${requested}`;
+    const userText = '8月17日から23日の予定です。8月17日の13時から15時のゼミを予定に入れて、数学の問題集も1時間予定を作ってください。';
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    const seminar = document.tasks[0];
+    seminar.category = 'study'; seminar.title = 'ゼミ';
+    seminar.study = { purpose: 'self_study', contextLabel: 'ゼミ', components: [] };
+    seminar.temporalConstraints[0] = { ...seminar.temporalConstraints[0], startTime: '13:00', endTime: '15:00' };
+    seminar.workloads = planningDocument({ title: 'ゼミ', amount: 2, unitCode: 'hour', unitLabel: '時間', sourceText: userText }).tasks[0].workloads;
+    seminar.workloads[0].localId = 'seminar-work';
+    const math = planningDocument({ title: '数学の問題集', amount: 1, unitCode: 'hour', unitLabel: '時間', sourceText: userText }).tasks[0];
+    math.localId = 'math'; math.workloads[0].localId = 'math-work'; document.tasks.push(math);
+    const turn = await runFixedHandoffReading({ conversationId, userText, document, act: requested ? 'request_event_registration' : null });
+    expect(turn.result.failure).toBeUndefined();
+    expect(turn.result.state.shouldSavePlan).toBe(false);
+    expect(turn.result.draftCandidates).toHaveLength(requested ? 2 : 1);
+    const fixed = turn.result.draftCandidates.filter(c => c.source === 'fixed_event_registration');
+    const movable = turn.result.draftCandidates.filter(c => c.source === 'weekly_exam_prep');
+    expect(movable).toEqual([expect.objectContaining({ durationMinutes: 60 })]);
+    expect(movable[0].title).toContain('数学の問題集');
+    expect(movable[0].date !== '2026-08-17' || movable[0].endTime <= '13:00' || movable[0].startTime >= '15:00').toBe(true);
+    if (requested) {
+      expect(fixed).toEqual([expect.objectContaining({ title: 'ゼミ', date: '2026-08-17', startTime: '13:00', endTime: '15:00', durationMinutes: 120,
+        stableV5Metadata: expect.objectContaining({ planType: 'study' }) })]);
+      expect(turn.result.draftCandidates.filter(c => c.title.includes('ゼミ'))).toHaveLength(1);
+      for (const field of ['field', 'year', 'estimatedMinutes', 'allocationBreakdown']) expect(fixed[0]).not.toHaveProperty(field);
+    } else {
+      expect(fixed).toEqual([]);
+      expect(turn.result.draftCandidates.some(c => c.title.includes('ゼミ'))).toBe(false);
+    }
+    expect(turn.result.stableV5Graph!.workloads).toHaveLength(2);
+  });
+
+  it('previews only fixed registrations when movable study placement is not authorized', async () => {
+    const conversationId = 'fixed-registration-without-study-authorization';
+    const userText = '8月17日から23日の予定です。8月17日の10:30から12:00の部活を登録してください。学習条件は数学20分です。';
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    document.planningIntent = 'discuss';
+    const study = planningDocument({ title: '数学', amount: 20, unitCode: 'minute', unitLabel: '分', sourceText: userText }).tasks[0];
+    study.localId = 'study'; study.workloads[0].localId = 'study-duration';
+    document.tasks.push(study);
+    const turn = await runFixedHandoffReading({ conversationId, userText, document, act: 'request_event_registration' });
+    expect(turn.result.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration', title: '部活', date: '2026-08-17', startTime: '10:30', endTime: '12:00' })]);
+    expect(turn.result.state.draftGenerationIntent).toBe('not_requested');
+    expect(turn.result.state.shouldSavePlan).toBe(false);
+    expect(turn.result.communicationFacts?.eventRegistration?.workAwaitingAuthorization).toEqual([expect.stringContaining('数学')]);
+    expect(turn.result.stableV5Graph!.workloads).toHaveLength(1);
+    const next = await runFixedHandoffReading({ conversationId, userText: '分かりました', document: noNewEventFacts(), act: null });
+    expect(next.result.draftCandidates).toEqual([]);
+    expect(next.result.preserveExistingPreview).toBe(true);
+    expect(next.result.state.draftGenerationIntent).toBe('not_requested');
+    expect(next.result.state.shouldSavePlan).toBe(false);
+  });
+
+  it('keeps every registration beside a capacity-limited provisional study preview and persists the actual composition', async () => {
+    const conversationId = 'weekly-conversation-923e4567-e89b-52d3-a456-426614174002';
+    const userText = '8月17日の部活9時から10時とゼミ12時から13時を予定に入れて、9時から11時10分の空き時間に数学10問と英語10問を、数学優先で暫定配分してください。';
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    document.planningWindow = { ...document.planningWindow!, start: '2026-08-17', end: '2026-08-17', value: '2026-08-17' };
+    document.tasks[0].temporalConstraints[0] = { ...document.tasks[0].temporalConstraints[0], startTime: '09:00', endTime: '10:00' };
+    const seminar = structuredClone(document.tasks[0]);
+    seminar.localId = 'seminar'; seminar.title = 'ゼミ';
+    seminar.temporalConstraints[0] = { ...seminar.temporalConstraints[0], localId: 'seminar-time', targetLocalId: 'seminar', startTime: '12:00', endTime: '13:00' };
+    document.tasks.push(seminar);
+    const overnight = structuredClone(document.tasks[0]);
+    overnight.localId = 'night'; overnight.title = '夜勤';
+    overnight.temporalConstraints[0] = { ...overnight.temporalConstraints[0], localId: 'night-time',
+      targetLocalId: 'night', startTime: '23:00', endTime: '01:00' };
+    document.tasks.push(overnight);
+    for (const [id, title] of [['math', '数学'], ['english', '英語']]) {
+      const study = planningDocument({ title, amount: 10, unitCode: 'problem', unitLabel: '問', sourceText: userText }).tasks[0];
+      study.localId = id; study.workloads[0].localId = `${id}-work`;
+      document.tasks.push(study);
+    }
+    document.availabilityDeclarations = [{ localId: 'available', kind: 'available', dateExpression: '2026-08-17',
+      namedTimePeriod: null, startTime: '09:00', endTime: '11:10', recurrenceKind: null, days: [],
+      constraintLevel: 'hard', capacityMinutes: null, sourceText: userText }];
+    document.relations = [{ localId: 'priority', kind: 'priority_over', fromLocalId: 'math', toLocalId: 'english', sourceText: userText }];
+    document.conversationActs = [{ kind: 'request_event_registration', targetPublicId: null }];
+    normalizeMock.mockResolvedValueOnce({ ...acceptedResult(document), contextualDirective: { kind: 'provisional_timebox', scope: 'current_missing_effort' } });
+    const result = await conversation.run(turnInput({ conversationId, userText, traceRequestId: `${conversationId}:provisional` }));
+    const requestId = normalizeMock.mock.calls[0][0].traceRequestId!;
+    expect(result.failure).toBeUndefined();
+    expect(result.responseSource).toBe('system');
+    expect(result.state.shouldSavePlan).toBe(false);
+    expect(result.state.lastQuestionContext).toBeUndefined();
+    expect(result.draftCandidates).toHaveLength(3);
+    const fixed = result.draftCandidates.filter(c => c.source === 'fixed_event_registration');
+    expect(fixed.map(c => [c.title, c.date, c.startTime, c.endTime])).toEqual([
+      ['部活', '2026-08-17', '09:00', '10:00'], ['ゼミ', '2026-08-17', '12:00', '13:00'],
+    ]);
+    const study = result.draftCandidates.filter(c => c.source === 'weekly_exam_prep');
+    expect(study).toEqual([expect.objectContaining({ durationMinutes: 60 })]);
+    expect(study[0].title).toContain('数学');
+    expect(study.every(c => fixed.every(f => c.date !== f.date || c.endTime <= f.startTime || c.startTime >= f.endTime))).toBe(true);
+    expect(result.message).toContain('3件');
+    expect(result.message).toContain('英語は容量不足');
+    expect(result.message).toContain('夜勤は日付をまたぐため');
+    expect(result.communicationFacts?.eventRegistration?.unregistered).toEqual([expect.objectContaining({ title: '夜勤', reason: 'crosses_midnight' })]);
+    expect(result.communicationFacts?.eventRegistration?.candidates).toEqual(fixed);
+
+    const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    const event = events.find(e => e.stage === 'runtime_branch_selected' && (e.data as { branch: string }).branch === 'preview_ready_provisional_capacity')!;
+    expect(event).toBeDefined();
+    const output = (event.data as { output: { draftCandidates: Array<Record<string, unknown>> } }).output;
+    output.draftCandidates[0].futureRegistrationSentinel = 'provisional-registration-future-field';
+    output.draftCandidates[1].futureOversizedValue = '大'.repeat(20_000);
+    const restore = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    const harness = proposalTraceRepository();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const oldEnabled = import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED;
+    vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+    try {
+      const trace = proposalTraceInput({ conversationId, requestId, userText, result, events });
+      await recordWeeklyPlanningStableV5TurnTrace(trace);
+      expect(harness.writes).toHaveLength(0);
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toHaveLength(1);
+      resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+      await recordWeeklyPlanningStableV5TurnTrace({ ...trace, requestId: `${requestId}:retry`, debugTraceEvents: [] });
+      expect(harness.writes).toHaveLength(2);
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toEqual([]);
+      const replay = harness.writes[0];
+      expect(measureWeeklyPlanningTraceJsonBytes(replay.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+      const prepared = prepareWeeklyPlanningTraceServerWrite({ session: replay.session as unknown as Record<string, unknown>, entries: replay.entries as unknown as Record<string, unknown>[] },
+        { token: `wpt_${'f'.repeat(43)}`, epoch: '107' }, { sessionId: conversationId.replace('weekly-conversation-', 'weekly-trace-'), logicalConversationId: conversationId }, '2026-10-10T00:00:00.000Z');
+      expect(prepared.entries).toHaveLength(1);
+      expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+      for (const entry of [replay.entries[0], prepared.entries[0]]) {
+        const serialized = JSON.stringify(entry);
+        expect(serialized).toContain('"candidateCount":3');
+        expect(serialized).toContain('fixed_event_registration');
+        expect(serialized).toContain('provisional-registration-future-field');
+        expect(serialized).toContain('"traceTruncated":true');
+        expect(serialized).not.toContain('大'.repeat(20_000));
+        expect(serialized).toContain('09:00'); expect(serialized).toContain('12:00');
+      }
+    } finally {
+      setWeeklyPlanningTraceRepositoryForTests(undefined);
+      resetWeeklyPlanningStableV5TraceRuntimeForTest();
+      vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', oldEnabled);
+      restore();
+    }
+  });
+
+  it('uses fixed commitments only as busy time without the registration act', async () => {
+    const userText = '8月17日から23日の予定です。8月17日の10:30から12:00は部活です。数学を60分勉強したいです。';
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    const study = planningDocument({ title: '数学', amount: 60, unitCode: 'minute', unitLabel: '分', sourceText: userText }).tasks[0];
+    study.localId = 'study'; study.workloads[0].localId = 'study-duration';
+    document.tasks.push(study);
+    const turn = await runFixedHandoffReading({ conversationId: 'fixed-with-study-no-act', userText, document, act: null });
+    expect(turn.result.draftCandidates).toHaveLength(1);
+    expect(turn.result.draftCandidates[0]).toMatchObject({ source: 'weekly_exam_prep', durationMinutes: 60 });
+    expect(turn.result.communicationFacts).toBeUndefined();
   });
 
   function fixedHandoffQuestionIdentity(state: PlanningIntakeState) {
@@ -1202,14 +1538,14 @@ describe('Stable V5 human-scale conversation integration', () => {
       expect(closed.result.stableV5Graph!.availabilityDeclarations).toEqual(first.result.stableV5Graph!.availabilityDeclarations);
     });
 
-  it('keeps typed manual-entry facts beside an actual topic-shift renderer input', async () => {
+  it('keeps typed registration-preview facts beside an actual topic-shift renderer input', async () => {
     const rendererClient = vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async request => {
       expect(request.purpose).toBe('weekly_planning_renderer');
       expect(request.responseFormat?.json_schema.name).toBe('weekly_planning_stable_v5_dialogue_response');
       const body = JSON.parse(request.messages[request.messages.length - 1].content);
       return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(body, { actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
         questionCode: body.applicationDecision.questionCode, groundingAcknowledgement: null,
-        text: '部活の予定は、予定画面の「予定を追加」から入力できます。' }));
+        text: '部活の登録候補を確認してください。まだ保存していません。「この内容で仮予定にする」から進められます。' }));
     });
     const clientModule = await import('../../../services/ai/openAiCompatibleClient');
     const clientSpy = vi.spyOn(clientModule, 'createOpenAiCompatibleClient')
@@ -1222,19 +1558,19 @@ describe('Stable V5 human-scale conversation integration', () => {
       const turn = await runFixedHandoffReading({ conversationId, userText,
         document: fixedHandoffDocument(userText, 'fixed_task'), act: null, acts });
       expect(turn.reading.document.conversationActs).toEqual(acts);
-      expect(turn.result.interactionOutcome?.kind).toBe('aside');
+      expect(turn.result.interactionOutcome?.kind).toBe('apply');
       expect(turn.result.state.lastQuestionContext).toBeUndefined();
-      expect(turn.result.draftCandidates).toEqual([]);
-      expect(turn.result.state.shouldCreateDraft).toBe(false);
-      expect(turn.result).toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
+      expect(turn.result.draftCandidates).toHaveLength(1);
+      expect(turn.result.state.shouldCreateDraft).toBe(true);
+      expect(turn.result).toHaveProperty('communicationFacts.statusReason', 'fixed_event_registration_preview');
       expect(rendererClient).toHaveBeenCalledTimes(1);
       expect(turn.result.responseSource).toBe('ai');
       const request = rendererClient.mock.calls[0][0];
       const body = JSON.parse(request.messages[request.messages.length - 1].content);
       expect(body.applicationDecision).toMatchObject({
-        actionKind: 'status', questionCode: null, communication: {
-          goal: 'acknowledge_aside', askQuestion: false, statusReason: 'fixed_event_manual_entry',
-          manualEntry: { navigationLabel: '予定', actionLabel: '予定を追加', eventCreatedByTurn: false },
+        actionKind: 'preview_ready', questionCode: null, communication: {
+          goal: 'present_preview', askQuestion: false, statusReason: 'fixed_event_registration_preview',
+          eventRegistration: { eventCreatedByTurn: false, overlaps: [] },
         },
       });
     } finally {
@@ -1300,8 +1636,8 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(next.result.stableV5Graph!.temporalConstraints).toEqual(graph.temporalConstraints);
   });
 
-  it.each([false, true])('persists actual fixed-event requests through outbox and Worker with renderer failure=%s', async rendererFailure => {
-    const conversationId = `weekly-conversation-923e4567-e89b-52d3-a456-42661417400${rendererFailure ? '1' : '0'}`;
+  it.each([[false, false], [true, false], [false, true]])('persists actual fixed-event requests through outbox and Worker with renderer failure=%s, study preview=%s', async (rendererFailure, studyPreview) => {
+    const conversationId = `weekly-conversation-923e4567-e89b-52d3-a456-42661417400${rendererFailure ? '1' : studyPreview ? '2' : '0'}`;
     const oldTraceEnabled = import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED;
     vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
     const storage = createMemoryStorageHarness();
@@ -1317,26 +1653,56 @@ describe('Stable V5 human-scale conversation integration', () => {
       const body = JSON.parse(request.messages[request.messages.length - 1].content);
       return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(body, { actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
         questionCode: body.applicationDecision.questionCode, groundingAcknowledgement: null,
-        text: body.applicationDecision.communication.statusReason === 'fixed_event_manual_entry'
-          ? '部活の予定は、この画面では保存していません。「予定」から「予定を追加」を開いて入力できます。'
+        text: body.applicationDecision.communication.statusReason === 'fixed_event_registration_preview'
+          ? '夜勤は日付をまたぐため候補に含めていません。部活とゼミは2026-08-17の11:30–12:00が重複しています。'
+            + (studyPreview ? '数学の日時はプレビューで確認してください。' : '数学はまだ配置していません。学習の仮予定は「この条件で予定を作って」と依頼してください。')
+            + 'まだ保存していません。「この内容で仮予定にする」から確認してください。'
           : '分かりました。' }));
     });
     const clientModule = await import('../../../services/ai/openAiCompatibleClient');
     const clientSpy = vi.spyOn(clientModule, 'createOpenAiCompatibleClient')
       .mockReturnValue({ createChatCompletion: rendererClient });
     try {
-      const userText = '8月17日から23日の予定です。8月17日の10:30から12:00の部活を登録したいです。';
+      const userText = '8月17日から23日。部活・ゼミ・夜勤を登録。数学20分。';
+      const document = fixedHandoffDocument(userText, 'fixed_task');
+      const second = structuredClone(document.tasks[0]);
+      second.localId = 'seminar'; second.title = 'ゼミ'; second.category = 'study';
+      second.study = { purpose: 'self_study', contextLabel: null, components: [] };
+      second.temporalConstraints[0] = { ...second.temporalConstraints[0], localId: 'seminar-time',
+        targetLocalId: 'seminar', startTime: '11:30', endTime: '12:30' };
+      document.tasks.push(second);
+      const overnight = structuredClone(document.tasks[0]);
+      overnight.localId = 'night'; overnight.title = '夜勤';
+      overnight.temporalConstraints[0] = { ...overnight.temporalConstraints[0], localId: 'night-time',
+        targetLocalId: 'night', startTime: '23:00', endTime: '01:00' };
+      document.tasks.push(overnight);
+      document.planningIntent = studyPreview ? 'create_plan' : 'discuss';
+      const study = planningDocument({ title: '数学', amount: 20, unitCode: 'minute', unitLabel: '分', sourceText: userText }).tasks[0];
+      study.localId = 'study'; study.workloads[0].localId = 'study-duration'; document.tasks.push(study);
+      // Each fact cites its own user evidence, keeping the real request within the normal trace budget.
+      for (const task of document.tasks) {
+        task.sourceText = task.title;
+        task.temporalConstraints.forEach(constraint => { constraint.sourceText = task.title; });
+        task.workloads.forEach(workload => { workload.sourceText = '数学20分'; });
+      }
       const first = await runFixedHandoffReading({ conversationId, userText,
-        document: fixedHandoffDocument(userText, 'fixed_task'), act: 'request_event_registration' });
+        document, act: 'request_event_registration' });
       expect(first.reading.document.conversationActs).toEqual(first.raw.conversationActs);
       expect(first.result.state.lastQuestionContext).toBeUndefined();
-      expect(first.result).toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
-      expect(first.result.draftCandidates).toEqual([]);
-      expect(first.result.state.shouldCreateDraft).toBe(false);
+      expect(first.result).toHaveProperty('communicationFacts.statusReason', 'fixed_event_registration_preview');
+      expect(first.result.draftCandidates).toHaveLength(studyPreview ? 3 : 2);
+      if (studyPreview) expect(first.result.draftCandidates[2]).toMatchObject({ source: 'weekly_exam_prep', durationMinutes: 20 });
+      expect(first.result.communicationFacts?.eventRegistration?.unregistered).toEqual([expect.objectContaining({ title: '夜勤', reason: 'crosses_midnight' })]);
+      expect(first.result.draftCandidates[1]).toMatchObject({ source: 'fixed_event_registration', title: 'ゼミ',
+        stableV5Metadata: { planType: 'study' } });
+      expect(first.result.draftCandidates[0]).toMatchObject({ source: 'fixed_event_registration', title: '部活', date: '2026-08-17', startTime: '10:30', endTime: '12:00' });
+      expect(first.result.state.shouldCreateDraft).toBe(true);
       expect(first.result.state.shouldSavePlan).toBe(false);
+      expect(first.result.state.draftGenerationIntent).toBe(studyPreview ? 'user_authorized' : 'not_requested');
       expect(first.createChatCompletion).toHaveBeenCalledTimes(1);
       expect(rendererClient).toHaveBeenCalledTimes(1);
       expect(first.result.responseSource).toBe(rendererFailure ? 'deterministic_fallback' : 'ai');
+      if (!rendererFailure) expect(first.result.message).toContain('11:30–12:00が重複');
       const requestId = normalizeMock.mock.calls[0][0].traceRequestId!;
       const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
       const semanticRequest = first.createChatCompletion.mock.calls[0][0];
@@ -1349,9 +1715,18 @@ describe('Stable V5 human-scale conversation integration', () => {
       const sent = rendererClient.mock.calls[0][0];
       const body = JSON.parse(sent.messages[sent.messages.length - 1].content);
       expect(body.applicationDecision.communication).toMatchObject({
-        goal: 'acknowledge', askQuestion: false, statusReason: 'fixed_event_manual_entry',
-        manualEntry: { navigationLabel: '予定', actionLabel: '予定を追加', eventCreatedByTurn: false },
+        goal: 'present_preview', askQuestion: false, statusReason: 'fixed_event_registration_preview',
+        eventRegistration: { eventCreatedByTurn: false, ...(studyPreview ? {} : { workAwaitingAuthorization: [expect.stringContaining('数学')] }), overlaps: [{ date: '2026-08-17', startTime: '11:30', endTime: '12:00', titles: ['部活', 'ゼミ'] }] },
       });
+      expect(sent.messages[sent.messages.length - 1].content).toContain('タイトルと未対応理由を必ず明示');
+      expect(body.request).toContain('まだ保存していないと明言');
+      expect(body.request).toContain('previewPromotionControlLabelを「」で括った行動の一文');
+      expect(body.request).toContain('ボタン名だけで終えない');
+      if (studyPreview) {
+        expect(body.request).toContain('固定候補以外の日時は入力に無い');
+        expect(body.request).toContain('日付・時刻を書かず、固定予定の日付（明日等）を掛けない');
+        expect(body.request).toContain('日時はプレビューで確認');
+      }
       const rendererTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(first.result.dialogueRendererTrace!);
       if (rendererFailure) {
         expect(rendererTrace.response).toMatchObject({ status: 'fallback', reason: 'provider_error',
@@ -1376,24 +1751,26 @@ describe('Stable V5 human-scale conversation integration', () => {
       resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
       expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toHaveLength(1);
 
-      const nextText = '分かりました';
+      const nextText = 'その対象を登録して';
       const next = await runFixedHandoffReading({ conversationId, userText: nextText,
-        document: noNewEventFacts(), act: null });
-      expect(next.result).toHaveProperty('communicationFacts.statusReason', 'no_additional_work');
+        document: noNewEventFacts(), act: null,
+        acts: [{ kind: 'request_event_registration', targetPublicId: 'does-not-exist' }] });
+      expect(next.reading.document.conversationActs).toEqual([{ kind: 'request_event_registration', targetPublicId: null, targetResolution: 'unresolved' }]);
+      expect(next.result.preserveExistingPreview).toBe(true);
+      expect(next.result.state.draftGenerationIntent).toBe(studyPreview ? 'user_authorized' : 'not_requested');
       expect(next.result.state.lastQuestionContext).toBeUndefined();
       expect(next.result.draftCandidates).toEqual([]);
       expect(next.result.stableV5Graph!.temporalConstraints).toEqual(first.result.stableV5Graph!.temporalConstraints);
-      expect(next.createChatCompletion).toHaveBeenCalledTimes(2);
+      expect(next.createChatCompletion).toHaveBeenCalledTimes(1);
       expect(next.createChatCompletion.mock.calls.map(([request]) => request.responseFormat?.json_schema.name))
-        .toEqual(['weekly_planning_focused_authorization_v5', 'weekly_planning_semantic_document_v5']);
-      expect(await next.createChatCompletion.mock.results[0].value).toBe(JSON.stringify({ decision: 'fallback' }));
+        .toEqual(['weekly_planning_semantic_document_v5']);
       expect(rendererClient).toHaveBeenCalledTimes(2);
       const nextId = normalizeMock.mock.calls[1][0].traceRequestId!;
       const nextEvents = takeWeeklyPlanningStableV5DebugTrace(nextId);
       const nextSent = rendererClient.mock.calls[1][0];
       const nextBody = JSON.parse(nextSent.messages[nextSent.messages.length - 1].content);
       expect(nextBody.applicationDecision.communication).toMatchObject({
-        goal: 'acknowledge', askQuestion: false, statusReason: 'no_additional_work',
+        goal: 'acknowledge', askQuestion: false,
       });
       const nextTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(next.result.dialogueRendererTrace!);
       if (rendererFailure) {
@@ -1431,6 +1808,14 @@ describe('Stable V5 human-scale conversation integration', () => {
         expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0]))
           .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
         const serialized = JSON.stringify(prepared.entries[0]);
+        if (write === harness.writes[0]) {
+          expect(serialized).toContain('fixed_event_registration');
+          expect(serialized).toContain('fixed_event_registration_preview');
+          expect(serialized).toContain('eventCreatedByTurn');
+          expect(serialized).toContain('crosses_midnight');
+          expect(serialized).toContain('10:30');
+          expect(serialized).toContain('12:00');
+        }
         expect(serialized).not.toContain('assistantMessageId');
         expect(serialized).not.toContain('planningStateRevision');
         return prepared.entries[0] as unknown as {
@@ -1454,11 +1839,25 @@ describe('Stable V5 human-scale conversation integration', () => {
           conversationActs: [{ kind: 'request_event_registration', targetPublicId: null }],
         }) }),
       ]));
+      expect(stored[1].aiInterpreter.structuredResults).toEqual(expect.arrayContaining([
+        expect.objectContaining({ accepted: true, structuredResult: expect.objectContaining({
+          conversationActs: [{ kind: 'request_event_registration', targetPublicId: null, targetResolution: 'unresolved' }],
+        }) }),
+      ]));
       expect(stored[0].diagnostics.dialogueRenderer.request.promptContext).toEqual(context);
       expect(stored[0].diagnostics.dialogueRenderer.response.status).toBe(rendererFailure ? 'fallback' : 'rendered');
       expect(stored[0].diagnostics.dialogueRenderer.decision.responseSource).toBe(rendererFailure ? 'deterministic_fallback' : 'ai');
       const persistedBody = JSON.parse((stored[0].diagnostics.dialogueRenderer.request.promptContext.messages as Array<{ content: string }>)[1].content);
       expect(persistedBody.applicationDecision.communication).toEqual(body.applicationDecision.communication);
+      expect(persistedBody.applicationDecision.communication.eventRegistration.unregistered).toEqual(first.result.communicationFacts!.eventRegistration!.unregistered);
+      expect(persistedBody.applicationDecision.communication.eventRegistration.candidates).toEqual(first.result.draftCandidates.filter(candidate => candidate.source === 'fixed_event_registration'));
+      expect(persistedBody.request).toBe(body.request);
+      expect(persistedBody.applicationDecision.communication.eventRegistration.candidates[1].stableV5Metadata.planType).toBe('study');
+      if (studyPreview) expect(persistedBody.applicationDecision.communication.eventRegistration).not.toHaveProperty('workAwaitingAuthorization');
+      else expect(persistedBody.applicationDecision.communication.eventRegistration.workAwaitingAuthorization).toEqual([expect.stringContaining('数学')]);
+      expect(persistedBody.applicationDecision.communication.eventRegistration.overlaps).toEqual([
+        { date: '2026-08-17', startTime: '11:30', endTime: '12:00', titles: ['部活', 'ゼミ'] },
+      ]);
       const bounded = stored[1].diagnostics.dialogueRenderer.request.promptContext;
       expect(bounded).toMatchObject({ traceTruncated: true, originalBytes: originalLargeContextBytes,
         jsonHead: expect.any(String), jsonTail: expect.any(String) });

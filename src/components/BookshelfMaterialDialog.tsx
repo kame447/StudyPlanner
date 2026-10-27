@@ -210,7 +210,6 @@ function BookshelfMaterialDialogSession({
     if (!operation) return;
     setIsSubmitting(true);
     try {
-      const nextTotalUnits = parseOptionalNumber(totalUnits);
       const nextCurrentUnit = parseOptionalNumber(currentUnit);
       const savedMaterial = await onSave(
         {
@@ -232,10 +231,10 @@ function BookshelfMaterialDialogSession({
           progressUnit,
           progressUnitLabel:
             progressUnit === 'custom' ? progressUnitLabel.trim() : undefined,
-          totalUnits: nextTotalUnits,
+          totalUnits: parsedTotalUnits,
           currentUnit:
-            nextCurrentUnit !== undefined && nextTotalUnits !== undefined
-              ? Math.min(nextCurrentUnit, nextTotalUnits)
+            nextCurrentUnit !== undefined && parsedTotalUnits !== undefined
+              ? Math.min(nextCurrentUnit, parsedTotalUnits)
               : nextCurrentUnit,
           targetDate: targetDate || undefined,
           estimatedMinutesPerUnit: parseOptionalNumber(estimatedMinutesPerUnit),

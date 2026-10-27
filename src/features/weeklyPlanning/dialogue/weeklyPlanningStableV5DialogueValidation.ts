@@ -185,6 +185,18 @@ function clockValues(value: string): number[] {
     .filter((minutes): minutes is number => minutes !== null);
 }
 
+function acknowledgedClockValues(value: string): number[] {
+  const values = clockValues(value);
+  // Renderer display only: an omitted 時/:00 is explicit at the start of a
+  // clock range. Keep the ordinary body/source clock validator unchanged.
+  const range = new RegExp(`(?<![\\d.．:：+\\-－−–])([0-9]{1,2})\\s*[〜~～\\-－–]\\s*(${CLOCK_EXPRESSION.source})`, 'g');
+  for (const match of value.matchAll(range)) {
+    const hour = Number(match[1]);
+    if (hour <= 24 && clockMinutes(match[2]) !== null) values.push(hour * 60);
+  }
+  return values;
+}
+
 function structuredClockValues(data: Record<string, unknown>): number[] {
   return ['startTime', 'endTime']
     .map((key) => data[key])
@@ -199,7 +211,7 @@ function missesAcknowledgedClockValue(params: {
   input: WeeklyPlanningStableV5DialogueRenderInput;
 }): boolean {
   const acceptedFacts = params.input.currentTurnGrounding?.acceptedFacts ?? [];
-  const actual = new Set(clockValues(params.acknowledgementText));
+  const actual = new Set(acknowledgedClockValues(params.acknowledgementText));
   return params.factIds.some((factId) => {
     const fact = acceptedFacts.find((candidate) => candidate.factId === factId);
     if (!fact) return true;
@@ -731,6 +743,7 @@ function validateRenderedText(
   });
   const groundedDateExpressions = groundedDateExpressionsFromPlanningInformation(
     input.planningInformation,
+    input.communication?.eventRegistration,
   );
   if (
     addsUngroundedDuration(text, input)

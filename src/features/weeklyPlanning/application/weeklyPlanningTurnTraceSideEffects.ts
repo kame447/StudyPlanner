@@ -82,8 +82,9 @@ function compactTraceEventForPersistence(
 function debugTraceEventsForPersistence(
   requestId: string,
   hasDedicatedRendererTrace: boolean,
+  invocationEvents: readonly WeeklyPlanningStableV5DebugTraceEvent[] = [],
 ): WeeklyPlanningStableV5DebugTraceEvent[] {
-  return takeWeeklyPlanningStableV5DebugTrace(requestId)
+  return [...invocationEvents, ...takeWeeklyPlanningStableV5DebugTrace(requestId)]
     .flatMap((event) => {
       const compacted = compactTraceEventForPersistence(event, hasDedicatedRendererTrace);
       return compacted ? [compacted] : [];
@@ -126,6 +127,7 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
   const debugTraceEvents = debugTraceEventsForPersistence(
     params.pending.requestId,
     Boolean(dialogueRendererTrace),
+    params.result.debugTraceEvents,
   );
   return services.recordTurnTrace({
     userId: params.ownerId,
@@ -165,6 +167,7 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
   const debugTraceEvents = debugTraceEventsForPersistence(
     params.pending.requestId,
     Boolean(dialogueRendererTrace),
+    params.result.debugTraceEvents,
   );
   return services.recordTurnTrace({
     userId: params.ownerId,
@@ -198,7 +201,7 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
   const verifiedRecovery = params.result?.recoveryPresentation !== undefined
     && params.result.responseSource === 'ai'
     && params.result.message === params.assistantMessage.content;
-  const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId, Boolean(dialogueRendererTrace));
+  const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId, Boolean(dialogueRendererTrace), params.result?.debugTraceEvents);
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,

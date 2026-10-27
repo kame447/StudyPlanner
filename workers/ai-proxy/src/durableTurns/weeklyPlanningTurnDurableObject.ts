@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { DurableTurnJob, DurableTurnConflict, type DurableTurnInput, type DurableTurnIdentity } from './durableTurnJob';
 import { createDurableTurnStorage } from './durableTurnStorage';
+import { serializeWeeklyPlanningTurnResult } from './weeklyPlanningTurnResult';
 import { executeIsolatedWeeklyPlanningTurn, type IsolatedWeeklyPlanningTurnInput } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningIsolatedTurn';
 import { createDurableTurnProvider, createDurableReplyReferenceChoicePort } from './durableTurnProvider';
 import { readReplyReferenceCalibrationV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningReplyReferenceChoiceV5';
@@ -29,7 +30,7 @@ export class WeeklyPlanningTurnDurableObject extends DurableObject<AiProxyWorker
       const result = await executeIsolatedWeeklyPlanningTurn(parsed,
         createDurableTurnProvider(this.env, parsed.input.userId, dispatch, sourceIp, deadlineAt),
         referencePort);
-      return JSON.stringify(result);
+      return serializeWeeklyPlanningTurnResult(result);
     });
   }
 }

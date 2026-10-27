@@ -6,7 +6,7 @@ import { JEV_MODEL } from './decisionPolicy';
 import { createSemanticRequestRecorder } from '../../../../shared/semanticDispatchRecorder';
 import { createHash } from 'node:crypto';
 import { CANDIDATE_CHOICE_CATALOG_VERSION, CANDIDATE_CHOICE_QUESTION_CODES, isCandidateChoiceEvaluation } from '../../../../shared/candidateChoiceDecision';
-function response() { return { model: JEV_MODEL.request, answers: { candidate: { type: 'choice', choice: 'leaf:0', confidence: 0.999, probabilities: { 'leaf:0': 0.999, none: 0.001 } }, condition_change: { type: 'noul', noul: 0.001 }, independent_meaning: { type: 'noul', noul: 0.001 } } }; }
+function response() { return { model: JEV_MODEL.responses[1], answers: { candidate: { type: 'choice', choice: 'leaf:0', confidence: 0.999, probabilities: { 'leaf:0': 0.999, none: 0.001 } }, condition_change: { type: 'noul', noul: 0.001 }, independent_meaning: { type: 'noul', noul: 0.001 } } }; }
 describe('generic Choice provider validation and dispatch accounting', () => {
   it('records one actual dispatch with missing usage as NA, including provider failure', async () => {
     for (const fails of [false, true]) {

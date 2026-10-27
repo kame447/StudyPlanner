@@ -34,6 +34,35 @@ const material: StudyMaterial = {
 };
 
 describe('bookshelf dialogs', () => {
+  it.each([
+    ['', undefined, 120],
+    ['not-a-number', undefined, 120],
+    ['0050', 50, 50],
+    ['200', 200, 120],
+  ] as const)('uses the latest raw total %s for the input max and saved clamp', async (raw, total, current) => {
+    const onSave = vi.fn().mockResolvedValue(material);
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BookshelfMaterialDialog userId="user-1" material={material}
+      subjects={[subject]} onClose={vi.fn()} onSave={onSave} onDelete={vi.fn()} />); });
+    const input = renderer.root.findByProps({ placeholder: '例: 300ページ' });
+    act(() => input.props.onChange({ target: { value: '75' } }));
+    expect(renderer.root.findByProps({ placeholder: '例: 45ページ' }).props.max).toBe(75);
+    act(() => input.props.onChange({ target: { value: raw } }));
+
+    expect(input.props.value).toBe(raw);
+    expect(renderer.root.findByProps({ placeholder: '例: 45ページ' }).props.max).toBe(total);
+    await act(async () => {
+      await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() });
+    });
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ totalUnits: total, currentUnit: current }),
+      material.id,
+      undefined,
+    );
+    act(() => renderer.unmount());
+  });
+
   it.each([undefined, 'studying', 'completed'] as const)('edits study state from %s independently of lifecycle and progress', async (initial) => {
     const original = { ...material, currentUnit: 80, studyStatus: initial };
     const onSave = vi.fn().mockResolvedValue(original);

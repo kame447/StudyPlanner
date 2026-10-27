@@ -155,13 +155,6 @@ function sameSource(
     && left.revision === right.revision;
 }
 
-function orderedSources(
-  sources: readonly ObservabilityActiveUserDirtySource[],
-): ObservabilityActiveUserDirtySource[] {
-  return [...sources].sort((left, right) =>
-    dirtySourceKey(left).localeCompare(dirtySourceKey(right)));
-}
-
 function finalTargetDate(
   source: ObservabilityActiveUserDirtySource,
   today: string,
@@ -638,7 +631,8 @@ export class ProductObservabilityActiveUserSnapshotService {
     };
     const storedJob = readJob(values[0] ?? null, nowIso);
     const currentDefaultSnapshot = values[1] ?? null;
-    const availableSources = orderedSources(dirtySources);
+    const availableSources = [...dirtySources].sort((left, right) =>
+      dirtySourceKey(left).localeCompare(dirtySourceKey(right)));
 
     let job = storedJob;
     const storedSourceStillPending = job.source

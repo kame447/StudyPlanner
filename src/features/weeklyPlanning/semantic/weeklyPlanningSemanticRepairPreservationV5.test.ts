@@ -103,6 +103,74 @@ function document(params: {
 }
 
 describe('Stable V5 targeted semantic repair preservation', () => {
+  it.each(['level', 'act'] as const)('fails closed when %s preservation has no comparison document', kind => {
+    expect(validateWeeklyPlanningSemanticRepairPreservationV5({
+      initialDocument: null, repairedDocument: document({ canonicalWindow: true }),
+      initialErrors: kind === 'level'
+        ? ['document.tasks[0].temporalConstraints[0].constraintLevel:soft-fixed-interval-use-preferred-window']
+        : ['document.relations'],
+      initialConversationActs: kind === 'act' ? [{ kind: 'request_event_registration', targetPublicId: null }] : [],
+    })).toEqual(['semantic-repair-preservation:comparison-document-unavailable']);
+  });
+
+  it.each(['preserved', 'deleted', 'changed'] as const)(
+    'applies the act invariant in the real single-repair normalizer for a missing deadline: %s', async change => {
+      const initial = document({ canonicalWindow: true });
+      initial.conversationActs = [{ kind: 'request_event_registration', targetPublicId: null }];
+      initial.tasks[0].temporalConstraints = [{
+        localId: 'unsupported-deadline', targetLocalId: 't1', kind: 'deadline', constraintLevel: 'hard',
+        dateExpression: null, namedTimePeriod: null, startTime: null, endTime: null,
+        precision: 'unspecified', sourceText: USER_TEXT,
+      }];
+      const repaired = structuredClone(initial);
+      repaired.tasks[0].temporalConstraints = [];
+      if (change === 'deleted') repaired.conversationActs = [];
+      if (change === 'changed') repaired.conversationActs = [{ kind: 'decline_additional_work', targetPublicId: null }];
+      expect(validateWeeklyPlanningSemanticResponseV5(JSON.stringify(initial), { currentUserText: USER_TEXT }).errors)
+        .toEqual(['document.tasks[0].temporalConstraints[0]:missing-deadline']);
+      expect(validateWeeklyPlanningSemanticResponseV5(JSON.stringify(repaired), { currentUserText: USER_TEXT }).errors).toEqual([]);
+      const responses = [JSON.stringify(initial), JSON.stringify(repaired)];
+      const client: OpenAiCompatibleClient = { async createChatCompletion() {
+        const response = responses.shift();
+        if (!response) throw new Error('Unexpected extra act preservation repair call');
+        return response;
+      } };
+      const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({ userText: USER_TEXT });
+      expect(responses).toEqual([]);
+      expect(result.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
+      if (change === 'preserved') {
+        expect(result.status).toBe('accepted');
+        expect(result.document?.conversationActs).toEqual(initial.conversationActs);
+      } else {
+        expect(result.status).toBe('rejected');
+        expect(result.document).toBeNull();
+        expect(result.diagnostics.validationErrors).toContain(
+          'repair:semantic-repair-preservation:repair changed unrelated conversation acts');
+      }
+    },
+  );
+
+  it.each(['deleted', 'changed', 'preserved', 'added', 'invalid_initial', 'act_error'] as const)(
+    'preserves valid initial acts even for non-representation repairs: %s', change => {
+      const initial = document({ canonicalWindow: true });
+      initial.conversationActs = [{ kind: 'request_event_registration', targetPublicId: null }];
+      const repaired = structuredClone(initial);
+      const errors = ['document.tasks[0].temporalConstraints[0]:missing-deadline'];
+      if (change === 'deleted') repaired.conversationActs = [];
+      if (change === 'changed') repaired.conversationActs = [{ kind: 'decline_additional_work', targetPublicId: null }];
+      if (change === 'added') repaired.conversationActs!.push({ kind: 'topic_shift', targetPublicId: null });
+      if (change === 'invalid_initial') Object.assign(initial.conversationActs[0], { kind: 'unsupported' });
+      if (change === 'act_error') {
+        errors.push('document.conversationActs[0].targetPublicId:invalid');
+        repaired.conversationActs = [];
+      }
+      expect(validateWeeklyPlanningSemanticRepairPreservationV5({
+        initialDocument: initial, repairedDocument: repaired, initialErrors: errors,
+      })).toEqual(change === 'deleted' || change === 'changed'
+        ? ['semantic-repair-preservation:repair changed unrelated conversation acts'] : []);
+    },
+  );
+
   it('recognizes only representation-local validator failures as preservation-guarded repairs', () => {
     expect(isRepresentationOnlySemanticRepairV5([
       'document.planningWindow:absolute-range',

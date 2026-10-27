@@ -122,6 +122,8 @@ async function seedUser(page, { withPreview = false } = {}) {
 }
 
 async function dragBy(locator, page, deltaX, deltaY) {
+  // Wait for the opening animation and hit target before capturing drag coordinates.
+  await locator.hover({ trial: true });
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;

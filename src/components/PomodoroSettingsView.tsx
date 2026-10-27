@@ -9,11 +9,15 @@ export function PomodoroSettingsView({ initialSettings, planned, onSave }: {
   const [draft, setDraft] = useState(initialSettings);
   const [focusInput, setFocusInput] = useState(String(initialSettings.customFocusMinutes ?? (initialSettings.preset === '50-10' ? 50 : 25)));
   const [breakInput, setBreakInput] = useState(String(initialSettings.customBreakMinutes ?? (initialSettings.preset === '50-10' ? 10 : 5)));
-  const validCustom = isValidPomodoroMinutes(Number(focusInput)) && isValidPomodoroMinutes(Number(breakInput));
+  const focusMinutes = Number(focusInput);
+  const breakMinutes = Number(breakInput);
+  const validFocus = isValidPomodoroMinutes(focusMinutes);
+  const validBreak = isValidPomodoroMinutes(breakMinutes);
+  const validCustom = validFocus && validBreak;
   const canSave = draft.preset !== 'custom' || validCustom;
   function save() {
     if (!canSave) return;
-    onSave(validCustom ? { ...draft, customFocusMinutes: Number(focusInput), customBreakMinutes: Number(breakInput) } : draft);
+    onSave(validCustom ? { ...draft, customFocusMinutes: focusMinutes, customBreakMinutes: breakMinutes } : draft);
   }
   return (
     <main className="study-session-content study-session-settings-view">
@@ -30,11 +34,11 @@ export function PomodoroSettingsView({ initialSettings, planned, onSave }: {
         {draft.preset === 'custom' ? <div className="study-session-field-grid">
           <label>集中（分）
             <input type="number" inputMode="numeric" aria-label="集中（分）" min={1} max={POMODORO_MAX_MINUTES} step={1}
-              value={focusInput} aria-invalid={!isValidPomodoroMinutes(Number(focusInput))} onChange={event => setFocusInput(event.target.value)} />
+              value={focusInput} aria-invalid={!validFocus} onChange={event => setFocusInput(event.target.value)} />
           </label>
           <label>休憩（分）
             <input type="number" inputMode="numeric" aria-label="休憩（分）" min={1} max={POMODORO_MAX_MINUTES} step={1}
-              value={breakInput} aria-invalid={!isValidPomodoroMinutes(Number(breakInput))} onChange={event => setBreakInput(event.target.value)} />
+              value={breakInput} aria-invalid={!validBreak} onChange={event => setBreakInput(event.target.value)} />
           </label>
           {!validCustom ? <p role="alert">集中と休憩は1〜1440分の整数で入力してください。</p> : null}
         </div> : null}

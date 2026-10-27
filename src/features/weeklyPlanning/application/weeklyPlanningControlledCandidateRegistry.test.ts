@@ -7,7 +7,7 @@ import { submitWeeklyPlanningControlledTurn } from '../weeklyPlanningTurnControl
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { weeklyPlanningTurnRuntimeGateway } from './weeklyPlanningTurnRuntimeGateway';
 import { registerControlledCandidateDomain } from './weeklyPlanningControlledCandidateRegistry';
-import { decodeControlledCandidateQuestion } from './weeklyPlanningControlledCandidateQuestion';
+import { decodeControlledCandidateQuestion, validControlledCandidateSessionRecords } from './weeklyPlanningControlledCandidateQuestion';
 import type { ControlledCandidateDomain } from './weeklyPlanningControlledCandidateDomains';
 import type { WeeklyPlanningQuestionPresentationContent } from '../intake/weeklyPlanningIntakeTypes';
 import { weeklyPlanningStableV5AcceptedFactsForTurn } from '../dialogue/weeklyPlanningStableV5CurrentTurnGrounding';
@@ -173,4 +173,35 @@ it('supplies the facts accepted by the presenting request ID, not the presentati
   expect(h.stage).toHaveBeenCalledTimes(1);
   // One call per presenting commit (the fake answer turn presents again); staging never calls it.
   expect(h.rejectsCoPresentedFacts).toHaveBeenCalledTimes(h.execute.mock.calls.length);
+});
+
+
+it.each([
+  ['unchanged', true], ['absent state', true], ['legacy without records', true], ['legacy invalid ledger without snapshot', true],
+  ['protocol with ledger only', true], ['snapshot without protocol', false], ['unsupported protocol', false],
+  ['protocol without ledger', false], ['invalid ledger without snapshot', false], ['ledger owner', false],
+  ['ledger conversation', false], ['epoch', false], ['snapshot payload', false], ['action', false],
+  ['topic', false], ['graph revision', false], ['turn', false], ['message', false], ['planning revision', false],
+] as const)('preserves controlled session admission for %s', async (change, expected) => {
+  const h = setup(); await h.submit('質問を提示してください');
+  const state = structuredClone(h.h.getState().intakeState!);
+  const context = state.lastQuestionContext!;
+  if (change === 'legacy without records' || change === 'protocol without ledger') delete state.c5SelectionLedger;
+  if (change === 'legacy without records' || change === 'legacy invalid ledger without snapshot'
+    || change === 'protocol with ledger only' || change === 'invalid ledger without snapshot') delete context.controlledCandidate;
+  if (change === 'legacy without records' || change === 'legacy invalid ledger without snapshot'
+    || change === 'snapshot without protocol') delete state.controlledCandidateProtocolVersion;
+  if (change === 'unsupported protocol') Object.assign(state, { controlledCandidateProtocolVersion: 2 });
+  if (change === 'invalid ledger without snapshot' || change === 'legacy invalid ledger without snapshot') state.c5SelectionLedger = { ...state.c5SelectionLedger!, lastEpoch: -1 };
+  if (change === 'ledger owner') state.c5SelectionLedger = { ...state.c5SelectionLedger!, ownerId: 'other-owner' };
+  if (change === 'ledger conversation') state.c5SelectionLedger = { ...state.c5SelectionLedger!, conversationId: 'other-conversation' };
+  if (change === 'epoch') state.c5SelectionLedger = { ...state.c5SelectionLedger!, lastEpoch: state.c5SelectionLedger!.lastEpoch + 1 };
+  if (change === 'snapshot payload') context.controlledCandidate = { ...context.controlledCandidate!, payloadSerialization: 'corrupt' };
+  if (change === 'action') context.actionId = 'other-question';
+  if (change === 'topic') context.topicId = 'other-target';
+  if (change === 'graph revision') context.presentation!.graphRevision++;
+  if (change === 'turn') context.presentation!.turnId = 'other-turn';
+  if (change === 'message') context.presentation!.assistantMessageId = 'other-message';
+  if (change === 'planning revision') context.presentation!.planningStateRevision++;
+  expect(validControlledCandidateSessionRecords(change === 'absent state' ? undefined : state, OWNER, h.h.conversationId)).toBe(expected);
 });

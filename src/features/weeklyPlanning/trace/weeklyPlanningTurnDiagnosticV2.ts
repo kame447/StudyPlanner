@@ -608,13 +608,19 @@ function schedulerSummary(
   const previewResult = Object.keys(record(previewEvent.result)).length > 0
     ? record(previewEvent.result)
     : previewEvent;
-  const candidates = Array.isArray(previewResult.candidates) ? previewResult.candidates : [];
+  const applicationOutput = record(latestEventData(events, 'runtime_branch_selected').output);
+  const applicationCandidates = Array.isArray(applicationOutput.draftCandidates) ? applicationOutput.draftCandidates : [];
+  const hasRegistrations = applicationCandidates.some(candidate => record(candidate).source === 'fixed_event_registration');
+  // Registration bypasses the scheduler. Persist the actual application preview,
+  // including system-only capacity previews, rather than dropping these candidates.
+  const candidates = hasRegistrations ? applicationCandidates
+    : Array.isArray(previewResult.candidates) ? previewResult.candidates : [];
   const unscheduled = Array.isArray(previewResult.unscheduledWorkItems)
     ? previewResult.unscheduledWorkItems
     : Array.isArray(previewResult.unscheduled)
       ? previewResult.unscheduled
       : [];
-  const previewExists = Object.keys(previewEvent).length > 0;
+  const previewExists = Object.keys(previewEvent).length > 0 || hasRegistrations;
   return {
     selectedDate: stringValue(runtime.selectedDate)
       ?? stringValue(context.currentDate)
@@ -642,8 +648,8 @@ function schedulerSummary(
     preview: previewExists
       ? {
           schedulerVersion: stringValue(previewEvent.schedulerVersion),
-          status: stringValue(previewResult.status),
-          candidateCount: numberValue(previewEvent.candidateCount) ?? candidates.length,
+          status: stringValue(previewResult.status) ?? (hasRegistrations ? 'ready' : null),
+          candidateCount: hasRegistrations ? candidates.length : numberValue(previewEvent.candidateCount) ?? candidates.length,
           unscheduledCount: numberValue(previewEvent.unscheduledCount) ?? unscheduled.length,
           representativeCandidates: limitedArray(
             candidates.length > 0 ? candidates : (Array.isArray(previewEvent.candidates) ? previewEvent.candidates : []),
@@ -1005,6 +1011,11 @@ export function createWeeklyPlanningTurnDiagnosticV2(
 ): WeeklyPlanningTraceTurnDiagnosticEntry {
   const tracker: TruncationTracker = { fields: new Set(), originalCounts: {} };
   const events = input.debugTraceEvents ?? [];
+  for (const event of events) {
+    if (event.stage === 'trace_collector_truncated') {
+      markCount(tracker, 'debugTraceEvents', numberValue(record(event.data).droppedEvents) ?? 0);
+    }
+  }
   const configuration = latestEventData(events, 'runtime_configuration_evaluated');
   const prepared = latestEventData(events, 'semantic_normalizer_prepared');
   const pipelineInput = latestEventData(events, 'semantic_pipeline_input');

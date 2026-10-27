@@ -83,7 +83,8 @@ export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
   if (params.provisionalTimeboxRequested) return true;
   if (params.planningIntent === 'create_plan' && !params.hadMachinePendingQuestion) return true;
   if (params.previousStatus === 'draft_ready') {
-    return params.planningIntent === 'update_plan' && params.semanticChanged;
+    return params.previousDraftGenerationIntent !== 'not_requested'
+      && params.planningIntent === 'update_plan' && params.semanticChanged;
   }
   return params.previousDraftGenerationIntent === 'user_authorized';
 }

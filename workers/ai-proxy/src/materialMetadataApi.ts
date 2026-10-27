@@ -166,14 +166,14 @@ function asCatalogCandidate(value: Record<string, unknown> | null): MaterialMeta
     catalogEntryId: value.catalogEntryId,
     title: value.title,
     authors: value.authors,
-    ...(typeof value.publisher === 'string' ? { publisher: value.publisher } : {}),
-    ...(Number.isInteger(value.publishedYear) ? { publishedYear: value.publishedYear as number } : {}),
-    ...(typeof value.edition === 'string' ? { edition: value.edition } : {}),
-    ...(typeof value.isbn10 === 'string' ? { isbn10: value.isbn10 } : {}),
-    ...(typeof value.isbn13 === 'string' ? { isbn13: value.isbn13 } : {}),
-    ...(Number.isInteger(value.pageCount) ? { pageCount: value.pageCount as number } : {}),
-    ...(Array.isArray(value.tableOfContents)
-      ? { tableOfContents: value.tableOfContents.filter((item): item is string => typeof item === 'string') }
+    ...(value.publisher !== undefined ? { publisher: value.publisher } : {}),
+    ...(value.publishedYear !== undefined ? { publishedYear: value.publishedYear } : {}),
+    ...(value.edition !== undefined ? { edition: value.edition } : {}),
+    ...(value.isbn10 !== undefined ? { isbn10: value.isbn10 } : {}),
+    ...(value.isbn13 !== undefined ? { isbn13: value.isbn13 } : {}),
+    ...(value.pageCount !== undefined ? { pageCount: value.pageCount } : {}),
+    ...(value.tableOfContents !== undefined
+      ? { tableOfContents: [...value.tableOfContents] }
       : {}),
   };
 }
