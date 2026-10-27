@@ -29,10 +29,28 @@ describe('Pomodoro custom settings', () => {
     const { view, onSave, choose, input } = setup();
     choose('カスタム'); input('休憩（分）', value);
     expect(view.root.findByProps({ 'aria-label': '休憩（分）' }).props.value).toBe(value);
+    expect(view.root.findByProps({ 'aria-label': '休憩（分）' }).props['aria-invalid']).toBe(true);
     expect(view.root.findByProps({ className: 'study-session-save-button' }).props.disabled).toBe(true);
     choose('設定を保存'); expect(onSave).not.toHaveBeenCalled();
     choose('25分 / 5分'); choose('設定を保存');
     expect(onSave).toHaveBeenCalledWith({ preset: '25-5', setCount: null });
+  });
+
+  it('recomputes both fields after correction while retaining raw strings', () => {
+    const { view, onSave, choose, input } = setup();
+    choose('カスタム');
+    input('集中（分）', ''); input('休憩（分）', '1441');
+    expect(view.root.findByProps({ 'aria-label': '集中（分）' }).props['aria-invalid']).toBe(true);
+    expect(view.root.findByProps({ className: 'study-session-save-button' }).props.disabled).toBe(true);
+    input('集中（分）', '0001'); input('休憩（分）', '1440');
+    expect(view.root.findByProps({ 'aria-label': '集中（分）' }).props.value).toBe('0001');
+    expect(view.root.findByProps({ 'aria-label': '休憩（分）' }).props.value).toBe('1440');
+    expect(view.root.findByProps({ 'aria-label': '集中（分）' }).props['aria-invalid']).toBe(false);
+    expect(view.root.findByProps({ 'aria-label': '休憩（分）' }).props['aria-invalid']).toBe(false);
+    expect(view.root.findByProps({ className: 'study-session-save-button' }).props.disabled).toBe(false);
+    choose('設定を保存');
+    expect(onSave).toHaveBeenCalledWith({ preset: 'custom', setCount: null, customFocusMinutes: 1, customBreakMinutes: 1440 });
+    act(() => view.unmount());
   });
 
   it('keeps explanatory prose in FAQ rather than the settings screen', () => {

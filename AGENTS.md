@@ -47,6 +47,8 @@ Do not stop or produce a final response merely because:
 
 A failed relevant check cannot be converted into completion by reporting the failure. It must route back to diagnosis and correction unless one of the explicit stop conditions below applies.
 
+- When an action requires approval or is blocked, pause only that action and its dependants. Continue useful independent work already within the authorized scope and fixed plan; do not broaden scope, bypass the blocker or treat silence as approval.
+
 A final response is allowed only when one of these conditions is true:
 
 1. All requested completion criteria are satisfied and verified on the exact current state.
@@ -372,6 +374,7 @@ AI must:
 
 ### Proportional refactoring
 
+- Before refactoring, audit the entire agreed scope, record what to change, retain or defer, and fix the responsibility boundaries, implementation scope and verification criteria. Then implement the minimum coherent change; do not add newly discovered candidates opportunistically.
 - Before adding complexity for speculative, highly unlikely concurrency or security-boundary scenarios, explain the concrete failure, its estimated likelihood and supporting evidence (or explicitly say it is unknown), and the expected code and maintenance cost. Obtain the user’s approval before adding that scope; “theoretically safer” is not permission to expand it silently.
 - Validate external data once at its entry point, then pass validated, typed values internally instead of repeating the same checks at every layer. A new trust boundary still validates its input; this does not remove required authorization, state-dependent invariants, or existing security protections.
 

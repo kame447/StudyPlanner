@@ -449,7 +449,7 @@ export function clampEndMinutes(minutes: number): number {
 }
 
 export function calculateAutoEndTimeForCreate(startMinutes: number): string {
-  return formatMinutesToTime(Math.min(startMinutes + 60, 24 * 60), 'end');
+  return formatMinutesToTime(startMinutes + 60, 'end');
 }
 
 export function calculateShiftedEndTimeForEdit(
@@ -457,7 +457,7 @@ export function calculateShiftedEndTimeForEdit(
   durationMinutes: number,
 ): string {
   return formatMinutesToTime(
-    Math.min(newStartMinutes + Math.max(1, durationMinutes), 24 * 60),
+    newStartMinutes + Math.max(1, durationMinutes),
     'end',
   );
 }

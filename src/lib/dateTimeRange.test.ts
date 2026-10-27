@@ -9,6 +9,27 @@ import {
 } from './date';
 
 describe('time range utilities', () => {
+  it.each([
+    [-120, '00:00'],
+    [1500, '24:00'],
+    [Number.POSITIVE_INFINITY, '24:00'],
+    [Number.NEGATIVE_INFINITY, '00:00'],
+    [Number.NaN, 'NaN:NaN'],
+  ])('preserves end formatting for start minutes %s', (startMinutes, expected) => {
+    expect(calculateAutoEndTimeForCreate(startMinutes)).toBe(expected);
+    expect(calculateShiftedEndTimeForEdit(startMinutes, 60)).toBe(expected);
+  });
+
+  it.each([
+    [0, '10:01'],
+    [-5, '10:01'],
+    [Number.NEGATIVE_INFINITY, '10:01'],
+    [Number.POSITIVE_INFINITY, '24:00'],
+    [Number.NaN, 'NaN:NaN'],
+  ])('preserves the duration floor and end boundary for duration %s', (duration, expected) => {
+    expect(calculateShiftedEndTimeForEdit(600, duration)).toBe(expected);
+  });
+
   it('treats start 00:00 as day start and end 00:00 as day end', () => {
     expect(parseTimeToMinutes('00:00', 'start')).toBe(0);
     expect(parseTimeToMinutes('00:00', 'end')).toBe(24 * 60);

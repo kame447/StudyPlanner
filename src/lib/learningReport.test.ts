@@ -494,3 +494,24 @@ it.each([['23:30', '00:30', 60], ['11:00', '10:00', 1380]] as const)(
     });
   },
 );
+
+
+it.each([
+  ['25:00', '10:00', 0], ['09:00', '10:60', 0], ['12:30', '12:30', 0],
+  ['23:30', '00:30', 60], ['23:30', '00:00', 30], ['23:30', '24:00', 30],
+  ['00:00', '00:00', 1440], ['00:00', '24:00', 1440],
+] as const)('preserves planned report totals for %s–%s', (startTime, endTime, minutes) => {
+  const input = { plans: [makePlan({ startTime, endTime })], actuals: [], subjects: [], materials: [] };
+  expect(buildLearningReportOverview({ ...input, referenceDate: '2026-08-24' })).toMatchObject({
+    todayPlannedMinutes: minutes, weekPlannedMinutes: minutes, monthPlannedMinutes: minutes,
+  });
+  for (const scope of ['day', 'week', 'month'] as const) {
+    const report = buildLearningReportModel({
+      ...input, scope, anchorDate: '2026-08-24', materialFilter: ALL_MATERIALS_FILTER,
+    });
+    expect(report.plannedMinutes).toBe(minutes);
+    if (scope !== 'day') {
+      expect(report.buckets.reduce((total, bucket) => total + bucket.plannedMinutes, 0)).toBe(minutes);
+    }
+  }
+});
