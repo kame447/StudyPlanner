@@ -181,12 +181,18 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
     expect(candidates).toEqual([]);
     return;
   }
+  const lastBranch = [...snapshot.trace].reverse().find(e => e.stage === 'runtime_branch_selected')?.data.branch;
+  const reply = snapshot.state.messages.at(-1)?.content ?? '';
   if (scenario.kind === 'unresolved') {
     expect(candidates, 'an unresolved time must not become a guessed registration').toEqual([]);
+    // The outcome must be a real question, not a rejected interpretation or technical fallback.
+    expect(lastBranch).toBe('ask_question');
+    expect(reply).not.toContain('返信を作れませんでした');
     return;
   }
   if (scenario.kind === 'consult') {
     // Busy times constrain study placement only; no registration candidate appears.
+    expect(candidates.length, 'the requested study must be placed').toBeGreaterThan(0);
     expect(candidates.filter(c => c.source === 'fixed_event_registration')).toEqual([]);
     for (const c of candidates) for (const [s, e] of [['09:00', '10:30'], ['13:00', '16:00']]) {
       expect(minutes(c.endTime) <= minutes(s) || minutes(c.startTime) >= minutes(e), `${c.title} ${c.startTime}-${c.endTime} overlaps busy ${s}-${e}`).toBe(true);
@@ -195,7 +201,12 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
   }
   if (scenario.kind === 'compound') {
     const registrations = candidates.filter(c => c.source === 'fixed_event_registration');
-    if (candidates.length === 0) return; // A clarification is a valid outcome; nothing was guessed or saved.
+    if (candidates.length === 0) {
+      // A clarification is valid only as a real question; nothing was guessed or saved.
+      expect(lastBranch).toBe('ask_question');
+      expect(reply).not.toContain('返信を作れませんでした');
+      return;
+    }
     expect(registrations).toHaveLength(1);
     expect(registrations[0]).toMatchObject({ date: '2026-10-27', startTime: '13:00', endTime: '15:00' });
     for (const c of candidates.filter(c => c.source !== 'fixed_event_registration')) {
