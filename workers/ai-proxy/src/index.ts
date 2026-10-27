@@ -33,12 +33,9 @@ interface ChatCompletionRequest {
 }
 
 interface ImageAnalysisRequest {
-  mimeType?: string;
-  base64?: string;
+  mimeType: string;
+  base64: string;
 }
-
-type TimetableOcrRequest = ImageAnalysisRequest;
-type PlanningAttachmentRequest = ImageAnalysisRequest;
 
 interface FirebaseJwtPayload {
   localId?: string;
@@ -601,13 +598,14 @@ async function requireVerifiedFirebaseSession(
   }
 }
 
-function validateImageAnalysisPayload(
-  payload: ImageAnalysisRequest,
+function parseImageAnalysisPayload(
+  value: unknown,
   invalidPayloadMessage: string,
-): string | null {
-  if (!payload || typeof payload !== 'object') {
+): ImageAnalysisRequest | string {
+  if (!value || typeof value !== 'object') {
     return invalidPayloadMessage;
   }
+  const payload = value as Record<string, unknown>;
 
   if (
     typeof payload.mimeType !== 'string' ||
@@ -628,19 +626,7 @@ function validateImageAnalysisPayload(
     return 'Image data was not valid base64.';
   }
 
-  return null;
-}
-
-function validateTimetableOcrPayload(
-  payload: TimetableOcrRequest,
-): string | null {
-  return validateImageAnalysisPayload(payload, 'Invalid timetable OCR payload.');
-}
-
-function validatePlanningAttachmentPayload(
-  payload: PlanningAttachmentRequest,
-): string | null {
-  return validateImageAnalysisPayload(payload, 'Invalid planning attachment payload.');
+  return { mimeType: payload.mimeType, base64: payload.base64 };
 }
 
 function extractFirstJsonObject(text: string): string | null {
@@ -991,23 +977,23 @@ async function readImageRequest(
     });
   }
 
-  let payload: ImageAnalysisRequest;
+  let payload: unknown;
 
   try {
-    payload = JSON.parse(requestText) as ImageAnalysisRequest;
+    payload = JSON.parse(requestText);
   } catch {
     return jsonResponse(request, env, 400, {
       error: 'Invalid JSON payload.',
     });
   }
 
-  const payloadError = validateImageAnalysisPayload(payload, invalidPayloadMessage);
+  const parsed = parseImageAnalysisPayload(payload, invalidPayloadMessage);
 
-  if (payloadError) {
-    return jsonResponse(request, env, 400, { error: payloadError });
+  if (typeof parsed === 'string') {
+    return jsonResponse(request, env, 400, { error: parsed });
   }
 
-  return payload;
+  return parsed;
 }
 
 async function handleTimetableOcr(
@@ -1030,12 +1016,6 @@ async function handleTimetableOcr(
 
   if (payload instanceof Response) {
     return payload;
-  }
-
-  const payloadError = validateTimetableOcrPayload(payload);
-
-  if (payloadError) {
-    return jsonResponse(request, env, 400, { error: payloadError });
   }
 
   const model = normalizeGeminiModel(env.GEMINI_MODEL);
@@ -1102,12 +1082,6 @@ async function handlePlanningAttachment(
 
   if (payload instanceof Response) {
     return payload;
-  }
-
-  const payloadError = validatePlanningAttachmentPayload(payload);
-
-  if (payloadError) {
-    return jsonResponse(request, env, 400, { error: payloadError });
   }
 
   const model = normalizeGeminiModel(env.GEMINI_MODEL);
