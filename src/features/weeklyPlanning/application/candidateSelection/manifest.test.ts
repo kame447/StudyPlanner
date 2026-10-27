@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { basis, observation } from './fixtures.testUtils';
+import { serializeCandidateBasis } from './manifest';
 import { canonicalCandidateSerialization, candidateFreshnessFailure, createCandidateManifest, buildCandidateHierarchy, CANDIDATE_CHOICE_OPTION_LIMIT } from './index';
 
 describe('application candidate manifest integrity', () => {
   it('snapshots before hashing and freezes every nested reference', async () => {
     const input = basis();
+    const expectedSerialization = serializeCandidateBasis(input);
     const promise = createCandidateManifest(input);
     input.candidates[0].tuple.minutes = 800;
     input.binding.scope.taskId = 'replacement';
@@ -16,7 +18,9 @@ describe('application candidate manifest integrity', () => {
     expect(Object.isFrozen(manifest.candidates[0].tuple)).toBe(true);
     expect(Object.isFrozen(manifest.binding.question)).toBe(true);
     expect(() => { (manifest.candidates[0].tuple as { minutes: number }).minutes = 900; }).toThrow();
-    expect(manifest.candidateSetHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(manifest.canonicalSerialization).toBe(expectedSerialization);
+    const expectedDigest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(expectedSerialization));
+    expect(manifest.candidateSetHash).toBe(`sha256:${Array.from(new Uint8Array(expectedDigest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`);
   });
 
   it('canonicalizes keys, not candidate order, exact strings or array order', () => {
@@ -88,6 +92,20 @@ describe('application candidate manifest integrity', () => {
     for (const value of [cyclic, getter, hidden, new ArraySubclass(1, 2)]) expect(() => canonicalCandidateSerialization(value)).toThrow();
     const input = basis(); input.candidates[1].id = input.candidates[0].id;
     await expect(createCandidateManifest(input)).rejects.toThrow();
+  });
+  it.each<[string, (input: ReturnType<typeof basis>) => void, string]>([
+    ['empty owner', (input) => { input.binding.ownerId = ''; }, 'Invalid application candidate basis.'],
+    ['duplicate candidate ID', (input) => { input.candidates[1].id = input.candidates[0].id; }, 'Invalid application candidate basis.'],
+    ['undefined tuple field', (input) => { Object.defineProperty(input.candidates[0].tuple, 'minutes', { value: undefined }); }, 'Candidate basis must be lossless JSON data.'],
+    ['cyclic tuple', (input) => { Object.assign(input.candidates[0].tuple, { self: input.candidates[0].tuple }); }, 'Candidate basis must be lossless JSON data.'],
+    ['accessor tuple field', (input) => {
+      Object.defineProperty(input.candidates[0].tuple, 'minutes', { get: () => { throw new Error('must not execute'); } });
+    }, 'Candidate basis must contain enumerable data properties only.'],
+  ])('keeps public serialization and manifest admission rejecting %s', async (_name, invalidate, expectedError) => {
+    const input = basis();
+    invalidate(input);
+    expect(() => serializeCandidateBasis(input)).toThrow(expectedError);
+    await expect(createCandidateManifest(input)).rejects.toThrow(expectedError);
   });
   it('does not let hash/canonical-basis equality grant access or intent', async () => {
     const manifest = await createCandidateManifest(basis());
