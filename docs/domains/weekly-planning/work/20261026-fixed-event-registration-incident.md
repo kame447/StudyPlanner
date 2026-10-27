@@ -28,7 +28,7 @@
 
 provider receiptは新しい2ケース合計でgpt-6-lunaへの6回、Jevへの0回を記録した。元発話は意味解析2回と返信2回、対照入力は意味解析1回と返信1回である。モデル名の根拠はブラウザーのproviderヘッダーではなく、リモート開発プレビューが記録した実dispatch receiptである。
 
-生の再現証拠はartifacts/incident20261026内のlive-original.json、live-explicit-registration.json、live-receipts/*.jsonl、replay-original.json、replay-explicit-registration.jsonと各PNGに保存した。e2e-injected-results.json、e2e-live-results.json、e2e-results.jsonおよび各.logは段階別の結果である。録画fixtureはtests/e2e/fixtures/fixed-event-registration.live-20261026.json。通常のユーザーデータや認証情報を含まないテスト用セッションで取得しているが、依頼文は本人提供の原文なので、このブランチは外部にpushしていない。
+生の再現証拠はartifacts/incident20261026内のlive-original.json、live-explicit-registration.json、live-receipts/*.jsonl、replay-original.json、replay-explicit-registration.jsonと各PNGに保存した。e2e-injected-results.json、e2e-live-results.json、e2e-results.jsonおよび各.logは段階別の結果である。録画fixtureはtests/e2e/fixtures/fixed-event-registration.live-20261026.json。通常のユーザーデータや認証情報を含まないテスト用セッションで取得している。依頼文は本人提供の原文のため、artifactsは非公開のままとし、リポジトリへは下記の固有名置換後の記録だけを載せる。
 
 隔離処理の3件は成功。記録再生の意味解析テストは1件成功・1件失敗。修正した判定条件でのブラウザー再生は1件成功・1件失敗。既知の不具合があるため、テストを全成功と報告したり、失敗検査をskipしたりしない。
 
@@ -39,3 +39,19 @@ provider receiptは新しい2ケース合計でgpt-6-lunaへの6回、Jevへの0
 過去に確認した解析ログ欠落も残る。weeklyPlanningIsolatedTurn.tsはサーバー内のdebug traceを返さずfinallyで削除し、ブラウザーは自分のメモリーにあるtraceだけで管理者ログを作る。今回の録画用観測はテストページ内に限定し、本番のログ機構を変更していない。
 
 検証の補足: アプリのTypeScript型検査（tsc --noEmit -p tsconfig.json）と新規E2Eファイルの構文検査は成功した。全リポジトリの網羅テストや本番ビルドは実行しておらず、本番実装を変更しない再現調査として記録する。
+
+公開リポジトリへ載せるにあたり、発話中の二つの固有名はfixture・テスト・本記録で一貫して「バンドA」「バンドB」へ置き換えた。時刻、構造、修復による変質は録画のまま保持している。
+
+## 修正（Issue #866）
+
+原因は三つに分けて扱った。
+
+1. 修復受入境界（仕様）: 表現のみの誤りに`soft-fixed-interval-use-preferred-window`が混ざると、保全比較が丸ごと無効になっていた。このエラーは対象制約の`constraintLevel`だけを変えてよいレベル修正として扱い、kind・時刻・precision・他の事実が変われば修復を拒否する。修復指示は、時刻を述べた予定は未確定でもfixed_intervalのままhardにし、未確定さはprecisionやuncertaintyで表すよう求める。ほかの修復エラーでも、初回で妥当だったconversationActsの削除や置換は拒否する。録画された修復はカンファレンスを可動化し登録意図を落としているため拒否され、可動作業への分割や保存は起きない。修復回数、provider呼び出し、validatorのエラーコード、schedulerは変えていない。
+2. 登録経路（機能）: 当該ターンの検証済み`request_event_registration`があり、non_studyタスクのhard fixed_intervalが一つの日付と時刻区間に解決済みなら、タスクごとに一つの登録候補を作る。候補は容量配分・分割・配置を通らず、既存のプレビュー、仮予定化、鮮度確認、明示承認、冪等保存を使い、種別`other`の予定として保存する。候補同士や既存予定との重複区間はそのまま残してrendererへ渡し、明示させる。登録依頼は学習作業の配置を認可しない。未認可の混在発話では登録候補だけを出し、学習作業は未配置と伝える。認可済みの混在発話と容量不足の部分学習経路では、学習候補に固定候補を追加する。actがない固定予定は、従来どおり占有時間としてだけ使う。
+3. 診断（別原因）: Durable Object実行のtraceを、上限付きの複製として結果と一緒に返し、確定・破棄・失敗の三経路でturn diagnosticへ合流させる。実行後のプロセス内trace破棄は維持する。結果がDurable出力上限を超える場合は追加traceだけを明示的なtruncation表示へ置き換えるか省き、ターン本体は失敗させない。
+
+公開順序はPages（main merge時に自動）→Worker（手動）である。新クライアントは旧Workerの応答と手動登録案内をそのまま扱える。開いたままの旧タブが新Workerから登録候補を受け取ると、checkpoint検証で拒否され「週間計画の会話状態を更新できませんでした。」となる。候補も予定も保存されず、入力は続けられる。ただし、そのタブで登録候補を使うには再読み込みが必要である。
+
+ブラウザーE2E（`tests/e2e/fixed-event-registration.incident.spec.mjs`）は三つの段階を扱う。注入段階では、正しい5件の解釈から5件の候補が出ること、17:00–17:30の重複がrendererに渡ること、承認前に保存されないこと、承認後に5件が種別`other`で一度だけ保存されること、再読み込み後も同一であることを、幅390pxと1280pxで確認する。録画再生では、元発話の修復を拒否し候補も保存も出さないこと、補足付き発話では重複を名指しする質問になることを確認する。実モデル段階は、匿名化した発話と、時間未確定、学習相談、複合発話の合成例で行う。
+
+以前のE2Eは、カンファレンスを240分の可動作業とする制御読みで5件の固定配置を要求していた。この要求は、AIが可動と解釈した内容を決定的コードが上書きすることになるため取り下げた。この制御読みは、診断テスト3件目に現行スケジューラー挙動の記録として残している。同様に、録画再生で受理済み5件を要求していた条件は、録画された修復内容が受理不能である以上満たせない。そのため、修復の拒否を期待する条件へ置き換えた。いずれも、正しい解釈に対する5件登録の要求は弱めていない。
