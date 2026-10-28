@@ -1,10 +1,11 @@
 import { DEFAULT_STUDY_PROGRESS_PREFERENCES, type StudyProgressPreferences } from '../lib/studyProgressPolicy';
-import { useState, type ReactNode } from 'react';
-import { CalendarDays, ChevronDown, ChevronRight, Palette, RotateCcw, Sparkles, SunMoon, Wind } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { CalendarDays, ChevronDown, ChevronRight, Palette, RotateCcw, Sparkles, SunMoon, Type, Wind } from 'lucide-react';
 import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
 import { useMotionPreference } from '../hooks/useMotionPreference';
 import { MOTION_PREFERENCE_OPTIONS } from '../lib/motionPreference';
 import type { Appearance } from '../lib/appearance';
+import { FONT_PRESET_OPTIONS, FONT_PRESET_SAMPLE_TEXT, loadAllWebFontStylesheets, type FontPreset } from '../lib/fontPreset';
 import { THEME_PALETTE_OPTIONS, type ThemeMode, type ThemePalette } from '../lib/themePalette';
 import { DEFAULT_HOME_SCENE_PREFERENCES, HOME_SCENE_STYLE_OPTIONS, type HomeScenePreferences, type HomeSceneStyle } from '../lib/homeScenePreferences';
 import { HomeScene } from './home/HomeScene';
@@ -31,6 +32,9 @@ export interface AppSettingsGeneralProps {
   themeError?: string | null;
   onChangeTheme: (mode: ThemeMode) => void;
   onChangeThemePalette: (palette: ThemePalette) => void;
+  fontPreset?: FontPreset;
+  onChangeFontPreset?: (preset: FontPreset) => void;
+  fontError?: string | null;
 }
 
 function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
@@ -48,8 +52,20 @@ export function AppSettingsGeneral({
   showDayTimetable = true, onChangeDayTimetable, dayTimetableError,
   showMonthTimetable = true, onChangeMonthTimetable, monthTimetableError,
   themeMode, themePalette, themeError, onChangeTheme, onChangeThemePalette,
+  fontPreset = 'system', onChangeFontPreset, fontError,
 }: AppSettingsGeneralProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [fontOpen, setFontOpen] = useState(false);
+  const [fontPreviewFailed, setFontPreviewFailed] = useState(false);
+  const selectedFont = FONT_PRESET_OPTIONS.find(option => option.id === fontPreset) ?? FONT_PRESET_OPTIONS[0];
+  useEffect(() => {
+    if (!fontOpen) return;
+    let active = true;
+    setFontPreviewFailed(false);
+    // Comparison samples are the explicit request for every candidate face.
+    loadAllWebFontStylesheets().catch(() => { if (active) setFontPreviewFailed(true); });
+    return () => { active = false; };
+  }, [fontOpen]);
   const { weekStartsOn, setWeekStartsOn, resetProfile, saving: preferenceSaving, error: preferenceError } = useWeeklyPlanningPersonalization();
   const selectedPalette = THEME_PALETTE_OPTIONS.find(option => option.id === themePalette) ?? THEME_PALETTE_OPTIONS[0];
   const motion = useMotionPreference();
@@ -99,6 +115,28 @@ export function AppSettingsGeneral({
         </div> : null}
       </div>
       {themeError ? <p className="settings-inline-error settings-group-note" role="alert">{themeError}</p> : null}
+      {onChangeFontPreset ? <div className="settings-disclosure-row">
+        <button className="settings-row settings-row-button" type="button" aria-expanded={fontOpen}
+          aria-controls="settings-font-options" onClick={() => setFontOpen(value => !value)}>
+          <span className="settings-field-label"><Type aria-hidden="true" size={21} />フォント</span>
+          <span className="settings-row-value">{selectedFont.label}
+            {fontOpen ? <ChevronDown aria-hidden="true" size={20} /> : <ChevronRight aria-hidden="true" size={20} />}
+          </span>
+        </button>
+        {fontOpen ? <div className="settings-row-details motion-reveal" id="settings-font-options">
+          <div className="font-preset-grid" role="group" aria-label="フォント">
+            {FONT_PRESET_OPTIONS.map(option => <button key={option.id} type="button"
+              className={fontPreset === option.id ? 'theme-palette-button font-preset-button active' : 'theme-palette-button font-preset-button'}
+              aria-pressed={fontPreset === option.id} onClick={() => onChangeFontPreset(option.id)}>
+              <span className="theme-palette-copy"><strong>{option.label}</strong><span>{option.description}</span></span>
+              <span className="font-preset-sample" data-font-sample={option.id} aria-hidden="true">{FONT_PRESET_SAMPLE_TEXT}</span>
+            </button>)}
+          </div>
+          {appearance === 'pixel' ? <p className="font-preset-note">ドットテーマ中はドット書体で表示されます。</p> : null}
+          {fontPreviewFailed ? <p className="font-preset-note" role="status">一部のフォントを読み込めませんでした。端末の書体で表示しています。</p> : null}
+        </div> : null}
+      </div> : null}
+      {fontError ? <p className="settings-inline-error settings-group-note" role="alert">{fontError}</p> : null}
       <div className="settings-row-block">
         <div className="settings-row">
           <span className="settings-field-label" id="settings-motion-label"><Wind aria-hidden="true" size={21} />アニメーション</span>

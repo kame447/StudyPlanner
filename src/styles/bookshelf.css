@@ -350,7 +350,7 @@
   display: grid;
   gap: 10px;
   color: var(--bookshelf-ink);
-  font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  font-family: var(--app-font-family, "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif);
 }
 
 .bookshelf-view *,
