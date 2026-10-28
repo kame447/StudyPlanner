@@ -22,6 +22,7 @@ const planWrites = page => page.evaluate(() => window.__plannerRecoveryStorageWr
 
 async function boot(page, mode) {
   const calls = [];
+  let recoveryActionId = null;
   const reading = structuredClone(capture.semanticDocument);
   const reply = capture.replies.find(item => item.name === mode);
   reading.tasks[0].effortEstimates[0].precision = reply?.precision ?? 'exact';
@@ -62,6 +63,7 @@ async function boot(page, mode) {
         expect(prompt.applicationDecision).toMatchObject({ actionKind: 'status', previewCount: 0,
           recovery: { planningDetailsNotApplied: true, acceptedStateUnchanged: true } });
         expect(prompt.currentTurnGrounding?.acceptedFacts ?? []).toEqual([]);
+        recoveryActionId = prompt.actionId;
         content = JSON.stringify({ actionId: prompt.actionId, actionKind: 'status', questionCode: null,
           groundingAcknowledgement: null, text: RECOVERY_TEXT });
         await route.fulfill({ json: { content }, headers: { 'X-StudyPlanner-AI-Provider': 'openai' } });
@@ -77,6 +79,9 @@ async function boot(page, mode) {
       });
     } else if (schema === RECOVERY_SCHEMA && mode === 'invalid typed duration') {
       const prompt = JSON.parse(request.messages.at(-1).content);
+      // The verifier must judge the recovery reply generated for this action, not an arbitrary text.
+      expect(prompt).toMatchObject({ actionId: recoveryActionId, question: null, text: RECOVERY_TEXT,
+        recovery: { planningDetailsNotApplied: true, acceptedStateUnchanged: true } });
       content = JSON.stringify({ actionId: prompt.actionId, questionMatches: 'yes', planningDetailsNotApplied: 'yes',
         acceptedStateUnchanged: 'yes', retainedPreviewUnchanged: 'yes', noUnsupportedClaims: 'yes' });
     } else throw new Error(`Unexpected provider schema: ${schema}`);
@@ -137,7 +142,12 @@ for (const width of [390, 1280]) test.describe(`Issue #873 session duration UI h
       expect((await planWrites(page)).filter(write => write.key === 'studyplanner.scheduleEvents.v1')).toHaveLength(1);
       await page.evaluate(() => sessionStorage.setItem('studyplanner.e2e.preserve-next-reload', 'true'));
       await page.reload();
-      await expect.poll(async () => await savedEvents(page)).toEqual(saved);
+      // The preserved storage bytes exist before the app restores; wait for the restored planner to render the save.
+      await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: '予定', exact: true }).click();
+      await page.getByRole('tab', { name: '月', exact: true }).click();
+      // Month cells summarize planned time: the restored 60-minute save is the only non-zero target.
+      await expect(page.getByRole('grid', { name: '月間カレンダー' })).toContainText('27目標 1h', { timeout: 45_000 });
+      expect(await savedEvents(page)).toEqual(saved);
       expect(await planWrites(page)).toEqual([]);
       expect(errors).toEqual([]);
     });
@@ -146,7 +156,9 @@ for (const width of [390, 1280]) test.describe(`Issue #873 session duration UI h
   test('invalid typed duration is rejected before preview, approval or save', async ({ page }) => {
     const { state, calls } = await boot(page, 'invalid typed duration');
     expect(calls.filter(schema => schema === SEMANTIC_SCHEMA)).toHaveLength(2);
-    // Any renderer call here is the recovery status checked in the provider stub, never a preview reply.
+    // The only renderer call is the recovery status checked in the provider stub, verified exactly once.
+    expect(calls.filter(schema => schema === RENDERER_SCHEMA)).toHaveLength(1);
+    expect(calls.filter(schema => schema === RECOVERY_SCHEMA)).toHaveLength(1);
     expect(state.messages.at(-1)).toMatchObject({ role: 'assistant', content: RECOVERY_TEXT });
     expect(state.previewCandidates ?? []).toEqual([]);
     expect(state.draftBlocks).toEqual([]);
