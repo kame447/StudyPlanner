@@ -139,28 +139,13 @@ function hasExactTitleMatch(actual: ActualPlanMatchInput, plan: Plan): boolean {
   );
 }
 
-function hasMaterialTitleMatch(commonTitleTokens: string[]): boolean {
-  return commonTitleTokens.some((token) => token.length >= 3);
-}
-
-function getDurationDiffMinutes(actual: ActualPlanMatchInput, plan: Plan): number {
-  return Math.abs(
-    getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime) -
-      getEntryDurationMinutes(plan.startTime, plan.endTime),
-  );
-}
-
-function isStudyCandidatePlan(plan: Plan): boolean {
-  return plan.type === 'study' || plan.type === 'mock-exam' || plan.type === 'cram-school';
-}
-
 function scoreLinkCandidate(
   actual: ActualPlanMatchInput,
   plan: Plan,
   actuals: Actual[],
 ): ActualPlanLinkCandidate | null {
   const reasons: string[] = [];
-  let score = isStudyCandidatePlan(plan) ? 8 : 0;
+  let score = (plan.type === 'study' || plan.type === 'mock-exam' || plan.type === 'cram-school') ? 8 : 0;
   const isRecorded = actuals.some(
     (item) =>
       item.id !== actual.id &&
@@ -203,7 +188,7 @@ function scoreLinkCandidate(
 
   const commonTitleTokens = getCommonTitleTokens(actual, plan);
   const hasTitleExactMatch = hasExactTitleMatch(actual, plan);
-  const hasMaterialMatch = hasMaterialTitleMatch(commonTitleTokens);
+  const hasMaterialMatch = commonTitleTokens.some((token) => token.length >= 3);
 
   if (hasTitleExactMatch) {
     score += 35;
@@ -216,7 +201,10 @@ function scoreLinkCandidate(
     reasons.push('タイトルの主要語が近いです');
   }
 
-  const durationDiff = getDurationDiffMinutes(actual, plan);
+  const durationDiff = Math.abs(
+    getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime) -
+      getEntryDurationMinutes(plan.startTime, plan.endTime),
+  );
   if (durationDiff <= 15) {
     score += 15;
     reasons.push('所要時間が近いです');

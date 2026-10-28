@@ -184,3 +184,9 @@ describe('recurring plan mutation ownership', () => {
     expect(mutation.planDeletes.map((item) => item.id).sort()).toEqual(['plan-1', 'plan-2']);
   });
 });
+
+it.each(['single', 'future', 'all'] as const)('rejects a mismatched draft owner before %s editing', scope => {
+  const source = plan();
+  expect(() => buildRecurringPlanEditMutation([source], [], source, '2026-09-03',
+    draft({ userId: 'foreign' }), scope)).toThrow('Recurring plan edit owner does not match the source plan.');
+});

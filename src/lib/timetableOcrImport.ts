@@ -129,13 +129,6 @@ function normalizePeriodNumber(value: unknown): number | null {
   return rounded >= 1 && rounded <= 12 ? rounded : null;
 }
 
-function compactMemo(...parts: string[]): string {
-  return parts
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join(' / ');
-}
-
 export function inferSubjectFromTitle(title: string): string {
   const normalized = title.trim();
   const match = normalized.match(/^(数学|英語|化学|物理|生物|地学|地理|歴史|日本史|世界史|現代文|古文|漢文|国語|情報)/);
@@ -184,7 +177,10 @@ export function normalizeTimetableOcrResult(value: unknown): TimetableOcrResult 
 
       const periodNumber = normalizePeriodNumber(item.periodNumber);
       const title = normalizeText(item.title);
-      const memo = compactMemo(normalizeText(item.memo), normalizeText(item.note));
+      const memo = [normalizeText(item.memo), normalizeText(item.note)]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(' / ');
       const period = periodNumber ? periodByNumber.get(periodNumber) : undefined;
 
       return {

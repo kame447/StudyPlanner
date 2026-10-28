@@ -708,7 +708,6 @@ export function createFirebaseScheduleEventAuthority(
 
     async upsertPlan(plan) {
       try {
-        assertOwnedRecords(plan.userId, [plan], '予定保存');
         const event = scheduleEventFromPlan(plan);
         await setDoc(
           doc(firestoreDb, SCHEDULE_EVENTS_COLLECTION, event.id),
@@ -757,7 +756,6 @@ export function createFirebaseScheduleEventAuthority(
 
     async upsertMonthEvent(monthEvent) {
       try {
-        assertOwnedRecords(monthEvent.userId, [monthEvent], '主要予定保存');
         const event = scheduleEventFromMonthEvent(monthEvent);
         await setDoc(
           doc(firestoreDb, SCHEDULE_EVENTS_COLLECTION, event.id),

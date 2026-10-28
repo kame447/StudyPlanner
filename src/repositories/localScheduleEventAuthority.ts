@@ -339,7 +339,6 @@ export function createLocalScheduleEventAuthority(
     },
 
     async upsertPlan(plan) {
-      assertOwnedRecords(plan.userId, [plan], '予定保存');
       const nextEvents = replaceById(readScheduleEvents(storage), scheduleEventFromPlan(plan));
       writeScheduleEvents(storage, nextEvents);
       return plan;
@@ -379,7 +378,6 @@ export function createLocalScheduleEventAuthority(
     },
 
     async upsertMonthEvent(monthEvent) {
-      assertOwnedRecords(monthEvent.userId, [monthEvent], '主要予定保存');
       const nextEvents = replaceById(
         readScheduleEvents(storage),
         scheduleEventFromMonthEvent(monthEvent),

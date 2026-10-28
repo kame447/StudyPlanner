@@ -515,3 +515,12 @@ it.each([
     }
   }
 });
+
+it('projects a subject-only day session without changing its duration or planned value', () => {
+  const report = buildLearningReportModel({ scope: 'day', anchorDate: '2026-08-24',
+    materialFilter: ALL_MATERIALS_FILTER, plans: [],
+    actuals: [makeActual({ id: 'plain-session', planId: null, occurrenceDate: '2026-08-24',
+      materialId: undefined, materialName: '', subject: '数学', actualStartTime: '10:00', actualEndTime: '10:30' })],
+    subjects: [], materials: [] });
+  expect(report.buckets).toEqual([{ key: 'plain-session', label: '10:00', sublabel: '数学', actualMinutes: 30, plannedMinutes: 0 }]);
+});

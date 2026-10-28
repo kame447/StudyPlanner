@@ -27,10 +27,6 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
 }
 
-function snapMinutes(value: number, step: number): number {
-  return Math.round(value / step) * step;
-}
-
 function formatTime(totalMinutes: number): string {
   const normalized = clamp(Math.round(totalMinutes), 0, MINUTES_PER_DAY);
   if (normalized === MINUTES_PER_DAY) {
@@ -62,7 +58,7 @@ export function resolveWeekPlanDragTarget({
   );
   const usableHeight = Math.max(timelineHeight, 1);
   const rawMinuteDelta = (deltaY / usableHeight) * MINUTES_PER_DAY;
-  const snappedStart = snapMinutes(originalStartMinutes + rawMinuteDelta, step);
+  const snappedStart = Math.round((originalStartMinutes + rawMinuteDelta) / step) * step;
   const targetStartMinutes = clamp(snappedStart, 0, MINUTES_PER_DAY - originalDuration);
   const targetEndMinutes = targetStartMinutes + originalDuration;
 

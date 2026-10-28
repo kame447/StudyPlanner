@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getAiConfig, resetAiConfig } from './aiConfig';
+import { getAiConfig, resetAiConfig, saveAiConfig } from './aiConfig';
 
 const storage = new Map<string, string>();
 
@@ -8,6 +8,7 @@ beforeEach(() => {
   storage.clear();
   vi.stubGlobal('window', {
     sessionStorage: {
+      setItem: (key: string, value: string) => storage.set(key, value),
       getItem: (key: string) => storage.get(key) ?? null,
       removeItem: (key: string) => storage.delete(key),
     },
@@ -60,5 +61,29 @@ describe('AI model configuration', () => {
   it('keeps rules-only configuration free of a provider model', () => {
     vi.stubEnv('VITE_AI_PROVIDER', 'rules');
     expect(getAiConfig()).toEqual({ provider: 'rules', baseUrl: '', model: '', apiKey: '' });
+  });
+});
+
+
+describe('AI configuration saving', () => {
+  it('stores and returns the same normalized configuration', () => {
+    const saved = saveAiConfig({
+      provider: 'openai', baseUrl: 'https://api.example/v1', model: 'test-model', apiKey: 'test-key',
+    });
+    expect(JSON.parse(storage.get('studyplanner.ai.runtime.v1')!)).toEqual(saved);
+    expect(getAiConfig()).toEqual(saved);
+  });
+
+  it('returns the configuration without browser storage during SSR', () => {
+    vi.stubGlobal('window', undefined);
+    const config = { provider: 'rules', baseUrl: '', model: '', apiKey: '' } as const;
+    expect(saveAiConfig(config)).toEqual(config);
+    expect(storage.size).toBe(0);
+  });
+
+  it('preserves storage write failures', () => {
+    const failure = new Error('storage unavailable');
+    vi.stubGlobal('window', { sessionStorage: { setItem: () => { throw failure; } } });
+    expect(() => saveAiConfig({ provider: 'rules', baseUrl: '', model: '', apiKey: '' })).toThrow(failure);
   });
 });
