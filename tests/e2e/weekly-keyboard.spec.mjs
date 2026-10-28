@@ -47,7 +47,7 @@ for (const width of [390, 1280]) {
       await expect(input).toHaveValue('来週の予定');
     });
 
-    test('Shift+Enter inserts a newline and plain Enter submits that multiline message', async ({ page }) => {
+    test('Shift+Enter inserts a newline; Enter sends on desktop or edits on touch devices', async ({ page }) => {
       await page.goto(REAL_WEEKLY_URL);
       const input = await composer(page);
       await input.fill('来週の予定');
@@ -57,7 +57,13 @@ for (const width of [390, 1280]) {
       expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
       const multiline = '来週の予定\n英語も復習する';
       await expect(input).toHaveValue(multiline);
+      const touchKeyboard = await input.evaluate(() => matchMedia('(pointer: coarse)').matches);
       await input.press('Enter');
+      if (touchKeyboard) {
+        await expect(input).toHaveValue(`${multiline}\n`);
+        expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
+        await page.getByRole('button', { name: '送信', exact: true }).click();
+      }
       await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
       const calls = await events(page, 'real-runtime-execute');
       expect(calls).toHaveLength(1);
@@ -66,12 +72,17 @@ for (const width of [390, 1280]) {
       await expect(input).toBeEnabled();
     });
 
-    test('Ctrl+Enter and Cmd+Enter remain supported as alternative send shortcuts', async ({ page }) => {
+    test('Ctrl+Enter and Cmd+Enter send on desktop but preserve mobile editing', async ({ page }) => {
       for (const shortcut of ['Control+Enter', 'Meta+Enter']) {
         await page.goto(REAL_WEEKLY_URL);
         const input = await composer(page);
         await input.fill('送信ショートカットの確認');
+        const touchKeyboard = await input.evaluate(() => matchMedia('(pointer: coarse)').matches);
         await input.press(shortcut);
+        if (touchKeyboard) {
+          expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
+          await page.getByRole('button', { name: '送信', exact: true }).click();
+        }
         await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
         const calls = await events(page, 'real-runtime-execute');
         expect(calls).toHaveLength(1);
