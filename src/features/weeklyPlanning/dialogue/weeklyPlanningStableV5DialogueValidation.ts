@@ -271,8 +271,7 @@ function claimsUnexecutedAction(
 ): boolean {
   let narrative = safetyNarrative(text, input);
   const hasPreview = input.actionKind === 'preview_ready' && input.previewCount > 0
-    && Boolean(input.previewPromotionControlLabel)
-    && text.includes(input.previewPromotionControlLabel!);
+    && Boolean(input.previewPromotionControlLabel);
   if (hasPreview) {
     // This bounded relation references the schedule actually used for placement.
     // It does not license a saved-candidate copula, saved-plan creation, or any
@@ -763,7 +762,11 @@ function validateRenderedText(
   return null;
 }
 
-export function parseWeeklyPlanningStableV5DialogueRendererResponse(
+/** Historical text-interpretation oracle, retained for non-production regression study.
+ * It is NOT an acceptance/safety gate: Japanese prose cannot be exhaustively
+ * verified with a bounded set of textual expressions.
+ */
+export function evaluateWeeklyPlanningLegacyDialogueTextGuard(
   rawResponse: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): WeeklyPlanningStableV5DialogueRenderResult {
@@ -808,5 +811,57 @@ export function parseWeeklyPlanningStableV5DialogueRendererResponse(
     return { status: 'fallback', reason: validationError, rawResponse };
   }
 
+  return { status: 'rendered', text, rawResponse };
+}
+
+/**
+ * Live renderer boundary: validates the transport and application-owned action,
+ * not the semantic truth of free-form Japanese prose. The renderer cannot create
+ * facts, schedules, approvals or saves. Those are guarded by typed application
+ * decisions; a text guard would be both incomplete and prone to false rejection.
+ *
+ * The legacy language oracle above is intentionally not invoked here.
+ */
+export function parseWeeklyPlanningStableV5DialogueRendererResponse(
+  rawResponse: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): WeeklyPlanningStableV5DialogueRenderResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawResponse);
+  } catch {
+    return { status: 'fallback', reason: 'invalid_json', rawResponse };
+  }
+  if (!isRecord(parsed)
+    || typeof parsed.actionId !== 'string'
+    || typeof parsed.actionKind !== 'string'
+    || (parsed.questionCode !== null && typeof parsed.questionCode !== 'string')
+    || typeof parsed.text !== 'string') {
+    return { status: 'fallback', reason: 'invalid_shape', rawResponse };
+  }
+  if (parsed.actionId !== input.actionId) {
+    return { status: 'fallback', reason: 'action_mismatch', rawResponse };
+  }
+  if (parsed.actionKind !== input.actionKind || parsed.questionCode !== input.questionCode) {
+    return { status: 'fallback', reason: 'action_contract_mismatch', rawResponse };
+  }
+  const text = parsed.text.replace(/\r\n/g, '\n').trim();
+  // Only finite, syntactic safety checks. All measurements, entities, dates,
+  // quantity precision, target identity and planning permissions belong to the
+  // authoritative typed graph or to offline model-quality evaluation.
+  if (!text.length || text.length > MAX_RENDERED_TEXT_LENGTH
+    || containsExternalDestination(text) || containsSensitiveValue(text)
+    || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/u.test(text)) {
+    return { status: 'fallback', reason: 'unsafe_text', rawResponse };
+  }
+  // A small high-impact guard remains: falsely announcing that approval or
+  // persistence already happened. It is a user-facing safety backstop, never
+  // authorization or a complete semantic validator.
+  if (repeatsMostRecentAssistantQuestion(text, input)) {
+    return { status: 'fallback', reason: 'repeated_question_text', rawResponse };
+  }
+  if (claimsUnexecutedAction(text, input)) {
+    return { status: 'fallback', reason: 'ungrounded_text', rawResponse };
+  }
   return { status: 'rendered', text, rawResponse };
 }

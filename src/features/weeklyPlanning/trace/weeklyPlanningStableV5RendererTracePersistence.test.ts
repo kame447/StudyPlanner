@@ -5,6 +5,8 @@ import {
   createWeeklyPlanningStableV5DialogueRendererCore,
 } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
 import { createWeeklyPlanningFallbackDialogueTrace } from '../dialogue/weeklyPlanningStableV5TurnDialogueTrace';
+import { parseWeeklyPlanningStableV5DialogueRendererResponse } from '../dialogue/weeklyPlanningStableV5DialogueValidation';
+import issue876Capture from '../dialogue/fixtures/issue876-remaining-effort-renderer.json';
 import { recordFailedWeeklyPlanningApplicationTurn } from '../application/weeklyPlanningTurnTraceSideEffects';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import { WeeklyPlanningSemanticNormalizerRunV5 } from '../semantic/weeklyPlanningSemanticNormalizerRunV5';
@@ -179,6 +181,60 @@ describe('Stable V5 renderer trace persistence', () => {
       responseSource: 'ai',
       finalMessage: 'どちらの量ですか？',
     });
+  });
+
+  it.each([false, true])('persists the now-valid Issue #876 real-model response through retry and Worker (large=%s)', async large => {
+    const renderInput = structuredClone(issue876Capture.input) as unknown as WeeklyPlanningStableV5DialogueRenderInput;
+    const parsed = parseWeeklyPlanningStableV5DialogueRendererResponse(issue876Capture.rawResponse, renderInput);
+    expect(parsed.status).toBe('rendered');
+    if (parsed.status !== 'rendered') throw new Error('captured remaining-effort acknowledgement was rejected');
+
+    const trace = boundWeeklyPlanningDialogueRendererTraceForTransport({
+      ...rendererTrace('rendered'), actionId: renderInput.actionId,
+      actionKind: renderInput.actionKind, questionCode: renderInput.questionCode,
+      request: { purpose: 'weekly_planning_renderer', requiredLabels: renderInput.requiredLabels,
+        fallbackText: renderInput.fallbackText, previewCount: renderInput.previewCount,
+        promptContext: { futureRemainingEffortSentinel: { retained: true },
+          ...(large ? { hugeValue: 'bounded-renderer-data'.repeat(30_000) } : {}) } },
+      response: { status: 'rendered', reason: null,
+        rawResponse: issue876Capture.rawResponse, renderedText: parsed.text },
+      decision: { branch: 'ai_rendered', responseSource: 'ai', finalMessage: parsed.text },
+    });
+    const harness = createRepositoryHarness();
+    harness.failNext();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const first = traceInput({ requestId: 'remaining-effort-876', userText: renderInput.currentUserMessage,
+      assistantMessage: parsed.text, dialogueRendererTrace: trace, previewCount: 1 });
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(harness.writes).toHaveLength(0);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: first.userId,
+      conversationId: first.conversationId })[0]?.input.dialogueRendererTrace).toEqual(trace);
+
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({ requestId: 'remaining-effort-876-retry' }));
+    expect(harness.writes).toHaveLength(2);
+    const replayed = harness.writes[0];
+    const diagnostic = diagnosticEntry(replayed.entries);
+    expect(diagnostic.assistantOutput.text).toBe(parsed.text);
+    expect(diagnostic.diagnostics.dialogueRenderer?.response.rawResponse).toBe(issue876Capture.rawResponse);
+    expect(JSON.stringify(diagnostic)).toContain('futureRemainingEffortSentinel');
+    if (large) expect(JSON.stringify(diagnostic)).toContain('traceTruncated');
+    expect(measureWeeklyPlanningTraceJsonBytes(diagnostic)).toBeLessThanOrEqual(
+      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: first.userId, conversationId: first.conversationId })).toEqual([]);
+
+    const prepared = prepareWeeklyPlanningTraceServerWrite({
+      session: replayed.session as unknown as Record<string, unknown>,
+      entries: replayed.entries as unknown as Record<string, unknown>[],
+    }, { token: `wpt_${'a'.repeat(43)}`, epoch: '100' },
+    { sessionId: 'weekly-trace-123e4567-e89b-52d3-a456-426614174000',
+      logicalConversationId: 'weekly-conversation-123e4567-e89b-52d3-a456-426614174000' },
+    '2026-10-28T00:00:00.000Z');
+    expect(prepared.entries).toHaveLength(1);
+    expect(JSON.stringify(prepared.entries[0])).toContain('futureRemainingEffortSentinel');
+    expect(JSON.stringify(prepared.entries[0])).toContain('約45分くらいなんですね');
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(
+      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
   });
 
   it('keeps session and turn fallback diagnostics consistent for deterministic fallback', async () => {

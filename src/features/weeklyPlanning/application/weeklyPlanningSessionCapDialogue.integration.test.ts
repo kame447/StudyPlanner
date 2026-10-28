@@ -84,22 +84,37 @@ describe('session cap actual runtime to current renderer disclosure', () => {
     expect(rendered.draftCandidates).toEqual(before.draftCandidates); expect(rendered.state).toEqual(before.state); expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);
     expect(completion).toHaveBeenCalledTimes(1);
   });
-  it.each(['satisfied', 'not_satisfied', 'not_evaluated'] as const)('withholds a newly estimated preview when its required effort ACK fails: %s', async status => {
+  it('never treats a free-form reply about a different amount as an operation or authorization', async () => {
+    const run = await execute();
+    const before = structuredClone(run.result);
+    const committedBefore = structuredClone(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION)?.graph);
+    completion.mockImplementation(async request => response(request,
+      `数学の教材は90分ですね。候補の内容を確認して「${CONTROL}」を選べます。`));
+    const rendered = await renderWeeklyPlanningStableV5AssistantMessage(run);
+    expect(rendered.responseSource).toBe('ai');
+    expect(rendered.message).toContain('90分');
+    expect(rendered.draftCandidates).toEqual(before.draftCandidates);
+    expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);
+    expect(rendered.state).toEqual(before.state);
+    expect(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION)?.graph).toEqual(committedBefore);
+    expect(run.input.plans).toEqual([]);
+  });
+
+  it.each(['satisfied', 'not_satisfied', 'not_evaluated'] as const)('retains the typed unapproved preview when the dialogue renderer fails: %s', async status => {
     const run = await execute(status === 'satisfied' ? 60 : 20);
     if (status === 'not_evaluated') run.result.previewConstraintSatisfaction![0].status = status;
     const before = structuredClone(run.result);
     const committedBefore = structuredClone(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION)?.graph);
     completion.mockRejectedValue(new Error('injected renderer failure'));
     const rendered = await renderWeeklyPlanningStableV5AssistantMessage(run);
-    expect(rendered.responseSource).toBe('system');
-    expect(rendered.failure?.traceCode).toBe('stable_v5_required_effort_ack_failed');
-    expect(rendered.preserveExistingPreview).toBe(true);
-    expect(rendered.message).toContain('今回の内容は計画へ反映していません');
+    expect(rendered.responseSource).toBe('deterministic_fallback');
+    expect(rendered.failure).toBeUndefined();
+    expect(rendered.message).toContain('まだ保存していません');
     expect(rendered.message).not.toBe(before.message);
     expect(rendered.questionPresentationContent).toBeUndefined();
     expect(rendered.dialogueRendererTrace?.response).toMatchObject({ status: 'fallback', reason: 'provider_error' });
-    expect(rendered.draftCandidates).toEqual([]); expect(rendered.state).toEqual(before.state);
-    expect(rendered.stableV5Graph).toEqual(committedBefore);
+    expect(rendered.draftCandidates).toEqual(before.draftCandidates); expect(rendered.state).toEqual(before.state);
+    expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);
     expect(getWeeklyPlanningStableV5RuntimeSession(CONVERSATION)?.graph).toEqual(committedBefore);
     expect(completion).toHaveBeenCalledTimes(1);
   });
@@ -112,7 +127,7 @@ describe('session cap actual runtime to current renderer disclosure', () => {
     const rendered = await renderWeeklyPlanningStableV5AssistantMessage(run);
     expect(rendered.responseSource).toBe('deterministic_fallback');
     expect(rendered.failure).toBeUndefined();
-    expect(rendered.message).toBe('返信を作れませんでした。少し待ってからもう一度送信してください。');
+    expect(rendered.message).toContain('まだ保存していません');
     expect(rendered.draftCandidates).toEqual(before.draftCandidates);
     expect(rendered.state).toEqual(before.state);
     expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);

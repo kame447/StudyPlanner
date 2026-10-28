@@ -370,21 +370,14 @@ export async function renderWeeklyPlanningStableV5AssistantMessageCore(params: {
   });
 
   if (rendered.status === 'fallback') {
-    if (renderInput.currentTurnGrounding?.acceptedFacts.some(fact => fact.kind === 'effort_estimate')) {
-      // The existing controller failure path discards staging before any receipt or preview commit.
-      return { ...params.result, state: params.input.previousState ?? params.result.state,
-        stableV5Graph: ports.getSession(params.input.conversationId)?.graph,
-        draftCandidates: [], preserveExistingPreview: true,
-        message: WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP, responseSource: 'system',
-        dialogueRendererTrace: createWeeklyPlanningFallbackDialogueTrace({ actionId: currentActionId, actionKind, questionCode: currentQuestionCode, renderInput, rendered, finalMessage: WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP }),
-        failure: { code: 'stable_v5_normalization_rejected',
-          userMessage: WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP,
-          traceCode: 'stable_v5_required_effort_ack_failed', diagnostics: {
-            attemptCount: 0, repairAttempted: true, validationErrorCategories: [rendered.reason], providerErrorCategory: null,
-          } },
-      };
-    }
-    const finalMessage = renderInput.fallbackText;
+    // Rendering is presentation only. A failed model response cannot undo a
+    // successfully validated plan or cancel its unapproved preview. The typed
+    // action continues to own the preview and the later explicit save gate.
+    // The short message below is only a contingency for a provider outage;
+    // ordinary conversations remain fully model-generated.
+    const finalMessage = actionKind === 'preview_ready' && params.result.draftCandidates.length > 0
+      ? '予定の候補を用意しました。内容を確認してください。まだ保存していません。'
+      : renderInput.fallbackText;
     const dialogueRendererTrace = createWeeklyPlanningFallbackDialogueTrace({
       actionId: currentActionId,
       actionKind,

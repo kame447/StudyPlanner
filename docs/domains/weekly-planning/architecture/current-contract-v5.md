@@ -41,6 +41,12 @@ Deterministic application owns schema/evidence/reference validation, canonical I
 
 After the semantic boundary, raw Japanese must not be reinterpreted by regex, keyword, dictionary or legacy parser as semantic truth.
 
+### Dialogue display is not an authorization gate (#876)
+
+The renderer may freely phrase a response in Japanese, but its prose cannot create or change accepted facts, candidates, approval or persisted events. These operations belong to validated typed application state and require the existing explicit authorization/freshness controls. A language-specific regex re-interpretation of output durations, dates, subjects, numerical precision or preview counts is neither sound nor complete and is not a precondition for displaying otherwise safe conversation text. The renderer envelope must still match the application's selected action; bounded nonsemantic safety checks and a narrow false-operation-completion guard remain. Natural-language fidelity is assessed in model-quality evaluations, not treated as a deterministic security proof.
+
+On a presentation-only provider failure, already validated *unapproved* preview candidates remain available and are not converted to saved events. The application may use a short outage-only fallback, while pending questions are never marked as presented by a generic technical failure. No ordinary successful AI reply is synthesized using a fixed confirmation template. Historical regex checks are kept as an explicitly named non-production observation oracle until they can be retired; their test successes do not establish current live safety.
+
 For the planned Issue #246 extension, whether a user turn semantically asks for learning consultation/advice is also a natural-language meaning decision. Deterministic routing may consume a validated typed consultation contribution, but must not establish that meaning by a second raw-text keyword/regex router.
 
 ## Semantic delta

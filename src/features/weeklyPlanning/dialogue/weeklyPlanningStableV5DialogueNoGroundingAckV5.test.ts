@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanningStableV5DialogueRenderInput } from './weeklyPlanningStableV5DialogueContracts';
 import {
-  parseWeeklyPlanningStableV5DialogueRendererResponse,
+  evaluateWeeklyPlanningLegacyDialogueTextGuard as parseWeeklyPlanningStableV5DialogueRendererResponse,
 } from './weeklyPlanningStableV5DialogueValidation';
 
 describe('Stable V5 dialogue metadata when no current-turn grounding is required', () => {
