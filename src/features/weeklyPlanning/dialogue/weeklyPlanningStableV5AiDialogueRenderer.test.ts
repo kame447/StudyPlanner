@@ -188,7 +188,7 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     }));
   });
 
-  it('retries once when a required current-turn acknowledgement is omitted', async () => {
+  it('does not regenerate a natural reply just because optional acknowledgement metadata is missing', async () => {
     const renderInput = input({
       actionId: 'stable-v5:request-complete:missing_schedulable_work',
       currentUserMessage: 'もう100%終わっています',
@@ -251,17 +251,11 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
       ).render(renderInput),
     ).resolves.toMatchObject({
       status: 'rendered',
-      text: expect.stringMatching(/^スライドは100%/),
+      text: continuation,
     });
-    expect(createChatCompletion).toHaveBeenCalledTimes(2);
-    expect(createChatCompletion.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
-      messages: expect.arrayContaining([
-        expect.objectContaining({
-          role: 'user',
-          content: expect.stringContaining('ACK契約'),
-        }),
-      ]),
-    }));
+    expect(createChatCompletion).toHaveBeenCalledTimes(1);
+    // A missing display-only ACK must not become a second model call or a
+    // rollback of an already accepted structured progress record.
   });
 
   it('falls back if the one repair attempt still repeats the same assistant question', async () => {

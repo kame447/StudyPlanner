@@ -122,10 +122,11 @@ describe('actual Choice request through durable trace gate', () => {
     { corrected: false, contextualMinutes: 45, nonReflected: null, shortSubject: null }, { corrected: false, contextualMinutes: 60, nonReflected: null, shortSubject: null },
     { corrected: false, contextualMinutes: null, nonReflected: 'question', shortSubject: null }, { corrected: false, contextualMinutes: null, nonReflected: 'assertion', shortSubject: null },
     ...(['absent', 'exact', 'approximate'] as const).map(shortSubject => ({ corrected: false, contextualMinutes: null, nonReflected: null, shortSubject })),
-  ])('persists asymmetric active-fact claim checks: %j', async ({ corrected, contextualMinutes, nonReflected, shortSubject }) => {
+  ])('persists free-form dialogue without treating its grammar as graph authority: %j', async ({ corrected, contextualMinutes, nonReflected, shortSubject }) => {
     const requestId = 'display-existing-effort';
-    const contextual = contextualMinutes !== null, valid = shortSubject ? shortSubject === 'approximate'
-      : nonReflected ? nonReflected === 'question' : contextual ? contextualMinutes === 45 : corrected;
+    const contextual = contextualMinutes !== null;
+    // Some variants deliberately contain factually wrong narrative. Rendering
+    // must never grant authority; typed state and trace remain unchanged.
     const graph: WeeklyPlanningFactGraphV5 = numericFixture('duration_per_unit').graph;
     const workload = graph.workloads[0];
     graph.effortEstimates.push({ id: 'old-rate', taskId: workload.taskId, targetFactId: workload.id,
@@ -174,9 +175,9 @@ describe('actual Choice request through durable trace gate', () => {
     } });
     recordWeeklyPlanningDialogueRendererRequestV5({ requestId, input });
     const rendered = await renderer.render(input);
-    expect(rendered.status).toBe(valid ? 'rendered' : 'fallback');
-    expect(sends).toBe(valid ? 1 : 2);
-    if (!valid) expect(actualRequest).toContain('planningInformation.effortEstimatesの現在有効な対象');
+    expect(rendered.status).toBe('rendered');
+    expect(sends).toBe(1);
+    expect(actualRequest).toContain('weekly_planning_renderer');
     expect(graph).toEqual(before);
     recordWeeklyPlanningDialogueRendererResponseV5({ requestId, actionId: requestId, rendered, selfRepairNotice: null });
     const finalMessage = rendered.status === 'rendered' ? rendered.text : input.fallbackText;
@@ -185,7 +186,7 @@ describe('actual Choice request through durable trace gate', () => {
       : createWeeklyPlanningFallbackDialogueTrace({ ...traceParams, rendered });
     dialogueRendererTrace.request!.promptContext = JSON.parse(actualRequest);
     const trace = { userId, conversationId, requestId, userText: input.currentUserMessage, assistantMessage: finalMessage,
-      responseSource: valid ? 'ai' as const : 'deterministic_fallback' as const, outcome: 'discuss', previewCount: 0,
+      responseSource: 'ai' as const, outcome: 'discuss', previewCount: 0,
       dialogueRendererTrace, debugTraceEvents: takeWeeklyPlanningStableV5DebugTrace(requestId) };
     const h = repository(); h.failNext(); setWeeklyPlanningTraceRepositoryForTests(h.port);
     await recordWeeklyPlanningStableV5TurnTrace(trace);

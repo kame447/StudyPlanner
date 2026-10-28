@@ -87,7 +87,7 @@ describe('Stable V5 renderer canonical date grounding', () => {
     });
   });
 
-  it('still rejects a date label not supported by the canonical facts', async () => {
+  it('does not elevate a date in free text into the canonical planning window', async () => {
     const renderInput = input({
       planningWindows: [
         { kind: 'relative_day', value: 'tomorrow', start: null, end: null },
@@ -102,9 +102,11 @@ describe('Stable V5 renderer canonical date grounding', () => {
       ),
     );
 
+    const before = structuredClone(renderInput.planningInformation);
     await expect(renderer.render(renderInput)).resolves.toMatchObject({
-      status: 'fallback',
-      reason: 'ungrounded_text',
+      status: 'rendered', text: '明後日の予定に入れたい作業と量を教えてください。',
     });
+    // The live natural-language display is untrusted and cannot rewrite the window.
+    expect(renderInput.planningInformation).toEqual(before);
   });
 });

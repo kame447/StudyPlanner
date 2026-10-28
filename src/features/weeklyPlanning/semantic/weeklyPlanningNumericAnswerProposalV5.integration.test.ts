@@ -372,22 +372,23 @@ describe('D5 answer proposal through canonical controller commit', () => {
     expect(run.choose).toHaveBeenCalledOnce(); expect(run.fallback).not.toHaveBeenCalled();
     expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
   });
-  it('required ACK exhausts one repair atomically; reload/retry never consumes a hidden selection', async () => {
+  it('does not roll back an authorized numeric selection because a free-form ACK is inaccurate', async () => {
     const run = setup({ top1: true, minutes: 15, effortAck: true }); await run.present();
     expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK, conversationId: run.h.conversationId, graph: run.graph, planningState: run.h.getState() })).toBe(true);
     await run.answer('15');
-    expect(run.ackControl.calls).toBe(2);
-    expect(run.h.getState().messages.slice(-1)[0].content).toContain('今回の内容は計画へ反映していません');
-    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(run.graph);
-    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
-    const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!;
-    expect(saved.graph.effortEstimates).toEqual([]);
-    run.ackControl.fails = false;
-    await run.present(); await run.answer('15');
-    expect(readC5RuntimeGraph(OWNER, run.h.conversationId).effortEstimates).toHaveLength(1);
+    expect(run.ackControl.calls).toBe(1);
+    // The deliberately wrong 999-minute sentence is a measurable model-quality
+    // failure, but it does not replace the user's accepted typed 15-minute choice.
+    expect(run.h.getState().messages.slice(-1)[0].content).toContain('999分');
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId).effortEstimates)
+      .toMatchObject([{ minutes: 15, kind: 'total_duration' }]);
     expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
+    const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!;
+    expect(saved.graph.effortEstimates).toMatchObject([{ minutes: 15 }]);
+    expect(saved.planningState.intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
+    expect(run.h.getState().pendingApproval).toBeUndefined();
   });
-  it('rejects an unexecuted plan claim after a valid effort ACK without graph commit or receipt consumption', async () => {
+  it('rejects a false plan-completion claim without undoing the authorized numeric choice', async () => {
     const run = setup({ top1: true, minutes: 15, effortAck: true });
     await run.present();
     expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK, conversationId: run.h.conversationId,
@@ -397,11 +398,15 @@ describe('D5 answer proposal through canonical controller commit', () => {
     run.ackControl.unexecutedClaim = true;
     await run.answer('15');
     expect(run.ackControl.calls).toBe(1); // Existing execution-claim rejection is terminal; no extra repair call.
-    expect(run.h.getState().messages.slice(-1)[0]?.content).toContain('今回の内容は計画へ反映していません');
+    expect(run.h.getState().messages.slice(-1)[0]?.content).toContain('返信を作れませんでした');
+    expect(run.h.getState().messages.slice(-1)[0]?.content).not.toContain('計画を作成します');
     expect(run.h.getState().previewCandidates).toEqual([]);
-    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(before);
-    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
-    expect(loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!.graph).toEqual(before);
+    expect(run.h.getState().pendingApproval).toBeUndefined();
+    expect(before.effortEstimates).toEqual([]);
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId).effortEstimates).toMatchObject([{ minutes: 15 }]);
+    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
+    expect(loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!.graph.effortEstimates)
+      .toMatchObject([{ minutes: 15 }]);
   });
   it('rebinds the numeric policy revision and preserves the question-time record', async () => {
     const run = setup(); await run.present();

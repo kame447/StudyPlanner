@@ -1,0 +1,160 @@
+{
+  "input": {
+    "communication": {
+      "goal": "present_preview",
+      "askQuestion": false
+    },
+    "actionId": "stable-v5:weekly-conversation-f21314d4-66cf-4126-9bfa-e4ea4864a580:request:4:preview_ready",
+    "currentUserMessage": "残りは45分くらいです",
+    "recentConversation": [
+      {
+        "role": "user",
+        "content": "ゼミ発表の資料を完成させたいです"
+      },
+      {
+        "role": "assistant",
+        "content": "ゼミ発表の資料を完成させたいんですね。明日はどの時間帯なら取り組めそうですか？まだ決まっていなければ、仮の時間枠を一緒に考えられます。"
+      },
+      {
+        "role": "user",
+        "content": "完成を100%とすると、今は70%くらいです"
+      },
+      {
+        "role": "assistant",
+        "content": "完成度は今70%くらいなんですね。そこまで進めるのに、これまで合計どれくらい時間をかけましたか？"
+      }
+    ],
+    "planningInformation": {
+      "revision": 5,
+      "planningWindows": [
+        {
+          "id": "wpf_window_1bpay9z12ktivv",
+          "kind": "relative_day",
+          "value": "tomorrow",
+          "start": null,
+          "end": null
+        }
+      ],
+      "tasks": [
+        {
+          "id": "wpf_task_15zmnuiq5585y",
+          "category": "study",
+          "title": "ゼミ発表の資料を完成させる"
+        }
+      ],
+      "studyContexts": [
+        {
+          "id": "wpf_study-context_oaubuk15mi3xc",
+          "taskId": "wpf_task_15zmnuiq5585y",
+          "purpose": "course",
+          "contextLabel": null
+        }
+      ],
+      "components": [],
+      "workloads": [
+        {
+          "id": "wpf_workload_lku6y0vjfjpo",
+          "taskId": "wpf_task_15zmnuiq5585y",
+          "componentId": null,
+          "quantityRole": "completed",
+          "amount": 70,
+          "unitCode": "custom",
+          "unitLabel": "%",
+          "rangeStart": null,
+          "rangeEnd": null,
+          "perOccurrence": false,
+          "periodExpression": null
+        },
+        {
+          "id": "wpf_workload_percent_remaining_1p3heuk",
+          "taskId": "wpf_task_15zmnuiq5585y",
+          "componentId": null,
+          "quantityRole": "remaining",
+          "amount": 30,
+          "unitCode": "custom",
+          "unitLabel": "%",
+          "rangeStart": null,
+          "rangeEnd": null,
+          "perOccurrence": false,
+          "periodExpression": null
+        }
+      ],
+      "effortEstimates": [
+        {
+          "id": "wpf_effort_1ffnw1a",
+          "taskId": "wpf_task_15zmnuiq5585y",
+          "targetFactId": "wpf_workload_percent_remaining_1p3heuk",
+          "kind": "total_duration",
+          "minutes": 45,
+          "unitCode": null,
+          "precision": "approximate"
+        }
+      ],
+      "temporalConstraints": [],
+      "taskDateRules": [],
+      "recurrences": [],
+      "relations": [],
+      "uncertainties": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "registeredMaterials": [
+        {
+          "materialId": "material-before-refresh",
+          "name": "更新前の教材",
+          "subjectName": "数学",
+          "catalogEntryId": null,
+          "catalogTitle": null,
+          "isbn10": null,
+          "isbn13": null,
+          "aliases": [],
+          "paceEnabled": true,
+          "progressUnit": "problem",
+          "progressUnitLabel": null,
+          "totalUnits": 100,
+          "currentUnit": 10,
+          "remainingUnits": 90,
+          "targetDate": null,
+          "estimatedMinutesPerUnit": null,
+          "maxUnitsPerDay": null
+        }
+      ],
+      "groundingRecords": [],
+      "selfRepairNotice": null
+    },
+    "currentTurnGrounding": {
+      "mode": "required_before_resume",
+      "acceptedFacts": [
+        {
+          "factId": "wpf_effort_1ffnw1a",
+          "kind": "effort_estimate",
+          "sourceText": "残りは45分くらいです",
+          "data": {
+            "taskId": "wpf_task_15zmnuiq5585y",
+            "targetFactId": "wpf_workload_percent_remaining_1p3heuk",
+            "kind": "total_duration",
+            "minutes": 45,
+            "unitCode": null,
+            "precision": "approximate",
+            "targetLabels": [
+              "ゼミ発表の資料を完成させる"
+            ],
+            "unitLabel": "%"
+          }
+        }
+      ]
+    },
+    "previewConstraintSatisfaction": [],
+    "actionKind": "preview_ready",
+    "questionCode": null,
+    "questionTarget": null,
+    "questionIntent": null,
+    "previewPromotionControlLabel": "この内容で仮予定にする",
+    "requiredLabels": [
+      "この内容で仮予定にする"
+    ],
+    "fallbackText": "返信を作れませんでした。少し待ってからもう一度送信してください。",
+    "previewCount": 1
+  },
+  "rawResponse": "{\"actionId\":\"stable-v5:weekly-conversation-f21314d4-66cf-4126-9bfa-e4ea4864a580:request:4:preview_ready\",\"actionKind\":\"preview_ready\",\"questionCode\":null,\"groundingAcknowledgement\":{\"factIds\":[\"wpf_effort_1ffnw1a\"],\"text\":\"ゼミ発表の資料を完成させる残りの作業は、全部で約45分くらいなんですね。\"},\"text\":\"ゼミ発表の資料を完成させる残りの作業は、全部で約45分くらいなんですね。この内容で仮予定にする場合は、「この内容で仮予定にする」を選んでください。\"}",
+  "repairRawResponse": null
+}

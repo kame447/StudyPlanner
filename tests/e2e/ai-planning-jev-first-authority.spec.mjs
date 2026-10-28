@@ -763,26 +763,35 @@ test('D5 mock cancelled late choice cannot restore stale effort', async ({ page 
   await testInfo.attach('cancelled-late-readback.json', { body: Buffer.from(JSON.stringify(after)), contentType: 'application/json' });
 });
 
-test('D5 mock renderer error then retry keeps effort atomic without duplicates', async ({ page }, testInfo) => {
-  test.skip(Boolean(liveBridge), 'Mock renderer outage, no live fault sends'); test.setTimeout(90_000);
+test('D5 misleading renderer prose does not roll back or duplicate the accepted effort', async ({ page }, testInfo) => {
+  test.skip(Boolean(liveBridge), 'Mock display-quality fault, no live fault sends'); test.setTimeout(90_000);
   const audit = await boot(page, 'd5'); await submit(page, audit, D5_SETUP);
   const before = await d5Snapshot(page);
   const targets = capturedD5Tasks(before, audit);
-  audit.failRendererAttempts = 2;
-  await submit(page, audit, '15');
-  const failed = await d5Snapshot(page);
-  expect(failed.graph).toEqual(before.graph);
-  expect(failed.state.intakeState.c5SelectionLedger.consumed).toEqual([]);
-  expect(failed.state.messages.at(-1).content).toContain('今回の内容は計画へ反映していません');
-  await submit(page, audit, '15');
-  const retried = await d5Snapshot(page);
-  const ids = new Set(retried.graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
-  const math = retried.graph.tasks.find(task => task.id === targets.math.id);
-  expect(retried.graph.effortEstimates.filter(e => ids.has(e.id) && e.taskId === math.id)).toMatchObject([{ minutes: 15 }]);
+  // The model gives an incorrect 999-minute description; only the validated
+  // numeric choice may affect the Fact Graph, ledger, preview and persistence.
+  audit.failRendererAttempts = 1;
+  const { calls } = await submit(page, audit, '15');
+  const after = await d5Snapshot(page);
+  const ids = new Set(after.graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
+  const math = after.graph.tasks.find(task => task.id === targets.math.id);
+  expect(after.graph.effortEstimates.filter(e => ids.has(e.id) && e.taskId === math.id))
+    .toMatchObject([{ minutes: 15 }]);
+  expect(after.graph.effortEstimates.some(e => e.taskId === math.id && e.minutes === 999)).toBe(false);
+  expect(after.graph.revision).toBe(before.graph.revision + 1);
+  expect(after.state.intakeState.c5SelectionLedger.consumed).toHaveLength(1);
+  expect(after.state.messages.at(-1).content).toContain('999分');
+  expect(calls.filter(call => call.schema === 'weekly_planning_stable_v5_dialogue_response')).toHaveLength(1);
+  expect(after.state.pendingApproval).toBeFalsy();
   expect(await saved(page)).toEqual([]);
+
   const callsBeforeReload = audit.proxy.length; await reloadOwned(page);
   expect(audit.proxy).toHaveLength(callsBeforeReload);
   const reloaded = await d5Snapshot(page);
-  expect(reloaded.graph).toEqual(retried.graph);
-  await testInfo.attach('retry-reload-readback.json', { body: Buffer.from(JSON.stringify(reloaded)), contentType: 'application/json' });
+  expect(reloaded.graph).toEqual(after.graph);
+  expect(reloaded.state.intakeState.c5SelectionLedger.consumed).toEqual(after.state.intakeState.c5SelectionLedger.consumed);
+  expect(await saved(page)).toEqual([]);
+  await testInfo.attach('renderer-prose-state-separation-readback.json', {
+    body: Buffer.from(JSON.stringify({ before, after, reloaded, calls }, null, 2)), contentType: 'application/json',
+  });
 });

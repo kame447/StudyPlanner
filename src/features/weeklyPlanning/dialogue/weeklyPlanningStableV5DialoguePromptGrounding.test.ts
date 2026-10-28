@@ -72,7 +72,7 @@ describe('Stable V5 dialogue grounding boundary', () => {
     expect(String(payload.request).length).toBeGreaterThan(0);
   });
 
-  it('validates generated text against grounded facts without prescribing one correct wording', async () => {
+  it('does not mistake free-form examples for accepted scheduled facts', async () => {
     const renderInput = input();
     const grounded = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
@@ -93,8 +93,8 @@ describe('Stable V5 dialogue grounding boundary', () => {
       status: 'rendered',
     });
     await expect(inventedExamples.render(renderInput)).resolves.toMatchObject({
-      status: 'fallback',
-      reason: 'ungrounded_text',
+      status: 'rendered',
     });
+    expect(renderInput.planningInformation?.tasks).toEqual([]);
   });
 });

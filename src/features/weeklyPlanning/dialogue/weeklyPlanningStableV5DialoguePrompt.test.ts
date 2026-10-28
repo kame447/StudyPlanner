@@ -103,7 +103,7 @@ describe('Stable V5 dialogue prompt', () => {
     // Writing style is guidance, not a hard-coded user-visible response.
     expect(prompt.systemPrompt).not.toContain('もちろんです');
     expect(request).toContain('currentTurnGrounding.acceptedFacts');
-    expect(request).toContain('required_before_resume');
+    expect(request).toContain('groundingAcknowledgementは任意の補助メタデータ');
     expect(request).toContain('requestedInformation');
     expect(request).toContain('remaining_total_amount');
     expect(request).toContain('task_relation');
