@@ -148,8 +148,15 @@ function normalizedMonthEventEndDate(event: MonthEvent): string {
   return endDate && endDate.localeCompare(event.date) >= 0 ? endDate : event.date;
 }
 
-function planDetails(plan: Plan): ScheduleEventPlanDetails {
-  return {
+export function scheduleEventIdForLegacy(
+  legacy: ScheduleEventLegacyIdentity,
+): string {
+  return `${legacy.kind}:${legacy.id}`;
+}
+
+export function scheduleEventFromPlan(plan: Plan): ScheduleEvent {
+  const legacy = { kind: 'plan' as const, id: plan.id };
+  const details: ScheduleEventPlanDetails = {
     legacyPlanId: plan.id,
     ...(plan.classTemplateId ? { classTemplateId: plan.classTemplateId } : {}),
     seriesId: plan.seriesId,
@@ -162,17 +169,6 @@ function planDetails(plan: Plan): ScheduleEventPlanDetails {
     materialName: plan.materialName,
     weeklyPlanningObservationSource: plan.weeklyPlanningObservationSource,
   };
-}
-
-export function scheduleEventIdForLegacy(
-  legacy: ScheduleEventLegacyIdentity,
-): string {
-  return `${legacy.kind}:${legacy.id}`;
-}
-
-export function scheduleEventFromPlan(plan: Plan): ScheduleEvent {
-  const legacy = { kind: 'plan' as const, id: plan.id };
-  const details = planDetails(plan);
   const base: ScheduleEventBase = {
     schemaVersion: SCHEDULE_EVENT_SCHEMA_VERSION,
     id: scheduleEventIdForLegacy(legacy),

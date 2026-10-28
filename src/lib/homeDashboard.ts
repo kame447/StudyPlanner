@@ -57,14 +57,6 @@ function plannedMinutesByNow(plan: Plan, date: string, today: string, nowTime: s
   return elapsedEntryMinutes(date, plan.startTime, plan.endTime, today, nowTime);
 }
 
-function buildStudyDateSet(actuals: Actual[]): Set<string> {
-  return new Set(
-    actuals
-      .filter((actual) => studyMinutes(actual) > 0)
-      .map((actual) => actual.occurrenceDate),
-  );
-}
-
 function sortDueTodos(todos: TodoTask[]): TodoTask[] {
   return todos.slice().sort((left, right) => {
     const leftKey = `${left.dueDate ?? '9999-12-31'}T${left.dueTime ?? '23:59'}`;
@@ -179,7 +171,12 @@ export function buildHomeDashboardModel({
       : weekActualMinutes > 0
         ? 100
         : 0;
-  const streaks = calculateStudyStreaks([...buildStudyDateSet(studyActuals)], today);
+  const studyDates = new Set(
+    studyActuals
+      .filter((actual) => studyMinutes(actual) > 0)
+      .map((actual) => actual.occurrenceDate),
+  );
+  const streaks = calculateStudyStreaks([...studyDates], today);
 
   return {
     today,

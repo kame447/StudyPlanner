@@ -95,7 +95,7 @@ export function collectStudyDates(input: Pick<StudyStreakInput, 'userId' | 'plan
   const monthEvents = input.monthEvents?.filter(event => event.userId === input.userId);
   return normalizeStudyRecordsForDisplay({ actuals, plans, monthEvents })
     .filter(record => isStudyRecordForDisplay(record)
-      && Number.isFinite(record.durationMinutes) && record.durationMinutes > 0)
+      && record.durationMinutes > 0)
     .map(record => record.date);
 }
 

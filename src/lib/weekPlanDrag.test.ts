@@ -123,3 +123,11 @@ describe('week plan drag visual helpers', () => {
     ).toBe(true);
   });
 });
+
+it.each([[5, 2.5, '13:05'], [5, -2.5, '13:00'], [10, 5, '13:10']] as const)(
+  'keeps rounding ties with step %i and delta %s', (snapMinutes, deltaY, expected) => {
+    const target = resolveWeekPlanDragTarget({ weekDates: WEEK_DATES, originalDate: WEEK_DATES[1],
+      originalStartTime: '13:00', originalEndTime: '14:00', deltaX: 0, deltaY,
+      dayWidth: 80, timelineHeight: 1440, snapMinutes });
+    expect(target.startTime).toBe(expected);
+  });

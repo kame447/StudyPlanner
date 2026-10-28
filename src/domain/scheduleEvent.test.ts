@@ -112,6 +112,19 @@ describe('canonical ScheduleEvent migration model', () => {
     expect(scheduleEventToPlan(event)).toEqual(source);
   });
 
+  it.each([undefined, '', 'class-template-1'])('preserves optional class template linkage: %s', (classTemplateId) => {
+    const source = plan({ classTemplateId });
+    const event = scheduleEventFromPlan(source);
+
+    if (classTemplateId) {
+      expect(event.plan).toHaveProperty('classTemplateId', classTemplateId);
+    } else {
+      expect(event.plan).not.toHaveProperty('classTemplateId');
+    }
+    expect(event.plan?.classTemplateId).toBe(classTemplateId || undefined);
+    expect(event.plan?.weeklyPlanningObservationSource).toBe(source.weeklyPlanningObservationSource);
+  });
+
   it('round-trips a rich multi-day MonthEvent without losing range or metadata', () => {
     const source = monthEvent();
     const event = scheduleEventFromMonthEvent(source);

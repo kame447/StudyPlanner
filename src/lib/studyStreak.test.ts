@@ -91,3 +91,11 @@ describe('study streak and earned rest days', () => {
     expect(studyRestDayBlockReason(input({ today: '2026-10-09' }), '2026-10-08')).toBeNull();
   });
 });
+
+it.each([
+  ['bad', '10:00', false], ['09:00', '25:00', false], ['09:00', '09:00', false],
+  ['23:30', '00:30', true], ['23:30', '24:00', true],
+] as const)('uses admitted duration for streak dates %s–%s', (actualStartTime, actualEndTime, included) => {
+  const dates = collectStudyDates(input({ actuals: [actual('2026-10-07', { actualStartTime, actualEndTime })] }));
+  expect(dates).toEqual(included ? ['2026-10-07'] : []);
+});

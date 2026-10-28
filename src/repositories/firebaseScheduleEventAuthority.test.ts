@@ -142,6 +142,35 @@ beforeEach(() => {
 });
 
 describe('Firebase ScheduleEvent authority', () => {
+  it.each(['user-1', ''])('preserves direct upsert payloads and return identity for owner %j', async (userId) => {
+    const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+    const nextPlan = plan({ userId });
+    const nextEvent = monthEvent({ userId });
+
+    expect(await authority.upsertPlan(nextPlan)).toBe(nextPlan);
+    expect(await authority.upsertMonthEvent(nextEvent)).toBe(nextEvent);
+    expect(mocks.setDoc).toHaveBeenCalledTimes(2);
+    expect(mocks.setDoc).toHaveBeenNthCalledWith(1,
+      { collectionName: 'schedule_events', id: 'plan:plan-1' },
+      expect.objectContaining({ userId, title: nextPlan.title }));
+    expect(mocks.setDoc).toHaveBeenNthCalledWith(2,
+      { collectionName: 'schedule_events', id: 'month-event:event-1' },
+      expect.objectContaining({ userId, title: nextEvent.title }));
+  });
+
+  it.each([
+    ['plan', 'offline', 'offline'],
+    ['month-event', 'offline', 'offline'],
+    ['plan', '', '予定を保存できませんでした。'],
+    ['month-event', '', '主要予定を保存できませんでした。'],
+  ])('preserves %s persistence failure message %j', async (kind, message, expected) => {
+    const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+    mocks.setDoc.mockRejectedValueOnce(new Error(message));
+    const operation = kind === 'plan' ? authority.upsertPlan(plan()) : authority.upsertMonthEvent(monthEvent());
+    await expect(operation).rejects.toThrow(expected);
+    expect(mocks.setDoc).toHaveBeenCalledTimes(1);
+  });
+
   it('freezes with a transactional migration lease, guards the backfill with that lease, verifies it, then completes', async () => {
     const sourcePlan = plan();
     const sourceEvent = monthEvent();

@@ -184,3 +184,16 @@ it('still restores credentials when restoring the user collection fails', async 
   await expect(repo.signInWithPassword(EMAIL, PASSWORD)).rejects.toThrow('一致しません');
   expect(await repo.getCurrentUser()).toBeNull();
 });
+
+it('keeps signup email fallback and profile username/avatar normalization', async () => {
+  const storage = new MemoryStorage();
+  vi.stubGlobal('window', { localStorage: storage });
+  const repository = createAuthRepository(createLocalAuthStorageGateway(storage));
+  await repository.signUpWithPassword('  Synthetic-Owner@Example.Test ', PASSWORD, '   ');
+  const user = await repository.signInWithPassword(EMAIL, PASSWORD);
+  expect(user.username).toBe(EMAIL);
+  const edited = await repository.updateUserProfile(user.id, { username: '  New Name  ', avatar: '  icon  ' });
+  expect(edited).toMatchObject({ username: 'New Name', avatar: 'icon', email: EMAIL });
+  expect(await repository.updateUserProfile(user.id, { username: ' ', avatar: '' }))
+    .toMatchObject({ username: EMAIL, avatar: '' });
+});

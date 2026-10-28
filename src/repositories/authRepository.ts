@@ -1,22 +1,9 @@
 import { createId } from '../lib/id';
 import type { AuthRepository, AuthStorageGateway } from './repositoryContracts';
-import type { User, UserProfileDraft } from '../types/domain';
+import type { User } from '../types/domain';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
-}
-
-function normalizeUsername(username: string, email: string): string {
-  const trimmedUsername = username.trim();
-  return trimmedUsername || email;
-}
-
-function applyUserProfile(user: User, draft: UserProfileDraft): User {
-  return {
-    ...user,
-    username: draft.username.trim() || user.email,
-    avatar: draft.avatar.trim(),
-  };
 }
 
 export function createAuthRepository(
@@ -25,7 +12,7 @@ export function createAuthRepository(
   const repository: AuthRepository = {
     async signUpWithPassword(email, password, username) {
       const normalizedEmail = normalizeEmail(email);
-      const normalizedUsername = normalizeUsername(username, normalizedEmail);
+      const normalizedUsername = username.trim() || normalizedEmail;
 
       if (!normalizedEmail.includes('@')) {
         throw new Error('メールアドレスの形式を確認してください。');
@@ -93,7 +80,11 @@ export function createAuthRepository(
         throw new Error('ユーザー情報が見つかりません。');
       }
 
-      const nextUser = applyUserProfile(currentUser, draft);
+      const nextUser = {
+        ...currentUser,
+        username: draft.username.trim() || currentUser.email,
+        avatar: draft.avatar.trim(),
+      };
       await storageGateway.writeUsers(
         users.map((user) => (user.id === userId ? nextUser : user)),
       );

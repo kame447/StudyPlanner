@@ -114,13 +114,6 @@ function resolveDateRange(actuals: Actual[], startDate?: string, endDate?: strin
   };
 }
 
-function isDateInRange(date: string, startDate?: string, endDate?: string): boolean {
-  return (
-    (!startDate || date.localeCompare(startDate) >= 0) &&
-    (!endDate || date.localeCompare(endDate) <= 0)
-  );
-}
-
 function getExpandedPlansForActuals({
   plans,
   actuals,
@@ -252,7 +245,8 @@ export function normalizeStudyRecordsForDisplay({
   endDate,
 }: NormalizeStudyRecordsInput): NormalizedStudyRecordForDisplay[] {
   const dedupedActuals = dedupeLinkedStudyActuals(actuals).filter((actual) =>
-    isDateInRange(actual.occurrenceDate, startDate, endDate),
+    (!startDate || actual.occurrenceDate.localeCompare(startDate) >= 0) &&
+    (!endDate || actual.occurrenceDate.localeCompare(endDate) <= 0),
   );
   const expandedPlans = getExpandedPlansForActuals({
     plans,
