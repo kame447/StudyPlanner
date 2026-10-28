@@ -1,0 +1,34 @@
+{
+  "provenance": "Synthetic typed input from PR #875's session-duration UI harness. Original renderer sentence recorded in Issue #873; approximate and prefix-echo variants preserve the scenarios exercised by #875 without adopting its application-owned acknowledgement.",
+  "userText": "明日、連続で1時間英語を勉強したい",
+  "replies": [
+    {
+      "name": "original redundant duration",
+      "precision": "exact",
+      "acknowledgement": "英語の勉強は明日、連続で1時間（1回あたり60分）ですね。"
+    },
+    {
+      "name": "approximate duration",
+      "precision": "approximate",
+      "acknowledgement": "英語の勉強は明日、連続で約1時間くらいですね。"
+    },
+    {
+      "name": "prefix echo supplied entirely by the model",
+      "precision": "exact",
+      "acknowledgement": "「英語の勉強」は1回あたり60分です。"
+    }
+  ],
+  "semanticDocument": {
+    "schemaVersion": "weekly-planning-semantic-v5",
+    "planningIntent": "create_plan",
+    "planningWindow": { "localId": "window", "kind": "relative_day", "value": "tomorrow", "start": null, "end": null, "sourceText": "明日" },
+    "tasks": [{
+      "localId": "english", "category": "study", "title": "英語の勉強", "decompositionStatus": "atomic",
+      "study": { "purpose": "self_study", "activityKind": "problem_solving", "contextLabel": null, "components": [] },
+      "workloads": [{ "localId": "amount", "quantityRole": "target", "amount": 60, "unitCode": "minute", "unitLabel": "分", "rangeStart": null, "rangeEnd": null, "perOccurrence": false, "periodExpression": null, "sourceText": "明日、連続で1時間英語を勉強したい" }],
+      "effortEstimates": [{ "localId": "session", "targetLocalId": "amount", "kind": "session_duration", "minutes": 60, "unitCode": null, "precision": "exact", "sourceText": "明日、連続で1時間英語を勉強したい" }],
+      "temporalConstraints": [], "recurrence": [], "sourceText": "明日、連続で1時間英語を勉強したい"
+    }],
+    "relations": [], "availabilityDeclarations": [], "constraintSourceRequests": [], "userContextFacts": [], "uncertainties": [], "corrections": [], "decisions": [], "conversationActs": []
+  }
+}
