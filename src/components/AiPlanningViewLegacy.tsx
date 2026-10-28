@@ -45,6 +45,7 @@ import {
   type MachineBoundEffortAnswerOption,
 } from '../features/weeklyPlanning/ui/machineBoundEffortAnswerOptions';
 import { buildAiPlanningImageTurn } from '../features/weeklyPlanning/ui/aiPlanningImageTurn';
+import { decideDialogueKeyboardAction } from '../features/weeklyPlanning/dialogue/weeklyPlanningDialogueOrchestrator';
 import { validateAiImageFile } from '../lib/aiImageAttachment';
 import {
   formatMinutes,
@@ -236,6 +237,7 @@ export function AiPlanningView({
   const [starterMaterials, setStarterMaterials] = useState<StudyMaterial[]>([]);
   const [starterCatalogStatus, setStarterCatalogStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const isComposingRef = useRef(false);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<HTMLElement | null>(null);
@@ -1120,6 +1122,23 @@ export function AiPlanningView({
             }}
             rows={1}
             maxLength={4000}
+            onCompositionStart={() => { isComposingRef.current = true; }}
+            onCompositionEnd={() => { isComposingRef.current = false; }}
+            onKeyDown={(event) => {
+              // Keep the phone software keyboard's return key as a newline.
+              if (window.matchMedia?.('(pointer: coarse)').matches) return;
+              const action = decideDialogueKeyboardAction({
+                key: event.key,
+                shiftKey: event.shiftKey,
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
+                isComposing: isComposingRef.current || event.nativeEvent?.isComposing,
+                keyCode: event.nativeEvent?.keyCode,
+              });
+              if (action !== 'submit') return;
+              event.preventDefault();
+              if (!event.repeat) void submitMessage();
+            }}
             placeholder={isListening ? '音声を認識中...' : '予定や目標を入力...'}
             disabled={isComposerBusy || isListening}
           />

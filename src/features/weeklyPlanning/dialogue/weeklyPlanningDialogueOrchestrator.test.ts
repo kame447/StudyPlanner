@@ -91,12 +91,14 @@ describe('weeklyPlanningDialogueOrchestrator', () => {
     expect(canIssueDialogueCall({ kind: 'normal', issuedCalls: 2 })).toBe(false);
   });
 
-  it('uses Ctrl or Meta Enter for submit and never submits while composing', () => {
-    expect(decideDialogueKeyboardAction({ key: 'Enter', isComposing: true, ctrlKey: true })).toBe('ignore');
-    expect(decideDialogueKeyboardAction({ key: 'Enter', keyCode: 229, ctrlKey: true })).toBe('ignore');
-    expect(decideDialogueKeyboardAction({ key: 'Enter' })).toBe('newline');
+  it('sends with Enter, preserves Shift+Enter newlines and ignores IME confirmation', () => {
+    expect(decideDialogueKeyboardAction({ key: 'Enter', isComposing: true })).toBe('ignore');
+    expect(decideDialogueKeyboardAction({ key: 'Enter', keyCode: 229 })).toBe('ignore');
+    expect(decideDialogueKeyboardAction({ key: 'a' })).toBe('ignore');
+    expect(decideDialogueKeyboardAction({ key: 'Enter' })).toBe('submit');
     expect(decideDialogueKeyboardAction({ key: 'Enter', shiftKey: true })).toBe('newline');
     expect(decideDialogueKeyboardAction({ key: 'Enter', ctrlKey: true })).toBe('submit');
     expect(decideDialogueKeyboardAction({ key: 'Enter', metaKey: true })).toBe('submit');
+    expect(decideDialogueKeyboardAction({ key: 'Enter', shiftKey: true, ctrlKey: true })).toBe('newline');
   });
 });
