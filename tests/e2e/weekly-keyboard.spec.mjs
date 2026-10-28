@@ -47,19 +47,17 @@ for (const width of [390, 1280]) {
       await expect(input).toHaveValue('来週の予定');
     });
 
-    test('Enter and Shift+Enter preserve multiline text until the Send button is clicked', async ({ page }) => {
+    test('Shift+Enter inserts a newline and plain Enter submits that multiline message', async ({ page }) => {
       await page.goto(REAL_WEEKLY_URL);
       const input = await composer(page);
       await input.fill('来週の予定');
-      await input.press('Enter');
       await input.press('Shift+Enter');
       await input.pressSequentially('英語も復習する');
 
       expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
-      const multiline = '来週の予定\n\n英語も復習する';
+      const multiline = '来週の予定\n英語も復習する';
       await expect(input).toHaveValue(multiline);
-      await expect(input).toBeEnabled();
-      await page.getByRole('button', { name: '送信', exact: true }).click();
+      await input.press('Enter');
       await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
       const calls = await events(page, 'real-runtime-execute');
       expect(calls).toHaveLength(1);
@@ -68,15 +66,18 @@ for (const width of [390, 1280]) {
       await expect(input).toBeEnabled();
     });
 
-    test('Ctrl+Enter and Cmd+Enter do not send a draft', async ({ page }) => {
-      await page.goto(REAL_WEEKLY_URL);
-      const input = await composer(page);
-      await input.fill('送信ボタンを押すまで下書き');
-      await input.press('Control+Enter');
-      await input.press('Meta+Enter');
-      expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
-      expect(await input.inputValue()).toContain('送信ボタンを押すまで下書き');
-      await expect(input).toBeEnabled();
+    test('Ctrl+Enter and Cmd+Enter remain supported as alternative send shortcuts', async ({ page }) => {
+      for (const shortcut of ['Control+Enter', 'Meta+Enter']) {
+        await page.goto(REAL_WEEKLY_URL);
+        const input = await composer(page);
+        await input.fill('送信ショートカットの確認');
+        await input.press(shortcut);
+        await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
+        const calls = await events(page, 'real-runtime-execute');
+        expect(calls).toHaveLength(1);
+        expect(calls[0].payload.userText).toBe('送信ショートカットの確認');
+        await expect(input).toHaveValue('');
+      }
     });
 
     test('after cancellation the AI planning composer is available for continuation', async ({ page }) => {
@@ -99,3 +100,16 @@ for (const width of [390, 1280]) {
     });
   });
 }
+
+test.describe('touch-keyboard editing', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('a touch device preserves Enter as a newline rather than sending', async ({ page }) => {
+    await page.goto(REAL_WEEKLY_URL);
+    const input = await composer(page);
+    await input.fill('スマホでの入力');
+    await input.press('Enter');
+    await expect(input).toHaveValue('スマホでの入力\n');
+    expect(await events(page, 'real-runtime-execute')).toHaveLength(0);
+  });
+});
