@@ -425,13 +425,16 @@ export class ProductObservabilityRollupEngine {
         const eventRows = settledEvents.filter((document) => document.eventType !== 'semantic_turn_census').map((document) => ({
           document,
           event: storedEventFromOrderedDocument(document),
+          countersInDomain: false,
         }));
         const firstReadKeys: FirestoreTransactionDocumentKey[] = [{
           collection: ROLLUP_STATE_COLLECTION,
           id: ROLLUP_STATE_ID,
         }];
-        for (const { event } of eventRows) {
-          if (!observabilityCountersInDomain(event)) continue;
+        for (const row of eventRows) {
+          const { event } = row;
+          row.countersInDomain = observabilityCountersInDomain(event);
+          if (!row.countersInDomain) continue;
           firstReadKeys.push(
             { collection: ACTOR_DAY_COLLECTION, id: actorDayId(event) },
             { collection: DAILY_ROLLUP_COLLECTION, id: dailyRollupId(event) },
@@ -485,8 +488,8 @@ export class ProductObservabilityRollupEngine {
         }
 
         const cohortReadKeys: FirestoreTransactionDocumentKey[] = [];
-        for (const { event } of eventRows) {
-          if (event.eventType !== 'planning_outcome' || !observabilityCountersInDomain(event)) continue;
+        for (const { event, countersInDomain } of eventRows) {
+          if (event.eventType !== 'planning_outcome' || !countersInDomain) continue;
           const planningEvent = event as StoredObservabilityEvent<PlanningOutcomeMetricPayload>;
           const sessionId = planningSessionDocumentId(event.environment, planningEvent.correlation.featureSessionId!.trim());
           const current = withoutStorageId<ObservabilityPlanningSessionSummary>(cache.get(cacheKey(
@@ -523,8 +526,8 @@ export class ProductObservabilityRollupEngine {
             environment: event.environment, reason };
         };
 
-        for (const { event, document } of eventRows) {
-          if (!observabilityCountersInDomain(event)) {
+        for (const { event, document, countersInDomain } of eventRows) {
+          if (!countersInDomain) {
             reject(document, event, 'counter_out_of_domain');
             continue;
           }
