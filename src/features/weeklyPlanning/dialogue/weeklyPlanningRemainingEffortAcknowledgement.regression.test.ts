@@ -69,7 +69,7 @@ describe('Issue #876: remaining-work effort acknowledgement', () => {
     expect(checkActiveClaim(text).status).toBe(valid ? 'rendered' : 'fallback');
   });
 
-  it('rejects an effort claim for a different known task in the free-form body', () => {
+  it('does not treat a free-form effort claim for another known task as planning authority', () => {
     expect(checkActiveClaim('数学の残りの作業は、全部で約45分くらいなんですね。', value => {
       (value.planningInformation!.tasks as Array<Record<string, unknown>>).push({ id: 'other-task', title: '数学' });
     }).status).toBe('rendered');
