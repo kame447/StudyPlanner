@@ -59,7 +59,7 @@ ChatGPTの対応サブスクリプションを使いたい場合は、`cd tests/
 
 旧 `tests/e2e/weekly-planning-modal.spec.mjs` の「existing weekly session opens directly ...」は `/?weekly=1` の入力欄・送信ボタンの可視性を検査していた。2026-10-17に `tests/agent-e2e/tests/weekly-conversation.e2e.ts` の `smoke: an existing weekly session has a usable accessible composer` へ移管し、同じ合成harnessで可視性と入力時の送信ボタンの有効化を検査している。後続の#382到達性監査で、この旧harnessが本番閉包外の画面を描画していることを確認したため、2026-10-18にcomposer smokeとpreview promotion smokeを `/real-weekly.html`（本番の `AiPlanningView` と planning application）へ移した。preview smokeは承認境界の状態（draft 1件・承認待ち・保存なし）も検査する。どちらも合成gatewayと保存stubを使うUI/controller検査であり、Worker・Firestore・AIプロバイダの保証とは呼ばない。opt-inの `agentic:` 2件も同じ本番画面を使う。曖昧な依頼の送信では実行・完了各1回と保存なし、プレビューの仮予定化では正確な仮予定1件・revision増分1・承認待ち・保存なしを、モデルの完了報告とは独立に検査する。
 
-本番の会話UIは、`weekly-keyboard.spec.mjs` の複数行編集・明示的な送信（Ctrl/Cmd+Enterでは送らない）、`weekly-real-application.spec.mjs` のキャンセル・遅延結果の破棄・保存・reload、`weekly-real-concurrency.spec.mjs` の二重送信抑止で検査する。旧画面だけにあったCtrl+Enter送信・破壊的preview閉じ・一括破棄のテストは保持しない。プレビューの除外・仮予定化・承認の境界は本番経路へ移管する一方、同一taskでの二重仮予定化と実ダブルクリックによる確認前保存は#751で追跡する。モデル操作の成功のみを根拠に、本番の状態不変条件を置き換えない。
+本番の会話UIは、`weekly-keyboard.spec.mjs` のPC Enter送信・Shift+Enter改行・Ctrl/Cmd+Enter送信互換・IME確定の誤送信防止（タッチ端末のEnter改行は維持）、`weekly-real-application.spec.mjs` のキャンセル・遅延結果の破棄・保存・reload、`weekly-real-concurrency.spec.mjs` の二重送信抑止で検査する。旧画面だけにあった破壊的preview閉じ・一括破棄のテストは保持しない。プレビューの除外・仮予定化・承認の境界は本番経路へ移管する一方、同一taskでの二重仮予定化と実ダブルクリックによる確認前保存は#751で追跡する。モデル操作の成功のみを根拠に、本番の状態不変条件を置き換えない。
 
 ## 1ターン完了の重複保証移管（Issue #739）
 

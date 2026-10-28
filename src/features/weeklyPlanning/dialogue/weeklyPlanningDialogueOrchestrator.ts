@@ -239,6 +239,6 @@ export function decideDialogueKeyboardAction(
 ): DialogueKeyboardDecision {
   if (event.isComposing || event.keyCode === 229) return 'ignore';
   if (event.key !== 'Enter') return 'ignore';
-  if (event.ctrlKey || event.metaKey) return 'submit';
-  return 'newline';
+  if (event.shiftKey) return 'newline';
+  return 'submit';
 }
