@@ -20,7 +20,7 @@ Licenses and shipped weights were checked against `google/fonts` `METADATA.pb`. 
 
 - `src/lib/fontPreset.ts`: preset recognition, labels and the on-demand Google Fonts CSS2 stylesheet loader.
 - `src/hooks/useThemePreference.ts`: the typed preference next to mode and palette. Written only after an explicit choice; corrupt or unknown saved values display `system` and are not overwritten. `system` leaves `html[data-font-preset]` absent.
-- `src/styles/font-presets.css`: every family stack. `base.css`, `home.css` and `bookshelf.css` read `var(--app-font-family, <previous stack>)`, so the standard preset is byte-for-byte the previous behavior. A chosen preset also makes form controls inherit.
+- `src/styles/font-presets.css`: every family stack. Its `:root` rule (loaded after `base.css`), `home.css` and `bookshelf.css` read `var(--app-font-family, <previous stack>)`, so the standard preset is byte-for-byte the previous behavior. A chosen preset also makes form controls inherit.
 - The dot appearance keeps DotGothic16 with priority; only `.font-preset-sample` is excluded so comparison still works.
 
 ## Delivery, failure and security

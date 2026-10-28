@@ -9,7 +9,10 @@ const css = read('./font-presets.css');
 
 describe('font preset styles', () => {
   it('keeps every existing family stack as the unset-variable fallback', () => {
-    expect(read('./base.css')).toContain('font-family: var(--app-font-family, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif);');
+    expect(read('./base.css')).toContain('font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;');
+    expect(css).toContain('font-family: var(--app-font-family, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif);');
+    const imports = read('../styles.css');
+    expect(imports.indexOf("'./styles/font-presets.css'")).toBeGreaterThan(imports.indexOf("'./styles/base.css'"));
     for (const file of ['./home.css', './bookshelf.css']) {
       expect(read(file)).toContain('font-family: var(--app-font-family, "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif);');
     }
@@ -19,7 +22,7 @@ describe('font preset styles', () => {
     postcss.parse(css).walkRules(rule => {
       for (const selector of rule.selectors) {
         if (selector === ':root') {
-          rule.walkDecls(declaration => expect(declaration.prop.startsWith('--font-preset-')).toBe(true));
+          rule.walkDecls(declaration => expect(declaration.prop === 'font-family' || declaration.prop.startsWith('--font-preset-')).toBe(true));
         } else expect(selector.startsWith('html[data-font-preset') || selector.startsWith('.font-preset-sample')).toBe(true);
       }
     });

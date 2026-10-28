@@ -1,5 +1,5 @@
 ﻿:root {
-  font-family: var(--app-font-family, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif);
+  font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
   color: var(--text-primary);
   background: var(--app-background);
   --text-primary: #1f2b2b;

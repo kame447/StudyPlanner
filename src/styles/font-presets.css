@@ -1,7 +1,10 @@
 /* Optional typeface presets. Without html[data-font-preset] every existing
    family stack applies unchanged. Faces come from the on-demand Google Fonts
    stylesheet; until it arrives, or if it never does, the fallback stays. */
+/* Same specificity as base.css :root and loaded after it; the fallback is that
+   stack verbatim (base.css keeps CRLF endings and is left untouched). */
 :root {
+  font-family: var(--app-font-family, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif);
   --font-preset-fallback: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   --font-preset-system: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
   --font-preset-noto-sans-jp: "Noto Sans JP", var(--font-preset-fallback);
