@@ -353,12 +353,8 @@ export class FirestoreServiceAccountClient {
     return `${this.databaseName()}/documents/${collection}/${id}`;
   }
 
-  private async serviceAccountToken(): Promise<string> {
-    return await this.tokenProvider.getToken();
-  }
-
   private async request(url: string, init: RequestInit = {}): Promise<Response> {
-    const token = await this.serviceAccountToken();
+    const token = await this.tokenProvider.getToken();
     this.tokenProvider.subrequestObserver?.beforeSubrequest('firestore');
     return await this.fetcher(url, {
       ...init,

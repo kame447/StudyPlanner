@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FirestoreServiceAccountClient } from './firestoreServiceAccountClient';
 
 function clientWithFetcher(fetcher: typeof fetch): FirestoreServiceAccountClient {
@@ -15,6 +15,19 @@ function clientWithFetcher(fetcher: typeof fetch): FirestoreServiceAccountClient
 }
 
 describe('FirestoreServiceAccountClient aggregation support', () => {
+  it('propagates token failure before request observation or Firestore I/O', async () => {
+    const beforeSubrequest = vi.fn();
+    const failure = new Error('token unavailable');
+    const client = new FirestoreServiceAccountClient({ FIREBASE_PROJECT_ID: 'test-project',
+      FIREBASE_SERVICE_ACCOUNT_EMAIL: 'service@example.com', FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused' },
+    { getToken: async () => { throw failure; }, subrequestObserver: { beforeSubrequest } });
+    const fetcher = vi.fn<typeof fetch>();
+    Object.assign(client, { fetcher });
+    await expect(client.countDocuments('profiles')).rejects.toBe(failure);
+    expect(beforeSubrequest).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('sends a COUNT aggregation with timestamp range filters', async () => {
     let capturedInput: Parameters<typeof fetch>[0] | null = null;
     let capturedInit: Parameters<typeof fetch>[1] | undefined;

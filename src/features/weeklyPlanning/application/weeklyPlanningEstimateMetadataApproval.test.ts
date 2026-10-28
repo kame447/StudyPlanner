@@ -126,12 +126,17 @@ describe('weekly planning estimate metadata approval', () => {
   it('persists the unrounded baseline separately from the 75-minute calendar allocation', async () => {
     const state = store();
     let savedDraft: PlanDraft | null = null;
+    const sourceEstimate = state.getState().draftBlocks[0].behaviorMetadata!.estimateMetadata!;
 
     await approveWeeklyPlanningDraftBlocks({
       userId: OWNER_ID,
       plans: [],
       approvalOperations: [],
       async saveWeeklyApprovedPlan(draft) {
+        const savedEstimate = (draft as PlanDraft & { weeklyPlanningEstimate?: typeof sourceEstimate }).weeklyPlanningEstimate!;
+        expect(savedEstimate).toEqual(sourceEstimate);
+        expect(savedEstimate).not.toBe(sourceEstimate);
+        expect(savedEstimate.sourceFactRefs).not.toBe(sourceEstimate.sourceFactRefs);
         savedDraft = structuredClone(draft);
         return createPlanFromDraft(draft);
       },
@@ -159,5 +164,19 @@ describe('weekly planning estimate metadata approval', () => {
       weeklyPlanningEstimate?: unknown;
     };
     expect(persisted.weeklyPlanningEstimate).toEqual(estimate);
+  });
+
+  it('omits estimate metadata when the approved block has none', async () => {
+    expect.assertions(1);
+    const state = store();
+    delete state.getState().draftBlocks[0].behaviorMetadata!.estimateMetadata;
+    await approveWeeklyPlanningDraftBlocks({
+      userId: OWNER_ID, plans: [], approvalOperations: [],
+      async saveWeeklyApprovedPlan(draft) {
+        expect(draft).not.toHaveProperty('weeklyPlanningEstimate');
+        return createPlanFromDraft(draft);
+      },
+      getState: state.getState, dispatch: state.dispatch, onOperationCompleted() {},
+    });
   });
 });
