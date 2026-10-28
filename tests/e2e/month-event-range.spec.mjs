@@ -129,6 +129,54 @@ test.describe('multi-day month events', () => {
     hasTouch: true,
   });
 
+  test('closing the nested date picker preserves the unsaved event editor', async ({ page }) => {
+    const dates = currentMonthDays();
+    await seedRangeTestState(page);
+    await openSchedule(page);
+    const grid = page.getByRole('grid', { name: '月間カレンダー' });
+    const cell = cellForDay(grid, page, dates.startDay);
+    await cell.focus();
+    await page.keyboard.press('Enter');
+
+    const overlay = page.locator('.month-event-modal-overlay');
+    const editor = overlay.locator('.month-event-modal');
+    const title = editor.getByLabel('タイトル');
+    await expect(editor).toBeVisible();
+    await title.fill('カレンダーを閉じても残る予定');
+
+    const confirmations = [];
+    let acceptDiscard = false;
+    page.on('dialog', async dialog => {
+      confirmations.push(dialog.message());
+      if (acceptDiscard) await dialog.accept();
+      else await dialog.dismiss();
+    });
+
+    await editor.getByRole('button', { name: '開始日' }).click();
+    const picker = overlay.locator(':scope > .date-picker-overlay');
+    await expect(picker).toBeVisible();
+    await picker.tap({ position: { x: 2, y: 2 } });
+    await expect(picker).toHaveCount(0);
+    await expect(editor).toBeVisible();
+    await expect(title).toHaveValue('カレンダーを閉じても残る予定');
+    expect(confirmations).toHaveLength(0);
+
+    await editor.getByRole('button', { name: '終了日' }).click();
+    const nextDate = picker.locator('.mini-calendar-day:not(.is-outside)')
+      .filter({ hasText: new RegExp(`^${dates.endDay}$`) }).first();
+    await nextDate.click();
+    await expect(picker).toHaveCount(0);
+    await expect(editor.getByRole('button', { name: '終了日' })).toContainText(`${dates.endDay}日`);
+    await expect(title).toHaveValue('カレンダーを閉じても残る予定');
+
+    await editor.getByRole('button', { name: '閉じる' }).click();
+    await expect(editor).toBeVisible();
+    expect(confirmations).toEqual(['入力した内容を破棄しますか？']);
+    acceptDiscard = true;
+    await editor.getByRole('button', { name: '閉じる' }).click();
+    await expect(overlay).toHaveCount(0);
+  });
+
   test('saves one date range and paints one continuous bar across covered cells', async ({ page }) => {
     const dates = currentMonthDays();
     await seedRangeTestState(page);
