@@ -19,14 +19,6 @@ export function isScheduleOccurrenceOutsideHourlyGrid(
   return occurrence.start.date !== occurrence.end.date;
 }
 
-function inclusiveDisplayEndDate(
-  occurrence: Pick<ScheduleOccurrence, 'end'>,
-): string {
-  return occurrence.end.time === '00:00'
-    ? addDays(occurrence.end.date, -1)
-    : occurrence.end.date;
-}
-
 export function layoutWeekSpanningOccurrences(
   occurrences: readonly ScheduleOccurrence[],
   weekDates: readonly string[],
@@ -43,7 +35,9 @@ export function layoutWeekSpanningOccurrences(
       const clippedStart = occurrence.start.date < weekStart
         ? weekStart
         : occurrence.start.date;
-      const displayEnd = inclusiveDisplayEndDate(occurrence);
+      const displayEnd = occurrence.end.time === '00:00'
+        ? addDays(occurrence.end.date, -1)
+        : occurrence.end.date;
       const clippedEnd = displayEnd > weekEnd ? weekEnd : displayEnd;
       if (clippedEnd < weekStart || clippedStart > weekEnd || clippedEnd < clippedStart) {
         return [];

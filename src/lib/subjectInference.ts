@@ -56,10 +56,6 @@ function isExactTextMatch(query: string, candidate: string): boolean {
   return query === candidate || tokenizeUserCatalogText(query).includes(candidate);
 }
 
-function canUsePartialAlias(alias: string): boolean {
-  return alias.length >= 3;
-}
-
 function scoreMaterialNameMatch(title: string, name: string): number {
   if (!name) {
     return 0;
@@ -81,7 +77,7 @@ function scoreAliasMatch(title: string, alias: string): number {
     return 4000 + alias.length;
   }
 
-  return canUsePartialAlias(alias) && title.includes(alias)
+  return alias.length >= 3 && title.includes(alias)
     ? 2000 + alias.length
     : 0;
 }

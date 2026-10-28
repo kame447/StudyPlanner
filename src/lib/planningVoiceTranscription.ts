@@ -40,10 +40,6 @@ export function buildPlanningVoiceTranscriptionEndpoint(proxyUrl: string): strin
   return `${baseUrl}/planning-transcription`;
 }
 
-function normalizeAudioMimeType(mimeType: string): string {
-  return mimeType.split(';')[0]?.trim().toLowerCase() || 'audio/webm';
-}
-
 async function blobToBase64(blob: Blob): Promise<string> {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = '';
@@ -99,7 +95,7 @@ export async function transcribePlanningVoice(
         Authorization: `Bearer ${idToken}`,
       },
       body: JSON.stringify({
-        mimeType: normalizeAudioMimeType(blob.type),
+        mimeType: blob.type.split(';')[0]?.trim().toLowerCase() || 'audio/webm',
         base64: await blobToBase64(blob),
       }),
     });

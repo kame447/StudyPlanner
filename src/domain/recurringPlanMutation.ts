@@ -49,12 +49,6 @@ function ownedLinkedActuals(
   );
 }
 
-function assertDraftOwner(sourcePlan: Plan, draft: PlanDraft): void {
-  if (sourcePlan.userId !== draft.userId) {
-    throw new Error('Recurring plan edit owner does not match the source plan.');
-  }
-}
-
 export function buildRecurringPlanEditMutation(
   plans: Plan[],
   actuals: Actual[],
@@ -63,7 +57,9 @@ export function buildRecurringPlanEditMutation(
   draft: PlanDraft,
   scope: RecurringPlanScope,
 ): RecurringPlanMutation {
-  assertDraftOwner(sourcePlan, draft);
+  if (sourcePlan.userId !== draft.userId) {
+    throw new Error('Recurring plan edit owner does not match the source plan.');
+  }
 
   if (scope === 'all') {
     return {

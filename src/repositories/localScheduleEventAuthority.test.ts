@@ -115,6 +115,30 @@ function createRepository(storage: Storage) {
 }
 
 describe('local ScheduleEvent authority', () => {
+  it.each(['user-1', ''])('preserves direct upsert payloads and return identity for owner %j', async (userId) => {
+    const storage = new MemoryStorage();
+    const authority = createLocalScheduleEventAuthority(createLocalPlannerStorageGateway(storage), storage);
+    const nextPlan = plan({ userId });
+    const nextEvent = monthEvent({ userId });
+
+    expect(await authority.upsertPlan(nextPlan)).toBe(nextPlan);
+    expect(await authority.upsertMonthEvent(nextEvent)).toBe(nextEvent);
+    expect(JSON.parse(storage.getItem('studyplanner.scheduleEvents.v1')!)).toEqual([
+      expect.objectContaining({ id: 'plan:shared-id', userId, title: nextPlan.title }),
+      expect.objectContaining({ id: 'month-event:shared-id', userId, title: nextEvent.title }),
+    ]);
+  });
+
+  it('keeps independent owner rejection before local persistence', async () => {
+    const storage = new MemoryStorage();
+    const authority = createLocalScheduleEventAuthority(createLocalPlannerStorageGateway(storage), storage);
+    const write = vi.spyOn(storage, 'setItem');
+    await expect(authority.applyRecurringPlanMutation('user-1', {
+      planUpserts: [plan({ userId: 'other' })], planDeletes: [], actualUpserts: [], actualDeletes: [],
+    })).rejects.toThrow('所有者が一致しません');
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it('shares a delayed A migration across B so the returned A write cannot be overwritten', async () => {
     const storage = new MemoryStorage();
     const gateway = createLocalPlannerStorageGateway(storage);

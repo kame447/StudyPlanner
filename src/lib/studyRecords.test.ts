@@ -242,3 +242,15 @@ it('resolves known major-event records before the unknown-source study fallback'
   expect(ambiguous.monthEvent).toBeUndefined();
   expect(isStudyRecordForDisplay(ambiguous)).toBe(true);
 });
+
+it.each([
+  [undefined, undefined, ['before', 'boundary', 'after']],
+  ['2026-05-04', undefined, ['boundary', 'after']],
+  [undefined, '2026-05-04', ['before', 'boundary']],
+  ['2026-05-04', '2026-05-04', ['boundary']],
+] as const)('keeps inclusive optional date bounds %s to %s', (startDate, endDate, expected) => {
+  const rows = [['before', '2026-05-03'], ['boundary', '2026-05-04'], ['after', '2026-05-05']]
+    .map(([id, occurrenceDate]) => actual({ id, occurrenceDate }));
+  const result = normalizeStudyRecordsForDisplay({ plans: [], actuals: rows, startDate, endDate });
+  expect(result.map(row => row.id).sort()).toEqual([...expected].sort());
+});

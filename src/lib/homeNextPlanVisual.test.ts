@@ -106,3 +106,7 @@ describe('resolveHomeNextPlanPresentation', () => {
     expect(presentation.detailValue).toBe('生活');
   });
 });
+
+it.each(['', '   '])('keeps the other-category fallback for %j', subject => {
+  expect(resolveHomeNextPlanPresentation(makePlan({ type: 'other', title: 'Cleaning', subject }), []).detailValue).toBe('その他');
+});

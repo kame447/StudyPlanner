@@ -397,18 +397,6 @@ function buildDailyBuckets({
   return buckets;
 }
 
-function buildDaySessionBuckets(
-  records: NormalizedStudyRecordForDisplay[],
-): LearningReportTrendBucket[] {
-  return records.map((record) => ({
-    key: record.id,
-    label: record.startTime || '記録',
-    sublabel: record.materialLabel || record.subjectLabel,
-    actualMinutes: record.durationMinutes,
-    plannedMinutes: 0,
-  }));
-}
-
 function getPreviousRange(
   scope: LearningReportScope,
   range: LearningReportRange,
@@ -650,7 +638,13 @@ export function buildLearningReportModel({
   const breakdown = buildBreakdown({ records, subjects, materials });
   const buckets =
     scope === 'day'
-      ? buildDaySessionBuckets(records)
+      ? records.map((record) => ({
+          key: record.id,
+          label: record.startTime || '記録',
+          sublabel: record.materialLabel || record.subjectLabel,
+          actualMinutes: record.durationMinutes,
+          plannedMinutes: 0,
+        }))
       : buildDailyBuckets({
           ...range,
           records,

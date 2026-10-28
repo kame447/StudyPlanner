@@ -1,9 +1,5 @@
 const DEV_TEST_EMAIL = 'test@test.com';
 
-function normalizeEnvValue(value: string | undefined): string {
-  return value?.trim().toLowerCase() ?? '';
-}
-
 function isPrivateLanHost(hostname: string): boolean {
   return (
     hostname.startsWith('192.168.') ||
@@ -28,7 +24,7 @@ function isLocalDevelopmentHost(hostname: string): boolean {
 }
 
 export function isDevTestLoginEnabled(): boolean {
-  const flag = normalizeEnvValue(import.meta.env.VITE_ENABLE_DEV_TEST_LOGIN);
+  const flag = import.meta.env.VITE_ENABLE_DEV_TEST_LOGIN?.trim().toLowerCase() ?? '';
 
   if (flag !== 'true') {
     return false;

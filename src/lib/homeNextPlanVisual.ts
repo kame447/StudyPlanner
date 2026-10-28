@@ -56,11 +56,6 @@ function resolvePlanTypeLabel(plan: Plan): string {
   }
 }
 
-function resolveOtherCategory(plan: Plan): string {
-  if (plan.type !== 'other') return resolvePlanTypeLabel(plan);
-  return plan.subject?.trim() || 'その他';
-}
-
 function isClassPlan(plan: Plan): boolean {
   if (plan.sourceType === 'timetable' || plan.type === 'cram-school') return true;
 
@@ -124,7 +119,9 @@ export function resolveHomeNextPlanPresentation(
     visual,
     semanticKind: 'other',
     detailLabel: 'カテゴリ',
-    detailValue: resolveOtherCategory(plan),
+    detailValue: plan.type === 'other'
+      ? plan.subject?.trim() || 'その他'
+      : resolvePlanTypeLabel(plan),
     durationLabel: '予定時間',
     actionLabel: '予定を確認する',
   };

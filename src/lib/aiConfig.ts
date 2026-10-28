@@ -141,14 +141,6 @@ function enforceProductionTransport(config: AiConfig): AiConfig {
   return config;
 }
 
-function writeStoredAiConfig(config: AiConfig): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.sessionStorage.setItem(AI_RUNTIME_STORAGE_KEY, JSON.stringify(config));
-}
-
 export function getAiConfig(): AiConfig {
   return enforceProductionTransport(
     normalizeAiConfig(readStoredAiConfig(), getEnvConfig()),
@@ -159,7 +151,9 @@ export function saveAiConfig(config: AiConfig): AiConfig {
   const normalized = enforceProductionTransport(
     normalizeAiConfig(config, getEnvConfig()),
   );
-  writeStoredAiConfig(normalized);
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.setItem(AI_RUNTIME_STORAGE_KEY, JSON.stringify(normalized));
+  }
   return normalized;
 }
 

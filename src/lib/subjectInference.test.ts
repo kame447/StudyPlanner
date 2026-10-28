@@ -110,3 +110,11 @@ describe('inferSubjectFromTitleWithUserCatalog', () => {
     });
   });
 });
+
+it.each([['xy', 'xy', true], ['xy', 'xy drill', false], ['xyz', 'xyz drill', true]] as const)(
+  'preserves exact and partial alias thresholds for %s in %s', (alias, title, matched) => {
+    const result = inferSubjectFromTitleWithUserCatalog(title, { userMaterials: [material({
+      id: 'short-alias', name: 'Unrelated Workbook', subjectName: 'CustomSubject', aliases: [alias],
+    })] });
+    expect(result.materialId === 'short-alias').toBe(matched);
+  });

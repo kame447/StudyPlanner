@@ -344,11 +344,6 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     setViewMode('bookshelf');
   }
 
-  function openReportSurface() {
-    setPrimarySurface('workspace');
-    setViewMode('report');
-  }
-
   function openTimetableSurface() {
     setPrimarySurface('workspace');
     setViewMode('timetable');
@@ -487,7 +482,10 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
                 setViewMode('todo');
               }}
               onOpenBookshelf={openBookshelfSurface}
-              onOpenReport={openReportSurface}
+              onOpenReport={() => {
+                setPrimarySurface('workspace');
+                setViewMode('report');
+              }}
             />
           </StudySessionProvider>
         ) : null}

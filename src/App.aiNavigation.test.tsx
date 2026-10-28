@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from './App';
+import { HomeScheduleView } from './components/HomeScheduleView';
 import { AiPlanningView } from './components/AiPlanningView';
 import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
 import { PrimaryBottomNav } from './components/PrimaryBottomNav';
@@ -189,4 +190,14 @@ it('refreshes retained starter suggestions from the owned planner snapshot and h
   await act(async () => { renderer!.update(<App state={state} />); });
   expect(JSON.stringify(starters().findAllByType('span').map(node => node.children))).not.toContain('追加した課題');
   expect(boundary.todos).not.toHaveBeenCalled(); expect(boundary.materials).not.toHaveBeenCalled();
+});
+
+it('returns to the workspace before requesting the report from Home', async () => {
+  await act(async () => { renderer = create(<App state={state} />); });
+  await act(async () => { nav().onOpenAiPlanning(); });
+  expect(aiShellActive()).toBe(true);
+  await act(async () => { nav().onOpenHome(); });
+  await act(async () => { renderer!.root.findByType(HomeScheduleView).props.onOpenReport(); });
+  expect(state.setViewMode).toHaveBeenCalledWith('report');
+  expect(aiShellActive()).toBe(false);
 });
