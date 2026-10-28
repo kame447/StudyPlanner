@@ -81,26 +81,6 @@ function hasBlockingItemError(item: EditableItem): boolean {
   );
 }
 
-function createEditablePeriod(
-  period: TimetableOcrPeriodCandidate,
-  index: number,
-): EditablePeriod {
-  return {
-    ...period,
-    id: `period-${period.periodNumber}-${index}`,
-  };
-}
-
-function createEditableItem(
-  item: TimetableOcrItemCandidate,
-  index: number,
-): EditableItem {
-  return {
-    ...item,
-    id: `item-${item.weekday || 'unknown'}-${item.periodNumber ?? 'unknown'}-${index}`,
-  };
-}
-
 function createEmptyItem(index: number): EditableItem {
   return {
     id: `item-new-${Date.now()}-${index}`,
@@ -113,10 +93,6 @@ function createEmptyItem(index: number): EditableItem {
     classroom: '',
     memo: '',
   };
-}
-
-function getTemplateTermId(template: ScheduleTemplate): string {
-  return template.termId || 'default';
 }
 
 export function TimetableOcrImportDialog(props: TimetableOcrImportDialogProps) {
@@ -140,10 +116,16 @@ function TimetableOcrImportDialogSession({
   const beginMutation = useEditorMutation();
   const pendingOperation = useRef<ReturnType<typeof beginMutation>>(null);
   const [periods, setPeriods] = useState<EditablePeriod[]>(() =>
-    result.periods.map(createEditablePeriod),
+    result.periods.map((period, index): EditablePeriod => ({
+      ...period,
+      id: `period-${period.periodNumber}-${index}`,
+    })),
   );
   const [items, setItems] = useState<EditableItem[]>(() =>
-    result.items.map(createEditableItem),
+    result.items.map((item, index): EditableItem => ({
+      ...item,
+      id: `item-${item.weekday || 'unknown'}-${item.periodNumber ?? 'unknown'}-${index}`,
+    })),
   );
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -236,7 +218,7 @@ function TimetableOcrImportDialogSession({
   function getExistingTemplate(item: EditableItem): ScheduleTemplate | undefined {
     return existingTemplates.find(
       (template) =>
-        getTemplateTermId(template) === termId &&
+        (template.termId || 'default') === termId &&
         template.weekday === item.weekday &&
         template.periodNumber === item.periodNumber,
     );

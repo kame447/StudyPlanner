@@ -98,10 +98,6 @@ function formatTimestamp(value: string | null): string {
   }).format(date);
 }
 
-function percentage(part: number, total: number): string {
-  if (total <= 0) return '—';
-  return `${((part / total) * 100).toFixed(1)}%`;
-}
 
 function MetricCard({
   icon,
@@ -355,7 +351,9 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
     { label: '失敗', value: planning?.failed ?? 0, tone: 'red' },
   ] : [];
   const planningMax = Math.max(1, ...planningRows.map((row) => row.value));
-  const aiSuccessRate = data ? percentage(data.period.ai.successCount, data.period.ai.requestCount) : '—';
+  const aiSuccessRate = !data || data.period.ai.requestCount <= 0
+    ? '—'
+    : `${((data.period.ai.successCount / data.period.ai.requestCount) * 100).toFixed(1)}%`;
 
   return (
     <main className="admin-shell admin-overview-shell">

@@ -173,3 +173,16 @@ it('rejects equal clocks with a warning that does not prohibit valid overnight r
   expect(renderer!.root.findAllByProps({ className: 'inline-error' }).map(node => node.children.join('')))
     .toContain('有効な開始時刻と終了時刻を入力してください。');
 });
+
+it('keeps minute wheel selection as a draft until confirmation', () => {
+  const onChange = vi.fn();
+  act(() => { renderer = create(<TimeWheelPicker value="09:00" role="start" onChange={onChange} />); });
+  act(() => renderer!.root.findByProps({ className: 'time-wheel-trigger' }).props.onClick());
+  const minutes = renderer!.root.findAllByProps({ className: 'time-wheel-list' })[1];
+  act(() => minutes.findByProps({ 'data-value': 15 }).props.onClick());
+  expect(onChange).not.toHaveBeenCalled();
+  expect(renderer!.root.findByProps({ className: 'time-picker-title' }).findByType('span').children.join('')).toBe('09:15');
+  act(() => renderer!.root.findByProps({ className: 'primary-button' }).props.onClick({ stopPropagation: noop }));
+  expect(onChange).toHaveBeenCalledExactlyOnceWith('09:15');
+  expect(renderer!.root.findAllByProps({ role: 'dialog' })).toHaveLength(0);
+});

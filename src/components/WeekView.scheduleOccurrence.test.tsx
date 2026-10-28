@@ -7,6 +7,7 @@ import type {
   TimetableTerm,
 } from '../types/domain';
 import { getMonthEventColor, scheduleEventWeekStyle } from '../lib/scheduleEventColor';
+import { getSubjectTheme } from '../lib/subjectTheme';
 import { WeekView } from './WeekView';
 
 const TIMESTAMP = '2026-08-01T00:00:00.000Z';
@@ -370,5 +371,28 @@ it('retains the actual occurrence title after cancellation rather than falling b
   act(() => actualMode.props.onClick());
   expect(JSON.stringify(renderer.toJSON())).toContain('当日の授業タイトル');
   expect(JSON.stringify(renderer.toJSON())).not.toContain('系列のタイトル');
+  act(() => renderer.unmount());
+});
+
+
+it.each([
+  { title: '  実績のタイトル  ', subject: '  数学  ', linked: true, expectedTitle: '実績のタイトル', expectedSubject: '数学' },
+  { title: '  ', subject: '  ', linked: true, expectedTitle: ' 予定のタイトル ', expectedSubject: ' 英語 ' },
+  { title: undefined, subject: '', linked: false, expectedTitle: '記録', expectedSubject: '記録' },
+])('preserves actual display fallback order for $expectedTitle', ({ title, subject, linked, expectedTitle, expectedSubject }) => {
+  const source = importedTimetablePlan({ title: ' 予定のタイトル ', subject: ' 英語 ', type: 'study', sourceType: undefined });
+  let renderer!: ReactTestRenderer;
+  act(() => {
+    renderer = create(<WeekView selectedDate="2026-08-24" userId="user-1" plans={linked ? [source] : []} actuals={[{
+      id: 'fallback-record', userId: 'user-1', planId: linked ? source.id : null,
+      occurrenceDate: '2026-08-24', actualStartTime: '15:00', actualEndTime: '16:00',
+      title, subject, note: '', updatedAt: TIMESTAMP,
+    }]} onOpenDay={vi.fn()} />);
+  });
+  const actualMode = renderer.root.findAllByType('button').find(button => button.children.join('') === '記録')!;
+  act(() => actualMode.props.onClick());
+  const block = findTimedBlock(renderer, expectedTitle);
+  expect(block.findByType('strong').children.join('')).toBe(expectedTitle);
+  expect(block.props.style['--schedule-event-color']).toBe(getSubjectTheme(expectedSubject, linked ? 'study' : 'other').fill);
   act(() => renderer.unmount());
 });

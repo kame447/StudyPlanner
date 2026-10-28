@@ -35,11 +35,6 @@ function formatTimestamp(value: string | null | undefined): string {
   }).format(date);
 }
 
-function formatOpaqueId(value: string): string {
-  return value.length > 28
-    ? `${value.slice(0, 16)}…${value.slice(-8)}`
-    : value;
-}
 
 function shortDate(localDate: string): string {
   return new Intl.DateTimeFormat('ja-JP', {
@@ -384,7 +379,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
                       <Users size={18} />
                     </span>
                     <span className="admin-user-copy">
-                      <strong>{formatOpaqueId(displayId)}</strong>
+                      <strong>{displayId.length > 28 ? `${displayId.slice(0, 16)}…${displayId.slice(-8)}` : displayId}</strong>
                       <code>{displayId}</code>
                       <span>登録 {formatTimestamp(user.registeredAt)}</span>
                       <span>初回観測 {formatTimestamp(user.firstActivityAt)}</span>

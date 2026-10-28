@@ -110,9 +110,6 @@ function compareDueTodos(
   return right.updatedAt.localeCompare(left.updatedAt);
 }
 
-function compareUnsetTodos(left: TodoTask, right: TodoTask): number {
-  return right.updatedAt.localeCompare(left.updatedAt);
-}
 
 function comparePinnedTodos(
   left: TodoTask,
@@ -253,7 +250,9 @@ function TodoViewSession({
       unset: activeTodos
         .filter((todo) => !todo.dueDate)
         .sort((left, right) =>
-          comparePinnedTodos(left, right, compareUnsetTodos),
+          comparePinnedTodos(left, right, (leftTodo, rightTodo) =>
+            rightTodo.updatedAt.localeCompare(leftTodo.updatedAt),
+          ),
         ),
       done: visibleTodos
         .filter((todo) => todo.status === 'done')

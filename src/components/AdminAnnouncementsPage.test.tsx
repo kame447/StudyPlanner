@@ -11,6 +11,14 @@ async function mount() { await act(async () => { renderer = create(<AdminAnnounc
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(listAnnouncementDrafts).mockResolvedValue({ items: [draft], nextCursor: null }); vi.mocked(newAnnouncementId).mockReturnValue('new'); vi.mocked(saveAnnouncementDraft).mockResolvedValue(); vi.mocked(publishAnnouncement).mockResolvedValue(); });
 afterEach(() => act(() => renderer?.unmount()));
 describe('admin announcements', () => {
+  it('starts a fresh empty announcement after editing another draft', async () => {
+    await mount(); act(() => button('編集').props.onClick());
+    act(() => button('キャンセル').props.onClick());
+    act(() => button('新しいお知らせ').props.onClick());
+    expect(renderer.root.findByType('input').props.value).toBe('');
+    expect(renderer.root.findByType('textarea').props.value).toBe('');
+    expect(renderer.root.findByType('select').props.value).toBe('お知らせ');
+  });
   it('opens a draft for review without publishing and publishes directly from the editor', async () => {
     await mount(); act(() => button('編集').props.onClick()); expect(text()).toContain('お知らせを編集');
     expect(publishAnnouncement).not.toHaveBeenCalled();

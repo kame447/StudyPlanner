@@ -159,6 +159,17 @@ vi.mock('../services/adminObservabilityService', () => ({
 import { AdminOverviewPage } from './AdminOverviewPage';
 
 describe('AdminOverviewPage', () => {
+  it.each([[0, '—'], [4, '75.0%']] as const)('renders the success rate for %s requests', (count, expected) => {
+    const previous = overviewFixture.period.ai;
+    overviewFixture.period.ai = { ...previous, requestCount: count, successCount: 3 };
+    try {
+      let renderer!: ReturnType<typeof create>;
+      act(() => { renderer = create(<AdminOverviewPage navigate={vi.fn()} />); });
+      const label = renderer.root.findAllByType('span').find(node => node.children.join('') === '成功率')!;
+      expect(label.parent!.findByType('strong').children.join('')).toBe(expected);
+      act(() => renderer.unmount());
+    } finally { overviewFixture.period.ai = previous; }
+  });
   it('renders meaningful labels and preserves unknown usage states', () => {
     let renderer: ReturnType<typeof create>;
     act(() => {

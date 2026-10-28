@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MonthView } from './MonthView';
+import { MonthEventDialog } from './MonthEventDialog';
 import { ScheduleToolbar } from './ScheduleToolbar';
 import { usePlannerDataState, type UsePlannerDataStateResult } from '../hooks/usePlannerDataState';
 import { createEmptyMonthEventDraft } from '../domain/planner';
@@ -158,4 +159,13 @@ it.each(['resolve', 'reject'] as const)('preserves a newer toolbar month when a 
     expect(byLabel('タイトル').props.value).toBe('Pending October edit');
     expect(renderer.root.findByProps({ role: 'alert' }).children.join('')).toContain('もう一度保存');
   }
+});
+
+it('closes the month editor without navigation or persistence', async () => {
+  await october(); await cell(15); await click(byLabel('予定を追加'));
+  expect(renderer.root.findAllByType(MonthEventDialog)).toHaveLength(1);
+  await act(async () => { renderer.root.findByType(MonthEventDialog).props.onClose(); vi.runOnlyPendingTimers(); });
+  expect(renderer.root.findAllByType(MonthEventDialog)).toHaveLength(0);
+  expect(state.monthDate).toBe('2026-10-01');
+  expect(repo.upsertMonthEvent).not.toHaveBeenCalled();
 });

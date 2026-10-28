@@ -190,14 +190,6 @@ function formatWeekDate(dateString: string, format: 'compact' | 'full'): string 
   return `${day}（${weekday}）`;
 }
 
-function resolveActualTitle(actual: Actual, plan?: Plan): string {
-  return actual.title?.trim() || plan?.title || '記録';
-}
-
-function resolveActualSubject(actual: Actual, plan?: Plan): string {
-  return actual.subject.trim() || plan?.subject || '記録';
-}
-
 function buildMarkerStyle(hour: number): CSSProperties {
   return {
     top: `${(hour / 24) * 100}%`,
@@ -1061,8 +1053,8 @@ export function WeekView({
                   const actualBlocks = buildLanes<WeekPreviewBaseBlock>(
                     dayActuals.map(({ actual, plan, range }) => ({
                       id: actual.id,
-                      title: resolveActualTitle(actual, plan),
-                      subject: resolveActualSubject(actual, plan),
+                      title: actual.title?.trim() || plan?.title || '記録',
+                      subject: actual.subject.trim() || plan?.subject || '記録',
                       type: plan?.type ?? 'other',
                       sourceType: plan?.sourceType,
                       ...range,

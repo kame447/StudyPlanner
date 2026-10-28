@@ -44,9 +44,6 @@ function isValidIsoDate(dateString: string): boolean {
   return !Number.isNaN(date.getTime());
 }
 
-function normalizeSelectedDate(dateString: string, fallbackDate: string): string {
-  return isValidIsoDate(dateString) ? dateString : fallbackDate;
-}
 
 function getSelectionStyle(geometry: SelectionGeometry | null): CSSProperties | undefined {
   if (!geometry) {
@@ -67,7 +64,7 @@ export function DayCalendarDialog({
   onClose,
 }: DayCalendarDialogProps) {
   const today = todayIsoDate();
-  const safeSelectedDate = normalizeSelectedDate(selectedDate, today);
+  const safeSelectedDate = isValidIsoDate(selectedDate) ? selectedDate : today;
   const selectedMonth = startOfMonth(safeSelectedDate);
   const [calendarMonth, setCalendarMonth] = useState(selectedMonth);
   const [visualSelectedDate, setVisualSelectedDate] = useState(safeSelectedDate);
