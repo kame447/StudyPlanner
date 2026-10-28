@@ -88,16 +88,6 @@ function ownsPendingApproval(
   );
 }
 
-function cloneEstimateMetadata(
-  metadata: WeeklyPlanningEstimateMetadataV1 | undefined,
-): WeeklyPlanningEstimateMetadataV1 | undefined {
-  if (!metadata) return undefined;
-  return {
-    ...metadata,
-    sourceFactRefs: [...metadata.sourceFactRefs],
-  };
-}
-
 export async function approveWeeklyPlanningDraftBlocks({
   userId,
   featureSessionId,
@@ -195,9 +185,10 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
             block,
             authenticatedUserId,
           ) as PlanDraftWithEstimateMetadata;
-          const estimateMetadata = cloneEstimateMetadata(
-            block.behaviorMetadata?.estimateMetadata,
-          );
+          const sourceEstimateMetadata = block.behaviorMetadata?.estimateMetadata;
+          const estimateMetadata: WeeklyPlanningEstimateMetadataV1 | undefined = sourceEstimateMetadata
+            ? { ...sourceEstimateMetadata, sourceFactRefs: [...sourceEstimateMetadata.sourceFactRefs] }
+            : undefined;
           if (estimateMetadata) {
             draft.weeklyPlanningEstimate = estimateMetadata;
           }
