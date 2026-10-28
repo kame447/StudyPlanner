@@ -66,7 +66,8 @@ it.each(['create', 'edit'] as const)('retains %s input through optimistic update
     await act(async () => {
       button(renderer, '閉じる').props.onClick();
       button(renderer, '追加').props.onClick();
-      renderer.root.findByProps({ className: 'overlay modal-overlay month-event-modal-overlay' }).props.onClick();
+      const overlay = renderer.root.findByProps({ className: 'overlay modal-overlay month-event-modal-overlay' });
+      overlay.props.onClick({ target: overlay, currentTarget: overlay });
       renderer.root.findAllByType(TimeWheelPicker)[0].props.onChange('12:00');
       renderer.root.findAllByType('button').find(node => node.props.className?.includes('month-event-timeline-item'))?.props.onClick();
     });
@@ -183,4 +184,49 @@ it('persists automatic color after reopening an existing explicitly colored even
     await act(async () => { button(renderer, 'ラベル').props.onClick(); });
     expect(renderer.root.findByProps({ 'aria-label': '自動' }).props.checked).toBe(true);
   } finally { act(() => renderer.unmount()); }
+});
+
+it('dismisses only the nested calendar and requires confirmation before discarding edited input', async () => {
+  const confirmDiscard = vi.fn(() => false);
+  vi.stubGlobal('window', { confirm: confirmDiscard });
+  const props = { openDate: DATE, userId: 'owner-a', monthEvents: [],
+    onSave: vi.fn(), onDelete: vi.fn(), onClose: close };
+  let renderer!: ReactTestRenderer;
+  await act(async () => { renderer = create(<MonthEventDialog {...props} />); });
+  try {
+    await enter(renderer, 'タイトル', '消したくない予定');
+    await act(async () => { renderer.root.findByProps({ 'aria-label': '開始日' }).props.onClick(); });
+    const picker = renderer.root.findByProps({ className: 'overlay modal-overlay date-picker-overlay' });
+    await act(async () => { picker.props.onClick(); });
+    expect(renderer.root.findAllByProps({ className: 'overlay modal-overlay date-picker-overlay' })).toHaveLength(0);
+    expect(close).not.toHaveBeenCalled();
+    expect(confirmDiscard).not.toHaveBeenCalled();
+    expect(title(renderer).props.value).toBe('消したくない予定');
+
+    const backdrop = renderer.root.findByProps({ className: 'overlay modal-overlay month-event-modal-overlay' });
+    await act(async () => { backdrop.props.onClick({ target: picker, currentTarget: backdrop }); });
+    expect(close).not.toHaveBeenCalled();
+    await act(async () => { button(renderer, '閉じる').props.onClick(); });
+    expect(confirmDiscard).toHaveBeenCalledWith('入力した内容を破棄しますか？');
+    expect(close).not.toHaveBeenCalled();
+    expect(title(renderer).props.value).toBe('消したくない予定');
+
+    confirmDiscard.mockReturnValue(true);
+    await act(async () => { button(renderer, '閉じる').props.onClick(); });
+    expect(close).toHaveBeenCalledTimes(1);
+  } finally { act(() => renderer.unmount()); vi.unstubAllGlobals(); }
+});
+
+it('does not prompt when a newly opened editor has no unsaved changes', async () => {
+  const confirmDiscard = vi.fn(() => false);
+  vi.stubGlobal('window', { confirm: confirmDiscard });
+  const props = { openDate: DATE, userId: 'owner-a', monthEvents: [],
+    onSave: vi.fn(), onDelete: vi.fn(), onClose: close };
+  let renderer!: ReactTestRenderer;
+  await act(async () => { renderer = create(<MonthEventDialog {...props} />); });
+  try {
+    await act(async () => { button(renderer, '閉じる').props.onClick(); });
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(confirmDiscard).not.toHaveBeenCalled();
+  } finally { act(() => renderer.unmount()); vi.unstubAllGlobals(); }
 });

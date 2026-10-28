@@ -157,6 +157,7 @@ function MonthEventEditor({
   const [draft, setDraft] = useState<MonthEventDraft>(
     () => initialEvent ? createRangeAwareDraftFromEvent(initialEvent, openDate) : createRangeAwareEmptyDraft(userId, openDate),
   );
+  const initialDraftRef = useRef(draft);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [showDeleteScopePrompt, setShowDeleteScopePrompt] = useState(false);
@@ -194,13 +195,21 @@ function MonthEventEditor({
     setEditingEventId(event.id);
     setEditingSource(event);
     setDraft(nextDraft);
+    initialDraftRef.current = nextDraft;
     setExpandedAddons(getInitialExpandedAddons(nextDraft));
     setIsAllDay(isAllDayTimeRange(nextDraft));
     setWaitingForInitialEvent(false);
   }, [initialEventId, monthEvents, waitingForInitialEvent, openDate]);
 
   function requestClose() {
-    if (!pendingMutation.current) onClose();
+    if (pendingMutation.current) return;
+    if (datePickerTarget !== null) {
+      setDatePickerTarget(null);
+      return;
+    }
+    if (JSON.stringify(draft) !== JSON.stringify(initialDraftRef.current)
+      && !window.confirm('入力した内容を破棄しますか？')) return;
+    onClose();
   }
 
   async function runMutation(action: () => Promise<void>, failureMessage: string) {
@@ -236,6 +245,7 @@ function MonthEventEditor({
     setEditingEventId(null);
     setEditingSource(null);
     setDraft(nextDraft);
+    initialDraftRef.current = nextDraft;
     setError('');
     setStatus(nextStatus);
     setShowDeleteScopePrompt(false);
@@ -258,6 +268,7 @@ function MonthEventEditor({
     setEditingEventId(monthEvent.id);
     setEditingSource(monthEvent);
     setDraft(nextDraft);
+    initialDraftRef.current = nextDraft;
     setStatus('');
     setError('');
     setShowDeleteScopePrompt(false);
@@ -440,7 +451,12 @@ function MonthEventEditor({
   }
 
   return (
-    <div className="overlay modal-overlay month-event-modal-overlay" onClick={requestClose}>
+    <div
+      className="overlay modal-overlay month-event-modal-overlay"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) requestClose();
+      }}
+    >
       <div className="modal-card month-event-modal" onClick={(event) => event.stopPropagation()}>
         <div className="month-event-editor-header">
           <button className="ghost-button" onClick={requestClose} disabled={isSavingMonthEvent} type="button">
