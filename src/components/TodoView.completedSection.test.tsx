@@ -199,3 +199,13 @@ describe('Todo completed-section disclosure', () => {
     expect(disclosure(second.root).props['aria-expanded']).toBe(false);
   });
 });
+
+it('orders undated tasks by pin first then newest update, preserving equal order', () => {
+  const { root } = mount([
+    todo('older', { updatedAt: '2026-10-01' }),
+    todo('equal-first', { updatedAt: '2026-10-03' }),
+    todo('equal-second', { updatedAt: '2026-10-03' }),
+    todo('pinned', { pinned: true, updatedAt: '2026-09-01' }),
+  ]);
+  expect(titles(section(root, 1))).toEqual(['pinned', 'equal-first', 'equal-second', 'older']);
+});

@@ -163,3 +163,12 @@ it('keeps photo processing alive and visible while the username is edited', asyn
   await act(async () => { button('プロフィールを保存').props.onClick(); });
   expect(save).toHaveBeenLastCalledWith({ username: 'New name', avatar: 'data:image/jpeg;base64,new' });
 });
+
+it.each([
+  ['data:image/jpeg;base64,image', '写真'], ['  A  ', 'A'], ['  ', '文字'],
+])('summarizes avatar %s without changing its stored value', (value, summary) => {
+  act(() => renderer.update(render(true, { ...user, avatar: value })));
+  const toggle = renderer.root.findByProps({ className: 'collapsible-toggle' });
+  expect(toggle.findByType('strong').children.join('')).toBe(summary);
+  expect(avatar()).toBe(value);
+});

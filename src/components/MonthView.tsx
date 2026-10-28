@@ -143,9 +143,6 @@ export function MonthView({
     setEventModalDate(date);
   }
 
-  function closeMonthEventEditor() {
-    requestCloseMonthEventEditor();
-  }
 
   useEffect(() => {
     if (createRequestId <= 0 || createRequestId === lastCreateRequestId.current) {
@@ -312,7 +309,7 @@ export function MonthView({
                 initialEventId={eventModalInitialEventId}
                 onSave={onSaveMonthEvent}
                 onDelete={onDeleteMonthEvent}
-                onClose={closeMonthEventEditor}
+                onClose={requestCloseMonthEventEditor}
               />
             </div>,
             document.body,

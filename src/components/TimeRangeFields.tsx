@@ -309,9 +309,6 @@ export function TimeWheelPicker({
     };
   }
 
-  function commit(nextHour: number, preferredMinute: number) {
-    setDraftFromParts(nextHour, preferredMinute);
-  }
 
   function commitAndClose() {
     clearHourScrollTimeout();
@@ -479,7 +476,7 @@ export function TimeWheelPicker({
                   data-value={minute}
                   type="button"
                   onClick={() => {
-                    commit(selectedHour, minute);
+                    setDraftFromParts(selectedHour, minute);
                     scrollMinuteTo(minute);
                   }}
                 >

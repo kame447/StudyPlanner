@@ -31,6 +31,29 @@ const backdrop = () => renderer.root.findByProps({ className: 'overlay modal-ove
 async function settle() { await act(async () => { await Promise.resolve(); }); }
 
 describe('OCR timetable submitted draft ownership', () => {
+  it('keeps duplicate OCR rows independently editable and removable', () => {
+    setup({ result: { ...result, items: [result.items[0], result.items[0]] } });
+    const titles = () => renderer.root.findAllByProps({ placeholder: '授業名' });
+    act(() => titles()[1].props.onChange({ target: { value: 'Edited second' } }));
+    expect(titles().map(input => input.props.value)).toEqual(['数学', 'Edited second']);
+    expect(result.items[0].title).toBe('数学');
+    act(() => renderer.root.findAllByProps({ className: 'ghost-button timetable-delete-button' })[0].props.onClick());
+    expect(titles().map(input => input.props.value)).toEqual(['Edited second']);
+  });
+
+  it.each([undefined, '', 'other'])('matches legacy term %s only through the default fallback', async termId => {
+    const ui = setup({ termId: 'default', existingTemplates: [{
+      id: 'existing-template', userId: 'owner', termId, title: '数学', subject: 'Math',
+      type: 'school-event', weekday: 'mon', periodNumber: 1, startTime: '09:00', endTime: '10:00',
+      memo: '', active: true, createdAt: '', updatedAt: '',
+    }] });
+    act(() => submit().props.onClick()); await settle();
+    expect(ui.props.onSaveScheduleTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({ termId: 'default', title: '数学' }),
+      termId === 'other' ? undefined : 'existing-template',
+    );
+  });
+
   it('admits a batch only once before React publishes pending state', async () => {
     const gate = deferred<TimetablePeriod>();
     const savePeriod = vi.fn((_draft: TimetablePeriodDraft) => gate.promise);

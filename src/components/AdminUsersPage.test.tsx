@@ -87,6 +87,16 @@ afterEach(() => {
 });
 
 describe('AdminUsersPage', () => {
+  it.each([28, 29])('only abbreviates opaque display IDs longer than28 characters (%s)', async length => {
+    const displayId = 'a'.repeat(length - 8) + '12345678';
+    fetchMock.mockResolvedValueOnce(response({ ok: true, users: [{ ...user(), actorSubjectId: displayId }],
+      nextCursor: null, enrichmentReady: true, trend: { daily: [], activeUsers: activeUsers() } }));
+    const renderer = await renderPage();
+    expect(renderer.root.findAllByType('strong').some(node => node.children.join('') ===
+      (length > 28 ? `${displayId.slice(0, 16)}…12345678` : displayId))).toBe(true);
+    expect(renderer.root.findAllByType('code').some(node => node.children.join('') === displayId)).toBe(true);
+    act(() => renderer.unmount());
+  });
   it('renders the integrated trend from the current Worker with one admin request', async () => {
     fetchMock.mockResolvedValueOnce(response({
       ok: true,

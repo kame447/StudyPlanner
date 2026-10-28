@@ -85,6 +85,8 @@ describe('saved event color consistency', () => {
   });
   it('keeps recurring multi-day bars on the same color authority', () => {
     const values = colors([event({ endDate: '2026-10-17' })], '2026-10-22')('塾バイト');
+    const segment = nodeWithClass(renderers[0].root, 'month-range-segment', '塾バイト');
+    expect(segment.props.style).toMatchObject({ '--month-range-span-days': 3, '--month-range-lane': 0 });
     expect(values[0]).toMatch(/^#/);
     expect(new Set(values).size).toBe(1);
   });

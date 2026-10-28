@@ -4,7 +4,6 @@ import { listAnnouncementDrafts, newAnnouncementId, publishAnnouncement, saveAnn
 import '../styles/announcements.css';
 interface Editor { id: string; revision: number; input: AnnouncementInput; savedInput: AnnouncementInput | null }
 const sameInput = (a: AnnouncementInput | null, b: AnnouncementInput) => a?.category === b.category && a.title === b.title && a.body === b.body;
-const emptyInput = (): AnnouncementInput => ({ category: 'お知らせ', title: '', body: '' });
 export function AdminAnnouncementsPage({ userId }: { userId: string }) {
   const [page, setPage] = useState<AnnouncementPage<AnnouncementDraft> | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -43,7 +42,7 @@ export function AdminAnnouncementsPage({ userId }: { userId: string }) {
     } catch (cause) { if (active.current) setError(cause instanceof Error ? cause.message : '保存・公開の結果を確認できませんでした。'); }
     finally { if (active.current) { pending.current = false; setBusy(false); } }
   };
-  const start = () => { try { setEditor({ id: newAnnouncementId(), revision: 0, input: emptyInput(), savedInput: null }); setError(''); setNotice(''); } catch { setError('現在、お知らせに接続できません。'); } };
+  const start = () => { try { setEditor({ id: newAnnouncementId(), revision: 0, input: { category: 'お知らせ', title: '', body: '' }, savedInput: null }); setError(''); setNotice(''); } catch { setError('現在、お知らせに接続できません。'); } };
   return <main className="admin-shell admin-announcements-page">
     <header className="admin-page-header"><div><span className="admin-page-eyebrow">アプリ内配信</span><h1>お知らせ管理</h1></div>
       <button type="button" className="primary-button" disabled={busy || !!editor} onClick={start}>新しいお知らせ</button></header>

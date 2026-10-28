@@ -183,13 +183,7 @@ export function MyPageDialog({
     }
   }
 
-  function getAvatarSummary(): string {
-    if (isImageAvatar(avatar)) {
-      return '写真';
-    }
 
-    return avatar.trim() || '文字';
-  }
 
   return (
     <div className="overlay modal-overlay" onClick={handleClose}>
@@ -255,7 +249,7 @@ export function MyPageDialog({
                     <Image aria-hidden="true" size={20} strokeWidth={1.9} />
                     アイコン
                   </span>
-                  <strong>{getAvatarSummary()}</strong>
+                  <strong>{isImageAvatar(avatar) ? '写真' : avatar.trim() || '文字'}</strong>
                 </span>
                 <span className="collapsible-toggle-summary" aria-hidden="true">
                   {isAvatarSectionOpen ? '閉じる' : '変更'}

@@ -161,13 +161,6 @@ function buildMonthRangeSegments(week: ProjectedMonthCell[]): MonthRangeSegment[
   return segments;
 }
 
-function getRangeSegmentStyle(segment: MonthRangeSegment, color: string): CSSProperties {
-  return {
-    ...scheduleEventColorStyle(color),
-    '--month-range-span-days': segment.endIndex - segment.startIndex + 1,
-    '--month-range-lane': segment.lane,
-  } as CSSProperties;
-}
 
 interface MonthGridPanelProps {
   monthDate: string;
@@ -370,7 +363,11 @@ export function MonthGridPanel({
                           ]
                             .filter(Boolean)
                             .join(' ')}
-                          style={getRangeSegmentStyle(segment, projection.eventColors.get(segment.monthEvent.id)!)}
+                          style={{
+                            ...scheduleEventColorStyle(projection.eventColors.get(segment.monthEvent.id)!),
+                            '--month-range-span-days': segment.endIndex - segment.startIndex + 1,
+                            '--month-range-lane': segment.lane,
+                          } as CSSProperties}
                           title={`${timeLabel} ${segment.monthEvent.title}`}
                         >
                           <span>{segment.monthEvent.title}</span>
