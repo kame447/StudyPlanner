@@ -228,7 +228,14 @@ for (const width of [390, 1280]) {
         await page.keyboard.press('Escape');
         await expect(picker).toHaveCount(0);
         await expect(trigger).toBeFocused();
+        const discardMessages = [];
+        page.once('dialog', async (dialog) => {
+          discardMessages.push(dialog.message());
+          await dialog.accept();
+        });
         await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+        await expect(editor).toHaveCount(0);
+        expect(discardMessages).toEqual(['入力した内容を破棄しますか？']);
         await expectTint(pill, accent);
         await page.screenshot({ path: testInfo.outputPath('month-colors.png'), animations: 'disabled' });
         await page.getByRole('tab', { name: '週', exact: true }).click();
