@@ -64,32 +64,53 @@ afterEach(()=>{
   vi.restoreAllMocks();vi.unstubAllGlobals();vi.unstubAllEnvs();
 });
 
-it('leaves Enter variants and IME confirmation to textarea editing until Send is activated', async () => {
+it('sends with desktop Enter, but not Shift+Enter or during Japanese IME composition', async () => {
   await mount(); await type('数学を進める');
-  for (const event of [
-    { key: 'Enter' },
+  const ignored = [
     { key: 'Enter', shiftKey: true },
-    { key: 'Enter', ctrlKey: true },
-    { key: 'Enter', metaKey: true },
     { key: 'Enter', nativeEvent: { isComposing: true, keyCode: 13 } },
     { key: 'Enter', nativeEvent: { isComposing: false, keyCode: 229 } },
-  ]) {
+  ];
+  for (const event of ignored) {
     const preventDefault = vi.fn();
     await act(async () => { textInput().props.onKeyDown?.({ nativeEvent: {}, ...event, preventDefault }); });
     expect(preventDefault).not.toHaveBeenCalled();
-    expect(mocks.load).not.toHaveBeenCalled();
     expect(mocks.execute).not.toHaveBeenCalled();
-    expect(textInput().props.value).toBe('数学を進める');
   }
+  await act(async () => { textInput().props.onCompositionStart(); });
+  const composingPrevented = vi.fn();
+  await act(async () => { textInput().props.onKeyDown({ key: 'Enter', nativeEvent: {}, preventDefault: composingPrevented }); });
+  expect(composingPrevented).not.toHaveBeenCalled();
+  await act(async () => { textInput().props.onCompositionEnd(); });
 
-  // Native newline insertion is covered by the keyboard browser regression.
+  const preventDefault = vi.fn();
+  await act(async () => { textInput().props.onKeyDown({ key: 'Enter', nativeEvent: {}, preventDefault }); });
+  expect(preventDefault).toHaveBeenCalledTimes(1);
+  expect(mocks.execute).toHaveBeenCalledTimes(1);
+  expect(mocks.execute.mock.calls[0][0].userText).toBe('数学を進める');
+  expect(textInput().props.value).toBe('');
+});
+
+it('keeps Shift+Enter multiline composition and the explicit send button', async () => {
+  await mount();
   const multiline = '数学を進める\n\n英語も復習する';
   await type(multiline);
-  expect(send().props.disabled).toBe(false);
+  const preventDefault = vi.fn();
+  await act(async () => { textInput().props.onKeyDown({ key: 'Enter', shiftKey: true, nativeEvent: {}, preventDefault }); });
+  expect(preventDefault).not.toHaveBeenCalled();
+  expect(mocks.execute).not.toHaveBeenCalled();
   await act(async () => { send().props.onClick(); });
   expect(mocks.execute).toHaveBeenCalledTimes(1);
   expect(mocks.execute.mock.calls[0][0].userText).toBe(multiline);
-  expect(textInput().props.value).toBe('');
+});
+
+it('retains a newline key on coarse-pointer mobile screens', async () => {
+  await mount(); await type('スマホで入力中');
+  window.matchMedia = () => ({ matches: true }) as MediaQueryList;
+  const preventDefault = vi.fn();
+  await act(async () => { textInput().props.onKeyDown({ key: 'Enter', nativeEvent: {}, preventDefault }); });
+  expect(preventDefault).not.toHaveBeenCalled();
+  expect(mocks.execute).not.toHaveBeenCalled();
 });
 
 it('allows only one Send while preparation is pending and restores editing after completion', async () => {
