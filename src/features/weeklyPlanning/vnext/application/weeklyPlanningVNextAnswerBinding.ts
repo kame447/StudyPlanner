@@ -19,7 +19,7 @@ export interface WeeklyPlanningVNextPresentedQuestion {
 export type WeeklyPlanningVNextAnswer =
   /** A typed UI choice or a focused short answer resolved to one presented option. */
   | { kind: 'option'; optionId: string }
-  /** An estimate in minutes for the asked work; the binder, not the AI, names the work. */
+  /** A total in minutes for the asked work; the binder names the work by identity, not the AI. */
   | { kind: 'estimate_minutes'; minutes: number; taskFactId: string }
   /** A semantic reading of a longer answer, already a typed delta. */
   | { kind: 'delta'; delta: VNextTurnDelta };
@@ -79,7 +79,7 @@ export function bindWeeklyPlanningVNextAnswer(params: {
           kind: 'effort_estimate',
           localId: 'answer_estimate',
           taskRef: { factId: answer.taskFactId },
-          targetRef: { factId: question.forWork.answerTargetFactId },
+          targetRef: { workLineageId: question.forWork.workLineageId },
           effortKind: 'total_duration',
           minutes: answer.minutes,
           unitCode: null,
@@ -93,10 +93,7 @@ export function bindWeeklyPlanningVNextAnswer(params: {
     const leaf = params.leafOf(lineageId);
     return leaf ? [leaf] : [];
   }));
-  if (question.forWork) {
-    subjects.add(question.forWork.definingFactId);
-    subjects.add(question.forWork.answerTargetFactId);
-  }
+  if (question.forWork) subjects.add(question.forWork.definingFactId);
   return referencedFactIds(answer.delta).some((id) => subjects.has(id))
     ? { status: 'bound', question, delta: answer.delta }
     : { status: 'not_an_answer' };

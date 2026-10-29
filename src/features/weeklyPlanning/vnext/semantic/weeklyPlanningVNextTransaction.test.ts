@@ -191,15 +191,17 @@ describe('experimental VNext typed transaction', () => {
     expect(next.graph.temporalConstraints[next.graph.temporalConstraints.length - 1].dateExpression).toBe('2026-11-02');
   });
 
-  it('rejects non-total active dependents instead of silently removing or retargeting them', () => {
+  it('ends estimates that measure only the removed work in the same visible diff, and keeps owner-wide ones', () => {
     const state = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, workload('r', 7),
-      { ...effort('r', 3), effortKind: 'duration_per_unit', unitCode: 'custom', unitLabel: '枚' } as VNextAddFact] }));
+      { ...effort('r', 3), localId: 'rate-on-work', effortKind: 'duration_per_unit', unitCode: 'custom', unitLabel: '枚' } as VNextAddFact,
+      { ...effort('r', 4), localId: 'rate-on-task', targetRef: { localId: 't' }, effortKind: 'duration_per_unit', unitCode: 'custom', unitLabel: '枚' } as VNextAddFact] }));
+    const [onWork, onTask] = state.graph.effortEstimates;
     const result = turn(state, delta({ remove: [{ targetFactId: state.graph.workloads[0].id }] }));
-    expect(result.status).toBe('rejected');
-    expect(result.state).toBe(state);
-    if (result.status === 'rejected') expect(result.errors).toContainEqual(expect.objectContaining({
-      code: 'active_dependents', path: 'remove[0].targetFactId',
-    }));
+    expect(result.status).toBe('applied');
+    if (result.status !== 'applied') return;
+    expect(result.diff.removed.map(entry => entry.id)).toEqual([state.graph.workloads[0].id, onWork.id]);
+    const active = new Set(result.state.graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
+    expect(active.has(onTask.id)).toBe(true);
   });
 
   it('keeps the dependency guard addressable when a carried uncertainty targets a cascaded total', () => {

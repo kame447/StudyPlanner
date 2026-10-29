@@ -3,8 +3,8 @@
 // capability and the unknown key, so it can never misread a VNext checkpoint;
 // it routes it to unreadable-storage retention instead. Reading a V5 checkpoint
 // with VNext is an explicit, non-destructive migration that bumps the revision.
-import { WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION } from '../../application/weeklyPlanningStableV5SessionCodec';
-import type { WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
+import { WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION } from '../weeklyPlanningVNextV5Boundary';
+import type { WeeklyPlanningFactGraphV5 } from '../weeklyPlanningVNextV5Boundary';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPlanningFactGraphValidatorV5';
 import { adaptWeeklyPlanningV5GraphToVNext, type WeeklyPlanningVNextAdapterNote } from '../projection/weeklyPlanningVNextV5Adapter';
 import {
@@ -43,7 +43,8 @@ function validEffortExtension(effort: VNextEffortEstimateFact): boolean {
   const labelOk = effort.unitLabel === null || typeof effort.unitLabel === 'string';
   const binding = effort.workBinding;
   const bindingOk = binding === null || (isRecord(binding)
-    && hasExactKeys(binding, ['workLineageId', 'boundAmount', 'boundBasisKey'])
+    && hasExactKeys(binding, ['kind', 'workLineageId', 'boundAmount', 'boundBasisKey'])
+    && (binding.kind === 'future_work' || binding.kind === 'observed_pace')
     && typeof binding.workLineageId === 'string'
     && typeof binding.boundAmount === 'number' && Number.isFinite(binding.boundAmount)
     && typeof binding.boundBasisKey === 'string');

@@ -90,16 +90,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'trace/weeklyPlanningTraceRemoteRepository.ts',
   'trace/weeklyPlanningTurnDiagnosticV2.ts',
   // #926 VNext (experimental, unwired; vnext/weeklyPlanningVNextIsolation.test.ts proves no production
-  // importer): reads the V5 Fact Graph shape/lifecycle and V5 session envelope version read-only;
-  // never writes V5 state, preview, trace or storage.
-  'vnext/weeklyPlanningVNextTypes.ts',
-  'vnext/weeklyPlanningVNextWorkIdentity.ts',
-  'vnext/semantic/weeklyPlanningVNextTransaction.ts',
-  'vnext/projection/weeklyPlanningVNextProjection.ts',
-  'vnext/projection/weeklyPlanningVNextSchedulerGraph.ts',
-  'vnext/projection/weeklyPlanningVNextShadowComparison.ts',
-  'vnext/projection/weeklyPlanningVNextV5Adapter.ts',
-  'vnext/application/weeklyPlanningVNextSessionCheckpoint.ts',
+  // importer): the single read-only seam to the V5 Fact Graph shape and session envelope version.
+  'vnext/weeklyPlanningVNextV5Boundary.ts',
 ]);
 
 const STATIC_IMPORT_EXPRESSION = /(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g;

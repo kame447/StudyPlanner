@@ -18,8 +18,6 @@ import {
   type WeeklyPlanningFactGraphV5,
   type WorkloadFactV5,
 } from '../../semantic/weeklyPlanningFactGraphV5';
-import { compileGenericSchedulerInput } from '../../semantic/weeklyPlanningGenericSchedulerInput';
-import { createWeeklyPlanningPlacementGraphViewV5 } from '../../semantic/weeklyPlanningPlacementGraphViewV5';
 import { scheduleWeeklyPlanningStableV5Preview } from '../../semantic/weeklyPlanningStableV5PlacementEngine';
 import {
   createMemoryStorageHarness,
@@ -29,7 +27,7 @@ import {
 import type { WeeklyPlanningMessage } from '../../types';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../../weeklyPlanningReducer';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
-import { createWeeklyPlanningVNextSchedulerGraphView } from '../projection/weeklyPlanningVNextSchedulerGraph';
+import { compileWeeklyPlanningVNextSchedulerInput } from '../projection/weeklyPlanningVNextSchedulerGraph';
 import { applyWeeklyPlanningVNextTurn } from '../semantic/weeklyPlanningVNextTransaction';
 import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 import type { VNextTurnDelta, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
@@ -179,7 +177,8 @@ describe('#926 no-cost integration gates', () => {
     let state = migrateWeeklyPlanningV5GraphToVNextSession(v5Graph()).state;
     const writesBefore = new Map(harness.values);
     const asked = projectWeeklyPlanningVNext(state);
-    expect(createWeeklyPlanningVNextSchedulerGraphView(state, asked)).toBeNull(); // no preview while asking
+    const context = { ownerId: OWNER, currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' };
+    expect(compileWeeklyPlanningVNextSchedulerInput({ state, projection: asked, context })).toEqual({ status: 'not_ready' });
 
     const binding = bindWeeklyPlanningVNextAnswer({
       freshness: resolveWeeklyPlanningQuestionPresentationFreshness({
@@ -196,17 +195,22 @@ describe('#926 no-cost integration gates', () => {
 
     const ready = projectWeeklyPlanningVNext(state);
     expect(ready.readiness).toBe('ready');
-    const schedulerGraph = createWeeklyPlanningVNextSchedulerGraphView(state, ready)!;
-    const compiled = compileGenericSchedulerInput({
-      graph: schedulerGraph,
-      context: { ownerId: OWNER, currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
-    });
+    const scheduled = compileWeeklyPlanningVNextSchedulerInput({ state, projection: ready, context });
+    if (scheduled.status !== 'compiled') throw new Error('not ready');
+    const compiled = scheduled.compilation;
     expect(compiled.status).toBe('ready');
     expect(compiled.input!.graphRevision).toBe(state.graph.revision);
-    expect(compiled.input!.movableWorkItems).toEqual([expect.objectContaining({ baseEstimatedMinutes: 60, quantity: expect.objectContaining({ amount: 8 }) })]);
+    const answerId = state.graph.effortEstimates[0].id;
+    expect(compiled.input!.movableWorkItems).toEqual([expect.objectContaining({
+      baseEstimatedMinutes: 60, quantity: expect.objectContaining({ amount: 8 }),
+      // provenance names only stated facts: the task, the total whose work it is, and the answer
+      estimateSourceFactIds: [answerId],
+      sourceFactRefs: expect.arrayContaining(['task-1', 'total', answerId]),
+    })]);
+    expect(JSON.stringify(compiled.input)).not.toMatch(/vnext-(estimate|task-total):/);
     const preview = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
-      graph: createWeeklyPlanningPlacementGraphViewV5(schedulerGraph),
+      graph: scheduled.placementGraph,
       notBefore: { date: '2026-11-02', time: '09:00' },
     });
     expect(preview.status).toBe('ready');
@@ -221,7 +225,7 @@ describe('#926 no-cost integration gates', () => {
     }] }, 'correction', '14枚できた');
     expect(state.graph.revision).not.toBe(compiled.input!.graphRevision);
     expect(projectWeeklyPlanningVNext(state).questions[0]).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 6 } });
-    expect(createWeeklyPlanningVNextSchedulerGraphView(state, projectWeeklyPlanningVNext(state))).toBeNull();
+    expect(compileWeeklyPlanningVNextSchedulerInput({ state, projection: projectWeeklyPlanningVNext(state), context }).status).toBe('not_ready');
     expect(harness.values).toEqual(writesBefore); // nothing was saved or approved
   });
 });

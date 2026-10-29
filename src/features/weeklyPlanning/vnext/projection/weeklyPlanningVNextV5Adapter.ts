@@ -7,7 +7,7 @@ import type {
   EffortEstimateFactV5,
   WeeklyPlanningFactGraphV5,
   WorkloadFactV5,
-} from '../../semantic/weeklyPlanningFactGraphV5';
+} from '../weeklyPlanningVNextV5Boundary';
 import {
   WEEKLY_PLANNING_VNEXT_STATE_VERSION,
   type VNextEffortEstimateFact,
@@ -91,17 +91,20 @@ export function adaptWeeklyPlanningV5GraphToVNext(
         kind: 'bound',
         targetFactId: matches[0].definingFactId,
         binding: {
+          kind: 'future_work',
           workLineageId: matches[0].workLineageId,
           boundAmount: target.amount,
           boundBasisKey: vnextQuantityBasisKey(target),
         },
       };
     }
-    // Stated workload (any version): its lineage, at the amount of the version it targeted.
+    // Stated workload (any version): its lineage, at the amount of the version it targeted;
+    // a total about completed work was an observed pace in V5 too.
     return {
       kind: 'bound',
       targetFactId: effort.targetFactId,
       binding: {
+        kind: target.quantityRole === 'completed' ? 'observed_pace' : 'future_work',
         workLineageId: resolver.lineageOf(target.id),
         boundAmount: target.amount,
         boundBasisKey: vnextQuantityBasisKey(target),

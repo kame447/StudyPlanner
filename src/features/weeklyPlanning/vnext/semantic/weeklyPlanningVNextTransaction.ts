@@ -3,11 +3,12 @@ import {
   type WeeklyPlanningFactDiffV5,
   type WeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactKindV5,
-} from '../../semantic/weeklyPlanningFactGraphV5';
+} from '../weeklyPlanningVNextV5Boundary';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPlanningFactGraphValidatorV5';
 import {
   WEEKLY_PLANNING_VNEXT_STATE_VERSION,
   type VNextAddFact,
+  type VNextEffortWorkBinding,
   type VNextFactRef,
   type VNextTurnContext,
   type VNextTurnDelta,
@@ -15,8 +16,15 @@ import {
   type VNextTurnResult,
   type WeeklyPlanningVNextGraph,
   type WeeklyPlanningVNextState,
+  type VNextWorkRef,
 } from '../weeklyPlanningVNextTypes';
-import { resolveVNextBindableWork, vnextLineageIdByFactId } from '../weeklyPlanningVNextWorkIdentity';
+import {
+  computeVNextWorkUnits,
+  createVNextLineageResolver,
+  isValidVNextQuantityBasis,
+  resolveVNextEffortBinding,
+  vnextLineageIdByFactId,
+} from '../weeklyPlanningVNextWorkIdentity';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -116,41 +124,49 @@ export function applyWeeklyPlanningVNextTurn(
   if (errors.length) return reject();
   const source = (localId: string) => ({ conversationId: context.conversationId, turnId: context.turnId,
     semanticLocalId: localId, sourceText: context.sourceText, origin: 'user' as const });
+  // One reference rule: any version of a lineage whose current version is active is accepted;
+  // stored references name the lineage root, operations act on the current version.
+  const stateResolver = createVNextLineageResolver(state.graph);
+  const currentOf = (factId: string): string | null =>
+    (originalFacts.has(factId) ? stateResolver.leafOf(factId) : null);
   const ref = (value: VNextFactRef, path: string): string => {
-    const id = 'localId' in value ? addedLocalIds.get(value.localId) : value.factId;
-    if (!id || (!('localId' in value) && !initialActive.has(id))) {
-      error('unknown_ref', path, id ?? null);
+    if ('localId' in value) {
+      const id = addedLocalIds.get(value.localId);
+      if (!id) error('unknown_ref', path, null, value.localId);
+      return id ?? '';
+    }
+    if (!currentOf(value.factId)) {
+      error('unknown_ref', path, value.factId);
       return '';
     }
-    return id;
+    return stateResolver.lineageOf(value.factId);
   };
-  // Owners (task/component) are stored by the id their existing facts already use, the
-  // lineage root, so a renamed task or component keeps one consistent owner reference.
-  const stateLineage = vnextLineageIdByFactId(state.graph);
-  const ownerRef = (value: VNextFactRef, path: string): string => {
-    const id = ref(value, path);
-    return stateLineage.get(id) ?? id;
-  };
-  const targetRef = (value: VNextFactRef, path: string): string => {
-    const id = ref(value, path);
-    const kind = originalFacts.get(id)?.kind;
-    return kind === 'task' || kind === 'component' ? stateLineage.get(id) ?? id : id;
+  // An estimate about a projected work by identity is stored on the work's defining fact.
+  const workRefs = new Map<string, string>();
+  const stateWorkUnits = computeVNextWorkUnits(state.graph).flatMap((owner) => owner.units);
+  const workRef = (value: VNextWorkRef, path: string): string => {
+    const unit = stateWorkUnits.find((candidate) => candidate.workLineageId === value.workLineageId);
+    if (!unit) error('unknown_ref', path, value.workLineageId);
+    return unit ? stateResolver.lineageOf(unit.definingFactId) : '';
   };
   const addPayload = (fact: VNextAddFact, path: string): Record<string, unknown> => {
     switch (fact.kind) {
       case 'task': return { category: fact.category, title: fact.title };
-      case 'component': return { taskId: ownerRef(fact.taskRef, `${path}.taskRef`),
-        parentComponentId: fact.parentComponentRef ? ownerRef(fact.parentComponentRef, `${path}.parentComponentRef`) : null,
+      case 'component': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
+        parentComponentId: fact.parentComponentRef ? ref(fact.parentComponentRef, `${path}.parentComponentRef`) : null,
         role: fact.role, label: fact.label };
-      case 'workload': return { taskId: ownerRef(fact.taskRef, `${path}.taskRef`),
-        componentId: fact.componentRef ? ownerRef(fact.componentRef, `${path}.componentRef`) : null,
+      case 'workload': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
+        componentId: fact.componentRef ? ref(fact.componentRef, `${path}.componentRef`) : null,
         quantityRole: fact.quantityRole, amount: fact.amount, unitCode: fact.unitCode, unitLabel: fact.unitLabel,
         rangeStart: fact.rangeStart, rangeEnd: fact.rangeEnd, perOccurrence: fact.perOccurrence, periodExpression: fact.periodExpression };
-      case 'effort_estimate': return { taskId: ownerRef(fact.taskRef, `${path}.taskRef`),
-        targetFactId: targetRef(fact.targetRef, `${path}.targetRef`), kind: fact.effortKind,
+      case 'effort_estimate': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
+        targetFactId: 'workLineageId' in fact.targetRef
+          ? workRef(fact.targetRef, `${path}.targetRef`)
+          : ref(fact.targetRef, `${path}.targetRef`),
+        kind: fact.effortKind,
         minutes: fact.minutes, unitCode: fact.unitCode, unitLabel: fact.unitLabel, precision: fact.precision, workBinding: null };
-      case 'temporal_constraint': return { taskId: ownerRef(fact.taskRef, `${path}.taskRef`),
-        targetFactId: targetRef(fact.targetRef, `${path}.targetRef`), kind: fact.constraintKind,
+      case 'temporal_constraint': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
+        targetFactId: ref(fact.targetRef, `${path}.targetRef`), kind: fact.constraintKind,
         constraintLevel: fact.constraintLevel, dateExpression: fact.dateExpression, namedTimePeriod: fact.namedTimePeriod,
         startTime: fact.startTime, endTime: fact.endTime, precision: fact.precision };
     }
@@ -162,7 +178,10 @@ export function applyWeeklyPlanningVNextTurn(
     appendFact(graph, fact.kind, { ...addPayload(fact, path), id, source: source(fact.localId), createdRevision: graph.revision });
     locations.set(id, { path, localId: fact.localId });
     diff.added.push({ kind: fact.kind, id });
-    if (fact.kind === 'effort_estimate') touchedEfforts.add(id);
+    if (fact.kind === 'effort_estimate') {
+      touchedEfforts.add(id);
+      if ('workLineageId' in fact.targetRef) workRefs.set(id, fact.targetRef.workLineageId);
+    }
   });
 
   const targetOperations = new Set<string>();
@@ -211,10 +230,14 @@ export function applyWeeklyPlanningVNextTurn(
     retirementPaths.set(removal.targetFactId, `remove[${index}].targetFactId`);
     diff.removed.push({ kind: found.kind, id: removal.targetFactId });
     if (found.kind === 'workload') {
-      const lineage = vnextLineageIdByFactId(graph).get(removal.targetFactId);
+      // The one dependency rule for work: estimates that measure only this work (stated about
+      // this workload, or bound to its work) end with it. Any other dependent still rejects.
+      const lineageIds = vnextLineageIdByFactId(graph);
+      const lineage = lineageIds.get(removal.targetFactId);
       for (const effort of graph.effortEstimates) {
-        if (effort.kind === 'total_duration' && effort.workBinding?.workLineageId === lineage
-          && activeIds(graph).has(effort.id) && !touchedEfforts.has(effort.id)
+        const measuresOnlyThis = lineageIds.get(effort.targetFactId) === lineage
+          || effort.workBinding?.workLineageId === lineage;
+        if (measuresOnlyThis && activeIds(graph).has(effort.id) && !touchedEfforts.has(effort.id)
           && !delta.remove.some(item => item.targetFactId === effort.id)) {
           terminalize(graph, effort.id, null);
           retirementPaths.set(effort.id, `remove[${index}].targetFactId`);
@@ -226,16 +249,29 @@ export function applyWeeklyPlanningVNextTurn(
   if (errors.length) return reject();
 
   // All explicit operations have completed. Bind newly stated/changed totals to that final work.
+  // What a total measures is fixed when it is stated; a patch rebinds the same measure.
+  const previousBindings = new Map<string, VNextEffortWorkBinding | null>();
+  for (const entry of diff.superseded) {
+    const replacementId = graph.factLifecycles.find(item => item.factId === entry.id)?.supersededByFactId;
+    const old = originalFacts.get(entry.id)?.fact as { workBinding?: VNextEffortWorkBinding | null } | undefined;
+    if (replacementId) previousBindings.set(replacementId, old?.workBinding ?? null);
+  }
   for (const effort of graph.effortEstimates) {
     if (!touchedEfforts.has(effort.id)) continue;
-    const targetId = activeLeaf(graph, effort.targetFactId);
-    const workload = graph.workloads.find(fact => fact.id === targetId);
     const location = locations.get(effort.id)!;
-    if (!targetId) { error('work_unavailable', location.path, effort.id, location.localId); continue; }
-    if (effort.kind !== 'total_duration' || !workload) { effort.workBinding = null; continue; }
-    const binding = resolveVNextBindableWork(graph, targetId);
+    const targetLeaf = activeLeaf(graph, effort.targetFactId);
+    if (!targetLeaf) { error('work_unavailable', location.path, effort.id, location.localId); continue; }
+    const previous = previousBindings.get(effort.id) ?? null;
+    const workLineageId = workRefs.get(effort.id);
+    const about = effort.kind !== 'total_duration' ? null
+      : workLineageId !== undefined ? { workLineageId }
+        : previous?.kind === 'future_work' ? { workLineageId: previous.workLineageId }
+          : previous?.kind === 'observed_pace' ? { workloadFactId: previous.workLineageId }
+            : graph.workloads.some(fact => fact.id === targetLeaf) ? { workloadFactId: targetLeaf } : null;
+    if (about === null) { effort.workBinding = null; continue; }
+    const binding = resolveVNextEffortBinding(graph, about);
     if (!binding) { error('work_unavailable', location.path, effort.id, location.localId); continue; }
-    effort.workBinding = { workLineageId: binding.workLineageId, boundAmount: binding.amount, boundBasisKey: binding.basisKey };
+    effort.workBinding = binding;
   }
 
   // A repeated estimate may have refreshed its binding, even with identical minutes.
@@ -257,7 +293,7 @@ export function applyWeeklyPlanningVNextTurn(
   }
 
   // Payload patches preserve reference lineages. Removal retains the V5 dependency
-  // guard; removing a workload-bound total above is the only cascade.
+  // guard; the work dependency rule above is the only cascade.
   const retired = new Set([...diff.removed, ...diff.superseded].map(entry => entry.id));
   const lineage = vnextLineageIdByFactId(graph);
   const all = allFacts(graph);
@@ -320,9 +356,8 @@ export function applyWeeklyPlanningVNextTurn(
     } else error('invalid_value', validationError);
   }
   for (const workload of graph.workloads) {
-    // A range needs both ends; one end alone cannot be placed (V5 blocks it as invalid_actual_range).
     const location = locations.get(workload.id);
-    if (location && (workload.rangeStart === null) !== (workload.rangeEnd === null)) {
+    if (location && !isValidVNextQuantityBasis(workload)) {
       error('invalid_value', `${location.path}.${workload.rangeStart === null ? 'rangeStart' : 'rangeEnd'}`, workload.id, location.localId);
     }
   }

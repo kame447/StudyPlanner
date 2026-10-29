@@ -5,7 +5,7 @@ import type {
   WeeklyPlanningFactDiffV5,
   WeeklyPlanningFactGraphV5,
   TemporalConstraintFactV5,
-} from '../semantic/weeklyPlanningFactGraphV5';
+} from './weeklyPlanningVNextV5Boundary';
 import type {
   SemanticComponentRoleV5,
   SemanticConstraintLevelV5,
@@ -24,11 +24,15 @@ export const WEEKLY_PLANNING_VNEXT_STATE_VERSION = 'weekly-planning-vnext-state-
 // completed, percent remaining, bounded remaining, task-total minute targets).
 
 /**
- * A total stated for one work, bound by code to that work's lineage, amount and
- * quantity basis (unit identity, range, per-occurrence, period). It applies only
+ * What a stated total measures, fixed when it is stated (the AI's meaning,
+ * carried by which work or completed fact the total was about) and bound by
+ * code to that work's lineage, amount and quantity basis. It applies only
  * while all three still match.
+ * - future_work: time the work still to do will take.
+ * - observed_pace: time the completed amount took; a pace for similar work.
  */
 export interface VNextEffortWorkBinding {
+  kind: 'future_work' | 'observed_pace';
   workLineageId: string;
   boundAmount: number;
   boundBasisKey: string;
@@ -37,7 +41,7 @@ export interface VNextEffortWorkBinding {
 export interface VNextEffortEstimateFact extends EffortEstimateFactV5 {
   /** Custom-unit label for rate identity; null unless unitCode is 'custom'. */
   unitLabel: string | null;
-  /** Set only for total_duration whose target is a workload; null otherwise. */
+  /** Set only for a total about one work or completed amount; null for owner-wide totals and other kinds. */
   workBinding: VNextEffortWorkBinding | null;
 }
 
@@ -68,8 +72,16 @@ export interface WeeklyPlanningVNextState {
 
 // ---- one turn = one typed delta, applied as one transaction -------------------
 
-/** Reference to an active stored fact, or to a fact added earlier in the same delta. */
+/**
+ * Reference to a stored fact (any version of a lineage whose current version is
+ * active), or to a fact added earlier in the same delta.
+ */
 export type VNextFactRef = { factId: string } | { localId: string };
+
+/** Reference to a projected work by its identity, for estimates about work that has no fact of its own. */
+export interface VNextWorkRef {
+  workLineageId: string;
+}
 
 export interface VNextAddTask {
   kind: 'task';
@@ -106,8 +118,12 @@ export interface VNextAddEffort {
   kind: 'effort_estimate';
   localId: string;
   taskRef: VNextFactRef;
-  /** Task, component or workload the estimate is about (AI-owned meaning). */
-  targetRef: VNextFactRef;
+  /**
+   * What the estimate is about (AI-owned meaning): a task or component (owner-wide),
+   * a workload (that work; a completed workload means observed pace), or a projected
+   * work by identity (a total answer for the asked work).
+   */
+  targetRef: VNextFactRef | VNextWorkRef;
   effortKind: EffortEstimateFactV5['kind'];
   minutes: number;
   unitCode: SemanticWorkloadUnitCodeV5 | null;
@@ -256,6 +272,7 @@ export type VNextTurnResult =
 
 export type VNextQuestionCode =
   | 'quantity_role_unresolved'
+  | 'quantity_basis_invalid'
   | 'duplicate_quantity'
   | 'completed_exceeds_total'
   | 'remaining_inconsistent'
@@ -279,12 +296,8 @@ export interface VNextQuestion {
   taskId: string;
   componentId: string | null;
   subjectLineageIds: string[];
-  /**
-   * The work an estimate answer will be bound to. `answerTargetFactId` is the fact
-   * an estimate answer targets: the defining fact, or the owner when the work is
-   * remaining percent progress (an estimate on completed work is an observed pace).
-   */
-  forWork: { workLineageId: string; definingFactId: string; answerTargetFactId: string; amount: number } | null;
+  /** The work an estimate answer is bound to, by identity (`VNextWorkRef`). */
+  forWork: { workLineageId: string; definingFactId: string; amount: number } | null;
   options: VNextQuestionOption[];
 }
 

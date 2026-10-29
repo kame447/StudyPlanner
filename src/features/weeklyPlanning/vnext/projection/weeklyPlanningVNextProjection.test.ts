@@ -196,7 +196,7 @@ describe('projectWeeklyPlanningVNext', () => {
       let state = withTask([W('c', 'completed', 20, 'custom', '％')]);
       const [question] = projectWeeklyPlanningVNext(state).questions;
       expect(question.forWork?.amount).toBe(80);
-      state = turn(state, { add: [total(state, 'answer', question.forWork!.answerTargetFactId, 60)] });
+      state = turn(state, { add: [{ ...total(state, 'answer', '', 60), targetRef: { workLineageId: question.forWork!.workLineageId } }] });
       expect(minutesOf(state)).toEqual([60]);
     });
 
@@ -285,7 +285,7 @@ describe('projectWeeklyPlanningVNext', () => {
       let state = withTask([page('r', 'remaining', 10)]);
       state = turn(state, { patch: [{ kind: 'task', localId: 'renamed', targetFactId: taskId(state), changes: { category: null, title: '新しい名前' } }] });
       const [question] = projectWeeklyPlanningVNext(state).questions;
-      state = turn(state, { add: [{ ...total(state, 'answer', question.forWork!.answerTargetFactId, 60), taskRef: { factId: question.taskId } }] });
+      state = turn(state, { add: [{ ...total(state, 'answer', question.forWork!.definingFactId, 60), taskRef: { factId: question.taskId } }] });
       expect(minutesOf(state)).toEqual([60]);
     });
 
@@ -296,6 +296,31 @@ describe('projectWeeklyPlanningVNext', () => {
         patch: [{ ...amountPatch('half', active(state, 'remaining'), 0), changes: { ...amountPatch('x', '', 0).changes, amount: null, rangeStart: '1' } }],
       }, { turnKey: 'half-range', expectedRevision: state.graph.revision, conversationId: 'conversation', turnId: 'half-range', sourceText: '1ページから' });
       expect(result).toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ code: 'invalid_value', path: 'patch[0].changes.rangeEnd' })] });
+    });
+
+    it('S01 a remaining-percent answer measures that amount and is asked again after progress changes', () => {
+      let state = withTask([W('c', 'completed', 20, 'custom', '%')]);
+      const [question] = projectWeeklyPlanningVNext(state).questions;
+      state = turn(state, { add: [{ ...total(state, 'answer', '', 60), targetRef: { workLineageId: question.forWork!.workLineageId } }] });
+      expect(state.graph.effortEstimates[0].workBinding).toMatchObject({ kind: 'future_work', boundAmount: 80 });
+      expect(minutesOf(state)).toEqual([60]);
+      state = turn(state, { patch: [amountPatch('c40', active(state, 'completed'), 40)] });
+      expect(projectWeeklyPlanningVNext(state).questions[0]).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 60 } });
+    });
+
+    it('S05 an answer after renaming the task binds to the asked work', () => {
+      let state = withTask([W('c', 'completed', 20, 'custom', '%')]);
+      state = turn(state, { patch: [{ kind: 'task', localId: 'renamed', targetFactId: taskId(state), changes: { category: null, title: '別名' } }] });
+      const [question] = projectWeeklyPlanningVNext(state).questions;
+      state = turn(state, { add: [{ ...total(state, 'answer', '', 60), taskRef: { factId: question.taskId }, targetRef: { workLineageId: question.forWork!.workLineageId } }] });
+      expect(minutesOf(state)).toEqual([60]);
+    });
+
+    it('fails closed on a one-ended range saved before VNext instead of scheduling it', () => {
+      const state = withTask([page('r', 'remaining', 10), rate('rate', 2, 'page', null)]);
+      const legacy = structuredClone(state);
+      legacy.graph.workloads[0] = { ...legacy.graph.workloads[0], rangeStart: '1' };
+      expect(projectWeeklyPlanningVNext(legacy)).toMatchObject({ readiness: 'needs_resolution', questions: [{ code: 'quantity_basis_invalid' }] });
     });
   });
 });

@@ -2,7 +2,7 @@
 // work-item compiler and through the VNext adapter + projector. Nothing here
 // writes state, preview, trace or storage.
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
-import type { WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningFactGraphV5 } from '../weeklyPlanningVNextV5Boundary';
 import { compileGenericPlanningWorkItems } from '../../semantic/weeklyPlanningGenericWorkItems';
 import { projectWeeklyPlanningStatedTimeBudgetGraphV5 } from '../../semantic/weeklyPlanningStatedTimeBudgetProjectionV5';
 import type { VNextQuestionCode } from '../weeklyPlanningVNextTypes';

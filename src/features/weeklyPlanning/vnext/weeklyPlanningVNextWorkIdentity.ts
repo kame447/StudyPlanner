@@ -1,8 +1,11 @@
 // Shared identity rules for the VNext core: lineage, unit identity, quantity
 // basis, and which amount of work a workload stands for. Pure and deterministic.
 import { filterActiveWeeklyPlanningFactsV5 } from '../semantic/weeklyPlanningFactLifecycleV5';
-import type { WorkloadFactV5 } from '../semantic/weeklyPlanningFactGraphV5';
-import type { WeeklyPlanningVNextGraph } from './weeklyPlanningVNextTypes';
+import type { WorkloadFactV5 } from './weeklyPlanningVNextV5Boundary';
+import type {
+  VNextEffortWorkBinding,
+  WeeklyPlanningVNextGraph,
+} from './weeklyPlanningVNextTypes';
 
 /**
  * Lineage of every fact that has a lifecycle entry: the first version of its
@@ -80,6 +83,15 @@ export function vnextQuantityBasisKey(workload: Pick<WorkloadFactV5,
   ].join('|');
 }
 
+/**
+ * The one validity rule for a stated quantity's basis: a range has both ends.
+ * The transaction rejects violations; the projector asks about them in data
+ * that was saved before VNext (V5 accepted a one-ended range into its graph).
+ */
+export function isValidVNextQuantityBasis(workload: Pick<WorkloadFactV5, 'rangeStart' | 'rangeEnd'>): boolean {
+  return (workload.rangeStart === null) === (workload.rangeEnd === null);
+}
+
 export interface VNextWorkUnit {
   workLineageId: string;
   definingFactId: string;
@@ -93,6 +105,7 @@ export interface VNextWorkUnit {
 
 export type VNextWorkUnitIssue =
   | { code: 'quantity_role_unresolved'; ownerKey: string; lineageIds: string[] }
+  | { code: 'quantity_basis_invalid'; ownerKey: string; lineageIds: string[] }
   | { code: 'duplicate_quantity'; ownerKey: string; basisKey: string; lineageIds: string[] }
   | { code: 'completed_exceeds_total'; ownerKey: string; basisKey: string; lineageIds: string[] }
   | {
@@ -149,6 +162,11 @@ export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWor
       workload.quantityRole === 'declared' || workload.quantityRole === 'unknown');
     if (unresolved.length > 0) {
       done({ code: 'quantity_role_unresolved', ownerKey, lineageIds: unresolved.map(lineageOf) }, []);
+      continue;
+    }
+    const invalid = ownerWorkloads.filter((workload) => !isValidVNextQuantityBasis(workload));
+    if (invalid.length > 0) {
+      done({ code: 'quantity_basis_invalid', ownerKey, lineageIds: invalid.map(lineageOf) }, []);
       continue;
     }
     const groups = new Map<string, WorkloadFactV5[]>();
@@ -226,24 +244,33 @@ export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWor
 }
 
 /**
- * Lineage, current amount and basis of the work a workload fact stands for, used
- * to bind a total-duration estimate. A total stands for its derived remaining;
- * completed work stands for itself, and its total is an observed pace.
+ * The one place a total's binding is computed. A total about a completed
+ * workload is an observed pace of that completed amount; a total about any
+ * other workload, or about a projected work by identity, is the future time of
+ * that work at its current amount. Null when the work does not exist.
  */
-export function resolveVNextBindableWork(
+export function resolveVNextEffortBinding(
   graph: WeeklyPlanningVNextGraph,
-  workloadFactId: string,
-): { workLineageId: string; amount: number; basisKey: string } | null {
-  const workload = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads)
-    .find((fact) => fact.id === workloadFactId);
-  if (!workload) return null;
+  about: { workloadFactId: string } | { workLineageId: string },
+): VNextEffortWorkBinding | null {
   const resolver = createVNextLineageResolver(graph);
-  const lineageId = resolver.lineageOf(workload.id);
-  // A total stated for completed work is an observed pace of that completed amount.
-  if (workload.quantityRole === 'completed') {
-    return { workLineageId: lineageId, amount: workload.amount, basisKey: vnextQuantityBasisKey(workload) };
+  if ('workloadFactId' in about) {
+    const leaf = resolver.leafOf(about.workloadFactId);
+    const workload = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads).find((fact) => fact.id === leaf);
+    if (!workload) return null;
+    if (workload.quantityRole === 'completed') {
+      return {
+        kind: 'observed_pace',
+        workLineageId: resolver.lineageOf(workload.id),
+        boundAmount: workload.amount,
+        boundBasisKey: vnextQuantityBasisKey(workload),
+      };
+    }
   }
-  const owner = computeVNextWorkUnits(graph).find((entry) => entry.ownerKey === resolver.ownerKeyOf(workload));
-  const unit = owner?.units.find((candidate) => candidate.workLineageId === lineageId);
-  return unit ? { workLineageId: unit.workLineageId, amount: unit.amount, basisKey: unit.basisKey } : null;
+  const lineageId = 'workLineageId' in about ? about.workLineageId : resolver.lineageOf(about.workloadFactId);
+  const unit = computeVNextWorkUnits(graph).flatMap((owner) => owner.units)
+    .find((candidate) => candidate.workLineageId === lineageId);
+  return unit
+    ? { kind: 'future_work', workLineageId: unit.workLineageId, boundAmount: unit.amount, boundBasisKey: unit.basisKey }
+    : null;
 }

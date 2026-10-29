@@ -1,7 +1,7 @@
 // The single deterministic projector of the VNext core: amount of work, minutes,
 // and typed questions per owner, recomputed from stated facts every turn.
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
-import type { WorkloadFactV5 } from '../../semantic/weeklyPlanningFactGraphV5';
+import type { WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
 import type {
   VNextEffortEstimateFact,
   VNextEstimateBasis,
@@ -75,22 +75,33 @@ function workOptions(context: ProjectionContext, open: VNextWorkUnit[], pairs: A
     options.push({ optionId: 'same', value: 1, delta: relateAll('same') });
   } else if (open.length === 2) {
     // Same work stated twice without a single target: the user keeps one statement.
-    // Estimates aimed only at the dropped statement are retracted in the same answer.
+    // (Estimates about the dropped statement end with it, by the transaction's dependency rule.)
     for (const [keep, drop] of [[open[0], open[1]], [open[1], open[0]]] as const) {
-      const dropLineage = context.resolver.lineageOf(drop.definingFactId);
-      const ownEstimates = context.efforts.filter((effort) =>
-        context.resolver.lineageOf(effort.targetFactId) === dropLineage && effort.kind !== 'total_duration');
       options.push({
         optionId: `keep:${keep.workLineageId}`,
         value: keep.amount,
-        delta: {
-          ...EMPTY_DELTA,
-          remove: [{ targetFactId: drop.definingFactId }, ...ownEstimates.map((effort) => ({ targetFactId: effort.id }))],
-        },
+        delta: { ...EMPTY_DELTA, remove: [{ targetFactId: drop.definingFactId }] },
       });
     }
   }
   return options;
+}
+
+/** Setting a stated quantity to an amount; an amount of zero is expressed as no statement. */
+function amountOption(optionId: string, targetFactId: string, amount: number): VNextQuestionOption {
+  return {
+    optionId,
+    value: amount,
+    delta: amount > 0
+      ? {
+          ...EMPTY_DELTA,
+          patch: [{
+            kind: 'workload', localId: optionId, targetFactId, amountDelta: null,
+            changes: { ...nullWorkloadChanges(), amount },
+          }],
+        }
+      : { ...EMPTY_DELTA, remove: [{ targetFactId }] },
+  };
 }
 
 function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; componentId: string | null }): VNextQuestion {
@@ -110,38 +121,11 @@ function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; compo
     options: [] as VNextQuestionOption[],
   };
   if (issue.code !== 'remaining_inconsistent') return base;
-  const patchAmount = (optionId: string, targetFactId: string, amount: number): VNextQuestionOption => ({
-    optionId,
-    value: amount,
-    delta: {
-      ...EMPTY_DELTA,
-      patch: [{
-        kind: 'workload',
-        localId: optionId,
-        targetFactId,
-        changes: { ...nullWorkloadChanges(), amount },
-        amountDelta: null,
-      }],
-    },
-  });
   // Either the stated remaining follows progress, or progress follows the stated remaining.
-  // Progress of zero is no completed statement at all.
+  const options = [amountOption('remaining_follows_progress', issue.remainingFactId, issue.derivedAmount)];
   const completedForStated = issue.totalAmount - issue.statedAmount;
-  const options = issue.derivedAmount > 0
-    ? [patchAmount('remaining_follows_progress', issue.remainingFactId, issue.derivedAmount)]
-    : [{
-        optionId: 'remaining_follows_progress',
-        value: 0,
-        delta: { ...EMPTY_DELTA, remove: [{ targetFactId: issue.remainingFactId }] },
-      }];
-  if (completedForStated > 0) {
-    options.push(patchAmount('completed_follows_remaining', issue.completedFactId, completedForStated));
-  } else if (completedForStated === 0) {
-    options.push({
-      optionId: 'completed_follows_remaining',
-      value: 0,
-      delta: { ...EMPTY_DELTA, remove: [{ targetFactId: issue.completedFactId }] },
-    });
+  if (completedForStated >= 0) {
+    options.push(amountOption('completed_follows_remaining', issue.completedFactId, completedForStated));
   }
   return { ...base, options };
 }
@@ -200,17 +184,17 @@ function estimateCandidates(
       }
       continue;
     }
-    // A total stated for completed work of the same owner and unit is an observed pace,
-    // while that completed statement is still the one it measured.
-    const paceWork = context.workloadsById.get(context.resolver.leafOf(binding.workLineageId) ?? '');
-    if (paceWork?.quantityRole !== 'completed') {
+    // A future total applies to the same work at the same amount and basis; an observed pace
+    // scales to work of the same owner and unit while its completed statement is unchanged.
+    if (binding.kind === 'future_work') {
       if (binding.workLineageId === unit.workLineageId
         && binding.boundAmount === unit.amount && binding.boundBasisKey === unit.basisKey) {
         candidates.push({ minutes: effort.minutes, basis: 'work_total', effortIds: [effort.id] });
       }
       continue;
     }
-    if (binding.boundAmount > 0
+    const paceWork = context.workloadsById.get(context.resolver.leafOf(binding.workLineageId) ?? '');
+    if (paceWork && binding.boundAmount > 0
       && binding.boundAmount === paceWork.amount && binding.boundBasisKey === vnextQuantityBasisKey(paceWork)
       && context.resolver.ownerKeyOf(paceWork) === unit.ownerKey && vnextUnitIdentity(paceWork) === workIdentity) {
       candidates.push({
@@ -324,11 +308,7 @@ function estimateOwnerWork(
   const work: VNextWorkItem[] = [];
   for (const unit of units) {
     const candidates = estimateCandidates(context, unit, allScheduled);
-    // Remaining percent progress has no fact of its own; its estimate is stated for the owner.
-    const answerTargetFactId = unit.derivedFromTotal && unit.workload.quantityRole === 'completed'
-      ? unit.workload.componentId ?? unit.workload.taskId
-      : unit.definingFactId;
-    const forWork = { workLineageId: unit.workLineageId, definingFactId: unit.definingFactId, answerTargetFactId, amount: unit.amount };
+    const forWork = { workLineageId: unit.workLineageId, definingFactId: unit.definingFactId, amount: unit.amount };
     if (candidates.length === 0) {
       return ownerQuestion(owner, 'missing_effort_estimate', [unit.workLineageId], { forWork, values: [unit.amount] });
     }
