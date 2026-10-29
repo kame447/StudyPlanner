@@ -1,0 +1,26 @@
+/* Optional typeface presets. Without html[data-font-preset] every existing
+   family stack applies unchanged. Faces come from the on-demand Google Fonts
+   stylesheet; until it arrives, or if it never does, the fallback stays. */
+/* Same specificity as base.css :root and loaded after it; the fallback is that
+   stack verbatim (base.css keeps CRLF endings and is left untouched). */
+:root {
+  font-family: var(--app-font-family, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif);
+  --font-preset-fallback: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  --font-preset-system: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-preset-noto-sans-jp: "Noto Sans JP", var(--font-preset-fallback);
+  --font-preset-biz-udpgothic: "BIZ UDPGothic", var(--font-preset-fallback);
+  --font-preset-m-plus-rounded-1c: "M PLUS Rounded 1c", var(--font-preset-fallback);
+}
+
+html[data-font-preset='noto-sans-jp'] { --app-font-family: var(--font-preset-noto-sans-jp); }
+html[data-font-preset='biz-udpgothic'] { --app-font-family: var(--font-preset-biz-udpgothic); }
+html[data-font-preset='m-plus-rounded-1c'] { --app-font-family: var(--font-preset-m-plus-rounded-1c); }
+
+/* Form controls do not inherit a family by default; a chosen preset covers them too. */
+html[data-font-preset] :is(button, input, select, textarea) { font-family: inherit; }
+
+/* Comparison samples always render in their own preset. */
+.font-preset-sample[data-font-sample='system'] { font-family: var(--font-preset-system); }
+.font-preset-sample[data-font-sample='noto-sans-jp'] { font-family: var(--font-preset-noto-sans-jp); }
+.font-preset-sample[data-font-sample='biz-udpgothic'] { font-family: var(--font-preset-biz-udpgothic); }
+.font-preset-sample[data-font-sample='m-plus-rounded-1c'] { font-family: var(--font-preset-m-plus-rounded-1c); }

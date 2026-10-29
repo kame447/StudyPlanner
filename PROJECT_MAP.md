@@ -122,6 +122,8 @@ React-level orchestration and state composition. Use for view/application lifecy
 
 `useHomeScenePreference.ts` は Home scene の style/motion をブラウザ内に保存する。選択肢と既定値は `src/lib/homeScenePreferences.ts`、操作 UI は `AppSettingsGeneral.tsx` が所有する。account/server の preference へ昇格せず、保存失敗では直前の保存済み表示値を保持してエラーを伝える。
 
+`useThemePreference.ts` は表示モード・配色に加えてフォントプリセットをブラウザ内に保存する。プリセットの識別と Google Fonts の遅延読み込みは `src/lib/fontPreset.ts`、書体スタックは `src/styles/font-presets.css` が所有する。標準では外部書体を読み込まず、既存の書体スタックをそのまま使う（Issue #888）。
+
 ## 3. General domain and persistence
 
 ### `src/domain/`

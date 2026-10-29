@@ -1,4 +1,5 @@
-import { useCallback, useLayoutEffect, useState, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState, type SetStateAction } from 'react';
+import { isFontPreset, isWebFontPreset, loadWebFontStylesheet, type FontPreset } from '../lib/fontPreset';
 import {
   getThemePaletteCssVariables,
   isThemePalette,
@@ -8,8 +9,11 @@ import {
 
 const THEME_MODE_STORAGE_KEY = 'study-planner-theme-mode';
 const THEME_PALETTE_STORAGE_KEY = 'study-planner-theme-palette';
+const FONT_PRESET_STORAGE_KEY = 'study-planner-font-preset';
 const READ_ERROR = '表示設定を読み込めませんでした。初期設定で表示しています。';
 const SAVE_ERROR = '表示設定を保存できませんでした。再読み込みで元に戻る場合があります。';
+const FONT_SAVE_ERROR = 'フォント設定を保存できませんでした。再読み込みで元に戻る場合があります。';
+const FONT_LOAD_ERROR = 'フォントを読み込めませんでした。端末の書体で表示しています。';
 
 function readStoredThemeMode(): { value: ThemeMode; canPersist: boolean } {
   try {
@@ -29,11 +33,26 @@ function readStoredThemePalette(): { value: ThemePalette; canPersist: boolean } 
   }
 }
 
+// Unlike mode and palette, the font is written only after an explicit choice:
+// existing users keep no new key, and an unknown saved value is never replaced.
+function readStoredFontPreset(): { value: FontPreset; chosen: boolean } {
+  try {
+    const storedFont = typeof window === 'undefined' ? null : window.localStorage.getItem(FONT_PRESET_STORAGE_KEY);
+    return { value: isFontPreset(storedFont) ? storedFont : 'system', chosen: false };
+  } catch {
+    return { value: 'system', chosen: false };
+  }
+}
+
 export function useThemePreference() {
   const [modePreference, setModePreference] = useState(readStoredThemeMode);
   const [palettePreference, setPalettePreference] = useState(readStoredThemePalette);
   const [modeSaveFailed, setModeSaveFailed] = useState(false);
   const [paletteSaveFailed, setPaletteSaveFailed] = useState(false);
+  const [fontPreference, setFontPreference] = useState(readStoredFontPreset);
+  const [fontSaveFailed, setFontSaveFailed] = useState(false);
+  const [fontLoadFailed, setFontLoadFailed] = useState(false);
+  const fontPreset = fontPreference.value;
   const themeMode = modePreference.value;
   const themePalette = palettePreference.value;
 
@@ -50,6 +69,11 @@ export function useThemePreference() {
       value: typeof next === 'function' ? next(previous.value) : next,
       canPersist: true,
     }));
+  }, []);
+
+  const setFontPreset = useCallback((next: FontPreset) => {
+    if (!isFontPreset(next)) return;
+    setFontPreference({ value: next, chosen: true });
   }, []);
 
   useLayoutEffect(() => {
@@ -80,7 +104,36 @@ export function useThemePreference() {
     }
   }, [themeMode, palettePreference]);
 
+  useLayoutEffect(() => {
+    const { dataset } = document.documentElement;
+    // The standard choice leaves the root exactly as before font presets existed.
+    if (fontPreference.value === 'system') delete dataset.fontPreset;
+    else dataset.fontPreset = fontPreference.value;
+    if (!fontPreference.chosen) return;
+    try {
+      window.localStorage.setItem(FONT_PRESET_STORAGE_KEY, fontPreference.value);
+      setFontSaveFailed(false);
+    } catch {
+      setFontSaveFailed(true);
+    }
+  }, [fontPreference]);
+
+  useEffect(() => {
+    setFontLoadFailed(false);
+    if (!isWebFontPreset(fontPreset)) return;
+    let active = true;
+    // Requested only while selected; no startup gate waits for it. Text is
+    // painted in the fallback stack until the font swaps in, or stays there.
+    loadWebFontStylesheet(fontPreset).catch(() => {
+      if (active) setFontLoadFailed(true);
+    });
+    return () => { active = false; };
+  }, [fontPreset]);
+
   return {
+    fontPreset,
+    setFontPreset,
+    fontError: fontSaveFailed ? FONT_SAVE_ERROR : fontLoadFailed ? FONT_LOAD_ERROR : null,
     themeMode,
     setThemeMode,
     themePalette,

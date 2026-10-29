@@ -11,7 +11,7 @@
   font-display: swap;
 }
 html[data-appearance='pixel'],
-html[data-appearance='pixel'] *,
+html[data-appearance='pixel'] :not(.font-preset-sample),
 html[data-appearance='pixel'] *::before,
 html[data-appearance='pixel'] *::after,
 html[data-appearance='pixel'] *::placeholder {

@@ -3,8 +3,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useThemePreference } from './useThemePreference';
 import type { ThemePalette } from '../lib/themePalette';
 
+const fontLoads = vi.hoisted(() => ({ load: vi.fn((_preset: string) => Promise.resolve()) }));
+vi.mock('../lib/fontPreset', async importOriginal => ({
+  ...await importOriginal<typeof import('../lib/fontPreset')>(),
+  loadWebFontStylesheet: fontLoads.load,
+}));
+
 const MODE_KEY = 'study-planner-theme-mode';
 const PALETTE_KEY = 'study-planner-theme-palette';
+const FONT_KEY = 'study-planner-font-preset';
 const PALETTES: Array<{ id: ThemePalette; light: string; dark: string }> = [
   { id: 'forest', light: '#176d66', dark: '#59b7ab' },
   { id: 'ocean', light: '#2f6fc2', dark: '#6fb2ff' },
@@ -40,6 +47,8 @@ afterEach(() => {
   renderer = undefined;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  fontLoads.load.mockReset();
+  fontLoads.load.mockImplementation(() => Promise.resolve());
 });
 
 describe('theme preference stored-value contract', () => {
@@ -226,4 +235,97 @@ it('retries an unsuccessful save when the same value is explicitly selected agai
   expect(current.error).toBeNull();
   expect(values.get(MODE_KEY)).toBe('dark');
   expect(values.get(PALETTE_KEY)).toBe('ocean');
+});
+
+
+describe('font preset preference', () => {
+  it('keeps existing users on the system font without writing a key, an attribute or a font request', () => {
+    const { values, setItem, dataset } = browser('ocean', 'dark');
+    mount();
+    expect(current.fontPreset).toBe('system');
+    expect(current.fontError).toBeNull();
+    expect('fontPreset' in dataset).toBe(false);
+    expect(values.has(FONT_KEY)).toBe(false);
+    expect(setItem.mock.calls.map(([key]) => key)).not.toContain(FONT_KEY);
+    expect(fontLoads.load).not.toHaveBeenCalled();
+  });
+
+  it.each(['noto-sans-jp', 'biz-udpgothic', 'm-plus-rounded-1c'] as const)('restores %s after restart and requests only that font', preset => {
+    const { values, dataset } = browser('ocean', 'dark');
+    values.set(FONT_KEY, preset);
+    mount();
+    expect(current.fontPreset).toBe(preset);
+    expect(dataset).toMatchObject({ fontPreset: preset, theme: 'dark', appearance: 'pixel' });
+    expect(current.themePalette).toBe('ocean');
+    expect(fontLoads.load.mock.calls).toEqual([[preset]]);
+  });
+
+  it.each(['', 'SYSTEM', 'Noto Sans JP', ' biz-udpgothic', '__proto__', 'toString', '{"id":"noto-sans-jp"}'])(
+    'falls back to system for corrupt %j without overwriting it', stored => {
+      const { values, dataset } = browser();
+      values.set(FONT_KEY, stored);
+      mount();
+      expect(current.fontPreset).toBe('system');
+      expect('fontPreset' in dataset).toBe(false);
+      expect(values.get(FONT_KEY)).toBe(stored);
+      expect(fontLoads.load).not.toHaveBeenCalled();
+    },
+  );
+
+  it('applies a choice immediately, persists it and leaves mode, palette and appearance untouched', () => {
+    const { values, dataset, css } = browser('sakura', 'dark');
+    mount();
+    act(() => current.setFontPreset('m-plus-rounded-1c'));
+    expect(dataset).toEqual({ appearance: 'pixel', theme: 'dark', fontPreset: 'm-plus-rounded-1c' });
+    expect(values.get(FONT_KEY)).toBe('m-plus-rounded-1c');
+    expect(values.get(MODE_KEY)).toBe('dark');
+    expect(values.get(PALETTE_KEY)).toBe('sakura');
+    expect(css.get('--accent')).toBe('#ef94ba');
+    act(() => current.setFontPreset('system'));
+    expect(dataset).toEqual({ appearance: 'pixel', theme: 'dark' });
+    expect(values.get(FONT_KEY)).toBe('system');
+    act(() => current.setThemeMode('light'));
+    act(() => current.setThemePalette('violet'));
+    expect(values.get(FONT_KEY)).toBe('system');
+    expect(fontLoads.load.mock.calls).toEqual([['m-plus-rounded-1c']]);
+  });
+
+  it('reports a font download failure while keeping the choice and clears it on another choice', async () => {
+    const { values } = browser();
+    fontLoads.load.mockImplementation(() => Promise.reject(new Error('offline')));
+    mount();
+    await act(async () => { current.setFontPreset('noto-sans-jp'); });
+    expect(current.fontPreset).toBe('noto-sans-jp');
+    expect(values.get(FONT_KEY)).toBe('noto-sans-jp');
+    expect(current.fontError).toContain('フォントを読み込めませんでした');
+    expect(current.error).toBeNull();
+    await act(async () => { current.setFontPreset('system'); });
+    expect(current.fontError).toBeNull();
+  });
+
+  it('reports a font save failure separately and retries on the same explicit choice', () => {
+    const { values, setItem } = browser();
+    mount();
+    let failing = true;
+    setItem.mockImplementation((key, value) => {
+      if (failing && key === FONT_KEY) throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      values.set(key, value);
+    });
+    act(() => current.setFontPreset('biz-udpgothic'));
+    expect(current.fontPreset).toBe('biz-udpgothic');
+    expect(current.fontError).toContain('フォント設定を保存できませんでした');
+    expect(current.error).toBeNull();
+    failing = false;
+    act(() => current.setFontPreset('biz-udpgothic'));
+    expect(values.get(FONT_KEY)).toBe('biz-udpgothic');
+    expect(current.fontError).toBeNull();
+  });
+
+  it('ignores an unsupported runtime value', () => {
+    const { values } = browser();
+    mount();
+    act(() => current.setFontPreset('comic-sans' as never));
+    expect(current.fontPreset).toBe('system');
+    expect(values.has(FONT_KEY)).toBe(false);
+  });
 });

@@ -111,8 +111,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     useState<BookshelfInitialAction>(null);
   const primaryHeaderRef = useRef<HTMLDivElement | null>(null);
   const primaryBottomNavRef = useRef<HTMLElement | null>(null);
-  const { themeMode, setThemeMode, themePalette, setThemePalette, error: themeError } =
-    useThemePreference();
+  const { themeMode, setThemeMode, themePalette, setThemePalette, error: themeError,
+    fontPreset, setFontPreset, fontError } = useThemePreference();
   const appearancePreference = useAppAppearance();
   const {
     booting,
@@ -774,6 +774,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         themeError={themeError}
         onChangeTheme={setThemeMode}
         onChangeThemePalette={setThemePalette}
+        fontPreset={fontPreset}
+        onChangeFontPreset={setFontPreset}
+        fontError={fontError}
         onClose={settingsNavigation.close}
       />
       {streakNavigation.isOpen ? <Suspense fallback={<main className="app-settings-page" aria-label="学習記録"><button type="button" onClick={streakNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>

@@ -56,6 +56,8 @@ Execution tracking:
 
 - [Confirmed preference save lifetime](work/preference-save-lifetime-handoff.md) — Issue #542; preserve the mounted planner during week-start saves and show retryable failures without reloading its history.
 
+- [Font presets](work/font-preset-handoff.md) — Issue #888; four on-demand typeface presets with the system stack as the unchanged default.
+
 - [Desktop Home viewport and readability](work/desktop-home-viewport-handoff.md) — desktop-only layout and next-plan type; startup size investigation remains unverified.
 
 - [Targeted Actual source preparation](work/actual-source-targeted-read-handoff.md) — Issue #542; select the persisted linked source without scanning all canonical schedules, preserving provenance and complete-history boundaries.
