@@ -415,9 +415,15 @@ test('late AI code loading never overrides a newer navigation or restarts the ap
   await seedConversationAndViewport(page); await page.goto('/');
   await clickPrimaryNav(page, 'AI計画');
   await seen;
-  await expect(page.getByRole('status').filter({ hasText: 'AI計画を開いています' })).toBeVisible();
+  const loading = page.getByRole('region', { name: 'AI計画を読み込み中', exact: true });
+  const loadingStatus = page.getByRole('status').filter({ hasText: 'AI計画を読み込んでいます' });
+  await expect(loading).toBeVisible();
+  await expect(loading).toHaveAttribute('aria-busy', 'true');
+  await expect(loadingStatus).toHaveCount(1);
   await expect(page.locator('.splash-screen')).toHaveCount(0);
   await clickPrimaryNav(page, 'ホーム');
+  await expect(loading).toHaveCount(0);
+  await expect(loadingStatus).toHaveCount(0);
   release();
   await expect(page.locator('.ai-planning-view')).toHaveCount(1);
   await expect(page.locator('.ai-planning-view')).toBeHidden();
