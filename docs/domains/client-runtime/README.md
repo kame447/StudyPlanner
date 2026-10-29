@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Route skeleton loading](work/skeleton-loading-handoff.md) — Issue #896; local static placeholders for primary route delivery, with startup/auth ownership unchanged.
+
 - [Quick Entry mutation admission](work/quick-entry-mutation-admission-handoff.md) — merged in PR #820; preserves duplicate-save and stale-completion protections.
 
 - [Class-schedule commit lifetime](work/class-schedule-commit-lifetime-handoff.md) — merged in PR #821; retires old schedule-save completion before it can dismiss a replacement attendance form.

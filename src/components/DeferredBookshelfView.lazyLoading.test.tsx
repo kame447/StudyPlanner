@@ -28,7 +28,7 @@ it('keeps delivery lazy and passes current-owner entry actions to the real books
   expect(delivery.requested).not.toHaveBeenCalled();
   act(() => renderer.update(<DeferredBookshelfView {...props} initialAction="add-material" />));
   await act(async () => { await delivery.starting; });
-  expect(renderer.root.findAllByProps({ className: 'loading-screen splash-screen' })).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ className: 'route-skeleton route-skeleton--bookshelf' })).toHaveLength(1);
   expect(handledOld).not.toHaveBeenCalled();
   act(() => renderer.update(<p>Home</p>));
   const current = { ...props, userId: 'current-owner', onInitialActionHandled: handledCurrent };

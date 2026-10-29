@@ -19,7 +19,7 @@ it.each(entries)('ignores late %s rejection after leaving, then contains the cur
   expect(delivery.requested).not.toHaveBeenCalled();
   act(() => renderer.update(view(entry, 'old-owner')));
   await act(async () => { await delivery.starting; });
-  expect(renderer.root.findAllByProps({ className: 'loading-screen splash-screen' })).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ className: `route-skeleton route-skeleton--${entry.toLowerCase()}` })).toHaveLength(1);
   act(() => renderer.update(<p>Home</p>));
   await act(async () => { delivery.release(); await vi.dynamicImportSettled(); });
   expect(renderer.root.findByType('p').children).toEqual(['Home']);

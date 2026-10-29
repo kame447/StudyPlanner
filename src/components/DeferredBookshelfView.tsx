@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, type ComponentProps, type PropsWithChildren } from 'react';
-import { SplashScreen } from './SplashScreen';
+import { RouteSkeleton } from './RouteSkeleton';
 
 type BookshelfViewProps = ComponentProps<typeof import('./BookshelfView')['BookshelfView']>;
 const BookshelfView = lazy(() => import('./BookshelfView').then(module => ({ default: module.BookshelfView })));
@@ -17,7 +17,7 @@ class BookshelfLoadBoundary extends Component<PropsWithChildren, { failed: boole
 // Keep the app's navigation and data owners mounted if optional delivery fails.
 export function DeferredBookshelfView(props: BookshelfViewProps) {
   return <BookshelfLoadBoundary key={props.userId}>
-    <Suspense fallback={<SplashScreen />}>
+    <Suspense fallback={<RouteSkeleton view="bookshelf" />}>
       <BookshelfView {...props} />
     </Suspense>
   </BookshelfLoadBoundary>;
