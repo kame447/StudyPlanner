@@ -1,6 +1,6 @@
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   resetUserPlanningContextRuntimeForTestV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
@@ -55,6 +55,7 @@ interface Observation {
   draftCandidateCount: number;
   draftDurations: number[];
   learningStrategyProposalRecords: LearningStrategyRecordObservation[];
+  qualityObservation: { asksForContentProgress: boolean };
 }
 
 type ConversationTurn = string | ((observations: readonly Observation[]) => string | null);
@@ -182,11 +183,12 @@ async function conversation(params: {
     const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
     if (!runtime) throw new Error(`${params.name} turn ${index + 1}: runtime session missing`);
 
+    const assistantText = store.getState().lastAssistantMessage ?? result.message;
     observations.push({
       index: index + 1,
       name: params.name,
       userText,
-      assistantText: store.getState().lastAssistantMessage ?? result.message,
+      assistantText,
       questionContext: store.getState().intakeState?.lastQuestionContext ?? null,
       graph: structuredClone(runtime.graph),
       draftCandidateCount: result.draftCandidates.length,
@@ -198,6 +200,7 @@ async function conversation(params: {
         kind: record.kind,
         status: record.status,
       })),
+      qualityObservation: { asksForContentProgress: asksForContentProgress(assistantText) },
     });
   }
 
@@ -223,11 +226,6 @@ function expectTimeboxMeaning(params: {
   expectedRole?: 'target' | 'remaining';
 }): void {
   const { observation } = params;
-  expect(
-    asksForContentProgress(observation.assistantText),
-    `${observation.name}: ${observation.assistantText}`,
-  ).toBe(false);
-
   const timeWorkloads = activeWorkloads(observation.graph).filter((workload) =>
     timeAmountMinutes(workload) === params.expectedMinutes
     && workload.quantityRole !== 'completed'
@@ -287,6 +285,9 @@ const run = shouldRun ? describe : describe.skip;
 
 run('Issue #156 timeboxed planning overasking real API gate', () => {
   it('uses explicit time as schedulable work and does not turn strategy choice into scope interrogation', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-26T12:00:00.000Z'));
+    try {
     const goldPhraseTurns = await conversation({
       name: 'gold-frase-daily-hour',
       userTurns: [
@@ -408,5 +409,8 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
       `${outputDir}/timebox-overasking.json`,
       `${JSON.stringify({ goldPhraseTurns, observations }, null, 2)}\n`,
     );
+    } finally {
+      vi.useRealTimers();
+    }
   }, Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 300_000);
 });

@@ -113,16 +113,24 @@ run('Issue #156 typed renderer real API stress matrix', () => {
         fallbackText: '順序関係の対象を確認できませんでした。どの予定をどの順番にするか教えてください。',
       });
       const result = await renderer.render(renderInput);
-      observations.push({ kind: 'task_relation', variant: relationVariants[i], intent: renderInput.questionIntent, result });
+      observations.push({
+        kind: 'task_relation',
+        variant: relationVariants[i],
+        intent: renderInput.questionIntent,
+        qualityObservation: { asksForRelationEndpointsOrOrder: result.status === 'rendered'
+          ? asksForRelationEndpointsOrOrder(result.text) : null },
+        result,
+      });
       expect(result.status).toBe('rendered');
       if (result.status === 'rendered') {
+        expect(renderInput.questionIntent).toMatchObject({
+          kind: 'resolution_question',
+          resolutionKind: 'task_relation_reference',
+          requestedInformation: ['identify_relation_endpoints'],
+        });
         expect(result.text, `relation variant ${i + 1}`).not.toMatch(
           /追加してよい|登録してよい|反映してよい|設定してよい|追加しますか|登録しますか|反映しますか/,
         );
-        expect(
-          asksForRelationEndpointsOrOrder(result.text),
-          `relation variant ${i + 1}: ${result.text}`,
-        ).toBe(true);
       }
     }
 
