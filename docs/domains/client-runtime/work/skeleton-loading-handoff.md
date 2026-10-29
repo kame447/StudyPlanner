@@ -1,8 +1,8 @@
 # Route skeleton loading — Issue #896
 
-Status: draft PR #899 published; initial native failures diagnosed, coherent test-only correction in local verification. No merge authorized.
+Status: draft PR #899 remains open; corrected route tests passed native execution, and current-main integration has fresh local proof. New integrated-head native checks remain pending. No merge authorized.
 
-Current acceptance: corrected native browser execution and rendered/device acceptance remain open. Historical local-only milestones below retain their original scope.
+Current acceptance: corrected-head native evidence covers 144 route-skeleton cases and AI late-navigation; the full Browser Matrix remains failed on separate day-occurrence #853 and startup touch-skip timing evidence. Current-main native execution, assistive-technology and physical-device acceptance remain open. Historical milestones below retain their original scope.
 
 - Branch: `feat/issue896-skeleton-loading`; base `c1a702229491598cb7f244c75824c0b2f598e1ef`.
 - Scope fixed after current-code / Issue / PR / all-branch audit: Month, Week, Day, Todo, Bookshelf, Report, Timetable, initial AI route and Contact lazy form only.
@@ -64,3 +64,10 @@ Current acceptance: corrected native browser execution and rendered/device accep
 - Exact corrected source `179fac8e243fbfbeb3103cb1ab18ed156d12d237`, tree `22724c3ff8400ccc493e3a1efd4f455945a9e312`, passed fresh `TZ=UTC DEV_LAN_HOST=127.0.0.1 npm run verify` (exit 0): app/Worker types; 1,114 files / 12,038 tests passed; 15 expected failures, 67 skipped tests and one todo retained; production build 29.16s. Focused 15 files / 76 tests also passed.
 - All 3,131 source inputs and 19,568 non-cache installed dependency files remained unchanged; Node v24.22.1. Independent source, fixture-normalization and documentation reviews passed. The Report seed was checked through the existing plan/event roundtrip; no product code changed.
 - The final append is documentation only. Same-draft publication and fresh native execution are next; this local proof does not convert the original browser failures/cancellations or separate #853 timeout into passes. No merge is authorized or performed.
+
+## Current-main integration after corrected native execution
+
+- Published corrected head `e421157e2b2eb8c78a27fe2352d05a06a1f80050` passed all 144 route-skeleton cases across Chromium, Firefox, WebKit desktop/mobile, and the corrected AI late-navigation case. This is scoped browser evidence, not a green full Matrix: mobile first shard failed the separate #853 day-occurrence timeout and recorded startup touch-skip failure on its first attempt (internal retry passed). Neither test nor its timeout was changed. Physical iPhone and assistive-technology acceptance remain unverified.
+- Normal merge `07e69cbe4dd0ffafe0f78cb1e1bd3b4eed454d3a` (tree `eff40c18d9f918bf96299049e6eea2aa875a1cb7`) preserves parents `e421157e2b2eb8c78a27fe2352d05a06a1f80050` and current main `a60fc5e8bca2ff745efaf603e939967b3e54e4a9`. Only the seven existing main font files were integrated; their bytes match main, and no skeleton runtime/test source was changed. The PR remains 22 changed paths relative to main, including the corrected existing AI test.
+- Fresh integration `TZ=UTC DEV_LAN_HOST=127.0.0.1 npm run verify` exited 0: fresh app/Worker types, 1,114 files / 12,039 tests passed, 15 expected failures, 67 skipped tests and one todo retained, build 32.22s. Focused 15 files / 76 tests passed. Node v24.22.1; all 3,131 tracked inputs and 19,593 installed non-cache files remained unchanged. The 81 changed installed paths were generated `.vitest-cache` entries only; exact before/after manifests retain this distinction.
+- This checkpoint update is documentation only. Next: independent exact-tree review, update the same draft with history preserved, then run native checks on the integrated head. Old failed runs are retained; no unchanged-head retry, Ready action or merge is authorized.
