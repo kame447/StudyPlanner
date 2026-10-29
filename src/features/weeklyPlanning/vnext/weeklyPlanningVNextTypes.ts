@@ -162,16 +162,31 @@ export interface VNextTemporalChanges {
   precision: TemporalConstraintFactV5['precision'] | null;
 }
 
+export interface VNextTaskChanges {
+  category: SemanticTaskCategoryV5 | null;
+  title: string | null;
+}
+
+export interface VNextComponentChanges {
+  role: SemanticComponentRoleV5 | null;
+  label: string | null;
+}
+
+// Every patch carries a localId so a validation error (and the formal-repair
+// splice) can address it the same way as an added fact.
 export type VNextPatch =
+  | { kind: 'task'; localId: string; targetFactId: string; changes: VNextTaskChanges }
+  | { kind: 'component'; localId: string; targetFactId: string; changes: VNextComponentChanges }
   | {
       kind: 'workload';
+      localId: string;
       targetFactId: string;
       changes: VNextWorkloadChanges;
       /** Increment stated by the user; code adds it to the current amount. */
       amountDelta: number | null;
     }
-  | { kind: 'effort_estimate'; targetFactId: string; changes: VNextEffortChanges }
-  | { kind: 'temporal_constraint'; targetFactId: string; changes: VNextTemporalChanges };
+  | { kind: 'effort_estimate'; localId: string; targetFactId: string; changes: VNextEffortChanges }
+  | { kind: 'temporal_constraint'; localId: string; targetFactId: string; changes: VNextTemporalChanges };
 
 export interface VNextRemove {
   targetFactId: string;
@@ -228,6 +243,8 @@ export interface VNextTurnError {
 export type VNextTurnResult =
   | { status: 'applied'; state: WeeklyPlanningVNextState; diff: WeeklyPlanningFactDiffV5 }
   | { status: 'duplicate'; state: WeeklyPlanningVNextState }
+  /** Every operation restated current values: nothing changes, revision is kept. */
+  | { status: 'noop'; state: WeeklyPlanningVNextState }
   | { status: 'rejected'; state: WeeklyPlanningVNextState; errors: VNextTurnError[] };
 
 // ---- projection: recomputed every turn, never stored --------------------------
