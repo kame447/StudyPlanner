@@ -59,7 +59,7 @@ Worker `2c95328b` (tag `main-af6d6496`) was deployed at about 12:34 UTC. Firesto
 
 - Entries: 1,078 − 818 = 260 removed = 13 runs (12:44 to 14:44 UTC) × 20, and the 14:54 run removed exactly 20 more. Unexpired entries and audit records did not change. The remaining 58 expired entries clear in 3 more runs.
 - Sessions: all expired sessions are gone. 69 − 61 = 8 matches the expired legacy sessions, though a session created in the same window would make that count inexact.
-- Failures: `wrangler tail` showed scheduled invocations with outcome `ok` and no exceptions. The Worker writes no per-run log line, so per-run failure counts are not recorded. A failed batch would leave the expired count unchanged, and it did change on schedule.
+- Run log and failures: `wrangler tail` (14:46 to 15:01 UTC) captured all 14 scheduled invocations with outcome `ok` and 0 exceptions. The 14:54 run logged `operation: 'trace_retention'` with 6 subrequests (1 OAuth + 5 Firestore; limit 45). The log line carries no deleted-document count, so the deletions above come from the Firestore counts.
 - Free tier, Firebase usage for the last 24 h at 14:55 UTC: 7,782 reads, 448 writes, 489 deletes against 50k / 20k / 20k.
 
 ## 2026-10-29 v2 diagnostic masking (PR #925)
