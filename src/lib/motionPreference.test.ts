@@ -46,6 +46,8 @@ describe('effective motion level', () => {
     expect(css).toContain('animation: ui-surface-fade var(--route-entry-duration, var(--motion-duration-fast)) ease-out backwards;');
     expect(css).toMatch(/:root\[data-motion='reduced'\] \.app-shell \{\s*--route-entry-duration: var\(--motion-duration-fade\);/);
     expect(css).not.toContain('ui-surface-enter');
+    const bookshelfCss = readFileSync(new URL('../styles/bookshelf-add-material-mobile.css', import.meta.url), 'utf8');
+    expect(bookshelfCss).not.toMatch(/\.section-stack\s*>\s*\.bookshelf-view\s*\{[^}]*animation\s*:\s*none/);
     const fade = css.slice(css.indexOf('@keyframes ui-surface-fade'), css.indexOf('/* Home: reward'));
     expect(fade).toContain('opacity: 0;');
     expect(fade).toContain('opacity: 1;');
