@@ -28,7 +28,7 @@ function applied(state: WeeklyPlanningVNextState, changes: VNextTurnDelta): Week
 function setup(withEffort = true): WeeklyPlanningVNextState {
   return applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, workload('r', 7), ...(withEffort ? [effort('r', 45)] : [])] }));
 }
-function amountPatch(state: WeeklyPlanningVNextState, amount: number): VNextPatch {
+function amountPatch(state: WeeklyPlanningVNextState, amount: number): Extract<VNextPatch, { kind: 'workload' }> {
   return { kind: 'workload', localId: 'fix-r', targetFactId: state.graph.workloads[0].id,
     changes: workloadChanges(amount), amountDelta: null };
 }
@@ -107,7 +107,7 @@ describe('experimental VNext typed transaction', () => {
 
   it('rejects an ownership field and returns an addressable error without committing any clause', () => {
     const state = setup(false);
-    const malformed = { ...amountPatch(state, 8), changes: { ...workloadChanges(8), taskId: 'foreign' } } as VNextPatch;
+    const malformed = { ...amountPatch(state, 8), changes: { ...workloadChanges(8), taskId: 'foreign' } } as unknown as VNextPatch;
     const result = turn(state, delta({ patch: [malformed], add: [{ ...task, localId: 'other' }] }));
     expect(result.status).toBe('rejected');
     expect(result.state).toBe(state);
@@ -140,6 +140,109 @@ describe('experimental VNext typed transaction', () => {
     const result = turn(state, delta({ patch: [amountPatch(state, 7)] }));
     expect(result.status).toBe('noop');
     expect(result.state).toBe(state);
+  });
+
+  it('no-op total estimate is unchanged, but restated minutes bind to a same-turn new quantity', () => {
+    const state = setup();
+    const patch: VNextPatch = { kind: 'effort_estimate', localId: 'restated', targetFactId: state.graph.effortEstimates[0].id,
+      changes: { minutes: 45, effortKind: null, unitCode: null, unitLabel: null, precision: null } };
+    const noop = turn(state, delta({ patch: [patch] }));
+    expect(noop.status).toBe('noop');
+    expect(noop.state).toBe(state);
+    const next = applied(state, delta({ patch: [patch, amountPatch(state, 8)] }));
+    expect(activeEfforts(next)[0]).toMatchObject({ minutes: 45, workBinding: { boundAmount: 8 } });
+  });
+
+  it('rejects missing effort or temporal values with the exact semantic field and local ID', () => {
+    const state = setup();
+    const bad = { kind: 'effort_estimate', localId: 'bad-e', targetFactId: state.graph.effortEstimates[0].id,
+      changes: { minutes: 60, effortKind: 'invented', unitCode: null, unitLabel: null, precision: null } } as unknown as VNextPatch;
+    const result = turn(state, delta({ patch: [bad] }));
+    expect(result.status).toBe('rejected');
+    if (result.status === 'rejected') expect(result.errors).toContainEqual(expect.objectContaining({
+      path: 'patch[0].changes.effortKind', localId: 'bad-e',
+    }));
+  });
+
+  it('patches task category/title and component label while preserving dependent identity references', () => {
+    const state = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task,
+      { kind: 'component', localId: 'book', taskRef: { localId: 't' }, parentComponentRef: null, role: 'material', label: 'Book' },
+      { ...workload('r', 8), componentRef: { localId: 'book' } } as VNextAddFact] }));
+    const taskId = state.graph.tasks[0].id, componentId = state.graph.components[0].id;
+    const next = applied(state, delta({ patch: [
+      { kind: 'task', localId: 'task-correction', targetFactId: taskId, changes: { category: 'non_study', title: 'Errand' } },
+      { kind: 'component', localId: 'component-correction', targetFactId: componentId, changes: { role: null, label: 'New book' } },
+    ] }));
+    expect(activeWorkloads(next)[0]).toMatchObject({ taskId, componentId });
+    expect(next.graph.tasks[next.graph.tasks.length - 1]).toMatchObject({ category: 'non_study', title: 'Errand' });
+    expect(next.graph.components[next.graph.components.length - 1]).toMatchObject({ label: 'New book' });
+    expect(vnextLineageIdByFactId(next.graph).get(next.graph.tasks[next.graph.tasks.length - 1].id)).toBe(taskId);
+  });
+
+  it('corrects quantity and deadline independently in the same turn', () => {
+    const state = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, workload('r', 7),
+      { kind: 'temporal_constraint', localId: 'deadline', taskRef: { localId: 't' }, targetRef: { localId: 't' },
+        constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-11-01', namedTimePeriod: null,
+        startTime: null, endTime: null, precision: 'exact' }] }));
+    const next = applied(state, delta({ patch: [amountPatch(state, 8), { kind: 'temporal_constraint', localId: 'deadline-fix',
+      targetFactId: state.graph.temporalConstraints[0].id, changes: { constraintKind: null, constraintLevel: null,
+        dateExpression: '2026-11-02', namedTimePeriod: null, startTime: null, endTime: null, precision: null } }] }));
+    expect(activeWorkloads(next)[0].amount).toBe(8);
+    expect(next.graph.temporalConstraints[next.graph.temporalConstraints.length - 1].dateExpression).toBe('2026-11-02');
+  });
+
+  it('rejects non-total active dependents instead of silently removing or retargeting them', () => {
+    const state = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, workload('r', 7),
+      { ...effort('r', 3), effortKind: 'duration_per_unit', unitCode: 'custom', unitLabel: '枚' } as VNextAddFact] }));
+    const result = turn(state, delta({ remove: [{ targetFactId: state.graph.workloads[0].id }] }));
+    expect(result.status).toBe('rejected');
+    expect(result.state).toBe(state);
+    if (result.status === 'rejected') expect(result.errors).toContainEqual(expect.objectContaining({
+      code: 'active_dependents', path: 'remove[0].targetFactId',
+    }));
+  });
+
+  it('keeps the dependency guard addressable when a carried uncertainty targets a cascaded total', () => {
+    const state = setup();
+    state.graph.uncertainties.push({ id: 'uncertainty', targetFactId: state.graph.effortEstimates[0].id,
+      field: 'precision', reason: 'unspecified', source: state.graph.tasks[0].source, createdRevision: 1 });
+    state.graph.factLifecycles.push({ factId: 'uncertainty', status: 'active', createdRevision: 1,
+      terminalRevision: null, supersededByFactId: null });
+    const result = turn(state, delta({ remove: [{ targetFactId: state.graph.workloads[0].id }] }));
+    expect(result.status).toBe('rejected');
+    expect(result.state).toBe(state);
+    if (result.status === 'rejected') expect(result.errors).toContainEqual(expect.objectContaining({
+      code: 'active_dependents', path: 'remove[0].targetFactId', factId: state.graph.effortEstimates[0].id,
+    }));
+  });
+
+  it.each([false, true])('explicitly removing a bound total with its workload has one diff per fact (%s)', reverse => {
+    const state = setup();
+    const remove = [{ targetFactId: state.graph.workloads[0].id }, { targetFactId: state.graph.effortEstimates[0].id }];
+    const result = turn(state, delta({ remove: reverse ? remove.reverse() : remove }));
+    expect(result.status).toBe('applied');
+    if (result.status === 'applied') expect(new Set(result.diff.removed.map(fact => fact.id)).size).toBe(result.diff.removed.length);
+  });
+
+  it('rejects cross-task refs with input paths instead of graph implementation paths', () => {
+    const result = turn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task,
+      { ...task, localId: 'other' },
+      { kind: 'component', localId: 'component', taskRef: { localId: 'other' }, parentComponentRef: null, role: 'material', label: 'Other task book' },
+      { ...workload('r', 8), componentRef: { localId: 'component' } } as VNextAddFact] }));
+    expect(result.status).toBe('rejected');
+    if (result.status === 'rejected') expect(result.errors).toContainEqual(expect.objectContaining({
+      path: 'add[3].componentRef:task-mismatch', localId: 'r',
+    }));
+  });
+
+  it.each([NaN, Infinity, -1])('rejects invalid amount %s atomically after merging changes', amount => {
+    const state = setup();
+    const result = turn(state, delta({ patch: [amountPatch(state, amount)] }));
+    expect(result.status).toBe('rejected');
+    expect(result.state).toBe(state);
+    if (result.status === 'rejected') expect(result.errors).toContainEqual(expect.objectContaining({
+      path: 'patch[0].changes.amount', localId: 'fix-r',
+    }));
   });
 
   it('removes only bound workload totals, preserving task totals and separate workloads', () => {
