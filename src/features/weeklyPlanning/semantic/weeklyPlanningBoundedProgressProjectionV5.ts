@@ -9,6 +9,7 @@ import type {
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
+import { prepareWeeklyPlanningWorkloadDependentsV5 } from './weeklyPlanningWorkloadDependentMigrationV5';
 
 export const WEEKLY_PLANNING_BOUNDED_PROGRESS_PROJECTION_VERSION_V5 =
   'weekly-planning-bounded-progress-projection-v5' as const;
@@ -394,11 +395,30 @@ export function projectWeeklyPlanningBoundedProgressV5(params: {
     graph = appended.graph;
     added.push({ kind: 'workload', id: appended.fact.id });
     if (previousDerived) {
+      const operationKey = `${params.operationKeyPrefix}:rebase-bounded-remaining:${previousDerived.id}`;
+      const dependents = prepareWeeklyPlanningWorkloadDependentsV5({
+        graph,
+        targetFactId: previousDerived.id,
+        replacementFactId: appended.fact.id,
+        migrationId: operationKey,
+        operationKey,
+      });
+      if (dependents.status === 'rejected') {
+        return rejected({
+          originalGraph: params.originalGraph,
+          canonicalization: params.canonicalization,
+          error: `bounded-progress-rebase-remaining:${dependents.errors.join(',')}`,
+        });
+      }
+      graph = dependents.graph;
+      added.push(...dependents.added);
+      superseded.push(...dependents.superseded);
+      removed.push(...dependents.removed);
       const lifecycle = supersedeFact({
         graph,
         targetFactId: previousDerived.id,
         replacementFactId: appended.fact.id,
-        operationKey: `${params.operationKeyPrefix}:rebase-bounded-remaining:${previousDerived.id}`,
+        operationKey,
       });
       if (lifecycle.status === 'rejected') {
         return rejected({

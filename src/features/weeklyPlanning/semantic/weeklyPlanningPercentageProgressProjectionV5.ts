@@ -9,6 +9,10 @@ import type {
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
+import {
+  isGeneratedProgressRemainingV5,
+  prepareWeeklyPlanningWorkloadDependentsV5,
+} from './weeklyPlanningWorkloadDependentMigrationV5';
 
 export const WEEKLY_PLANNING_PERCENTAGE_PROGRESS_PROJECTION_VERSION_V5 =
   'weekly-planning-percentage-progress-projection-v5' as const;
@@ -277,11 +281,32 @@ export function projectWeeklyPlanningPercentageProgressV5(params: {
     added.push({ kind: 'workload', id: appended.fact.id });
 
     if (previousRemaining) {
+      const operationKey = `${params.operationKeyPrefix}:percent-rebase:${previousRemaining.id}`;
+      const dependents = isGeneratedProgressRemainingV5(previousRemaining)
+        ? prepareWeeklyPlanningWorkloadDependentsV5({
+            graph,
+            targetFactId: previousRemaining.id,
+            replacementFactId: appended.fact.id,
+            migrationId: operationKey,
+            operationKey,
+          })
+        : { status: 'not_applicable' as const, graph, added: [], superseded: [], removed: [], errors: [] };
+      if (dependents.status === 'rejected') {
+        return rejected({
+          originalGraph: params.originalGraph,
+          canonicalization: params.canonicalization,
+          error: `percentage-progress-rebase:${dependents.errors.join(',')}`,
+        });
+      }
+      graph = dependents.graph;
+      added.push(...dependents.added);
+      superseded.push(...dependents.superseded);
+      removed.push(...dependents.removed);
       const replacement = applyWeeklyPlanningFactLifecycleOperationV5({
         graph,
         expectedRevision: graph.revision,
         operation: {
-          operationKey: `${params.operationKeyPrefix}:percent-rebase:${previousRemaining.id}`,
+          operationKey,
           kind: 'supersede',
           targetFactId: previousRemaining.id,
           replacementFactId: appended.fact.id,
