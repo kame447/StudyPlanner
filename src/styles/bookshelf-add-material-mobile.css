@@ -6,11 +6,9 @@
  * action rather than owning a second set of mobile offsets.
  */
 
-/* Fixed descendants must resolve against the viewport, and modal z-indexes
- * must not be trapped in a root stacking context below the bottom nav. */
-.section-stack > .bookshelf-view {
-  animation: none;
-}
+/* The shared opacity-only entry leaves fixed descendants viewport-relative.
+ * Its backwards fill and open-overlay duration guard release the temporary
+ * stacking context; do not disable the shared entry animation here. */
 
 /* Match Schedule's FAB geometry, including its responsive desktop/tablet and
  * short/tall viewport overrides. */
