@@ -30,7 +30,7 @@
   display: grid;
   gap: 8px;
   color: var(--home-ink);
-  font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  font-family: var(--app-font-family, "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif);
 }
 
 .home-dashboard *,

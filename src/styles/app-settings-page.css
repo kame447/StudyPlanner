@@ -116,3 +116,8 @@ body:has(.app-settings-page, .public-page-surface) > :is(.home-add-overlay, .hom
   .settings-row { flex-wrap: wrap; }
   .settings-motion-row { flex-wrap: nowrap; }
 }
+.font-preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.font-preset-button { align-content: start; min-width: 0; }
+.font-preset-sample { min-width: 0; font-size: 1rem; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.font-preset-note { margin: 10px 0 0; color: var(--settings-muted); font-size: .8125rem; line-height: 1.6; }
+@media (max-width: 359px) { .font-preset-grid { grid-template-columns: minmax(0, 1fr); } }
