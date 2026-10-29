@@ -302,12 +302,18 @@ export function parseWeeklyPlanningTraceHmacSecrets(
  * The oldest primary secret is the fixed derivation root. Do not rotate/remove
  * that primary key without a migration plan for derived trace IDs within the
  * retention window. The derived bytes and the root are never logged.
+ *
+ * `derivedCoverage: 'since-root'` derives every epoch after the root instead of
+ * only the retention window. Deletion needs it: append extends `expireAt` while
+ * a session keeps its original subject epoch, so a stored session can outlive
+ * the 180-day derivation window.
  */
 export async function resolveWeeklyPlanningTraceHmacSecretRing(params: {
   raw: string;
   extension?: string;
   now?: Date | string | number;
   cryptoApi?: Crypto;
+  derivedCoverage?: 'retention' | 'since-root';
 }): Promise<TraceHmacSecretRing> {
   const explicitRing = parseWeeklyPlanningTraceHmacSecrets(params.raw, params.extension);
   const primary = parseWeeklyPlanningTraceHmacSecrets(params.raw);
@@ -319,10 +325,12 @@ export async function resolveWeeklyPlanningTraceHmacSecretRing(params: {
   }
   const rootEpoch = primaryEpochNames[0];
   const current = Number(resolveWeeklyPlanningTraceEpoch(params.now ?? new Date()));
-  const oldestRetained = Math.max(
-    current - Math.ceil(WEEKLY_PLANNING_TRACE_RETENTION_DAYS / WEEKLY_PLANNING_TRACE_EPOCH_DAYS),
-    Number(rootEpoch) + 1,
-  );
+  const oldestRetained = params.derivedCoverage === 'since-root'
+    ? Number(rootEpoch) + 1
+    : Math.max(
+      current - Math.ceil(WEEKLY_PLANNING_TRACE_RETENTION_DAYS / WEEKLY_PLANNING_TRACE_EPOCH_DAYS),
+      Number(rootEpoch) + 1,
+    );
   if (current < oldestRetained) return explicitRing;
   const absent: string[] = [];
   for (let epoch = oldestRetained; epoch <= current; epoch += 1) {
