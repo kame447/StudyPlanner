@@ -1,6 +1,8 @@
 # Route skeleton loading — Issue #896
 
-Status: local implementation, not published
+Status: draft PR #899 published; initial native failures diagnosed, coherent test-only correction in local verification. No merge authorized.
+
+Current acceptance: corrected native browser execution and rendered/device acceptance remain open. Historical local-only milestones below retain their original scope.
 
 - Branch: `feat/issue896-skeleton-loading`; base `c1a702229491598cb7f244c75824c0b2f598e1ef`.
 - Scope fixed after current-code / Issue / PR / all-branch audit: Month, Week, Day, Todo, Bookshelf, Report, Timetable, initial AI route and Contact lazy form only.
@@ -41,3 +43,24 @@ Status: local implementation, not published
 - Fresh actual main `f0a3de815550f621a32ae628a105368b5f2f2082` was normally merged into prior skeleton `a550b5bf`. Integration HEAD `397ed00adb321fb27b9ad6a0d8c43a0b865435b3`, tree `eff4ef17bea2338721cc50d3f25bc7ec1b10d12b`. No conflicts or scope expansion: all prior 21 changed paths remain byte-identical, while main's two telemetry files are preserved.
 - Fresh integrated `TZ=UTC DEV_LAN_HOST=127.0.0.1 npm run verify` exited 0: fresh app/Worker types; 1,114 files / 12,038 tests passed; the same 15 expected failures, 67 skipped tests and one todo retained; production build 37.14s. Source and non-cache installed-dependency identity were checked before/after.
 - Existing Browser Regression and UI Regression Matrix workflows accept `pull_request` events without a draft exclusion. No workflow redesign, security-setting change or premature Ready transition is needed. Their native execution/screenshots remain required; prior local collection is not substituted for browser evidence.
+
+## Native browser contract correction
+
+- Draft #899 head `42b6240239597418455875238c530322d43b3d2d` reached native browser execution. Chromium shard 1 failed twice at `ai-planning-composer-viewport.spec.mjs:418`: the existing test still looked for the retired visible text `AI計画を開いています`.
+- Compared three explanations: missing/lost loading surface, stale text selector, and inappropriate visibility assertion for the new screen-reader status. The unedited native failure screenshot shows the AI skeleton, header and selected AI navigation intact; source and raw stack identify the obsolete selector. The later navigation assertions were not reached, so no successful late-delivery behavior is inferred from the screenshot.
+- Test-only correction now requires the named skeleton to be visible and busy plus its separate current status, and explicitly requires both to disappear when navigating Home before releasing the module. Existing delayed module arrival, hidden retained AI view, newer Home selection, 24-message restoration and no-splash assertions remain unchanged. No product bytes, timeout, retries or navigation/owner guards changed.
+- Fresh local final verification and independent review are required before the same draft is updated; native rerun on the corrected commit remains necessary. The original failed run is retained as failed.
+
+
+## Complete first-native failure inventory and fixed correction scope
+
+- All initial #899 jobs reached terminal states. Besides the stale AI fallback assertion, Chromium/Firefox/WebKit desktop and the second browser/mobile shards exposed the same 16 new fixture failures: Week/Day/Todo/Report × two widths × two themes. Their route helper entered Bookshelf, where the existing UI intentionally hides the legacy view switcher, then tried unavailable buttons. Actual native DOM contexts confirm the Bookshelf page, not the requested destination.
+- The coherent correction uses only public UI entry points: Schedule's labelled tablist for Week/Day/Todo; Home's progress-panel details button for Report. Only Report seeds one owner-scoped plan so its established dashboard entry exists; the other eight surfaces retain empty data. The existing fixed-clock/E2E_TODAY helper keeps the seed date deterministic. All 36 cold-module cases and loading/theme/motion/geometry assertions remain. No runtime flags, hidden-element clicks, timeout changes, skipped cases or production changes are introduced.
+- The initial browser second shard and mobile second shard exhausted their existing job budgets after these fixture failures; they remain cancelled, not successful. Mobile first shard also hit the existing #853 day-occurrence timeout, kept separate and untouched.
+- AI-only candidate `300f9d13` had 76 focused tests pass, but its full verify was intentionally interrupted with exit 130 when the additional fixture failures arrived. That superseded run is not final proof. Final corrected local verification, independent fixture review and native rerun remain required.
+
+## Coherent correction local proof
+
+- Exact corrected source `179fac8e243fbfbeb3103cb1ab18ed156d12d237`, tree `22724c3ff8400ccc493e3a1efd4f455945a9e312`, passed fresh `TZ=UTC DEV_LAN_HOST=127.0.0.1 npm run verify` (exit 0): app/Worker types; 1,114 files / 12,038 tests passed; 15 expected failures, 67 skipped tests and one todo retained; production build 29.16s. Focused 15 files / 76 tests also passed.
+- All 3,131 source inputs and 19,568 non-cache installed dependency files remained unchanged; Node v24.22.1. Independent source, fixture-normalization and documentation reviews passed. The Report seed was checked through the existing plan/event roundtrip; no product code changed.
+- The final append is documentation only. Same-draft publication and fresh native execution are next; this local proof does not convert the original browser failures/cancellations or separate #853 timeout into passes. No merge is authorized or performed.
