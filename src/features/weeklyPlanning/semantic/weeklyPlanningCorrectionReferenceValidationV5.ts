@@ -14,6 +14,15 @@ function recordArray(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+export function weeklyPlanningSemanticWorkloadsV5(value: unknown): Record<string, unknown>[] {
+  if (!isRecord(value)) return [];
+  return recordArray(value.tasks).flatMap(task => [
+    ...recordArray(task.workloads),
+    ...recordArray(isRecord(task.study) ? task.study.components : []).flatMap(component =>
+      recordArray(component.workloads)),
+  ]);
+}
+
 function semanticEffortKind(
   document: WeeklyPlanningSemanticDocumentV5,
   localId: string | null,
@@ -53,6 +62,7 @@ function publicEffortKind(
 
 function correctionReferenceErrors(params: {
   corrections: Record<string, unknown>[];
+  workloads: Record<string, unknown>[];
   replacementEffortKind: (localId: string | null) => string | null;
   publicStateSummary?: Record<string, unknown>;
 }): string[] {
@@ -70,6 +80,21 @@ function correctionReferenceErrors(params: {
     const replacementLocalId = nonEmpty(correction.replacementLocalId)
       ? correction.replacementLocalId
       : null;
+    if ((correction.operation === 'replace' || correction.operation === 'modify')
+      && target.kind === 'workload' && replacementLocalId) {
+      const original = targetPublicId
+        ? recordArray(params.publicStateSummary?.workloads).find(value => value.publicId === targetPublicId)
+        : params.workloads.find(value => value.localId === targetLocalId);
+      const replacement = params.workloads.find(value => value.localId === replacementLocalId);
+      if (original && replacement
+        && (original.quantityRole === 'completed' || original.quantityRole === 'scope_total')) {
+        for (const field of ['quantityRole', 'unitCode', 'unitLabel', 'rangeStart', 'rangeEnd', 'perOccurrence', 'periodExpression']) {
+          if (field in original && original[field] !== replacement[field]) {
+            errors.push(`document.corrections[${index}]:workload-basis-mismatch:${field}`);
+          }
+        }
+      }
+    }
     if (
       correction.operation !== 'replace'
       || target.kind !== 'effort_estimate'
@@ -102,6 +127,8 @@ function correctionReferenceErrors(params: {
  * session measurement would erase information that can validly coexist. An
  * explicit rate↔total replacement is allowed; its target/unit remain pinned
  * and validated by the canonical correction transaction.
+ * Progress-basis value corrections retain the referenced role, unit, range and period;
+ * a mismatch is repairable, never deterministic permission to coerce its meaning.
  */
 export function validateWeeklyPlanningCorrectionTargetReferencesV5(
   document: WeeklyPlanningSemanticDocumentV5,
@@ -109,6 +136,7 @@ export function validateWeeklyPlanningCorrectionTargetReferencesV5(
 ): string[] {
   return correctionReferenceErrors({
     corrections: document.corrections as unknown as Record<string, unknown>[],
+    workloads: weeklyPlanningSemanticWorkloadsV5(document),
     replacementEffortKind: (localId) => semanticEffortKind(document, localId),
     publicStateSummary,
   });
@@ -129,6 +157,7 @@ export function validateWeeklyPlanningRawCorrectionTargetReferencesV5(
     if (!isRecord(value)) return [];
     return correctionReferenceErrors({
       corrections: recordArray(value.corrections),
+      workloads: weeklyPlanningSemanticWorkloadsV5(value),
       replacementEffortKind: (localId) => rawSemanticEffortKind(value, localId),
       publicStateSummary,
     });

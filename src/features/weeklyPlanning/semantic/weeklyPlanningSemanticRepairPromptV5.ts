@@ -59,6 +59,9 @@ function repairDirectivesForErrors(errors: string[]): string[] {
   if (errors.some((error) => error.includes('effort-measurement-mismatch'))) {
     directives.push('Effort measurement kinds are independent facts. Do not replace one measurement kind with a different kind. If currentUserText adds another measurement, remove that replace correction and keep the new effort fact; if it explicitly retracts the old measurement, use a separate remove correction for the exact old target.');
   }
+  if (errors.some(error => error.includes(':workload-basis-mismatch:'))) {
+    directives.push('For a workload value-only correction, copy the target quantityRole, unitCode, unitLabel, rangeStart/rangeEnd, perOccurrence and periodExpression from its exact public/local reference. Change only the listed mismatched fields; preserve amount, correction target, replacementLocalId and unrelated clauses. If the user changes the unit or counting meaning itself, do not force it into the old unit; leave that mismatch unresolved rather than claim a value-only correction succeeded.');
+  }
   if (errors.some((error) => error.includes('existing-task-binding-required') || error.includes('existing-component-binding-required') || error.includes('unknown-active-task') || error.includes('unknown-active-component') || error.includes('component-task-binding-mismatch'))) {
     directives.push('Bind continued accepted task/component identity with its exact existingPublicId; null is only for a genuinely new entity.');
   }

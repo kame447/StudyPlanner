@@ -1,0 +1,310 @@
+{
+  "iteration": 5,
+  "priorGraph": {
+    "version": "weekly-planning-fact-graph-v5",
+    "revision": 3,
+    "appliedTurnKeys": [
+      "issue156-final-c:issue156-final-c:request:1",
+      "issue156-final-c:issue156-final-c:request:2"
+    ],
+    "appliedLifecycleOperationKeys": [],
+    "factLifecycles": [
+      {
+        "factId": "wpf_window_ha2bc1dt080l",
+        "status": "active",
+        "createdRevision": 1,
+        "terminalRevision": null,
+        "supersededByFactId": null
+      },
+      {
+        "factId": "wpf_task_55ju0p41f6b9",
+        "status": "active",
+        "createdRevision": 2,
+        "terminalRevision": null,
+        "supersededByFactId": null
+      },
+      {
+        "factId": "wpf_workload_u4k060hrwnro",
+        "status": "active",
+        "createdRevision": 2,
+        "terminalRevision": null,
+        "supersededByFactId": null
+      },
+      {
+        "factId": "wpf_workload_vwcprfcvicvj",
+        "status": "active",
+        "createdRevision": 2,
+        "terminalRevision": null,
+        "supersededByFactId": null
+      },
+      {
+        "factId": "wpf_temporal_ii4bz91j8d7gh",
+        "status": "active",
+        "createdRevision": 2,
+        "terminalRevision": null,
+        "supersededByFactId": null
+      },
+      {
+        "factId": "wpf_workload_bounded_remaining_hnwzo0",
+        "status": "active",
+        "createdRevision": 3,
+        "terminalRevision": null,
+        "supersededByFactId": null
+      }
+    ],
+    "planningWindows": [
+      {
+        "id": "wpf_window_ha2bc1dt080l",
+        "kind": "relative_day",
+        "value": "tomorrow",
+        "start": null,
+        "end": null,
+        "source": {
+          "conversationId": "issue156-final-c",
+          "turnId": "issue156-final-c:request:1",
+          "semanticLocalId": "window_1",
+          "sourceText": "明日の予定を立てたいです",
+          "origin": "user"
+        },
+        "createdRevision": 1
+      }
+    ],
+    "tasks": [
+      {
+        "id": "wpf_task_55ju0p41f6b9",
+        "category": "non_study",
+        "title": "夏合宿のスライド",
+        "source": {
+          "conversationId": "issue156-final-c",
+          "turnId": "issue156-final-c:request:2",
+          "semanticLocalId": "task_summer_camp_slides",
+          "sourceText": "夏合宿のスライドは全部20枚で、今10枚までできています。明日残りを終わらせたいです",
+          "origin": "user"
+        },
+        "createdRevision": 2
+      }
+    ],
+    "studyContexts": [],
+    "components": [],
+    "workloads": [
+      {
+        "id": "wpf_workload_u4k060hrwnro",
+        "taskId": "wpf_task_55ju0p41f6b9",
+        "componentId": null,
+        "quantityRole": "scope_total",
+        "amount": 20,
+        "unitCode": "page",
+        "unitLabel": "枚",
+        "rangeStart": null,
+        "rangeEnd": null,
+        "perOccurrence": false,
+        "periodExpression": null,
+        "source": {
+          "conversationId": "issue156-final-c",
+          "turnId": "issue156-final-c:request:2",
+          "semanticLocalId": "workload_slides_total",
+          "sourceText": "全部20枚",
+          "origin": "user"
+        },
+        "createdRevision": 2
+      },
+      {
+        "id": "wpf_workload_vwcprfcvicvj",
+        "taskId": "wpf_task_55ju0p41f6b9",
+        "componentId": null,
+        "quantityRole": "completed",
+        "amount": 10,
+        "unitCode": "page",
+        "unitLabel": "枚",
+        "rangeStart": null,
+        "rangeEnd": null,
+        "perOccurrence": false,
+        "periodExpression": null,
+        "source": {
+          "conversationId": "issue156-final-c",
+          "turnId": "issue156-final-c:request:2",
+          "semanticLocalId": "workload_slides_completed",
+          "sourceText": "今10枚までできています",
+          "origin": "user"
+        },
+        "createdRevision": 2
+      },
+      {
+        "id": "wpf_workload_bounded_remaining_hnwzo0",
+        "taskId": "wpf_task_55ju0p41f6b9",
+        "componentId": null,
+        "quantityRole": "remaining",
+        "amount": 10,
+        "unitCode": "page",
+        "unitLabel": "枚",
+        "rangeStart": null,
+        "rangeEnd": null,
+        "perOccurrence": false,
+        "periodExpression": null,
+        "source": {
+          "conversationId": "issue156-final-c",
+          "turnId": "issue156-final-c:request:2",
+          "semanticLocalId": "workload_slides_completed:derived-bounded-remaining:wpf_workload_bounded_remaining_hnwzo0",
+          "sourceText": "今10枚までできています",
+          "origin": "user"
+        },
+        "createdRevision": 3
+      }
+    ],
+    "effortEstimates": [],
+    "temporalConstraints": [
+      {
+        "id": "wpf_temporal_ii4bz91j8d7gh",
+        "taskId": "wpf_task_55ju0p41f6b9",
+        "targetFactId": "wpf_task_55ju0p41f6b9",
+        "kind": "latest_end",
+        "constraintLevel": "soft",
+        "dateExpression": "tomorrow",
+        "namedTimePeriod": null,
+        "startTime": null,
+        "endTime": null,
+        "precision": "unspecified",
+        "source": {
+          "conversationId": "issue156-final-c",
+          "turnId": "issue156-final-c:request:2",
+          "semanticLocalId": "constraint_finish_tomorrow",
+          "sourceText": "明日残りを終わらせたい",
+          "origin": "user"
+        },
+        "createdRevision": 2
+      }
+    ],
+    "taskDateRules": [],
+    "recurrences": [],
+    "relations": [],
+    "uncertainties": [],
+    "correctionIntents": [],
+    "decisionIntents": [],
+    "availabilityDeclarations": [],
+    "constraintSourceRequests": []
+  },
+  "document": {
+    "schemaVersion": "weekly-planning-semantic-v5",
+    "planningIntent": "update_plan",
+    "planningWindow": null,
+    "tasks": [
+      {
+        "localId": "slides_task",
+        "existingPublicId": "wpf_task_55ju0p41f6b9",
+        "decompositionStatus": "atomic",
+        "category": "non_study",
+        "title": "夏合宿のスライド",
+        "study": null,
+        "workloads": [
+          {
+            "localId": "completed_slides_12",
+            "quantityRole": "completed",
+            "amount": 12,
+            "unitCode": "page",
+            "unitLabel": "枚",
+            "rangeStart": null,
+            "rangeEnd": null,
+            "perOccurrence": false,
+            "periodExpression": null,
+            "sourceText": "訂正です、今は12枚までできています"
+          }
+        ],
+        "effortEstimates": [],
+        "temporalConstraints": [],
+        "recurrence": [],
+        "durableContextSignals": [],
+        "sourceText": "訂正です、今は12枚までできています"
+      }
+    ],
+    "relations": [],
+    "availabilityDeclarations": [],
+    "constraintSourceRequests": [],
+    "userContextFacts": [],
+    "conversationActs": [],
+    "uncertainties": [],
+    "corrections": [
+      {
+        "localId": "correction_completed_slides",
+        "target": {
+          "kind": "workload",
+          "publicId": "wpf_workload_vwcprfcvicvj",
+          "localId": null,
+          "mention": null
+        },
+        "operation": "replace",
+        "replacementLocalId": "completed_slides_12",
+        "sourceText": "訂正です、今は12枚までできています"
+      }
+    ],
+    "decisions": []
+  },
+  "userText": "訂正です、今は12枚までできています",
+  "conversationId": "issue156-final-c",
+  "turnId": "issue156-final-c:request:3",
+  "expectedArtifactActiveWorkloads": [
+    {
+      "id": "wpf_workload_u4k060hrwnro",
+      "taskId": "wpf_task_55ju0p41f6b9",
+      "componentId": null,
+      "quantityRole": "scope_total",
+      "amount": 20,
+      "unitCode": "page",
+      "unitLabel": "枚",
+      "rangeStart": null,
+      "rangeEnd": null,
+      "perOccurrence": false,
+      "periodExpression": null,
+      "source": {
+        "conversationId": "issue156-final-c",
+        "turnId": "issue156-final-c:request:2",
+        "semanticLocalId": "workload_slides_total",
+        "sourceText": "全部20枚",
+        "origin": "user"
+      },
+      "createdRevision": 2
+    },
+    {
+      "id": "wpf_workload_c6sf721muvntm",
+      "taskId": "wpf_task_55ju0p41f6b9",
+      "componentId": null,
+      "quantityRole": "completed",
+      "amount": 12,
+      "unitCode": "page",
+      "unitLabel": "枚",
+      "rangeStart": null,
+      "rangeEnd": null,
+      "perOccurrence": false,
+      "periodExpression": null,
+      "source": {
+        "conversationId": "issue156-final-c",
+        "turnId": "issue156-final-c:request:3",
+        "semanticLocalId": "completed_slides_12",
+        "sourceText": "訂正です、今は12枚までできています",
+        "origin": "user"
+      },
+      "createdRevision": 4
+    },
+    {
+      "id": "wpf_workload_progress_6fe4mr",
+      "taskId": "wpf_task_55ju0p41f6b9",
+      "componentId": null,
+      "quantityRole": "remaining",
+      "amount": 8,
+      "unitCode": "page",
+      "unitLabel": "枚",
+      "rangeStart": null,
+      "rangeEnd": null,
+      "perOccurrence": false,
+      "periodExpression": null,
+      "source": {
+        "conversationId": "issue156-final-c",
+        "turnId": "issue156-final-c:request:2",
+        "semanticLocalId": "workload_slides_completed:derived-bounded-remaining:wpf_workload_bounded_remaining_hnwzo0:progress-rebase:wpf_workload_progress_6fe4mr",
+        "sourceText": "今10枚までできています",
+        "origin": "user"
+      },
+      "createdRevision": 5
+    }
+  ],
+  "expectedArtifactRevision": 6
+}

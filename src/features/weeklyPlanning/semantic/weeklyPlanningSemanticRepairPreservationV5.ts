@@ -3,6 +3,10 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import { sanitizeWeeklyPlanningConversationActsV5, type SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
+import { weeklyPlanningSemanticWorkloadsV5 } from './weeklyPlanningCorrectionReferenceValidationV5';
+
+const WORKLOAD_CORRECTION_SHAPE_ERROR =
+  /^document\.corrections\[(\d+)]:workload-basis-mismatch:(quantityRole|unitCode|unitLabel|rangeStart|rangeEnd|perOccurrence|periodExpression)$/;
 
 const AVAILABILITY_DATE_REPRESENTATION_ERROR =
   /^document\.availabilityDeclarations\[(\d+)]\.dateExpression:canonical-expression$/;
@@ -119,6 +123,35 @@ function redactFixedIntervalLevels(document: MutableRecord, errors: readonly str
   }
 }
 
+function redactWorkloadCorrectionShape(
+  document: MutableRecord,
+  initial: WeeklyPlanningSemanticDocumentV5,
+  errors: readonly string[],
+): void {
+  for (const error of errors) {
+    const match = WORKLOAD_CORRECTION_SHAPE_ERROR.exec(error);
+    if (!match) continue;
+    const localId = initial.corrections[Number(match[1])]?.replacementLocalId;
+    for (const workload of weeklyPlanningSemanticWorkloadsV5(document)) {
+      if (localId && workload.localId === localId) workload[match[2]] = '__REPAIRABLE_WORKLOAD_SHAPE__';
+    }
+  }
+}
+
+/** A missing field has no initial value to preserve; existing sibling facts do. */
+function redactMissingSchemaFields(document: MutableRecord, errors: readonly string[]): void {
+  for (const error of errors) {
+    const match = /^(document(?:\.[a-zA-Z]+(?:\[\d+])?)+)\.missing-key:([a-zA-Z]+)$/.exec(error);
+    if (!match) continue;
+    const keys = match[1].match(/[a-zA-Z]+|\d+/g)!.slice(1);
+    let parent: unknown = document;
+    for (const key of keys) {
+      parent = parent && typeof parent === 'object' ? (parent as MutableRecord)[key] : null;
+    }
+    if (isRecord(parent)) parent[match[2]] = '__REPAIRABLE_MISSING_SCHEMA_FIELD__';
+  }
+}
+
 function redactAvailabilityRepresentation(
   document: MutableRecord,
   clockIds: ReadonlySet<string>,
@@ -202,7 +235,10 @@ export function isRepresentationOnlySemanticRepairV5(
 }
 
 function isPreservationGuardedRepair(errors: readonly string[]): boolean {
-  return errors.length > 0 && errors.every(error => FIXED_INTERVAL_LEVEL_ERROR.test(error)
+  // Concurrent errors cannot grant a workload repair authority to change numbers,
+  // targets or other clauses. Only the addressed shape/representation fields vary.
+  return errors.some(error => WORKLOAD_CORRECTION_SHAPE_ERROR.test(error))
+    || errors.length > 0 && errors.every(error => FIXED_INTERVAL_LEVEL_ERROR.test(error)
     || REPRESENTATION_ONLY_ERROR_PATTERNS.some(pattern => pattern.test(error)));
 }
 
@@ -274,6 +310,7 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
     || !params.repairedDocument
   ) {
     return params.initialErrors.some(error => FIXED_INTERVAL_LEVEL_ERROR.test(error))
+      || params.initialErrors.some(error => WORKLOAD_CORRECTION_SHAPE_ERROR.test(error))
       || (params.initialConversationActs?.length ?? params.initialDocument?.conversationActs?.length ?? 0) > 0
       ? ['semantic-repair-preservation:comparison-document-unavailable'] : [];
   }
@@ -299,6 +336,12 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
 
   const initial = cloneDocument(params.initialDocument);
   const repaired = cloneDocument(params.repairedDocument);
+  redactWorkloadCorrectionShape(initial, params.initialDocument, params.initialErrors);
+  redactWorkloadCorrectionShape(repaired, params.initialDocument, params.initialErrors);
+  if (params.initialErrors.some(error => WORKLOAD_CORRECTION_SHAPE_ERROR.test(error))) {
+    redactMissingSchemaFields(initial, params.initialErrors);
+    redactMissingSchemaFields(repaired, params.initialErrors);
+  }
 
   if (params.initialErrors.some((error) => error.startsWith('document.planningWindow'))) {
     redactPlanningWindowRepresentation(initial);
