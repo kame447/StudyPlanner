@@ -15,8 +15,9 @@ for (const width of [390, 1280]) {
     await expect(page.getByRole('heading', { name: '利用規約', exact: true })).toBeVisible();
     expect(requested).toHaveLength(0);
     await page.goto('/contact', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('status')).toHaveAccessibleName('お問い合わせを読み込み中');
-    await expect(page.getByRole('status')).toHaveText('');
+    await expect(page.getByRole('region', { name: 'お問い合わせを読み込み中' })).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('status')).toHaveText('お問い合わせを読み込んでいます');
+    await expect(page.locator('.route-skeleton--contact')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'お問い合わせ', exact: true })).toBeVisible();
     const back = page.getByRole('link', { name: 'Laplanceへ戻る', exact: true });
     await expect(back).toBeFocused();
