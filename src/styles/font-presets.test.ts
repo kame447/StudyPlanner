@@ -23,7 +23,7 @@ describe('font preset styles', () => {
       for (const selector of rule.selectors) {
         if (selector === ':root') {
           rule.walkDecls(declaration => expect(declaration.prop === 'font-family' || declaration.prop.startsWith('--font-preset-')).toBe(true));
-        } else expect(selector.startsWith('html[data-font-preset') || selector.startsWith('.font-preset-sample')).toBe(true);
+        } else expect(selector.startsWith('html[data-font-preset') || selector.startsWith('.font-preset-sample') || selector.startsWith('.font-preset-button[data-font-option=')).toBe(true);
       }
     });
   });
@@ -31,6 +31,7 @@ describe('font preset styles', () => {
   it('defines an app stack and a comparison sample for every preset, ending in the system fallback', () => {
     for (const { id } of FONT_PRESET_OPTIONS) {
       expect(css).toContain(`.font-preset-sample[data-font-sample='${id}']`);
+      expect(css).toContain(`.font-preset-button[data-font-option='${id}'] .font-preset-name { font-family: var(--font-preset-${id}); }`);
       if (id !== 'system') expect(css).toContain(`html[data-font-preset='${id}'] { --app-font-family: var(--font-preset-${id}); }`);
     }
     expect(css).toContain('--font-preset-fallback: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;');
