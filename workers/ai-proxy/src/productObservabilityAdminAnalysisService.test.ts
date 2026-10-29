@@ -174,6 +174,7 @@ const profile = {
 };
 
 class FakeFirestore {
+  timelineDurationMs: unknown = 800;
   queryCallCount = 0;
   profilePageLimits: number[] = [];
   getCallCount = 0;
@@ -267,7 +268,7 @@ class FakeFirestore {
           cacheWriteTokens: 5,
           reasoningTokens: 12,
           estimatedCostMicros: null,
-          durationMs: 800,
+          durationMs: this.timelineDurationMs,
         },
         correlation: { requestId: 'ai-request-1', traceSessionId: 'trace-1' },
       },
@@ -290,6 +291,34 @@ class FakeIdentityStore {
 }
 
 describe('ProductObservabilityAdminAnalysisService', () => {
+  it.each([
+    [0, 0],
+    [12.5, 12.5],
+    [800, 800],
+    [-1, 0],
+    [NaN, 0],
+    [Infinity, 0],
+    [-Infinity, 0],
+    ['800', 0],
+    [null, 0],
+    [undefined, 0],
+  ])('preserves the timeline duration boundary for %s', async (durationMs, expected) => {
+    const firestore = new FakeFirestore();
+    firestore.timelineDurationMs = durationMs;
+    const service = new ProductObservabilityAdminAnalysisService(
+      env,
+      firestore as never,
+      new FakeReadModel() as never,
+    );
+    const result = await service.getUserInvestigation({
+      actorSubjectId: 'actor-aaaaaaaa',
+      environment: 'production',
+      limit: 50,
+    });
+
+    expect(result.timeline[1]?.ai?.durationMs).toBe(expected);
+  });
+
   it.each([
     ['planning_outline', true],
     ['weekly_planning', true],
