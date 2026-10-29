@@ -127,12 +127,11 @@ export function AppSettingsGeneral({
           <div className="font-preset-grid" role="group" aria-label="フォント">
             {FONT_PRESET_OPTIONS.map(option => <button key={option.id} type="button"
               className={fontPreset === option.id ? 'theme-palette-button font-preset-button active' : 'theme-palette-button font-preset-button'}
-              aria-pressed={fontPreset === option.id} onClick={() => onChangeFontPreset(option.id)}>
-              <span className="theme-palette-copy"><strong>{option.label}</strong><span>{option.description}</span></span>
+              data-font-option={option.id} aria-pressed={fontPreset === option.id} onClick={() => onChangeFontPreset(option.id)}>
+              <span className="theme-palette-copy"><strong className="font-preset-name">{option.label}</strong></span>
               <span className="font-preset-sample" data-font-sample={option.id} aria-hidden="true">{FONT_PRESET_SAMPLE_TEXT}</span>
             </button>)}
           </div>
-          {appearance === 'pixel' ? <p className="font-preset-note">ドットテーマ中はドット書体で表示されます。</p> : null}
           {fontPreviewFailed ? <p className="font-preset-note" role="status">一部のフォントを読み込めませんでした。端末の書体で表示しています。</p> : null}
         </div> : null}
       </div> : null}

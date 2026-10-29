@@ -1,11 +1,11 @@
 # Font presets
 
-Status: implemented on `feat/issue888-font-presets`; Issue #888 owns checkpoints and PR evidence
+Status: implemented in #888 (PR #894); picker cleanup and app-wide audit in #895
 Updated: 2026-10-29
 
 ## Scope
 
-Settings › 表示とデザイン › フォント offers four typefaces in the same collapsed picker as 配色. Each option shows its label, a short reason and a real Japanese sample rendered in that face.
+Settings › 表示とデザイン › フォント offers four typefaces in the same collapsed picker as 配色. Each option shows only its name and a real Japanese sample, both rendered in that face (no secondary description or dot-theme note).
 
 | Preset (`study-planner-font-preset`) | Family | License | Requested weights |
 |---|---|---|---|
@@ -21,7 +21,7 @@ Licenses and shipped weights were checked against `google/fonts` `METADATA.pb`. 
 - `src/lib/fontPreset.ts`: preset recognition, labels and the on-demand Google Fonts CSS2 stylesheet loader.
 - `src/hooks/useThemePreference.ts`: the typed preference next to mode and palette. Written only after an explicit choice; corrupt or unknown saved values display `system` and are not overwritten. `system` leaves `html[data-font-preset]` absent.
 - `src/styles/font-presets.css`: every family stack. Its `:root` rule (loaded after `base.css`), `home.css` and `bookshelf.css` read `var(--app-font-family, <previous stack>)`, so the standard preset is byte-for-byte the previous behavior. A chosen preset also makes form controls inherit.
-- The dot appearance keeps DotGothic16 with priority; only `.font-preset-sample` is excluded so comparison still works.
+- The dot appearance keeps DotGothic16 with priority; only `.font-preset-sample` is excluded so comparison still works (option names stay in DotGothic16 there).
 
 ## Delivery, failure and security
 
@@ -32,4 +32,4 @@ Licenses and shipped weights were checked against `google/fonts` `METADATA.pb`. 
 
 ## Verification
 
-Unit: `src/lib/fontPreset.test.ts`, `src/styles/font-presets.test.ts`, `src/hooks/useThemePreference.test.tsx`, `src/components/AppSettingsGeneral.font.test.tsx`. Browser: `tests/e2e/font-preset.spec.mjs` (Google Fonts routed to a local face). Exact results are recorded on Issue #888 and the PR.
+Unit: `src/lib/fontPreset.test.ts`, `src/styles/font-presets.test.ts`, `src/hooks/useThemePreference.test.tsx`, `src/components/AppSettingsGeneral.font.test.tsx`. Browser: `tests/e2e/font-preset.spec.mjs` (Google Fonts routed to a local face), including a standard-appearance audit of every visible text node, control and placeholder across login, home, schedule month/week/day, quick add, entry modal, bookshelf, AI chat and every settings tab at 320/390/1280px in light and dark. Exact results are recorded on Issue #888 and the PR.

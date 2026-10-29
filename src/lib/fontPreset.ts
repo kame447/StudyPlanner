@@ -4,16 +4,15 @@ export type WebFontPreset = Exclude<FontPreset, 'system'>;
 export interface FontPresetOption {
   id: FontPreset;
   label: string;
-  description: string;
 }
 
 // Font family stacks are owned by `styles/font-presets.css`; this registry owns
 // recognition, labels and the on-demand Google Fonts stylesheet for each preset.
 export const FONT_PRESET_OPTIONS: readonly FontPresetOption[] = [
-  { id: 'system', label: '標準', description: '端末の書体' },
-  { id: 'noto-sans-jp', label: 'Noto Sans JP', description: 'デジタル庁デザインシステム採用' },
-  { id: 'biz-udpgothic', label: 'BIZ UDPゴシック', description: '読みやすさ重視' },
-  { id: 'm-plus-rounded-1c', label: 'M PLUS Rounded 1c', description: 'やわらかい丸ゴシック' },
+  { id: 'system', label: '標準' },
+  { id: 'noto-sans-jp', label: 'Noto Sans JP' },
+  { id: 'biz-udpgothic', label: 'BIZ UDPゴシック' },
+  { id: 'm-plus-rounded-1c', label: 'M PLUS Rounded 1c' },
 ];
 
 export const FONT_PRESET_SAMPLE_TEXT = '今日の学習 数学 25分 ABC 123';
