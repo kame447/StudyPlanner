@@ -199,6 +199,11 @@ function toDelta(state: WeeklyPlanningVNextState, turn: FixtureTurn, turnIndex: 
   if (turn.answer?.value === 'defer') {
     const question = projectWeeklyPlanningVNext(state).questions.find((candidate) => candidate.code === turn.answer?.question);
     if (question) delta.defer.push({ questionKey: question.key });
+  } else if (turn.answer?.value === 'estimate_60_minutes') {
+    const question = projectWeeklyPlanningVNext(state).questions.find((candidate) => candidate.code === turn.answer?.question);
+    if (question?.forWork) delta.add.push({ kind: 'effort_estimate', localId: `answer-${turnIndex}-estimate`,
+      taskRef: { factId: question.taskId }, targetRef: { factId: question.forWork.definingFactId },
+      effortKind: 'total_duration', minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' });
   }
   return delta;
 }
@@ -234,15 +239,7 @@ describe('VNext 21 revised-prototype cases', () => {
     const expected = fixture.oracle;
     if (expected.outcome === 'question') {
       const matchesOracle = projection.owners.some((owner) => owner.status === 'question' && owner.question?.code === expected.question);
-      if (!matchesOracle && fixture.knownVNextGaps?.length) {
-        expect(fixture.knownVNextGaps, `${fixture.id} expected vs observed projection`).toEqual([
-          { expected: `question:${expected.question}`, observed: fixture.knownVNextGaps[0].observed },
-        ]);
-        expect(projection.owners.map((owner) => owner.status === 'question' ? `question:${owner.question?.code}` : owner.status === 'ready' ? `ready: ${owner.work.map((work) => work.minutes).join(',')} minutes` : owner.status), fixture.id)
-          .toEqual(fixture.knownVNextGaps.map((gap) => gap.observed));
-      } else {
-        expect(matchesOracle, `${fixture.id}: ${JSON.stringify(projection.owners)}`).toBe(true);
-      }
+      expect(matchesOracle, `${fixture.id}: ${JSON.stringify(projection.owners)}`).toBe(true);
     } else if (expected.outcome === 'ready') {
       const ready = projection.owners.filter((owner) => owner.status === 'ready');
       expect(ready.length, fixture.id).toBeGreaterThan(0);
@@ -250,6 +247,7 @@ describe('VNext 21 revised-prototype cases', () => {
     } else {
       expect(projection.owners.every((owner) => owner.status === 'nothing_to_schedule'), fixture.id).toBe(true);
     }
+    expect(fixture.knownVNextGaps, `${fixture.id}: stale known VNext gap`).toBeUndefined();
   });
 });
 
@@ -260,12 +258,7 @@ describe('VNext recorded and contract regressions', () => {
     const expected = fixture.oracle;
     if (expected.outcome === 'question') {
       const matchesOracle = projection.owners.some((owner) => owner.status === 'question' && owner.question?.code === expected.question);
-      if (!matchesOracle && fixture.knownVNextGaps?.length) {
-        expect(projection.owners.map((owner) => owner.status === 'question' ? `question:${owner.question?.code}` : owner.status === 'ready' ? `ready: ${owner.work.map((work) => work.minutes).join(',')} minutes` : owner.status), fixture.id)
-          .toEqual(fixture.knownVNextGaps.map((gap) => gap.observed));
-      } else {
-        expect(matchesOracle, `${fixture.id}: ${JSON.stringify(projection.owners)}`).toBe(true);
-      }
+      expect(matchesOracle, `${fixture.id}: ${JSON.stringify(projection.owners)}`).toBe(true);
     } else if (expected.outcome === 'ready') {
       const ready = projection.owners.filter((owner) => owner.status === 'ready');
       expect(ready.length, fixture.id).toBeGreaterThan(0);
@@ -273,6 +266,7 @@ describe('VNext recorded and contract regressions', () => {
     } else {
       expect(projection.owners.every((owner) => owner.status === 'nothing_to_schedule'), fixture.id).toBe(true);
     }
+    expect(fixture.knownVNextGaps, `${fixture.id}: stale known VNext gap`).toBeUndefined();
   });
 });
 
