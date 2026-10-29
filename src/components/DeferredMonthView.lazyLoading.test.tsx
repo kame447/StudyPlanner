@@ -32,7 +32,7 @@ it('retains an add request during delivery, abandons cancelled owners, and does 
   await act(async () => { await delivery.starting; });
   expect(delivery.requested).toHaveBeenCalledOnce();
   expect(renderer.root.findAllByType('video')).toHaveLength(0);
-  expect(renderer.root.findAllByProps({ className: 'loading-screen splash-screen' })).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ className: 'route-skeleton route-skeleton--month' })).toHaveLength(1);
   expect(renderer.root.findAllByType(MonthEventDialog)).toHaveLength(0);
   act(() => renderer.update(<DeferredMonthView {...props} createRequestId={1} />));
   // Cancel the original entry, then enter as another owner before the same chunk settles.

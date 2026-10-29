@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useRef, type ComponentProps, type PropsWithChildren } from 'react';
-import { SplashScreen } from './SplashScreen';
+import { RouteSkeleton } from './RouteSkeleton';
 
 type MonthViewProps = ComponentProps<typeof import('./MonthView')['MonthView']>;
 const MonthView = lazy(() => import('./MonthView').then(module => ({ default: module.MonthView })));
@@ -19,7 +19,7 @@ function MonthViewRequestScope(props: MonthViewProps) {
   // loads must remain newer than the mounted view's last handled request.
   const initialCreateRequestId = useRef(props.createRequestId ?? 0);
   return <MonthViewLoadBoundary>
-    <Suspense fallback={<SplashScreen />}>
+    <Suspense fallback={<RouteSkeleton view="month" />}>
       <MonthView {...props} initialCreateRequestId={initialCreateRequestId.current} />
     </Suspense>
   </MonthViewLoadBoundary>;
