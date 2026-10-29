@@ -1,7 +1,5 @@
 import {
   PRODUCT_OBSERVABILITY_SCHEMA_VERSION,
-  type ObservabilityCorrelation,
-  type PlanningOutcomeMetricPayload,
   type PlanningOutcomeTelemetryDraft,
   type PlanningOutcomeType,
 } from '../../../shared/productObservabilityContract';
@@ -55,36 +53,6 @@ export function createPlanningOutcomeEventId(
   return `planning-${outcomeType}-${key}`.slice(0, 159);
 }
 
-function correlationFromInput(input: PlanningOutcomeTelemetryInput): ObservabilityCorrelation & {
-  featureSessionId: string;
-} {
-  return {
-    featureSessionId: input.featureSessionId,
-    ...(input.requestId ? { requestId: input.requestId } : {}),
-    ...(input.traceSessionId ? { traceSessionId: input.traceSessionId } : {}),
-    ...(input.stateRevision === null || input.stateRevision === undefined
-      ? {}
-      : { stateRevision: input.stateRevision }),
-  };
-}
-
-function payloadFromInput(input: PlanningOutcomeTelemetryInput): PlanningOutcomeMetricPayload {
-  return {
-    outcomeType: input.outcomeType,
-    turnIndex: input.turnIndex ?? null,
-    stateRevision: input.stateRevision ?? null,
-    previewCount: input.previewCount ?? null,
-    unscheduledCount: input.unscheduledCount ?? null,
-    fallbackUsed: input.fallbackUsed ?? null,
-    repairUsed: input.repairUsed ?? null,
-    staleObserved: input.staleObserved ?? null,
-    approvalFailureObserved: input.approvalFailureObserved ?? null,
-    schedulerVersion: input.schedulerVersion ?? null,
-    promptVersion: input.promptVersion ?? null,
-    model: input.model ?? null,
-  };
-}
-
 export function createPlanningOutcomeTelemetryPort(
   options: PlanningOutcomeTelemetryPortOptions,
 ): PlanningOutcomeTelemetryPort {
@@ -100,8 +68,28 @@ export function createPlanningOutcomeTelemetryPort(
         occurredAt: input.occurredAt ?? now().toISOString(),
         appVersion: options.appVersion,
         source: 'weekly_planning',
-        correlation: correlationFromInput(input),
-        payload: payloadFromInput(input),
+        correlation: {
+          featureSessionId: input.featureSessionId,
+          ...(input.requestId ? { requestId: input.requestId } : {}),
+          ...(input.traceSessionId ? { traceSessionId: input.traceSessionId } : {}),
+          ...(input.stateRevision === null || input.stateRevision === undefined
+            ? {}
+            : { stateRevision: input.stateRevision }),
+        },
+        payload: {
+          outcomeType: input.outcomeType,
+          turnIndex: input.turnIndex ?? null,
+          stateRevision: input.stateRevision ?? null,
+          previewCount: input.previewCount ?? null,
+          unscheduledCount: input.unscheduledCount ?? null,
+          fallbackUsed: input.fallbackUsed ?? null,
+          repairUsed: input.repairUsed ?? null,
+          staleObserved: input.staleObserved ?? null,
+          approvalFailureObserved: input.approvalFailureObserved ?? null,
+          schedulerVersion: input.schedulerVersion ?? null,
+          promptVersion: input.promptVersion ?? null,
+          model: input.model ?? null,
+        },
       };
       void options.sink.write(event).catch(onError);
     },
