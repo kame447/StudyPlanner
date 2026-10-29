@@ -83,6 +83,7 @@ export type VNextWorkUnitIssue =
       totalFactId: string;
       completedFactId: string;
       remainingFactId: string;
+      totalAmount: number;
       derivedAmount: number;
       statedAmount: number;
     };
@@ -180,6 +181,7 @@ export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWor
           totalFactId: total.id,
           completedFactId: done_.id,
           remainingFactId: stated.id,
+          totalAmount: total.amount,
           derivedAmount: derived,
           statedAmount: stated.amount,
         };
@@ -210,11 +212,7 @@ export function resolveVNextBindableWork(
     .find((fact) => fact.id === workloadFactId);
   if (!workload) return null;
   const lineageId = vnextLineageIdByFactId(graph).get(workload.id) ?? workload.id;
-  if (workload.quantityRole === 'completed') {
-    const owner = computeVNextWorkUnits(graph).find((entry) => entry.ownerKey === vnextOwnerKey(workload));
-    const derived = owner?.units.find((unit) => unit.workLineageId === lineageId);
-    return derived ? { workLineageId: lineageId, amount: derived.amount } : { workLineageId: lineageId, amount: workload.amount };
-  }
+  if (workload.quantityRole === 'completed') return { workLineageId: lineageId, amount: workload.amount };
   const owner = computeVNextWorkUnits(graph).find((entry) => entry.ownerKey === vnextOwnerKey(workload));
   const unit = owner?.units.find((candidate) => candidate.workLineageId === lineageId);
   return unit ? { workLineageId: unit.workLineageId, amount: unit.amount } : null;
