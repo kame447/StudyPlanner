@@ -165,6 +165,49 @@ async function openBookshelf(page) {
   await expect(page.locator('.bookshelf-view')).toBeVisible();
 }
 
+test('locks document scrolling while a bookshelf action sheet is open', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedBookshelf(page);
+  // Enough rows that the bookshelf document scrolls behind the sheet.
+  await page.addInitScript(() => {
+    const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
+    if (materials.length > 2) return;
+    const extra = Array.from({ length: 22 }, (_, index) => ({
+      ...materials[0],
+      id: `bookshelf-e2e-material-${index + 3}`,
+      name: `参考書 ${index + 3}`,
+    }));
+    localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify([...materials, ...extra]));
+  });
+  await openBookshelf(page);
+
+  const rowMenuButton = page.locator('.bookshelf-row-menu-button').nth(8);
+  await rowMenuButton.evaluate((button) => button.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  await rowMenuButton.click();
+  const overlay = page.locator('.bookshelf-sheet-overlay');
+  await expect(overlay).toBeVisible();
+  const lockedScrollY = await page.evaluate(() => window.scrollY);
+  expect(lockedScrollY).toBeGreaterThan(0);
+
+  await page.mouse.move(10, 10);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(lockedScrollY);
+
+  await page.locator('.bookshelf-action-sheet').hover();
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(lockedScrollY);
+
+  await overlay.click({ position: { x: 10, y: 10 } });
+  await expect(overlay).toBeHidden();
+  const closedScrollY = await page.evaluate(() => window.scrollY);
+  expect(Math.abs(closedScrollY - lockedScrollY)).toBeLessThanOrEqual(1);
+  await page.mouse.move(10, 10);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(closedScrollY);
+});
+
 test('opens the redesigned bookshelf and material detail from the main navigation', async ({ page }) => {
   await seedBookshelf(page);
   await openBookshelf(page);
