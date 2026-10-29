@@ -10,7 +10,7 @@ import {
 import type { ProductTelemetrySink } from './productTelemetry';
 
 describe('planning outcome telemetry', () => {
-  it('builds a bounded typed event without raw identity or free-form text', async () => {
+  it.each([0, 4])('builds a bounded typed event at revision %i without raw identity or free-form text', async (stateRevision) => {
     const writtenEvents: PlanningOutcomeTelemetryDraft[] = [];
     const sink: ProductTelemetrySink = {
       async write(event) {
@@ -28,7 +28,7 @@ describe('planning outcome telemetry', () => {
       featureSessionId: 'weekly-conversation-1',
       dedupeKey: 'weekly-request-1',
       requestId: 'weekly-request-1',
-      stateRevision: 4,
+      stateRevision,
       turnIndex: 2,
       previewCount: 5,
       unscheduledCount: 0,
@@ -47,12 +47,12 @@ describe('planning outcome telemetry', () => {
       correlation: {
         featureSessionId: 'weekly-conversation-1',
         requestId: 'weekly-request-1',
-        stateRevision: 4,
+        stateRevision,
       },
       payload: {
         outcomeType: 'preview_generated',
         turnIndex: 2,
-        stateRevision: 4,
+        stateRevision,
         previewCount: 5,
         unscheduledCount: 0,
         fallbackUsed: null,
