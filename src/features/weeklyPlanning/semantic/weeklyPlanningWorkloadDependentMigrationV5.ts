@@ -37,6 +37,17 @@ function equivalentCurrentReplacementEfforts(params: {
     && candidate.createdRevision === params.replacement.createdRevision);
 }
 
+/**
+ * A progress pass may migrate estimates only off a remaining amount that the projection itself generated. The
+ * `progress-rebase` id/marker is copied onto explicit facts too, so it is not proof of derivation. Explicit
+ * remaining amounts keep failing closed on dependents until their own preservation rule (#919) is decided.
+ */
+export function isGeneratedProgressRemainingV5(fact: WorkloadFactV5): boolean {
+  return fact.quantityRole === 'remaining'
+    && (fact.source.semanticLocalId.includes(':derived-bounded-remaining:')
+      || fact.source.semanticLocalId.includes(':derived-remaining-percent:'));
+}
+
 /** One existing typed migration policy and writer for explicit corrections and
  * contextual quantity-role replacement. It preserves historical effort evidence
  * and fails atomically before a target is retired. */

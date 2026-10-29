@@ -351,3 +351,51 @@ describe('Stable V5 percentage progress correction after an effort on the derive
     expect(validateWeeklyPlanningFactGraphValueV5(result.graph).errors).toEqual([]);
   });
 });
+
+describe('Stable V5 explicit remaining amounts keep failing closed on dependents (#882 U3 negative, #919)', () => {
+  for (const unit of [{ label: '枚', amounts: [10, 7, 12] }, { label: '%', amounts: [60, 40, 70] }] as const) {
+    it(`does not rewrite an explicit remaining (${unit.label}) or drop its effort when completed is corrected`, () => {
+      const [completedAmount, remainingAmount, correctedAmount] = unit.amounts;
+      const first = commitTurn({
+        graph: createEmptyWeeklyPlanningFactGraphV5(),
+        document: document({
+          taskLocalId: 'task-slide',
+          workloads: [
+            workload({ localId: 'completed', quantityRole: 'completed', amount: completedAmount, unitLabel: unit.label, sourceText: `今${completedAmount}${unit.label}` }),
+            workload({ localId: 'explicit-remaining', quantityRole: 'remaining', amount: remainingAmount, unitLabel: unit.label, sourceText: `残り${remainingAmount}${unit.label}` }),
+          ],
+          sourceText: `今${completedAmount}${unit.label}、残り${remainingAmount}${unit.label}`,
+        }),
+        turnId: 'turn-1',
+      });
+      expect(first.status, first.errors.join(',')).toBe('applied');
+      const remaining = activeWorkloads(first.graph).filter((fact) => fact.quantityRole === 'remaining');
+      expect(remaining.map((fact) => fact.amount)).toEqual([remainingAmount]);
+      const completed = activeWorkloads(first.graph).find((fact) => fact.quantityRole === 'completed')!;
+      const graph = attachEffort(first.graph, { id: 'wpf_effort_explicit_total_60', target: remaining[0], kind: 'total_duration', minutes: 60 });
+
+      const sourceText = `訂正、今は${correctedAmount}${unit.label}`;
+      const result = commitTurn({
+        graph,
+        document: document({
+          taskLocalId: 'task-slide-again',
+          existingTaskId: completed.taskId,
+          workloads: [workload({ localId: 'completed-new', quantityRole: 'completed', amount: correctedAmount, unitLabel: unit.label, sourceText: `今は${correctedAmount}${unit.label}` })],
+          corrections: [{
+            localId: 'correction-completed',
+            target: { kind: 'workload', publicId: completed.id, localId: null, mention: null },
+            operation: 'replace',
+            replacementLocalId: 'completed-new',
+            sourceText,
+          }],
+          sourceText,
+        }),
+        turnId: 'turn-2',
+      });
+
+      expect(result.status).toBe('rejected');
+      expect(result.errors.join(',')).toContain('target-has-active-dependents');
+      expect(result.graph).toBe(graph);
+    });
+  }
+});

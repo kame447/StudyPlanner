@@ -165,7 +165,7 @@ Canonical commit is atomic. Validation failure leaves accepted state unchanged. 
 
 Derived facts remain derivations with source/basis. A correction to their basis must not leave stale derived truth active.
 
-When a progress correction replaces a remaining amount, estimates attached to the old amount follow the same dependent policy as an explicit workload correction: a total duration is invalidated (and asked again), a same-unit per-unit duration and a session duration move to the new amount, and any other dependent rejects the whole turn. Retiring a remaining amount without a replacement is not covered by this rule.
+When a progress correction replaces a remaining amount that the progress projection generated, estimates attached to the old amount follow the same dependent policy as an explicit workload correction: a total duration is invalidated (and asked again), a same-unit per-unit duration and a session duration move to the new amount, and any other dependent rejects the whole turn. A remaining amount the user stated explicitly is not rewritten through this rule; with dependents the turn still rejects. Retiring a remaining amount without a replacement is not covered either.
 
 One utterance may correct a workload and the estimate attached to it. Whatever the order of the corrections, both explicit replacements stay active and linked to each other, or the whole turn is rejected with the accepted graph unchanged. A turn-created fact that no correction installs and that carries content of its own is never deleted silently; the turn is rejected instead.
 

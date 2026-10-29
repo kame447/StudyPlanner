@@ -9,7 +9,10 @@ import type {
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
-import { prepareWeeklyPlanningWorkloadDependentsV5 } from './weeklyPlanningWorkloadDependentMigrationV5';
+import {
+  isGeneratedProgressRemainingV5,
+  prepareWeeklyPlanningWorkloadDependentsV5,
+} from './weeklyPlanningWorkloadDependentMigrationV5';
 
 export const WEEKLY_PLANNING_PERCENTAGE_PROGRESS_PROJECTION_VERSION_V5 =
   'weekly-planning-percentage-progress-projection-v5' as const;
@@ -279,13 +282,15 @@ export function projectWeeklyPlanningPercentageProgressV5(params: {
 
     if (previousRemaining) {
       const operationKey = `${params.operationKeyPrefix}:percent-rebase:${previousRemaining.id}`;
-      const dependents = prepareWeeklyPlanningWorkloadDependentsV5({
-        graph,
-        targetFactId: previousRemaining.id,
-        replacementFactId: appended.fact.id,
-        migrationId: operationKey,
-        operationKey,
-      });
+      const dependents = isGeneratedProgressRemainingV5(previousRemaining)
+        ? prepareWeeklyPlanningWorkloadDependentsV5({
+            graph,
+            targetFactId: previousRemaining.id,
+            replacementFactId: appended.fact.id,
+            migrationId: operationKey,
+            operationKey,
+          })
+        : { status: 'not_applicable' as const, graph, added: [], superseded: [], removed: [], errors: [] };
       if (dependents.status === 'rejected') {
         return rejected({
           originalGraph: params.originalGraph,

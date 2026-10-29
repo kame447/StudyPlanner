@@ -9,7 +9,10 @@ import type {
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
-import { prepareWeeklyPlanningWorkloadDependentsV5 } from './weeklyPlanningWorkloadDependentMigrationV5';
+import {
+  isGeneratedProgressRemainingV5,
+  prepareWeeklyPlanningWorkloadDependentsV5,
+} from './weeklyPlanningWorkloadDependentMigrationV5';
 
 export const WEEKLY_PLANNING_PROGRESS_CORRECTION_RECONCILIATION_VERSION_V5 =
   'weekly-planning-progress-correction-reconciliation-v5' as const;
@@ -135,15 +138,17 @@ function supersedeWorkload(params: {
     amount: params.amount,
     key: params.operationKey,
   });
-  // Estimates attached to the old amount follow the explicit-correction dependent policy instead of blocking the
-  // progress correction forever (total invalidated, same-unit rate and session carried).
-  const dependents = prepareWeeklyPlanningWorkloadDependentsV5({
-    graph: appended.graph,
-    targetFactId: params.oldFact.id,
-    replacementFactId: appended.replacement.id,
-    migrationId: params.operationKey,
-    operationKey: params.operationKey,
-  });
+  // Estimates attached to a generated remaining amount follow the explicit-correction dependent policy instead of
+  // blocking the progress correction forever (total invalidated, same-unit rate and session carried).
+  const dependents = isGeneratedProgressRemainingV5(params.oldFact)
+    ? prepareWeeklyPlanningWorkloadDependentsV5({
+        graph: appended.graph,
+        targetFactId: params.oldFact.id,
+        replacementFactId: appended.replacement.id,
+        migrationId: params.operationKey,
+        operationKey: params.operationKey,
+      })
+    : { status: 'not_applicable' as const, graph: appended.graph, added: [], superseded: [], removed: [], errors: [] };
   if (dependents.status === 'rejected') {
     return {
       status: 'rejected',
