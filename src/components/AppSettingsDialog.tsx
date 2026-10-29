@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowLeft, Brain, CircleHelp, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useOptionalUserPlanningContextV1 } from '../features/userPlanningContext/UserPlanningContextContext';
 import { userPlanningContextDisplayTextV1 } from '../features/userPlanningContext/userPlanningContextSpace';
@@ -54,7 +54,7 @@ export function AppSettingsDialog({ open, onClose, ...generalProps }: AppSetting
     setEditorText(userPlanningContextDisplayTextV1(record));
     setEditorError(null);
   };
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     setActiveTab('settings');
     resetEditor();

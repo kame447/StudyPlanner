@@ -319,7 +319,7 @@
 
 /* Redesigned bookshelf workspace ----------------------------------- */
 
-.app-shell:has(.bookshelf-view) {
+.app-shell.bookshelf-workspace-shell {
   width: min(96vw, 1040px);
   max-width: 1040px;
   margin: 0 auto;
@@ -330,12 +330,12 @@
     linear-gradient(180deg, #fbfdff 0%, #f8fbfa 100%);
 }
 
-.app-shell:has(.bookshelf-view) > .app-header,
-.app-shell:has(.bookshelf-view) > .app-view-switcher {
+.app-shell.bookshelf-workspace-shell > .app-header,
+.app-shell.bookshelf-workspace-shell > .app-view-switcher {
   display: none;
 }
 
-.app-shell:has(.bookshelf-view) > main {
+.app-shell.bookshelf-workspace-shell > main {
   display: block;
 }
 
@@ -1479,7 +1479,7 @@
 }
 
 @media (max-width: 760px) {
-  .app-shell:has(.bookshelf-view) {
+  .app-shell.bookshelf-workspace-shell {
     width: 100%;
     padding: 8px 8px calc(88px + env(safe-area-inset-bottom, 0px));
   }
