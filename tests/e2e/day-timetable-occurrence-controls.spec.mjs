@@ -58,6 +58,8 @@ for (const width of [390, 1280]) {
   test.describe(`Day controls initial viewport ${width}px`, () => {
   test.use({ viewport: { width, height: 900 }, screen: { width, height: 900 } });
   test(`day visibility and single-occurrence cancellation preserve recorded history at ${width}px`, async ({ page }, testInfo) => {
+    // Only this Linux/WebKit-sized journey needs the measured slow-host functional budget (#853).
+    if (width === 1280 && testInfo.project.name === 'webkit-mobile') test.setTimeout(60_000);
     await timedPhase('open seeded Day', async () => {
       await seed(page); await page.goto('/'); await openDay(page);
       await expect(card(page, '自動表示の授業')).toHaveCount(1);

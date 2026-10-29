@@ -13,6 +13,7 @@ import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 're
 import { AuthScreen } from './components/AuthScreen';
 import { HomeScheduleView } from './components/HomeScheduleView';
 import { SplashScreen } from './components/SplashScreen';
+import { RouteSkeleton } from './components/RouteSkeleton';
 import { StudySessionProvider } from './components/StudySessionView';
 import { PublicPageBoundary } from './components/PublicPageBoundary';
 import { usePublicPageNavigation } from './components/PublicPageLink';
@@ -491,7 +492,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         ) : null}
 
         {visitedAiOwner === user.id ? (
-          <Suspense fallback={isAiPlanningSurface ? <p role="status">AI計画を開いています…</p> : null}>
+          <Suspense fallback={isAiPlanningSurface ? <RouteSkeleton view="ai-planning" /> : null}>
             <AiPlanningView
               key={user.id}
               active={isActiveAiPlanningSurface}
@@ -527,7 +528,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         ) : null}
 
         {isWorkspaceSurface ? (
-          <Suspense fallback={<SplashScreen />}>
+          <Suspense fallback={<RouteSkeleton view={viewMode} />}>
             {viewMode === 'week' ? (
               <WeekView
                 selectedDate={selectedDate}
