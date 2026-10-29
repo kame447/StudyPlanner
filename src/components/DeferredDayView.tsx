@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, type ComponentProps, type PropsWithChildren } from 'react';
-import { SplashScreen } from './SplashScreen';
+import { RouteSkeleton } from './RouteSkeleton';
 
 type DayViewProps = ComponentProps<typeof import('./DayView')['DayView']>;
 const DayView = lazy(() => import('./DayView').then(module => ({ default: module.DayView })));
@@ -17,7 +17,7 @@ class DayLoadBoundary extends Component<PropsWithChildren, { failed: boolean }> 
 // Keep app navigation and data owners mounted if optional delivery fails.
 export function DeferredDayView(props: DayViewProps) {
   return <DayLoadBoundary key={props.userId}>
-    <Suspense fallback={<SplashScreen />}>
+    <Suspense fallback={<RouteSkeleton view="day" />}>
       <DayView {...props} />
     </Suspense>
   </DayLoadBoundary>;

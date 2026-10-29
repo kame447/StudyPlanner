@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, type ComponentProps, type PropsWithChildren } from 'react';
-import { SplashScreen } from './SplashScreen';
+import { RouteSkeleton } from './RouteSkeleton';
 
 type ReportViewProps = ComponentProps<typeof import('./ReportView')['ReportView']>;
 const ReportView = lazy(() => import('./ReportView').then(module => ({ default: module.ReportView })));
@@ -17,7 +17,7 @@ class ReportLoadBoundary extends Component<PropsWithChildren, { failed: boolean 
 // Keep app navigation and data owners mounted if optional delivery fails.
 export function DeferredReportView(props: ReportViewProps) {
   return <ReportLoadBoundary>
-    <Suspense fallback={<SplashScreen />}>
+    <Suspense fallback={<RouteSkeleton view="report" />}>
       <ReportView {...props} />
     </Suspense>
   </ReportLoadBoundary>;
