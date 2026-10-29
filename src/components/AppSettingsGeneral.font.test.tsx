@@ -46,12 +46,28 @@ describe('font preset settings', () => {
     expect(current.onChangeAppearance).not.toHaveBeenCalled();
   });
 
-  it('explains the dot appearance and a failed comparison download without blocking selection', async () => {
+  it('shows only names and samples, with each name tagged for its own face', () => {
+    for (const appearance of ['standard', 'pixel'] as const) {
+      act(() => { renderer = create(<AppSettingsGeneral {...props()} appearance={appearance} />); });
+      act(() => disclosure().props.onClick());
+      expect(options().map(button => button.props['data-font-option'])).toEqual(['system', 'noto-sans-jp', 'biz-udpgothic', 'm-plus-rounded-1c']);
+      for (const button of options()) {
+        const texts = button.findAll(node => typeof node.type === 'string' && node.children.every(child => typeof child === 'string'))
+          .map(node => node.children.join('')).filter(Boolean);
+        expect(texts).toHaveLength(2);
+        expect(button.findByType('strong').props.className).toBe('font-preset-name');
+      }
+      expect(renderer.root.findAll(node => node.props.className === 'font-preset-note')).toHaveLength(0);
+      act(() => renderer.unmount());
+    }
+  });
+
+  it('reports a failed comparison download without blocking selection', async () => {
     fontLoads.loadAll.mockImplementation(() => Promise.reject(new Error('offline')));
     act(() => { renderer = create(<AppSettingsGeneral {...props()} appearance="pixel" />); });
     await act(async () => { disclosure().props.onClick(); });
     const notes = renderer.root.findAll(node => node.props.className === 'font-preset-note').map(node => node.children.join(''));
-    expect(notes).toEqual(['ドットテーマ中はドット書体で表示されます。', '一部のフォントを読み込めませんでした。端末の書体で表示しています。']);
+    expect(notes).toEqual(['一部のフォントを読み込めませんでした。端末の書体で表示しています。']);
     expect(options()).toHaveLength(4);
   });
 

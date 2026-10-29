@@ -24,3 +24,10 @@ html[data-font-preset] :is(button, input, select, textarea) { font-family: inher
 .font-preset-sample[data-font-sample='noto-sans-jp'] { font-family: var(--font-preset-noto-sans-jp); }
 .font-preset-sample[data-font-sample='biz-udpgothic'] { font-family: var(--font-preset-biz-udpgothic); }
 .font-preset-sample[data-font-sample='m-plus-rounded-1c'] { font-family: var(--font-preset-m-plus-rounded-1c); }
+
+/* Each candidate's name is set in its own face too, so the web fonts stand out
+   in the picker. The dot appearance keeps its family here (names are not samples). */
+.font-preset-button[data-font-option='system'] .font-preset-name { font-family: var(--font-preset-system); }
+.font-preset-button[data-font-option='noto-sans-jp'] .font-preset-name { font-family: var(--font-preset-noto-sans-jp); }
+.font-preset-button[data-font-option='biz-udpgothic'] .font-preset-name { font-family: var(--font-preset-biz-udpgothic); }
+.font-preset-button[data-font-option='m-plus-rounded-1c'] .font-preset-name { font-family: var(--font-preset-m-plus-rounded-1c); }
