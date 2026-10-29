@@ -62,6 +62,63 @@ for (const width of [320, 390, 1280]) {
   }
 }
 
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 390, height: 600 },
+  { width: 1280, height: 720 },
+  { width: 1280, height: 900 },
+]) {
+  test(`brand and modes stay anchored across mode and error changes at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openAuth(page);
+    const brand = page.locator('.auth-entry-brand');
+    const modes = page.locator('.auth-entry-modes');
+    const initialBrand = await brand.boundingBox();
+    const initialModes = await modes.boundingBox();
+    expect(initialBrand).not.toBeNull();
+    expect(initialModes).not.toBeNull();
+
+    async function expectAnchorsUnchanged() {
+      // Submitting on short screens scrolls the button into view; compare at the same scroll position.
+      await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+      for (const [locator, initial] of [[brand, initialBrand], [modes, initialModes]]) {
+        const current = await locator.boundingBox();
+        expect(current).not.toBeNull();
+        expect(Math.abs(current.x - initial.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(current.y - initial.y)).toBeLessThanOrEqual(1);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+
+    await expectAnchorsUnchanged();
+    const signIn = page.getByRole('tab', { name: 'ログイン', exact: true });
+    const signUp = page.getByRole('tab', { name: '新規会員登録', exact: true });
+    await signUp.click();
+    await expect(signUp).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByLabel('パスワード確認')).toBeVisible();
+    await expectAnchorsUnchanged();
+    await signIn.click();
+    await expect(signIn).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByLabel('パスワード確認')).toHaveCount(0);
+    await expectAnchorsUnchanged();
+
+    await signUp.click();
+    await expect(signUp).toHaveAttribute('aria-selected', 'true');
+    await expectAnchorsUnchanged();
+    await page.getByLabel('メールアドレス').fill('layout@example.test');
+    await page.getByLabel('パスワード', { exact: true }).fill('abcdef12');
+    await page.getByLabel('パスワード確認').fill('different12');
+    await page.getByRole('button', { name: '登録して確認メールを送る' }).click();
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expectAnchorsUnchanged();
+    await signIn.click();
+    await expect(signIn).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expectAnchorsUnchanged();
+  });
+}
+
 test('late pixel appearance keeps the auth canvas, input contrast, and compact modes', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });

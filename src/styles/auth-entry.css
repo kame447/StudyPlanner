@@ -26,11 +26,12 @@ html:has(#root .auth-entry-shell) :is(body, #root) {
   isolation: isolate;
   grid-template-columns: minmax(0, 380px);
   justify-content: center;
-  align-content: center;
+  align-content: start;
   min-height: 100vh;
   min-height: 100svh;
   gap: 0;
-  padding: max(36px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px)) max(64px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
+  /* Base the top inset on the viewport so mode and error changes grow downward. */
+  padding: max(clamp(36px, calc(50svh - 330px), 96px), env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px)) max(64px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
   color: #eef1f8;
   background: #060914;
 }
