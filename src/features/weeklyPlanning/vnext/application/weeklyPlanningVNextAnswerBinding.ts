@@ -33,23 +33,24 @@ export type WeeklyPlanningVNextAnswerBinding =
 
 const EMPTY_DELTA: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
 
-function referencedFactIds(delta: VNextTurnDelta): string[] {
-  const refs = [
-    ...delta.patch.map((patch) => patch.targetFactId),
-    ...delta.remove.map((removal) => removal.targetFactId),
-    ...delta.relate.flatMap((relation) => [relation.a, relation.b])
-      .flatMap((ref) => ('factId' in ref ? [ref.factId] : [])),
-    ...delta.add.flatMap((fact) => ('targetRef' in fact && 'factId' in fact.targetRef ? [fact.targetRef.factId] : [])),
-  ];
-  return refs;
+/** Lineages a delta addresses: facts by their lineage, projected work by its identity. */
+function addressedLineages(delta: VNextTurnDelta, lineageOf: (factId: string) => string): Set<string> {
+  const ref = (value: { factId: string } | { localId: string } | { workLineageId: string }) =>
+    ('factId' in value ? [lineageOf(value.factId)] : 'workLineageId' in value ? [value.workLineageId] : []);
+  return new Set([
+    ...delta.patch.map((patch) => lineageOf(patch.targetFactId)),
+    ...delta.remove.map((removal) => lineageOf(removal.targetFactId)),
+    ...delta.relate.flatMap((relation) => [...ref(relation.a), ...ref(relation.b)]),
+    ...delta.add.flatMap((fact) => ('targetRef' in fact ? ref(fact.targetRef) : [])),
+  ]);
 }
 
 export function bindWeeklyPlanningVNextAnswer(params: {
   freshness: WeeklyPlanningQuestionPresentationFreshness;
   presented: WeeklyPlanningVNextPresentedQuestion | null;
   projection: WeeklyPlanningVNextProjection;
-  /** Active fact id of each subject lineage, from the current state. */
-  leafOf: (lineageId: string) => string | null;
+  /** Lineage of a fact id, from the current state. */
+  lineageOf: (factId: string) => string;
   answer: WeeklyPlanningVNextAnswer;
 }): WeeklyPlanningVNextAnswerBinding {
   const current = params.projection.questions[0] ?? null;
@@ -89,12 +90,12 @@ export function bindWeeklyPlanningVNextAnswer(params: {
       },
     };
   }
-  const subjects = new Set(question.subjectLineageIds.flatMap((lineageId) => {
-    const leaf = params.leafOf(lineageId);
-    return leaf ? [leaf] : [];
-  }));
-  if (question.forWork) subjects.add(question.forWork.definingFactId);
-  return referencedFactIds(answer.delta).some((id) => subjects.has(id))
+  const subjects = new Set(question.subjectLineageIds);
+  if (question.forWork) {
+    subjects.add(question.forWork.workLineageId);
+    subjects.add(params.lineageOf(question.forWork.definingFactId));
+  }
+  return [...addressedLineages(answer.delta, params.lineageOf)].some((lineage) => subjects.has(lineage))
     ? { status: 'bound', question, delta: answer.delta }
     : { status: 'not_an_answer' };
 }

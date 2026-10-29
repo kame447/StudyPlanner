@@ -93,7 +93,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
     });
     expect(freshness.status).toBe('fresh');
     const binding = bindWeeklyPlanningVNextAnswer({
-      freshness, presented, projection, leafOf: createVNextLineageResolver(state.graph).leafOf,
+      freshness, presented, projection, lineageOf: createVNextLineageResolver(state.graph).lineageOf,
       answer: { kind: 'estimate_minutes', minutes: 60, taskFactId: 'task-1' },
     });
     expect(binding.status).toBe('bound');
@@ -121,7 +121,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
     const binding = bindWeeklyPlanningVNextAnswer({
       freshness,
       presented: { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision },
-      projection, leafOf: createVNextLineageResolver(state.graph).leafOf,
+      projection, lineageOf: createVNextLineageResolver(state.graph).lineageOf,
       answer: { kind: 'estimate_minutes', minutes: 60, taskFactId: 'task-1' },
     });
     expect(binding).toEqual({ status: 'represent', question: projection.questions[0] });
@@ -155,5 +155,44 @@ describe('VNext session: migration, answer binding inside presentation freshness
         .toEqual({ core: 'stable_v5', missing: [part] });
     }
     expect(resolveWeeklyPlanningConversationCore({ vnextRequested: true, readyParts: all })).toEqual({ core: 'vnext' });
+  });
+
+  it('E01 migrates a V5 graph whose later work names a renamed task, and an answer by work identity applies', () => {
+    const v5 = savedV5Graph();
+    v5.tasks.push({ ...v5.tasks[0], id: 'task-1-renamed', title: 'スライド（改）' });
+    v5.factLifecycles = v5.factLifecycles.map((entry) => (entry.factId === 'task-1'
+      ? { ...entry, status: 'superseded' as const, terminalRevision: 3, supersededByFactId: 'task-1-renamed' } : entry));
+    v5.factLifecycles.push({ factId: 'task-1-renamed', status: 'active', createdRevision: 3, terminalRevision: null, supersededByFactId: null });
+    v5.workloads = v5.workloads.map((workload) => (workload.id === 'completed' ? { ...workload, taskId: 'task-1-renamed' } : workload));
+    const { state } = migrateWeeklyPlanningV5GraphToVNextSession(v5);
+    const [question] = projectWeeklyPlanningVNext(state).questions;
+    const applied = applyWeeklyPlanningVNextTurn(state, {
+      add: [{ kind: 'effort_estimate', localId: 'answer', taskRef: { factId: question.taskId },
+        targetRef: { workLineageId: question.forWork!.workLineageId }, effortKind: 'total_duration',
+        minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' }],
+      patch: [], remove: [], relate: [], defer: [],
+    }, { turnKey: 'e01', expectedRevision: state.graph.revision, conversationId, turnId: 'e01', sourceText: '60分' });
+    expect(applied.status).toBe('applied');
+    if (applied.status === 'applied') expect(projectWeeklyPlanningVNext(applied.state).owners[0].work[0].minutes).toBe(60);
+  });
+
+  it('E02 classifies a semantic answer that names the asked work by identity as an answer', () => {
+    const state = migrateWeeklyPlanningV5GraphToVNextSession(savedV5Graph()).state;
+    const projection = projectWeeklyPlanningVNext(state);
+    const [question] = projection.questions;
+    const freshness = resolveWeeklyPlanningQuestionPresentationFreshness({
+      previousState: presentedIntake({ planningStateRevision: 7, assistantMessageId: 'a1', graphRevision: state.graph.revision }),
+      inputStateRevision: 7, messages: [assistant('a1')], graphRevision: state.graph.revision,
+    });
+    const delta = {
+      add: [{ kind: 'effort_estimate' as const, localId: 'answer', taskRef: { factId: 'task-1' },
+        targetRef: { workLineageId: question.forWork!.workLineageId }, effortKind: 'total_duration' as const,
+        minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' as const }],
+      patch: [], remove: [], relate: [], defer: [],
+    };
+    expect(bindWeeklyPlanningVNextAnswer({
+      freshness, presented: { questionKey: question.key, graphRevision: projection.graphRevision }, projection,
+      lineageOf: createVNextLineageResolver(state.graph).lineageOf, answer: { kind: 'delta', delta },
+    })).toMatchObject({ status: 'bound', delta });
   });
 });

@@ -151,7 +151,7 @@ describe('#926 no-cost integration gates', () => {
     });
     expect(bindWeeklyPlanningVNextAnswer({
       freshness: fresh, presented: reloaded.vnext.presentedQuestion, projection: reloadedProjection,
-      leafOf: createVNextLineageResolver(reloaded.vnext.state.graph).leafOf,
+      lineageOf: createVNextLineageResolver(reloaded.vnext.state.graph).lineageOf,
       answer: { kind: 'estimate_minutes', minutes: 60, taskFactId: 'task-1' },
     }).status).toBe('bound');
     // A presentation made against the V5 revision is stale after migration.
@@ -187,7 +187,7 @@ describe('#926 no-cost integration gates', () => {
       }),
       presented: { questionKey: asked.questions[0].key, graphRevision: asked.graphRevision },
       projection: asked,
-      leafOf: createVNextLineageResolver(state.graph).leafOf,
+      lineageOf: createVNextLineageResolver(state.graph).lineageOf,
       answer: { kind: 'estimate_minutes', minutes: 60, taskFactId: 'task-1' },
     });
     if (binding.status !== 'bound') throw new Error(binding.status);
@@ -207,7 +207,8 @@ describe('#926 no-cost integration gates', () => {
       estimateSourceFactIds: [answerId],
       sourceFactRefs: expect.arrayContaining(['task-1', 'total', answerId]),
     })]);
-    expect(JSON.stringify(compiled.input)).not.toMatch(/vnext-(estimate|task-total):/);
+    expect(compiled.input!.movableWorkItems.flatMap((work) => [...work.sourceFactRefs, ...work.estimateSourceFactIds])
+      .filter((id) => id.startsWith('vnext-'))).toEqual([]);
     const preview = scheduleWeeklyPlanningStableV5Preview({
       input: compiled.input!,
       graph: scheduled.placementGraph,

@@ -90,4 +90,14 @@ describe('VNext V5 adapter and shadow comparison', () => {
     expect(owner.v5.amounts).toEqual([5]);
     expect(owner.vnext.questionCode).toBe('same_or_distinct_work');
   });
+
+  it('compares a task-total-only saved graph for S04 without synthetic provenance', () => {
+    const v5 = graph([], [effort('budget-90', 'total_duration', 90, 'task-1')]);
+    const comparison = compareWeeklyPlanningV5AndVNext(v5);
+    expect(comparison.owners).toEqual([expect.objectContaining({
+      difference: 'same',
+      v5: expect.objectContaining({ amounts: [90], baseMinutes: 90 }),
+      vnext: expect.objectContaining({ amounts: [90], minutes: 90 }),
+    })]);
+  });
 });

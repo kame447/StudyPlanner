@@ -167,7 +167,7 @@ function toDelta(state: WeeklyPlanningVNextState, turn: FixtureTurn, turnIndex: 
     const changes = patch.changes;
     if (patch.target === 'task-category' || 'category' in changes) {
       delta.patch.push({ kind: 'task', localId: `p-${turnIndex}-${delta.patch.length}`, targetFactId,
-        changes: { category: typeof changes.category === 'string' ? changes.category as never : null, title: null } });
+        changes: { category: typeof changes.category === 'string' ? changes.category as never : null, title: typeof changes.title === 'string' ? changes.title : null } });
     } else if (patch.target === 'deadline' || 'dateExpression' in changes) {
       delta.patch.push({ kind: 'temporal_constraint', localId: `p-${turnIndex}-${delta.patch.length}`, targetFactId,
         changes: { constraintKind: null, constraintLevel: null,

@@ -65,6 +65,11 @@ describe('VNext → Stable V5 scheduler bridge', () => {
     expect(item.baseEstimatedMinutes).toBe(90);
     expect(item.estimateSourceFactIds).toEqual([budgetId]);
     expect([...item.sourceFactRefs].sort()).toEqual([budgetId, taskId].sort());
+    expect(compile(state).compilation.input!.sourceFactRefs).toEqual(expect.arrayContaining([taskId, budgetId]));
+    // workloadFactId is the scheduling-view lookup key by the V5 contract; provenance fields are canonical.
+    const provenance = compile(state).compilation.input!.movableWorkItems
+      .flatMap((work) => [...work.sourceFactRefs, ...work.estimateSourceFactIds, ...work.estimateSourceWorkloadFactIds]);
+    expect(provenance.filter((id) => id.startsWith('vnext-'))).toEqual([]);
   });
 
   it('uses the renamed task in the scheduling view without losing its work', () => {

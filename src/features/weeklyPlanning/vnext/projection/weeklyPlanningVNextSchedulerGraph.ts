@@ -48,13 +48,17 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
   const readyOwners = projection.owners.filter((owner) => owner.status === 'ready');
   const scheduledTaskIds = new Set(readyOwners.map((owner) => current(owner.taskId)));
   const ownedTaskIds = new Set(projection.owners.map((owner) => current(owner.taskId)));
+  // Scheduling-only ids → the stated facts they stand for; and each scheduled work's estimates
+  // as the projection resolved them (the projection is the estimate authority).
   const canonical = new Map<string, string[]>();
+  const projectedEstimates = new Map<string, string[]>();
   const workloads: WorkloadFactV5[] = [];
   const estimates: EffortEstimateFactV5[] = [];
   for (const item of readyOwners.flatMap((owner) => owner.work)) {
     const taskTotal = item.estimateBasis === 'task_total' && item.definingFactId === item.taskId;
     const id = taskTotal ? `vnext-task-total:${current(item.taskId)}` : current(item.definingFactId);
-    if (taskTotal) canonical.set(id, []); // a task total has no workload fact; its estimates carry it
+    if (taskTotal) canonical.set(id, item.estimateFactIds); // a task total stands for its stated totals
+    projectedEstimates.set(id, item.estimateFactIds);
     const source = sources.get(item.definingFactId)!;
     workloads.push({
       id, taskId: current(item.taskId), componentId: currentOrNull(item.componentId), quantityRole: 'target',
@@ -106,11 +110,11 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
           ...compiled.input,
           sourceFactRefs: toCanonical(compiled.input.sourceFactRefs),
           movableWorkItems: compiled.input.movableWorkItems.map((item) => {
-            const estimateIds = toCanonical([...item.estimateSourceFactIds, ...canonical.has(item.workloadFactId)
-              ? (canonical.get(`vnext-estimate:${item.workloadFactId}`) ?? []) : []]);
+            const estimateIds = projectedEstimates.get(item.workloadFactId) ?? toCanonical(item.estimateSourceFactIds);
             return {
               ...item,
               estimateSourceFactIds: estimateIds,
+              estimateSourceWorkloadFactIds: toCanonical(item.estimateSourceWorkloadFactIds),
               sourceFactRefs: toCanonical([...item.sourceFactRefs, ...estimateIds]),
             };
           }),

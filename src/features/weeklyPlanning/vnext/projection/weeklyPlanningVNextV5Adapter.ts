@@ -126,27 +126,57 @@ export function adaptWeeklyPlanningV5GraphToVNext(
     return labels.size === 1 ? [...labels][0] : null;
   };
 
+  // VNext stores task/component references by lineage root (V5 could point later facts at a
+  // renamed task's newer version); normalising here keeps one owner identity for all facts.
+  const ownerRoot = (id: string) => resolver.lineageOf(id);
+  const ownerRootOrNull = (id: string | null) => (id === null ? null : ownerRoot(id));
+  const isOwner = new Set([...statedGraph.tasks, ...statedGraph.components].map((fact) => fact.id));
+  const targetRoot = (id: string) => (isOwner.has(id) ? ownerRoot(id) : id);
+
   const effortEstimates: VNextEffortEstimateFact[] = statedGraph.effortEstimates.map((effort) => {
     const conversion = convert(effort);
     const unitLabel = customLabelFor(effort);
     if (effort.unitCode === 'custom' && effort.kind === 'duration_per_unit' && unitLabel === null) {
       notes.push({ code: 'custom_rate_label_unresolved', factId: effort.id });
     }
+    const owned = { ...effort, taskId: ownerRoot(effort.taskId), targetFactId: targetRoot(effort.targetFactId) };
     if (conversion.kind === 'unidentified') {
       // Left on the removed derived workload: it measures nothing and the work is asked again.
       notes.push({ code: 'effort_unbound_target_unidentified', factId: effort.id });
-      return { ...effort, unitLabel, workBinding: null };
+      return { ...owned, unitLabel, workBinding: null };
     }
-    if (conversion.kind === 'unchanged') return { ...effort, unitLabel, workBinding: null };
+    if (conversion.kind === 'unchanged') return { ...owned, unitLabel, workBinding: null };
     const workBinding = effort.kind === 'total_duration' ? conversion.binding : null;
     if (workBinding) notes.push({ code: 'effort_bound', factId: effort.id, ...workBinding });
-    return { ...effort, targetFactId: conversion.targetFactId, unitLabel, workBinding };
+    return { ...owned, targetFactId: conversion.targetFactId, unitLabel, workBinding };
   });
 
   return {
     state: {
       version: WEEKLY_PLANNING_VNEXT_STATE_VERSION,
-      graph: { ...statedGraph, effortEstimates },
+      graph: {
+        ...statedGraph,
+        components: statedGraph.components.map((fact) => ({
+          ...fact, taskId: ownerRoot(fact.taskId), parentComponentId: ownerRootOrNull(fact.parentComponentId),
+        })),
+        studyContexts: statedGraph.studyContexts.map((fact) => ({ ...fact, taskId: ownerRoot(fact.taskId) })),
+        workloads: statedGraph.workloads.map((fact) => ({
+          ...fact, taskId: ownerRoot(fact.taskId), componentId: ownerRootOrNull(fact.componentId),
+        })),
+        temporalConstraints: statedGraph.temporalConstraints.map((fact) => ({
+          ...fact, taskId: ownerRoot(fact.taskId), targetFactId: targetRoot(fact.targetFactId),
+        })),
+        taskDateRules: statedGraph.taskDateRules.map((fact) => ({
+          ...fact, taskId: ownerRoot(fact.taskId), targetFactId: targetRoot(fact.targetFactId),
+        })),
+        recurrences: statedGraph.recurrences.map((fact) => ({
+          ...fact, taskId: ownerRoot(fact.taskId), targetFactId: targetRoot(fact.targetFactId),
+        })),
+        relations: statedGraph.relations.map((fact) => ({
+          ...fact, fromTaskId: ownerRoot(fact.fromTaskId), toTaskId: ownerRoot(fact.toTaskId),
+        })),
+        effortEstimates,
+      },
       workRelations: [],
       deferrals: [],
     },
