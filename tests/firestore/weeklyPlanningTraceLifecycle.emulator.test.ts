@@ -23,6 +23,10 @@ const OTHER_UID = `trace-other-${RUN}`;
 const ADMIN_UID = `trace-admin-${RUN}`;
 const STRANGER_UID = `trace-stranger-${RUN}`;
 const SECRET_EMAIL = `owner-${RUN}@example.test`;
+const SECRET_PHONE = '090-1234-5678';
+const SECRET_URL_QUERY = `token=url-${RUN}`;
+const SECRET_CREDENTIAL = `sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8t${RUN}`;
+const DIAGNOSTIC_TASK_ID = 'task-123e4567-e89b-12d3-a456-426614174000';
 const COLLECTIONS = [
   'weekly_planning_trace_sessions',
   'weekly_planning_trace_entries',
@@ -79,6 +83,31 @@ function sessionMetadata(entryCount: number): Record<string, unknown> {
   };
 }
 
+function turnDiagnosticV2(
+  base: Record<string, unknown>,
+  now: string,
+): Record<string, unknown> {
+  const text = `連絡は ${SECRET_EMAIL} / ${SECRET_PHONE} https://example.test/p?${SECRET_URL_QUERY} ${SECRET_CREDENTIAL}`;
+  return {
+    ...base, occurredAt: now, observedAt: now, schemaVersion: 2, kind: 'turn_diagnostic',
+    traceSchema: 'weekly-planning-turn-diagnostic-v2', turnIndex: 0,
+    userInput: { text },
+    aiInterpreter: {
+      input: { userText: text, conversationContext: [], requests: [] },
+      rawResponses: [{ attempt: 'initial', text: `{"note":"${text}"}` }],
+      structuredResults: [], candidateOperations: [],
+    },
+    parsers: [],
+    decision: {
+      acceptedOperations: [], rejectedOperations: [],
+      finalOperations: [{ operation: 'set_planning_window', taskId: DIAGNOSTIC_TASK_ID }],
+    },
+    constraintContext: { existingPlanCount: 0, scheduleTemplateCount: 0, relevantBusyIntervals: [] },
+    assistantOutput: { text: null, responseSource: 'ai' },
+    diagnostics: { outcome: 'revision_pending', previewCount: 0, stale: false },
+  };
+}
+
 async function consentStartAppend(uid: string, key: string) {
   expect((await call(uid, '/weekly-planning-trace/policy/accept', {})).status).toBe(200);
   const started = await call(uid, '/weekly-planning-trace/session/start', {
@@ -91,13 +120,16 @@ async function consentStartAppend(uid: string, key: string) {
   const logicalConversationId = String(started.body.logicalConversationId);
   const now = new Date().toISOString();
   const appended = await call(uid, '/weekly-planning-trace/append', {
-    session: { ...sessionMetadata(1), id: sessionId, logicalConversationId },
+    session: { ...sessionMetadata(2), id: sessionId, logicalConversationId },
     entries: [{
       id: `${sessionId}-00000000`, sessionId, logicalConversationId, sequence: 0,
       occurredAt: now, observedAt: now, schemaVersion: 1, kind: 'internal_event',
       eventType: 'user_turn_received', severity: 'info', requestId: `request-${key}`,
       payload: { source: 'client', note: `連絡先は ${SECRET_EMAIL} です` },
-    }],
+    }, turnDiagnosticV2({
+      id: `${sessionId}-00000001`, sessionId, logicalConversationId, sequence: 1,
+      requestId: `request-${key}`,
+    }, now)],
   });
   expect(appended.status).toBe(200);
   return { sessionId };
@@ -148,12 +180,20 @@ describe.skipIf(!enabled)('weekly planning trace lifecycle on the Firestore emul
     const other = await consentStartAppend(OTHER_UID, `other-${RUN}`);
     const outlivedToken = await seedOutlivedEpochSession(OWNER_UID);
 
-    // Server-written fields never carry the raw account id or the redacted email.
+    // Server-written fields never carry the raw account id or the redacted
+    // email, phone, URL query or credential, in schema v1 or v2 entries.
     for (const collection of COLLECTIONS) {
       const serialized = JSON.stringify(await listAll(collection));
       expect(serialized).not.toContain(OWNER_UID);
-      expect(serialized).not.toContain(SECRET_EMAIL);
+      for (const secret of [SECRET_EMAIL, SECRET_PHONE, SECRET_URL_QUERY, SECRET_CREDENTIAL]) {
+        expect(serialized).not.toContain(secret);
+      }
     }
+    const storedDiagnostic = JSON.stringify((await listAll('weekly_planning_trace_entries'))
+      .find((document) => document.id === `${owned.sessionId}-00000001`));
+    expect(storedDiagnostic).toContain('weekly-planning-turn-diagnostic-v2');
+    expect(storedDiagnostic).toContain(DIAGNOSTIC_TASK_ID);
+    expect(storedDiagnostic).toContain('[EMAIL] / [PHONE] https://example.test/p?[QUERY_REDACTED] [TOKEN]');
     const legacyOwned = await seedLegacyBrowserTrace(OWNER_UID, 'owner');
     const legacyOther = await seedLegacyBrowserTrace(OTHER_UID, 'other');
 
@@ -173,10 +213,15 @@ describe.skipIf(!enabled)('weekly planning trace lifecycle on the Firestore emul
     const page = await adapter.listSessions({ sessionId: owned.sessionId });
     expect(JSON.stringify(page)).toContain(owned.sessionId);
     const entries = await adapter.listEntries({ sessionId: owned.sessionId });
-    expect(entries.entries).toHaveLength(1);
+    expect(entries.entries).toHaveLength(2);
     const bundle = await adapter.createDebugBundle({ sessionId: owned.sessionId });
-    expect(JSON.stringify(bundle)).not.toContain(SECRET_EMAIL);
-    expect(JSON.stringify(bundle)).not.toContain(OWNER_UID);
+    for (const output of [JSON.stringify(entries), JSON.stringify(bundle)]) {
+      expect(output).toContain('turn_diagnostic');
+      expect(output).not.toContain(OWNER_UID);
+      for (const secret of [SECRET_EMAIL, SECRET_PHONE, SECRET_URL_QUERY, SECRET_CREDENTIAL]) {
+        expect(output).not.toContain(secret);
+      }
+    }
     const readActions = (await listAll('weekly_planning_trace_access_audit'))
       .map((document) => document.action);
     expect(readActions).toEqual(expect.arrayContaining([
@@ -188,7 +233,7 @@ describe.skipIf(!enabled)('weekly planning trace lifecycle on the Firestore emul
     // leaving another user's traces intact.
     const deleted = await call(OWNER_UID, '/weekly-planning-trace/delete', {});
     expect(deleted.status).toBe(200);
-    expect(deleted.body).toMatchObject({ deletedSessions: 3, deletedEntries: 3 });
+    expect(deleted.body).toMatchObject({ deletedSessions: 3, deletedEntries: 4 });
     const sessions = await listAll('weekly_planning_trace_sessions');
     const remainingEntries = await listAll('weekly_planning_trace_entries');
     const remaining = JSON.stringify([...sessions, ...remainingEntries]);
