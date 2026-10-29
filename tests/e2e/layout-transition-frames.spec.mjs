@@ -6,13 +6,14 @@ const variants = [
   { width: 1280, rows: 1 }, { width: 1280, rows: 5 },
   { width: 390, rows: 1, mode: 'dark' },
   { width: 390, rows: 1, motion: 'reduce' },
+  { width: 390, rows: 1, group: 'secondary' }, { width: 1280, rows: 1, group: 'secondary' },
 ];
-for (const { width, rows, mode = 'light', motion = 'no-preference' } of variants) {
-  test(`transition frames ${width}px ${rows}rows ${mode} ${motion}`, async ({ page }, testInfo) => {
+for (const { width, rows, mode = 'light', motion = 'no-preference', group = 'primary' } of variants) {
+  test(`transition frames ${group} ${width}px ${rows}rows ${mode} ${motion}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     await page.emulateMedia({ reducedMotion: motion });
     const blockedExternal = [];
-    const gates = new Map(['BookshelfView', 'ReportView', 'MonthView', 'WeekView'].map(name => {
+    const gates = new Map((group === 'primary' ? ['BookshelfView', 'ReportView', 'MonthView', 'WeekView'] : ['DayView', 'TodoView', 'TimetableView', 'AiPlanningView', 'ContactPageContent']).map(name => {
       let release; const promise = new Promise(resolve => { release = resolve; });
       return [name, { promise, release, hits: 0, released: false }];
     }));
@@ -51,10 +52,14 @@ for (const { width, rows, mode = 'light', motion = 'no-preference' } of variants
       localStorage.setItem('studyplanner.todos.v1', '[]');
       const selectors = {
         shell: '.app-shell', header: '.primary-app-header', toolbar: '.app-view-switcher',
-        main: 'main', dashboard: '.home-dashboard.home-dashboard-default', core: '.home-core-sections', today: '.home-today-panel', list: '.home-schedule-list', row: '.home-schedule-row',
+        main: 'main', dashboard: 'section.home-dashboard[aria-label="ホーム"]', core: '.home-core-sections', today: '.home-today-panel', list: '.home-schedule-list', row: '.home-schedule-row',
         next: '.home-next-card', nav: '.primary-bottom-nav', schedule: '.schedule-toolbar',
         skeleton: '.route-skeleton', booksHeader: '.bookshelf-page-header', booksCard: '.bookshelf-featured-card',
         booksFab: '.bookshelf-add-material-fab', report: '.learning-report-view',
+        day: '.timeline-shell', todo: '.todo-view', timetable: '.timetable-view', ai: '.ai-planning-view-shell-v2',
+        composer: '.ai-planning-composer', contact: '.legal-page-card', contactHeader: '.legal-page-header',
+        contactStatus: '.legal-page-card [role="status"], .legal-page-card [role="alert"]',
+        settings: '.app-settings-page', settingsPanel: '.app-settings-content',
       };
       const samples = []; const events = []; const ids = new WeakMap(); let nextId = 1;
       let active = true, frame = 0, last = 0, phase = 'initial-document', frames = 0, dirty = true;
@@ -94,10 +99,11 @@ for (const { width, rows, mode = 'light', motion = 'no-preference' } of variants
           nodes[key] = [...document.querySelectorAll(selector)].slice(0, key === 'row' ? 5 : 3).map(node => {
             const r = rect(node); const hasBox = node.getClientRects().length > 0 && r.width > 0 && r.height > 0;
             const visible = hasBox && (typeof node.checkVisibility === 'function' ? node.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true }) : null);
-            return { id: id(node), hasBox, visible, ...r, scrollTop: node.scrollTop };
+            return { id: id(node), hasBox, visible, ...r, scrollTop: node.scrollTop,
+              ...(key === 'settingsPanel' ? { labelledBy: node.getAttribute('aria-labelledby') } : {}) };
           });
         }
-        const dashboard = [...document.querySelectorAll('.home-dashboard.home-dashboard-default')].find(n => n.getClientRects().length);
+        const dashboard = [...document.querySelectorAll('section.home-dashboard[aria-label="ホーム"]')].find(n => n.getClientRects().length);
         const header = document.querySelector('.primary-app-header');
         const styles = {};
         if (dirty) {
@@ -155,7 +161,7 @@ for (const { width, rows, mode = 'light', motion = 'no-preference' } of variants
         gates.get(module).release();
       }
       await expect(page.locator(`.route-skeleton--${view}`)).toHaveCount(0);
-      const loaded = { bookshelf: '.bookshelf-view', report: '.learning-report-view', month: '.schedule-month-view', week: '.schedule-week-view' };
+      const loaded = { bookshelf: '.bookshelf-view', report: '.learning-report-view', month: '.schedule-month-view', week: '.schedule-week-view', day: '.timeline-shell', todo: '.todo-view', timetable: '.timetable-view', 'ai-planning': '.ai-planning-view-shell-v2', contact: '.legal-page-card [role="alert"]' };
       await expect(page.locator(loaded[view]).first()).toBeVisible();
       await settle(`${cold ? 'cold' : 'warm'}-${view}`);
     }
@@ -172,7 +178,7 @@ for (const { width, rows, mode = 'light', motion = 'no-preference' } of variants
       await expect(page.locator('.home-schedule-row').first()).toBeVisible();
       expect(await page.locator('html').getAttribute('data-font-preset')).toBeNull();
       await settle('initial-home');
-      for (const cold of [true, false]) {
+      if (group === 'primary') for (const cold of [true, false]) {
         if (!cold) await page.evaluate(() => window.__layoutDiagnostic.warm());
         await visit('bookshelf', 'BookshelfView', () => nav('教材').click(), cold);
         await expect(page.locator('.bookshelf-featured-card').first()).toBeVisible();
@@ -185,6 +191,37 @@ for (const { width, rows, mode = 'light', motion = 'no-preference' } of variants
         }, cold);
         await visit('week', 'WeekView', () => page.getByRole('tablist', { name: '予定表示' }).getByRole('tab', { name: '週', exact: true }).click(), cold);
         await home(`${cold ? 'cold' : 'warm'}-week-return-home`);
+      }
+      if (group === 'secondary') for (const cold of [true, false]) {
+        if (!cold) await page.evaluate(() => window.__layoutDiagnostic.warm());
+        await visit('day', 'DayView', async () => {
+          await nav('予定').click();
+          await page.getByRole('tablist', { name: '予定表示' }).getByRole('tab', { name: '日', exact: true }).click();
+        }, cold);
+        await visit('todo', 'TodoView', () => page.getByRole('tablist', { name: '予定表示' }).getByRole('tab', { name: 'Todo', exact: true }).click(), cold);
+        await visit('timetable', 'TimetableView', () => nav('時間割').click(), cold);
+        await visit('ai-planning', 'AiPlanningView', () => nav('AI計画').click(), cold);
+        // No AI message is sent; this only observes initialization and composer geometry.
+        await home(`${cold ? 'cold' : 'warm'}-ai-return-home`);
+        await page.evaluate(() => window.__layoutDiagnostic.arm('settings-open'));
+        await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+        const settings = page.locator('.app-settings-page');
+        await expect(settings).toBeVisible();
+        await settings.getByRole('tab', { name: 'サポート', exact: true }).click();
+        await settle('settings-support');
+        await settings.getByRole('button', { name: '戻る', exact: true }).click();
+        await page.evaluate(() => window.__layoutDiagnostic.arm('settings-reopen'));
+        await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+        await expect(settings.getByRole('tab', { name: '設定', exact: true })).toHaveAttribute('aria-selected', 'true');
+        await settle('settings-reopen');
+        await settings.getByRole('tab', { name: 'サポート', exact: true }).click();
+        await visit('contact', 'ContactPageContent', () => settings.getByRole('link', { name: 'お問い合わせ', exact: true }).click(), cold);
+        // Demo auth is unavailable: this does NOT cover signed-in form/auth-delivery timing.
+        await expect(page.getByRole('alert')).toHaveText('現在、お問い合わせに接続できません。');
+        await page.evaluate(() => window.__layoutDiagnostic.arm('contact-return'));
+        await page.getByRole('link', { name: 'Laplanceへ戻る', exact: true }).click();
+        if (await settings.isVisible()) await settings.getByRole('button', { name: '戻る', exact: true }).click();
+        await expect(page.locator('.home-today-panel')).toBeVisible();
       }
       expect(blockedExternal, 'Unexpected external access: diagnostic is incomplete, not a product pass').toEqual([]);
       harnessCompleted = true;
@@ -211,7 +248,7 @@ for (const { width, rows, mode = 'light', motion = 'no-preference' } of variants
       const summary = { captureStatus: incompleteReasons.length ? 'INCOMPLETE' : visibilitySupported ? 'CAPTURED_NOT_A_LAYOUT_PASS' : 'CAPTURED_VISIBILITY_UNCERTAIN', incompleteReasons, visibilitySupported,
         maxRecorderCostMs: Math.max(0, ...(evidence?.samples ?? []).map(s => s.cost)), maxFrameGapMs: Math.max(0, ...(evidence?.samples ?? []).map(s => s.gap ?? 0)),
         anchorRanges: [...ranges.values()], interpretation: 'Same node within phase only; mount/route changes and transient compression require frame inspection. CLS alone is insufficient.' };
-      await testInfo.attach('frame-evidence.json', { body: Buffer.from(JSON.stringify({ observationOnly: true, harnessCompleted, incompletePhases, summary, variant: { width, rows, mode, motion }, evidence,
+      await testInfo.attach('frame-evidence.json', { body: Buffer.from(JSON.stringify({ observationOnly: true, harnessCompleted, incompletePhases, summary, variant: { width, rows, mode, motion, group }, evidence,
         gates: [...gates].map(([name, g]) => ({ name, hits: g.hits, released: g.released })), blockedExternal })), contentType: 'application/json' });
     }
   });

@@ -48,7 +48,8 @@ jobs:
             CLOUDFLARE_CF_FETCH_ENABLED=false WRANGLER_SEND_METRICS=false DO_NOT_TRACK=1 \
             ./tests/e2e/node_modules/.bin/playwright test \
             --config=tests/e2e/playwright.layout-transition.config.mjs \
-            --project=webkit-mobile '(^|/)layout-transition-frames\.spec\.mjs$'
+            --project=webkit-mobile '(^|/)layout-transition-frames\.spec\.mjs$' \
+            --grep 'transition frames secondary '
       - name: Retain synthetic frame evidence
         if: always()
         uses: actions/upload-artifact@v7
