@@ -6,6 +6,7 @@ import {
   type WorkloadFactV5,
 } from './weeklyPlanningFactGraphV5';
 import { validateWeeklyPlanningFactGraphValueV5 } from './weeklyPlanningFactGraphValidatorV5';
+import { compileGenericPlanningWorkItems } from './weeklyPlanningGenericWorkItems';
 import { canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import { finalizeWeeklyPlanningSemanticCanonicalizationV5 } from './weeklyPlanningSemanticCommitV5';
 import {
@@ -104,6 +105,20 @@ function activeWorkloads(graph: WeeklyPlanningFactGraphV5): WorkloadFactV5[] {
 function activeEfforts(graph: WeeklyPlanningFactGraphV5): EffortEstimateFactV5[] {
   const active = activeIds(graph);
   return graph.effortEstimates.filter((fact) => active.has(fact.id));
+}
+
+// The scheduler-facing view: the invalidated total must come back as a blocking missing estimate (asked again).
+function missingEffortWorkloadIds(graph: WeeklyPlanningFactGraphV5): string[] {
+  const active = activeIds(graph);
+  const result = compileGenericPlanningWorkItems({
+    tasks: graph.tasks.filter((fact) => active.has(fact.id)),
+    components: graph.components.filter((fact) => active.has(fact.id)),
+    workloads: activeWorkloads(graph),
+    effortEstimates: activeEfforts(graph),
+  });
+  return result.issues
+    .filter((issue) => issue.code === 'missing_effort_estimate' && issue.blocking)
+    .map((issue) => issue.workloadFactId);
 }
 
 function attachEffort(graph: WeeklyPlanningFactGraphV5, params: {
@@ -257,8 +272,10 @@ describe('Stable V5 progress correction after an effort on the derived remaining
     const result = correctCompletedTo12(graph, prior.completed, 'turn-2');
 
     expect(result.status, result.errors.join(',')).toBe('applied');
-    expect(activeWorkloads(result.graph).filter((fact) => fact.quantityRole === 'remaining').map((fact) => fact.amount)).toEqual([8]);
+    const remaining = activeWorkloads(result.graph).filter((fact) => fact.quantityRole === 'remaining');
+    expect(remaining.map((fact) => fact.amount)).toEqual([8]);
     expect(activeEfforts(result.graph)).toEqual([]);
+    expect(missingEffortWorkloadIds(result.graph)).toEqual([remaining[0].id]);
     expect(validateWeeklyPlanningFactGraphValueV5(result.graph).errors).toEqual([]);
   });
 
@@ -275,6 +292,7 @@ describe('Stable V5 progress correction after an effort on the derived remaining
       ['duration_per_unit', 8, remaining[0].id],
       ['session_duration', 30, remaining[0].id],
     ]);
+    expect(missingEffortWorkloadIds(result.graph)).toEqual([]);
     expect(validateWeeklyPlanningFactGraphValueV5(result.graph).errors).toEqual([]);
   });
 
@@ -326,8 +344,10 @@ describe('Stable V5 percentage progress correction after an effort on the derive
     });
 
     expect(result.status, result.errors.join(',')).toBe('applied');
-    expect(activeWorkloads(result.graph).filter((fact) => fact.quantityRole === 'remaining').map((fact) => fact.amount)).toEqual([30]);
+    const remainingAfter = activeWorkloads(result.graph).filter((fact) => fact.quantityRole === 'remaining');
+    expect(remainingAfter.map((fact) => fact.amount)).toEqual([30]);
     expect(activeEfforts(result.graph)).toEqual([]);
+    expect(missingEffortWorkloadIds(result.graph)).toEqual([remainingAfter[0].id]);
     expect(validateWeeklyPlanningFactGraphValueV5(result.graph).errors).toEqual([]);
   });
 });
