@@ -38,8 +38,17 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
         if (!route || event.animationName !== 'ui-surface-fade') return;
         const style = getComputedStyle(event.target);
         const animation = event.target.getAnimations().find(a => a.animationName === event.animationName);
+        // A queued animationstart can arrive after a short CSSAnimation is no
+        // longer returned by getAnimations(). Require the actual loaded rule,
+        // and retain the live effect as additional evidence when still present.
+        const declaredKeyframes = [...document.styleSheets]
+          .filter(sheet => !sheet.href || new URL(sheet.href).origin === location.origin)
+          .flatMap(sheet => [...sheet.cssRules])
+          .filter(rule => rule.type === CSSRule.KEYFRAMES_RULE && rule.name === event.animationName)
+          .map(rule => ({ properties: [...new Set([...rule.cssRules].flatMap(frame => [...frame.style]))].sort(),
+            opacities: [...rule.cssRules].map(frame => frame.style.getPropertyValue('opacity')) }));
         entries.push({ phase, route: route[0], id: id(event.target), t: performance.now(), pending: event.target.hasAttribute('data-initial-layout-pending'),
-          duration: style.animationDuration, delay: style.animationDelay, fill: style.animationFillMode,
+          duration: style.animationDuration, delay: style.animationDelay, fill: style.animationFillMode, declaredKeyframes, liveEffectAvailable: Boolean(animation),
           properties: animation ? [...new Set(animation.effect.getKeyframes().flatMap(f => Object.keys(f)))].filter(k => !['offset', 'computedOffset', 'easing', 'composite'].includes(k)).sort() : [] });
       };
       document.addEventListener('animationstart', started, true);
@@ -51,8 +60,8 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
           const style = getComputedStyle(node), rect = node.getBoundingClientRect();
           const chrome = ['.app-shell', '.primary-app-header', '.primary-bottom-nav'].map(selector => {
             const el = document.querySelector(selector); if (!el) return null;
-            const s = getComputedStyle(el), r = el.getBoundingClientRect();
-            return { selector, opacity: s.opacity, transform: s.transform, x: r.x, y: r.y, width: r.width, height: r.height };
+            const s = getComputedStyle(el), r = el.getBoundingClientRect(), matrix = new DOMMatrixReadOnly(s.transform);
+            return { selector, opacity: s.opacity, transform: s.transform, matrix: [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f], x: r.x, y: r.y, width: r.width, height: r.height };
           });
           samples.push({ phase, route, id: id(node), t: performance.now(), opacity: Number(style.opacity), transform: style.transform,
             overlayOpen: Boolean(node.querySelector('.ai-chat-drawer-layer')), visible: node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }), pending: node.hasAttribute('data-initial-layout-pending'),
@@ -79,12 +88,27 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
       const data = await page.evaluate(({ route, phase }) => ({ samples: window.__entryFade.samples.filter(s => s.route === route && s.phase === phase), entries: window.__entryFade.entries.filter(e => e.route === route && e.phase === phase) }), { route, phase });
       if (level !== 'off') {
         expect(data.entries).toHaveLength(1);
-        expect(data.entries[0].properties).toEqual(['opacity']);
+        expect(data.entries[0].declaredKeyframes.length).toBeGreaterThan(0);
+        for (const rule of data.entries[0].declaredKeyframes) {
+          expect(rule.properties).toEqual(['opacity']);
+          expect(rule.opacities).toEqual(['0', '1']);
+        }
+        if (data.entries[0].liveEffectAvailable) expect(data.entries[0].properties).toEqual(['opacity']);
         expect(data.entries[0].pending).toBe(false);
       }
       for (const sample of data.samples) {
         expect(sample.transform).toBe('none');
-        for (const chrome of sample.chrome.filter(Boolean)) { expect(chrome.opacity).toBe('1'); expect(chrome.transform).toBe('none'); }
+        for (const chrome of sample.chrome.filter(Boolean)) {
+          expect(chrome.opacity).toBe('1');
+          if (chrome.selector === '.primary-bottom-nav') {
+            // Existing fixed navigation is centered with translateX(-50%).
+            // Permit only that static translation, never entry motion.
+            expect(chrome.matrix.slice(0, 4)).toEqual([1, 0, 0, 1]);
+            expect(chrome.matrix[5]).toBe(0);
+            expect(Math.abs(chrome.matrix[4] + chrome.width / 2)).toBeLessThanOrEqual(0.01);
+            expect(chrome.transform).toBe(data.samples[0].chrome.find(c => c?.selector === '.primary-bottom-nav').transform);
+          } else expect(chrome.transform).toBe('none');
+        }
       }
       const visible = data.samples.filter(s => s.visible && !s.pending);
       expect(new Set(visible.map(s => s.id)).size).toBe(1);
