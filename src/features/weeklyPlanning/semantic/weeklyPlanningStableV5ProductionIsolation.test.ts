@@ -96,6 +96,7 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'vnext/weeklyPlanningVNextWorkIdentity.ts',
   'vnext/semantic/weeklyPlanningVNextTransaction.ts',
   'vnext/projection/weeklyPlanningVNextProjection.ts',
+  'vnext/projection/weeklyPlanningVNextSchedulerGraph.ts',
   'vnext/projection/weeklyPlanningVNextShadowComparison.ts',
   'vnext/projection/weeklyPlanningVNextV5Adapter.ts',
   'vnext/application/weeklyPlanningVNextSessionCheckpoint.ts',
