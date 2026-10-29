@@ -32,8 +32,28 @@ export function vnextLineageIdByFactId(
   return lineage;
 }
 
-export function vnextOwnerKey(fact: { taskId: string; componentId: string | null }): string {
-  return `${fact.taskId}/${fact.componentId ?? ''}`;
+export interface VNextLineageResolver {
+  lineageOf(factId: string): string;
+  /** Active version of the fact's lineage, or null when the lineage ended. */
+  leafOf(factId: string): string | null;
+  /** Owner identity that survives a task/component patch. */
+  ownerKeyOf(fact: { taskId: string; componentId: string | null }): string;
+}
+
+export function createVNextLineageResolver(
+  graph: Pick<WeeklyPlanningVNextGraph, 'factLifecycles'>,
+): VNextLineageResolver {
+  const lineage = vnextLineageIdByFactId(graph);
+  const lineageOf = (factId: string) => lineage.get(factId) ?? factId;
+  const leafByLineage = new Map<string, string>();
+  for (const entry of graph.factLifecycles) {
+    if (entry.status === 'active') leafByLineage.set(lineageOf(entry.factId), entry.factId);
+  }
+  return {
+    lineageOf,
+    leafOf: (factId) => leafByLineage.get(lineageOf(factId)) ?? null,
+    ownerKeyOf: (fact) => `${lineageOf(fact.taskId)}/${fact.componentId === null ? '' : lineageOf(fact.componentId)}`,
+  };
 }
 
 /** Unit identity: the unit code, plus the NFKC-normalized label for custom units. */
@@ -107,17 +127,20 @@ function byRole(group: WorkloadFactV5[], role: WorkloadFactV5['quantityRole']): 
  * (percent without a total uses 100). A zero amount is not work.
  */
 export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWorkUnitsByOwner[] {
-  const lineage = vnextLineageIdByFactId(graph);
-  const lineageOf = (fact: { id: string }) => lineage.get(fact.id) ?? fact.id;
+  const resolver = createVNextLineageResolver(graph);
+  const lineageOf = (fact: { id: string }) => resolver.lineageOf(fact.id);
   const workloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads);
   const owners = new Map<string, WorkloadFactV5[]>();
   for (const workload of workloads) {
-    const key = vnextOwnerKey(workload);
+    const key = resolver.ownerKeyOf(workload);
     owners.set(key, [...(owners.get(key) ?? []), workload]);
   }
   const result: VNextWorkUnitsByOwner[] = [];
   for (const [ownerKey, ownerWorkloads] of owners) {
-    const { taskId, componentId } = ownerWorkloads[0];
+    const taskId = resolver.leafOf(ownerWorkloads[0].taskId) ?? ownerWorkloads[0].taskId;
+    const componentId = ownerWorkloads[0].componentId === null
+      ? null
+      : resolver.leafOf(ownerWorkloads[0].componentId) ?? ownerWorkloads[0].componentId;
     const done = (issue: VNextWorkUnitIssue | null, units: VNextWorkUnit[]) =>
       result.push({ ownerKey, taskId, componentId, units: issue ? [] : units, issue });
     const unresolved = ownerWorkloads.filter((workload) =>
@@ -211,9 +234,10 @@ export function resolveVNextBindableWork(
   const workload = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads)
     .find((fact) => fact.id === workloadFactId);
   if (!workload) return null;
-  const lineageId = vnextLineageIdByFactId(graph).get(workload.id) ?? workload.id;
+  const resolver = createVNextLineageResolver(graph);
+  const lineageId = resolver.lineageOf(workload.id);
   if (workload.quantityRole === 'completed') return { workLineageId: lineageId, amount: workload.amount };
-  const owner = computeVNextWorkUnits(graph).find((entry) => entry.ownerKey === vnextOwnerKey(workload));
+  const owner = computeVNextWorkUnits(graph).find((entry) => entry.ownerKey === resolver.ownerKeyOf(workload));
   const unit = owner?.units.find((candidate) => candidate.workLineageId === lineageId);
   return unit ? { workLineageId: unit.workLineageId, amount: unit.amount } : null;
 }

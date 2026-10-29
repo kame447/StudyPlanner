@@ -148,6 +148,17 @@ describe('projectWeeklyPlanningVNext', () => {
     expect(projectWeeklyPlanningVNext(state)).toMatchObject({ questions: [], deferredQuestions: [{ key }] });
   });
 
+  it('keeps owner, work and task-level rate after the task title is corrected', () => {
+    let state = withTask([W('r', 'remaining', 10), rate('rate', 8)]);
+    state = turn(state, { patch: [{
+      kind: 'task', localId: 'title', targetFactId: taskId(state), changes: { category: null, title: 'スライド資料' },
+    }] });
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection.owners).toHaveLength(1);
+    expect(projection.owners[0]).toMatchObject({ status: 'ready', work: [{ minutes: 80 }] });
+    expect(projection.owners[0].taskId).not.toBe(state.graph.tasks[0].id);
+  });
+
   it('schedules a task with only a stated total time as minute work', () => {
     let state = withTask([]);
     state = turn(state, { add: [{ ...total(state, 'budget', taskId(state), 90), targetRef: { factId: taskId(state) } }] });

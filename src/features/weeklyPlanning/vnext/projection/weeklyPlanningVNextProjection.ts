@@ -17,9 +17,9 @@ import type {
 } from '../weeklyPlanningVNextTypes';
 import {
   computeVNextWorkUnits,
-  vnextLineageIdByFactId,
-  vnextOwnerKey,
+  createVNextLineageResolver,
   vnextUnitIdentity,
+  type VNextLineageResolver,
   type VNextWorkUnit,
   type VNextWorkUnitIssue,
 } from '../weeklyPlanningVNextWorkIdentity';
@@ -45,8 +45,7 @@ function questionKey(params: {
 
 interface ProjectionContext {
   state: WeeklyPlanningVNextState;
-  lineageOf: (factId: string) => string;
-  leafOfLineage: Map<string, string>;
+  resolver: VNextLineageResolver;
   workloadsById: Map<string, WorkloadFactV5>;
   activeWorkloads: WorkloadFactV5[];
   efforts: VNextEffortEstimateFact[];
@@ -68,7 +67,7 @@ function allPairs(lineages: string[], test: (a: string, b: string) => boolean): 
 }
 
 function relateOptions(context: ProjectionContext, lineageIds: string[]): VNextQuestionOption[] {
-  const ref = (lineageId: string) => ({ factId: context.leafOfLineage.get(lineageId) ?? lineageId });
+  const ref = (lineageId: string) => ({ factId: context.resolver.leafOf(lineageId) ?? lineageId });
   const pairs = lineageIds.flatMap((a, index) => lineageIds.slice(index + 1).map((b) => [a, b] as const));
   const option = (kind: VNextWorkRelationKind): VNextQuestionOption => ({
     optionId: kind,
@@ -120,12 +119,13 @@ function effortAppliesToWork(
   effort: VNextEffortEstimateFact,
   unit: VNextWorkUnit,
 ): boolean {
-  if (effort.taskId !== unit.workload.taskId) return false;
-  const leaf = context.leafOfLineage.get(context.lineageOf(effort.targetFactId)) ?? effort.targetFactId;
-  if (leaf === unit.workload.taskId) return true;
-  if (unit.workload.componentId !== null && leaf === unit.workload.componentId) return true;
-  const target = context.workloadsById.get(leaf);
-  return target !== undefined && vnextOwnerKey(target) === unit.ownerKey;
+  const { lineageOf, leafOf, ownerKeyOf } = context.resolver;
+  if (lineageOf(effort.taskId) !== lineageOf(unit.workload.taskId)) return false;
+  const targetLineage = lineageOf(effort.targetFactId);
+  if (targetLineage === lineageOf(unit.workload.taskId)) return true;
+  if (unit.workload.componentId !== null && targetLineage === lineageOf(unit.workload.componentId)) return true;
+  const target = context.workloadsById.get(leafOf(effort.targetFactId) ?? '');
+  return target !== undefined && ownerKeyOf(target) === unit.ownerKey;
 }
 
 interface EstimateCandidate {
@@ -173,9 +173,9 @@ function estimateCandidates(
       continue;
     }
     // A total stated for completed work of the same owner and unit is an observed pace.
-    const paceWork = context.workloadsById.get(context.leafOfLineage.get(binding.workLineageId) ?? '');
+    const paceWork = context.workloadsById.get(context.resolver.leafOf(binding.workLineageId) ?? '');
     if (paceWork && paceWork.quantityRole === 'completed' && binding.boundAmount > 0
-      && vnextOwnerKey(paceWork) === unit.ownerKey && vnextUnitIdentity(paceWork) === workIdentity) {
+      && context.resolver.ownerKeyOf(paceWork) === unit.ownerKey && vnextUnitIdentity(paceWork) === workIdentity) {
       candidates.push({
         minutes: (effort.minutes / binding.boundAmount) * unit.amount,
         basis: 'observed_pace',
@@ -259,13 +259,13 @@ function projectWorkloadOwner(
 
   const work: VNextWorkItem[] = [];
   for (const unit of units) {
-    const candidates = estimateCandidates(context, unit, unitsPerTask.get(unit.workload.taskId) ?? 0);
+    const candidates = estimateCandidates(context, unit, unitsPerTask.get(context.resolver.lineageOf(unit.workload.taskId)) ?? 0);
     const forWork = { workLineageId: unit.workLineageId, definingFactId: unit.definingFactId, amount: unit.amount };
     if (candidates.length === 0) {
       return ask('missing_effort_estimate', [unit.workLineageId], { forWork });
     }
     if (candidates.some((candidate) => !sameMinutes(candidate.minutes, candidates[0].minutes))) {
-      const effortLineages = candidates.flatMap((candidate) => candidate.effortIds.map(context.lineageOf));
+      const effortLineages = candidates.flatMap((candidate) => candidate.effortIds.map(context.resolver.lineageOf));
       return ask('effort_inconsistent', [unit.workLineageId, ...effortLineages], { forWork });
     }
     work.push(workItem(unit, {
@@ -282,8 +282,8 @@ function projectTaskTotalOwner(
   taskId: string,
   totals: VNextEffortEstimateFact[],
 ): VNextOwnerProjection {
-  const ownerKey = vnextOwnerKey({ taskId, componentId: null });
-  const lineageIds = totals.map((effort) => context.lineageOf(effort.id));
+  const ownerKey = context.resolver.ownerKeyOf({ taskId, componentId: null });
+  const lineageIds = totals.map((effort) => context.resolver.lineageOf(effort.id));
   if (totals.some((effort) => !sameMinutes(effort.minutes, totals[0].minutes))) {
     return {
       ownerKey, taskId, componentId: null, status: 'question', work: [],
@@ -297,7 +297,7 @@ function projectTaskTotalOwner(
   return {
     ownerKey, taskId, componentId: null, status: 'ready', question: null,
     work: [{
-      workLineageId: context.lineageOf(taskId),
+      workLineageId: context.resolver.lineageOf(taskId),
       definingFactId: taskId,
       ownerKey, taskId, componentId: null,
       quantityRole: 'target',
@@ -315,16 +315,11 @@ function projectTaskTotalOwner(
 
 export function projectWeeklyPlanningVNext(state: WeeklyPlanningVNextState): WeeklyPlanningVNextProjection {
   const graph = state.graph;
-  const lineage = vnextLineageIdByFactId(graph);
-  const lineageOf = (factId: string) => lineage.get(factId) ?? factId;
-  const activeIds = new Set(graph.factLifecycles.filter((entry) => entry.status === 'active').map((entry) => entry.factId));
-  const leafOfLineage = new Map<string, string>();
-  for (const [factId, root] of lineage) if (activeIds.has(factId)) leafOfLineage.set(root, factId);
+  const resolver = createVNextLineageResolver(graph);
   const activeWorkloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads);
   const context: ProjectionContext = {
     state,
-    lineageOf,
-    leafOfLineage,
+    resolver,
     workloadsById: new Map(graph.workloads.map((workload) => [workload.id, workload])),
     activeWorkloads,
     efforts: filterActiveWeeklyPlanningFactsV5(graph, graph.effortEstimates),
@@ -333,15 +328,17 @@ export function projectWeeklyPlanningVNext(state: WeeklyPlanningVNextState): Wee
   const workOwners = computeVNextWorkUnits(graph);
   const unitsPerTask = new Map<string, number>();
   for (const owner of workOwners) {
-    unitsPerTask.set(owner.taskId, (unitsPerTask.get(owner.taskId) ?? 0) + owner.units.length);
+    const taskLineage = resolver.lineageOf(owner.taskId);
+    unitsPerTask.set(taskLineage, (unitsPerTask.get(taskLineage) ?? 0) + owner.units.length);
   }
   const owners = workOwners.map((owner) => projectWorkloadOwner(context, owner, unitsPerTask));
 
   const tasks = filterActiveWeeklyPlanningFactsV5(graph, graph.tasks);
   for (const task of tasks) {
-    if (activeWorkloads.some((workload) => workload.taskId === task.id)) continue;
-    const totals = context.efforts.filter((effort) =>
-      effort.taskId === task.id && effort.kind === 'total_duration' && effort.targetFactId === task.id);
+    const taskLineage = resolver.lineageOf(task.id);
+    if (activeWorkloads.some((workload) => resolver.lineageOf(workload.taskId) === taskLineage)) continue;
+    const totals = context.efforts.filter((effort) => effort.kind === 'total_duration'
+      && resolver.lineageOf(effort.taskId) === taskLineage && resolver.lineageOf(effort.targetFactId) === taskLineage);
     if (totals.length > 0) owners.push(projectTaskTotalOwner(context, task.id, totals));
   }
   const taskOrder = new Map(tasks.map((task, index) => [task.id, index]));
