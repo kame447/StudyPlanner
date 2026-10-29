@@ -44,16 +44,6 @@ function emptyAiAggregate(): ObservabilityAiAggregate {
   };
 }
 
-function emptyPlanningAggregate(): ObservabilityPlanningAggregate {
-  return {
-    outcomeCounts: {},
-    previewCountSum: 0,
-    previewCountUnknownCount: 0,
-    unscheduledCountSum: 0,
-    unscheduledCountUnknownCount: 0,
-  };
-}
-
 function mergeAiAggregates(
   values: readonly ObservabilityAiAggregate[],
 ): ObservabilityAiAggregate {
@@ -86,7 +76,13 @@ function mergePlanningAggregates(
     unscheduledCountSum: merged.unscheduledCountSum + value.unscheduledCountSum,
     unscheduledCountUnknownCount:
       merged.unscheduledCountUnknownCount + value.unscheduledCountUnknownCount,
-  }), emptyPlanningAggregate());
+  }), {
+    outcomeCounts: {},
+    previewCountSum: 0,
+    previewCountUnknownCount: 0,
+    unscheduledCountSum: 0,
+    unscheduledCountUnknownCount: 0,
+  });
 }
 
 function firstTimestamp(values: readonly (string | null)[]): string | null {

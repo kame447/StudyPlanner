@@ -54,10 +54,6 @@ function isoTimestamp(value: unknown): string | null {
     : null;
 }
 
-function nonNegativeInteger(value: unknown): number | null {
-  return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
-}
-
 function ageSeconds(value: string | null, nowMs: number): number | null {
   if (!value) return null;
   const timestamp = new Date(value).getTime();
@@ -70,7 +66,9 @@ function aggregationProbe(
   environment: ObservabilityEnvironment,
 ): AggregationProbe | null {
   if (!value) return null;
-  const processedEventCount = nonNegativeInteger(value.processedEventCount);
+  const rawProcessedEventCount = value.processedEventCount;
+  const processedEventCount = Number.isSafeInteger(rawProcessedEventCount)
+    && Number(rawProcessedEventCount) >= 0 ? Number(rawProcessedEventCount) : null;
   const dirtySources = value.activeUserDirtySources;
   if (processedEventCount === null || (dirtySources !== undefined && !Array.isArray(dirtySources))) {
     return null;

@@ -56,6 +56,47 @@ function event(params: {
 }
 
 describe('planning session cohort projection', () => {
+  it.each([
+    { turnIndex: 1, expected: 1 },
+    { turnIndex: Number.MAX_SAFE_INTEGER, expected: Number.MAX_SAFE_INTEGER },
+    { turnIndex: 0, expected: null },
+    { turnIndex: -1, expected: null },
+    { turnIndex: 1.5, expected: null },
+    { turnIndex: NaN, expected: null },
+    { turnIndex: Infinity, expected: null },
+    { turnIndex: Number.MAX_SAFE_INTEGER + 1, expected: null },
+    { turnIndex: null, expected: null },
+    { turnIndex: undefined, expected: null },
+  ])('projects preview turn index $turnIndex as $expected', ({ turnIndex, expected }) => {
+    const nowIso = '2026-08-30T15:00:00.000Z';
+    const previewEvent = event({ outcomeType: 'preview_generated', occurredAt: nowIso });
+    // Assign after the fixture so undefined is not normalized to null.
+    Object.assign(previewEvent.payload, { turnIndex });
+
+    const summary = projectPlanningSessionSummary({ current: null, event: previewEvent, nowIso });
+
+    expect(summary.maxTurnIndex).toBe(expected);
+    expect(summary.firstPreviewTurnIndex).toBe(expected);
+    expect(summary.previewReached).toBe(true);
+  });
+
+  it('preserves known turn indices when a later preview has an invalid index', () => {
+    const nowIso = '2026-08-30T15:00:00.000Z';
+    const current = projectPlanningSessionSummary({
+      current: null,
+      event: event({ outcomeType: 'preview_generated', occurredAt: nowIso, turnIndex: 2 }),
+      nowIso,
+    });
+    const summary = projectPlanningSessionSummary({
+      current,
+      event: event({ outcomeType: 'preview_generated', occurredAt: nowIso, turnIndex: 0 }),
+      nowIso,
+    });
+
+    expect(summary.maxTurnIndex).toBe(2);
+    expect(summary.firstPreviewTurnIndex).toBe(2);
+  });
+
   it('keeps later outcomes in the session-start cohort and counts each session once', () => {
     const nowIso = '2026-08-30T15:00:00.000Z';
     const events = [

@@ -123,10 +123,6 @@ function finiteNonNegativeInteger(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-function finiteNonNegativeNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
-}
-
 function base64Url(bytes: Uint8Array): string {
   let binary = '';
   bytes.forEach((item) => {
@@ -289,6 +285,7 @@ function timelineItem(value: Record<string, unknown>): ObservabilityUserTimeline
     && typeof payload.model === 'string'
     && typeof payload.status === 'string'
     && aiStatuses.has(payload.status as AiRequestMetricStatus)) {
+    const durationMs = payload.durationMs;
     ai = {
       purpose: payload.purpose,
       phase: payload.phase,
@@ -300,7 +297,11 @@ function timelineItem(value: Record<string, unknown>): ObservabilityUserTimeline
       cacheWriteTokens: finiteNonNegativeInteger(payload.cacheWriteTokens),
       reasoningTokens: finiteNonNegativeInteger(payload.reasoningTokens),
       estimatedCostMicros: finiteNonNegativeInteger(payload.estimatedCostMicros),
-      durationMs: finiteNonNegativeNumber(payload.durationMs) ?? 0,
+      durationMs: typeof durationMs === 'number'
+        && Number.isFinite(durationMs)
+        && durationMs >= 0
+        ? durationMs
+        : 0,
     };
   }
 
