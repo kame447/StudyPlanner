@@ -117,6 +117,44 @@ function resolveTargetFactId(params: {
   return { factId: candidateId, error: null };
 }
 
+/**
+ * A replacement fact's own target is a "support" stub that is pruned once the replacement is rebased onto the
+ * corrected fact's target. A support fact that is itself the replacement of another correction of the same turn
+ * is an explicitly corrected fact (e.g. the new workload of a remaining correction) and is never pruned.
+ */
+export function pruneableSupportFactIdsV5(params: {
+  supportFactIds: Iterable<string>;
+  correctionReplacementFactIds: Iterable<string | null>;
+}): string[] {
+  const kept = new Set<string>();
+  for (const id of params.correctionReplacementFactIds) if (id) kept.add(id);
+  return [...params.supportFactIds].filter((id) => !kept.has(id));
+}
+
+/**
+ * Typed redundancy of a support fact with the surviving graph: only a workload that restates another active
+ * workload of the same task/component carries no content of its own. Any other support fact (or a workload with
+ * content absent from the graph) is user content that must not be deleted silently.
+ */
+export function isRedundantSupportFactV5(graph: WeeklyPlanningFactGraphV5, factId: string): boolean {
+  const support = graph.workloads.find((fact) => fact.id === factId);
+  if (!support) return false;
+  const activeIds = activeWeeklyPlanningFactIdsV5(graph);
+  return graph.workloads.some((other) =>
+    other.id !== support.id
+    && (!activeIds || activeIds.has(other.id))
+    && other.taskId === support.taskId
+    && other.componentId === support.componentId
+    && other.quantityRole === support.quantityRole
+    && other.amount === support.amount
+    && other.unitCode === support.unitCode
+    && (support.unitCode !== 'custom' || other.unitLabel === support.unitLabel)
+    && other.perOccurrence === support.perOccurrence
+    && other.periodExpression === support.periodExpression
+    && other.rangeStart === support.rangeStart
+    && other.rangeEnd === support.rangeEnd);
+}
+
 interface RebaseResult {
   graph: WeeklyPlanningFactGraphV5;
   orphanTaskIds: Set<string>;
@@ -141,6 +179,7 @@ function registerOrphanTask(params: {
 }
 
 function rebaseReplacement(params: {
+  applicableCorrectionIds: ReadonlySet<string>;
   graph: WeeklyPlanningFactGraphV5;
   correctionIntentFactId: string;
   targetFactId: string;
@@ -285,7 +324,15 @@ function rebaseReplacement(params: {
       correctionId: correction.id,
     });
     if (orphanError) errors.push(orphanError);
-    if (replacement.targetFactId !== target.targetFactId) {
+    // The replacement effort hangs from the workload that ANOTHER correction of this turn installs in place of the
+    // replaced effort's own workload (「残り8枚で全部60分」: remaining 10→8 and its total 80→60). It already targets
+    // the right fact; rebasing it onto the replaced workload would hang it from a superseded one.
+    const hangsFromReplacementOfTargetWorkload = replacement.targetFactId !== target.targetFactId
+      && graph.correctionIntents.some((other) => params.applicableCorrectionIds.has(other.id)
+        && other.id !== correction.id && other.operation !== 'remove' && other.target.kind === 'workload'
+        && other.replacementFactId === replacement.targetFactId
+        && (other.target.factId ?? other.target.publicId) === target.targetFactId);
+    if (replacement.targetFactId !== target.targetFactId && !hangsFromReplacementOfTargetWorkload) {
       if (!params.addedIds.has(replacement.targetFactId)) {
         errors.push(
           `replacement-support-not-created-in-turn:${correction.id}:${replacement.targetFactId}`,
@@ -298,7 +345,11 @@ function rebaseReplacement(params: {
       ...graph,
       effortEstimates: graph.effortEstimates.map((fact) =>
         fact.id === replacement.id
-          ? { ...fact, taskId: target.taskId, targetFactId: target.targetFactId }
+          ? {
+              ...fact,
+              taskId: target.taskId,
+              ...(hangsFromReplacementOfTargetWorkload ? {} : { targetFactId: target.targetFactId }),
+            }
           : fact),
     };
   } else if (targetKind === 'temporal_constraint') {
@@ -452,6 +503,7 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
     };
   }
 
+  const applicableCorrectionIds = new Set(correctionIds);
   const addedIds = new Set(params.canonicalization.diff.added.map((entry) => entry.id));
   const orphanTaskIds = new Set<string>();
   const orphanComponentIds = new Set<string>();
@@ -469,6 +521,7 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
       targetFactId: resolved.factId,
     });
     const rebased = rebaseReplacement({
+      applicableCorrectionIds,
       graph,
       correctionIntentFactId: correctionId,
       targetFactId: resolved.factId,
@@ -484,7 +537,42 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
   const added: WeeklyPlanningFactDiffEntryV5[] = [];
   const superseded: WeeklyPlanningFactDiffEntryV5[] = [];
   const removed: WeeklyPlanningFactDiffEntryV5[] = [];
+  // Efforts that an earlier workload correction of THIS transaction migrated (-> the fact they migrated to) or
+  // invalidated (-> the workload that replaced theirs). Earlier turns never appear here.
+  const migrated = new Map<string, string>();
+  const invalidatedWorkloadTargets = new Map<string, string>();
   for (const correctionId of correctionIds) {
+    const intent = graph.correctionIntents.find((fact) => fact.id === correctionId);
+    const intentTargetId = intent?.target.factId ?? null;
+    const retargetTo = intentTargetId ? migrated.get(intentTargetId) : undefined;
+    const invalidatedWorkloadId = intentTargetId ? invalidatedWorkloadTargets.get(intentTargetId) : undefined;
+    const activeIds = activeWeeklyPlanningFactIdsV5(graph);
+    const alreadyInstalled = Boolean(retargetTo && intent!.operation !== 'remove'
+      && intent!.replacementFactId === retargetTo && activeIds?.has(retargetTo));
+    const explicitReplacement = graph.effortEstimates.find((fact) => fact.id === intent?.replacementFactId);
+    const alreadyInvalidated = Boolean(invalidatedWorkloadId && intent?.target.kind === 'effort_estimate'
+      && (intent.operation === 'remove' || (explicitReplacement
+        && activeIds?.has(explicitReplacement.id)
+        && explicitReplacement.targetFactId === invalidatedWorkloadId)));
+    if (alreadyInstalled || alreadyInvalidated) {
+      // Only this transaction's exact migration can satisfy an explicit correction.
+      // Consume it once without self-superseding or reviving retired evidence.
+      migrated.delete(intentTargetId!);
+      invalidatedWorkloadTargets.delete(intentTargetId!);
+      const consumed = removeFact({
+        graph,
+        factId: correctionId,
+        operationKey: `${params.operationKeyPrefix}:correction:${correctionId}`,
+      });
+      if (consumed.error) return reject(params.originalGraph, [consumed.error]);
+      graph = consumed.graph;
+      removed.push(...consumed.removed);
+      continue;
+    }
+    if (retargetTo) {
+      migrated.delete(intentTargetId!);
+      graph = resolveCorrectionTargetInGraph({ graph, correctionIntentFactId: correctionId, targetFactId: retargetTo });
+    }
     const result = applyWeeklyPlanningCorrectionTransactionV5({
       graph,
       expectedRevision: graph.revision,
@@ -493,13 +581,38 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
     });
     if (result.status === 'rejected') return reject(params.originalGraph, result.errors);
     graph = result.graph;
+    if (intent?.target.kind === 'workload' && intent.operation !== 'remove' && intent.replacementFactId) {
+      // A workload correction itself only retires the workload, so every effort in its result came from the
+      // dependent migration policy.
+      for (const entry of result.superseded) {
+        if (entry.kind !== 'effort_estimate') continue;
+        const to = graph.factLifecycles.find((lifecycle) => lifecycle.factId === entry.id)?.supersededByFactId;
+        if (to) migrated.set(entry.id, to);
+      }
+      for (const entry of result.removed) {
+        if (entry.kind === 'effort_estimate') invalidatedWorkloadTargets.set(entry.id, intent.replacementFactId);
+      }
+    }
     added.push(...result.added);
     superseded.push(...result.superseded);
     removed.push(...result.removed);
   }
 
-  const pruneIds: string[] = [];
-  supportFactIds.forEach((id) => pruneIds.push(id));
+  const pruneableSupport = pruneableSupportFactIdsV5({
+    supportFactIds,
+    correctionReplacementFactIds: graph.correctionIntents
+      .filter((fact) => applicableCorrectionIds.has(fact.id))
+      .map((fact) => fact.replacementFactId),
+  });
+  const contentBearingSupport = pruneableSupport.filter((id) => !isRedundantSupportFactV5(graph, id));
+  if (contentBearingSupport.length > 0) {
+    // Never delete turn-created content that no correction installs: fail visibly and keep the original graph.
+    return reject(
+      params.originalGraph,
+      contentBearingSupport.map((id) => `replacement-support-not-installed:${id}`),
+    );
+  }
+  const pruneIds: string[] = [...pruneableSupport];
   [...orphanComponentIds]
     .sort((left, right) => {
       const leftDepth = graph.components.find((item) => item.id === left)?.parentComponentId ? 1 : 0;
