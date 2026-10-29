@@ -9,8 +9,8 @@ if (process.env.CI && process.env.UI_RETRY_CAPTURE === '1') {
 
 test.afterEach(async ({}, testInfo) => { await attachMaterialObservation(testInfo); });
 
-async function seedBookshelf(page, longTextFixture = null) {
-  await page.addInitScript(longTextFixture => {
+async function seedBookshelf(page, longTextFixture = null, materialCount = 2) {
+  await page.addInitScript(({ longTextFixture, materialCount }) => {
     if (localStorage.getItem('bookshelf-surface-seeded')) return;
     localStorage.setItem('bookshelf-surface-seeded', 'true');
     const today = new Date().toLocaleDateString('sv-SE');
@@ -114,7 +114,15 @@ async function seedBookshelf(page, longTextFixture = null) {
     localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify([subject]));
     localStorage.setItem(
       'studyplanner.studyMaterials.v1',
-      JSON.stringify([material, secondMaterial]),
+      JSON.stringify([
+        material,
+        secondMaterial,
+        ...Array.from({ length: materialCount - 2 }, (_, index) => ({
+          ...material,
+          id: `bookshelf-e2e-material-${index + 3}`,
+          name: `参考書 ${index + 3}`,
+        })),
+      ]),
     );
     localStorage.setItem(
       `studyplanner:material-detail:v1:${user.id}:${material.id}`,
@@ -152,7 +160,7 @@ async function seedBookshelf(page, longTextFixture = null) {
       localStorage.setItem('study-planner-appearance', 'pixel');
       localStorage.setItem('study-planner-theme-mode', 'light');
     }
-  }, longTextFixture);
+  }, { longTextFixture, materialCount });
 }
 
 async function openBookshelf(page) {
@@ -167,18 +175,8 @@ async function openBookshelf(page) {
 
 test('locks document scrolling while a bookshelf action sheet is open', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await seedBookshelf(page);
   // Enough rows that the bookshelf document scrolls behind the sheet.
-  await page.addInitScript(() => {
-    const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
-    if (materials.length > 2) return;
-    const extra = Array.from({ length: 22 }, (_, index) => ({
-      ...materials[0],
-      id: `bookshelf-e2e-material-${index + 3}`,
-      name: `参考書 ${index + 3}`,
-    }));
-    localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify([...materials, ...extra]));
-  });
+  await seedBookshelf(page, null, 24);
   await openBookshelf(page);
 
   const rowMenuButton = page.locator('.bookshelf-row-menu-button').nth(8);
@@ -190,14 +188,26 @@ test('locks document scrolling while a bookshelf action sheet is open', async ({
   await expect(overlay).toBeVisible();
   const lockedScrollY = await page.evaluate(() => window.scrollY);
   expect(lockedScrollY).toBeGreaterThan(0);
+  await page.evaluate(() => {
+    window.__wheelCount = 0;
+    window.addEventListener('wheel', () => { window.__wheelCount += 1; }, { capture: true, passive: true });
+  });
+  // mouse.wheel does not wait for scrolling: confirm delivery, then watch every frame for a while.
+  async function expectWheelIgnored(count) {
+    await page.mouse.wheel(0, 300);
+    await expect.poll(() => page.evaluate(() => window.__wheelCount)).toBe(count);
+    const positions = await page.evaluate(() => new Promise(resolve => {
+      const seen = [];
+      const sample = () => { seen.push(window.scrollY); seen.length < 30 ? requestAnimationFrame(sample) : resolve(seen); };
+      requestAnimationFrame(sample);
+    }));
+    expect(new Set(positions)).toEqual(new Set([lockedScrollY]));
+  }
 
   await page.mouse.move(10, 10);
-  await page.mouse.wheel(0, 300);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(lockedScrollY);
-
+  await expectWheelIgnored(1);
   await page.locator('.bookshelf-action-sheet').hover();
-  await page.mouse.wheel(0, 300);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(lockedScrollY);
+  await expectWheelIgnored(2);
 
   await overlay.click({ position: { x: 10, y: 10 } });
   await expect(overlay).toBeHidden();
