@@ -196,7 +196,7 @@ describe('projectWeeklyPlanningVNext', () => {
       let state = withTask([W('c', 'completed', 20, 'custom', '％')]);
       const [question] = projectWeeklyPlanningVNext(state).questions;
       expect(question.forWork?.amount).toBe(80);
-      state = turn(state, { add: [total(state, 'answer', question.forWork!.definingFactId, 60)] });
+      state = turn(state, { add: [total(state, 'answer', question.forWork!.answerTargetFactId, 60)] });
       expect(minutesOf(state)).toEqual([60]);
     });
 
@@ -260,5 +260,43 @@ describe('projectWeeklyPlanningVNext', () => {
       state = turn(state, { patch: [amountPatch('c12', active(state, 'completed'), 12)] });
       expect(projectWeeklyPlanningVNext(state).questions[0]?.code).toBe('remaining_inconsistent');
     });
+
+    it('R01 a total stated for completed percent progress is an observed pace', () => {
+      let state = withTask([W('c', 'completed', 20, 'custom', '%')]);
+      state = turn(state, { add: [total(state, 'observed', active(state, 'completed'), 60)] });
+      expect(projectWeeklyPlanningVNext(state).owners[0].work[0]).toMatchObject({ minutes: 240, estimateBasis: 'observed_pace' });
+    });
+
+    it('R02 the zero-remaining option is executable when all work is done', () => {
+      const state = withTask([page('t', 'scope_total', 20), page('c', 'completed', 20), page('r', 'remaining', 5)]);
+      const option = projectWeeklyPlanningVNext(state).questions[0].options.find((candidate) => candidate.optionId === 'remaining_follows_progress')!;
+      expect(option.value).toBe(0);
+      expect(projectWeeklyPlanningVNext(turn(state, option.delta))).toMatchObject({ questions: [], readiness: 'empty' });
+    });
+
+    it('R03 keeping one statement also removes a rate aimed only at the dropped one', () => {
+      let state = withTask([page('a', 'remaining', 10), W('b', 'remaining', 45, 'minute', '分')]);
+      state = turn(state, { add: [{ ...rate('rate', 4, 'page', null), taskRef: { factId: taskId(state) }, targetRef: { factId: active(state, 'remaining', 'page') } }] });
+      const keep = projectWeeklyPlanningVNext(state).questions[0].options.find((option) => option.value === 45)!;
+      expect(minutesOf(turn(state, keep.delta))).toEqual([45]);
+    });
+
+    it('R04 a valid answer about the current owner is accepted after a task rename', () => {
+      let state = withTask([page('r', 'remaining', 10)]);
+      state = turn(state, { patch: [{ kind: 'task', localId: 'renamed', targetFactId: taskId(state), changes: { category: null, title: '新しい名前' } }] });
+      const [question] = projectWeeklyPlanningVNext(state).questions;
+      state = turn(state, { add: [{ ...total(state, 'answer', question.forWork!.answerTargetFactId, 60), taskRef: { factId: question.taskId } }] });
+      expect(minutesOf(state)).toEqual([60]);
+    });
+
+    it('R05 a range with only one end is rejected, as V5 blocks it', () => {
+      const state = withTask([page('r', 'remaining', 10)]);
+      const result = applyWeeklyPlanningVNextTurn(state, {
+        add: [], remove: [], relate: [], defer: [],
+        patch: [{ ...amountPatch('half', active(state, 'remaining'), 0), changes: { ...amountPatch('x', '', 0).changes, amount: null, rangeStart: '1' } }],
+      }, { turnKey: 'half-range', expectedRevision: state.graph.revision, conversationId: 'conversation', turnId: 'half-range', sourceText: '1ページから' });
+      expect(result).toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ code: 'invalid_value', path: 'patch[0].changes.rangeEnd' })] });
+    });
   });
 });
+

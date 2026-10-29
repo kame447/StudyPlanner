@@ -79,7 +79,7 @@ export function bindWeeklyPlanningVNextAnswer(params: {
           kind: 'effort_estimate',
           localId: 'answer_estimate',
           taskRef: { factId: answer.taskFactId },
-          targetRef: { factId: question.forWork.definingFactId },
+          targetRef: { factId: question.forWork.answerTargetFactId },
           effortKind: 'total_duration',
           minutes: answer.minutes,
           unitCode: null,
@@ -93,7 +93,10 @@ export function bindWeeklyPlanningVNextAnswer(params: {
     const leaf = params.leafOf(lineageId);
     return leaf ? [leaf] : [];
   }));
-  if (question.forWork) subjects.add(question.forWork.definingFactId);
+  if (question.forWork) {
+    subjects.add(question.forWork.definingFactId);
+    subjects.add(question.forWork.answerTargetFactId);
+  }
   return referencedFactIds(answer.delta).some((id) => subjects.has(id))
     ? { status: 'bound', question, delta: answer.delta }
     : { status: 'not_an_answer' };

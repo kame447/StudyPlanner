@@ -279,8 +279,12 @@ export interface VNextQuestion {
   taskId: string;
   componentId: string | null;
   subjectLineageIds: string[];
-  /** The work an estimate answer will be bound to. */
-  forWork: { workLineageId: string; definingFactId: string; amount: number } | null;
+  /**
+   * The work an estimate answer will be bound to. `answerTargetFactId` is the fact
+   * an estimate answer targets: the defining fact, or the owner when the work is
+   * remaining percent progress (an estimate on completed work is an observed pace).
+   */
+  forWork: { workLineageId: string; definingFactId: string; answerTargetFactId: string; amount: number } | null;
   options: VNextQuestionOption[];
 }
 

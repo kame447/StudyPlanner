@@ -124,21 +124,33 @@ export function applyWeeklyPlanningVNextTurn(
     }
     return id;
   };
+  // Owners (task/component) are stored by the id their existing facts already use, the
+  // lineage root, so a renamed task or component keeps one consistent owner reference.
+  const stateLineage = vnextLineageIdByFactId(state.graph);
+  const ownerRef = (value: VNextFactRef, path: string): string => {
+    const id = ref(value, path);
+    return stateLineage.get(id) ?? id;
+  };
+  const targetRef = (value: VNextFactRef, path: string): string => {
+    const id = ref(value, path);
+    const kind = originalFacts.get(id)?.kind;
+    return kind === 'task' || kind === 'component' ? stateLineage.get(id) ?? id : id;
+  };
   const addPayload = (fact: VNextAddFact, path: string): Record<string, unknown> => {
     switch (fact.kind) {
       case 'task': return { category: fact.category, title: fact.title };
-      case 'component': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
-        parentComponentId: fact.parentComponentRef ? ref(fact.parentComponentRef, `${path}.parentComponentRef`) : null,
+      case 'component': return { taskId: ownerRef(fact.taskRef, `${path}.taskRef`),
+        parentComponentId: fact.parentComponentRef ? ownerRef(fact.parentComponentRef, `${path}.parentComponentRef`) : null,
         role: fact.role, label: fact.label };
-      case 'workload': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
-        componentId: fact.componentRef ? ref(fact.componentRef, `${path}.componentRef`) : null,
+      case 'workload': return { taskId: ownerRef(fact.taskRef, `${path}.taskRef`),
+        componentId: fact.componentRef ? ownerRef(fact.componentRef, `${path}.componentRef`) : null,
         quantityRole: fact.quantityRole, amount: fact.amount, unitCode: fact.unitCode, unitLabel: fact.unitLabel,
         rangeStart: fact.rangeStart, rangeEnd: fact.rangeEnd, perOccurrence: fact.perOccurrence, periodExpression: fact.periodExpression };
-      case 'effort_estimate': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
-        targetFactId: ref(fact.targetRef, `${path}.targetRef`), kind: fact.effortKind,
+      case 'effort_estimate': return { taskId: ownerRef(fact.taskRef, `${path}.taskRef`),
+        targetFactId: targetRef(fact.targetRef, `${path}.targetRef`), kind: fact.effortKind,
         minutes: fact.minutes, unitCode: fact.unitCode, unitLabel: fact.unitLabel, precision: fact.precision, workBinding: null };
-      case 'temporal_constraint': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
-        targetFactId: ref(fact.targetRef, `${path}.targetRef`), kind: fact.constraintKind,
+      case 'temporal_constraint': return { taskId: ownerRef(fact.taskRef, `${path}.taskRef`),
+        targetFactId: targetRef(fact.targetRef, `${path}.targetRef`), kind: fact.constraintKind,
         constraintLevel: fact.constraintLevel, dateExpression: fact.dateExpression, namedTimePeriod: fact.namedTimePeriod,
         startTime: fact.startTime, endTime: fact.endTime, precision: fact.precision };
     }
@@ -306,6 +318,13 @@ export function applyWeeklyPlanningVNextTurn(
       error('invalid_value', location ? `${location.path}${suffix}` : validationError,
         fact?.id ?? null, location?.localId ?? null);
     } else error('invalid_value', validationError);
+  }
+  for (const workload of graph.workloads) {
+    // A range needs both ends; one end alone cannot be placed (V5 blocks it as invalid_actual_range).
+    const location = locations.get(workload.id);
+    if (location && (workload.rangeStart === null) !== (workload.rangeEnd === null)) {
+      error('invalid_value', `${location.path}.${workload.rangeStart === null ? 'rangeStart' : 'rangeEnd'}`, workload.id, location.localId);
+    }
   }
   for (const effort of graph.effortEstimates) {
     if (touchedEfforts.has(effort.id) && effort.unitCode === 'custom'

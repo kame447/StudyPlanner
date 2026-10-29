@@ -227,9 +227,8 @@ export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWor
 
 /**
  * Lineage, current amount and basis of the work a workload fact stands for, used
- * to bind a total-duration estimate. A total stands for its derived remaining
- * (percent progress without a total is named by the completed fact); other
- * completed work stands for itself and its total is an observed pace.
+ * to bind a total-duration estimate. A total stands for its derived remaining;
+ * completed work stands for itself, and its total is an observed pace.
  */
 export function resolveVNextBindableWork(
   graph: WeeklyPlanningVNextGraph,
@@ -240,11 +239,11 @@ export function resolveVNextBindableWork(
   if (!workload) return null;
   const resolver = createVNextLineageResolver(graph);
   const lineageId = resolver.lineageOf(workload.id);
+  // A total stated for completed work is an observed pace of that completed amount.
+  if (workload.quantityRole === 'completed') {
+    return { workLineageId: lineageId, amount: workload.amount, basisKey: vnextQuantityBasisKey(workload) };
+  }
   const owner = computeVNextWorkUnits(graph).find((entry) => entry.ownerKey === resolver.ownerKeyOf(workload));
   const unit = owner?.units.find((candidate) => candidate.workLineageId === lineageId);
-  if (unit) return { workLineageId: unit.workLineageId, amount: unit.amount, basisKey: unit.basisKey };
-  // Completed work that names no remaining work: its total is an observed pace.
-  return workload.quantityRole === 'completed'
-    ? { workLineageId: lineageId, amount: workload.amount, basisKey: vnextQuantityBasisKey(workload) }
-    : null;
+  return unit ? { workLineageId: unit.workLineageId, amount: unit.amount, basisKey: unit.basisKey } : null;
 }

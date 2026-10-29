@@ -202,7 +202,7 @@ function toDelta(state: WeeklyPlanningVNextState, turn: FixtureTurn, turnIndex: 
   } else if (turn.answer?.value === 'estimate_60_minutes') {
     const question = projectWeeklyPlanningVNext(state).questions.find((candidate) => candidate.code === turn.answer?.question);
     if (question?.forWork) delta.add.push({ kind: 'effort_estimate', localId: `answer-${turnIndex}-estimate`,
-      taskRef: { factId: question.taskId }, targetRef: { factId: question.forWork.definingFactId },
+      taskRef: { factId: question.taskId }, targetRef: { factId: question.forWork.answerTargetFactId },
       effortKind: 'total_duration', minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' });
   }
   return delta;
