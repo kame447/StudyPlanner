@@ -62,6 +62,17 @@ for (const width of [320, 390, 1280]) {
   }
 }
 
+test('registration fits a standard phone screen with the motion control visible', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await openAuth(page);
+  await page.getByRole('tab', { name: '新規会員登録', exact: true }).click();
+  await expect(page.getByLabel('パスワード確認')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+  const toggle = await page.getByRole('button', { name: '星の動きを止める' }).boundingBox();
+  expect(toggle.y + toggle.height).toBeLessThanOrEqual(844);
+});
+
 for (const viewport of [
   { width: 390, height: 844 },
   { width: 390, height: 600 },
