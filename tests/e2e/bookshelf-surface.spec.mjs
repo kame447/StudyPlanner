@@ -173,7 +173,9 @@ async function openBookshelf(page) {
   await expect(page.locator('.bookshelf-view')).toBeVisible();
 }
 
-test('locks document scrolling while a bookshelf action sheet is open', async ({ page }) => {
+test('locks document scrolling while a bookshelf action sheet is open', async ({ page, browserName }, info) => {
+  test.skip(browserName === 'webkit' && info.project.use.isMobile === true,
+    'Playwright mobile WebKit does not support mouse.wheel; real iOS touch scrolling remains unverified.');
   await page.setViewportSize({ width: 390, height: 844 });
   // Enough rows that the bookshelf document scrolls behind the sheet.
   await seedBookshelf(page, null, 24);
