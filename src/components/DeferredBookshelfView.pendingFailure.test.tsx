@@ -28,7 +28,7 @@ it('ignores rejection after leaving pending entry and bounds cached failure for 
   const [open, home] = renderer.root.findAllByType('button');
   act(() => open.props.onClick());
   await act(async () => { await delivery.starting; });
-  expect(renderer.root.findAllByProps({ className: 'loading-screen splash-screen' })).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ className: 'route-skeleton route-skeleton--bookshelf' })).toHaveLength(1);
   act(() => { home.props.onClick(); renderer.update(<Harness owner="current-owner" />); });
   await act(async () => { delivery.release(); await vi.dynamicImportSettled(); });
   expect(renderer.root.findByType('p').children).toEqual(['Home content']);

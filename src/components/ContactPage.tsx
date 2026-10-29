@@ -1,4 +1,4 @@
-import { LoaderCircle } from 'lucide-react';
+import { RouteSkeleton } from './RouteSkeleton';
 import { Component, lazy, Suspense, type PropsWithChildren } from 'react';
 import type { AuthSessionService } from '../services/authSession';
 import { PublicPageLink } from './PublicPageLink';
@@ -22,7 +22,7 @@ export function ContactPage({ authSession }: { authSession?: AuthSessionService 
     <PublicPageLink className="legal-back-link" href="/">Laplanceへ戻る</PublicPageLink>
     <header className="legal-page-header"><p className="eyebrow">Laplance</p><h1>お問い合わせ</h1></header>
     <ContactContentBoundary>
-      <Suspense fallback={<p role="status" aria-label="お問い合わせを読み込み中"><LoaderCircle size={20} aria-hidden="true" /></p>}>
+      <Suspense fallback={<RouteSkeleton view="contact" />}>
         <ContactPageContent authSession={authSession} />
       </Suspense>
     </ContactContentBoundary>
