@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyWeeklyPlanningCanonicalCorrectionsV5,
+  isRedundantSupportFactV5,
+  pruneableSupportFactIdsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationV5';
 import {
   createEmptyWeeklyPlanningFactGraphV5,
@@ -316,5 +318,177 @@ describe('Stable V5 canonical correction application', () => {
       expect.stringContaining('correction-target-kind-mismatch'),
     ]);
     expect(first.graph.revision).toBe(1);
+  });
+});
+
+// Ported from PR #567 (#882 U4): same-turn replacement survival and bounded migration authority.
+describe('turn-created content that no correction installs is never deleted silently (X5d)', () => {
+  const effortTask = (localId: string, workloadLocalId: string | null, hours: number, effortLocalId: string, effortTarget: string, minutes: number): SemanticTaskV5 => ({
+    ...task(localId, '数学', workloadLocalId ?? 'unused', hours),
+    workloads: workloadLocalId ? task(localId, '数学', workloadLocalId, hours).workloads : [],
+    effortEstimates: [{ localId: effortLocalId, targetLocalId: effortTarget, kind: 'session_duration', minutes, unitCode: null, precision: 'approximate', sourceText: '1回分' }],
+  });
+
+  it('a replacement effort hanging from a new workload that no correction installs fails visibly', () => {
+    const first = canonicalize({
+      document: document({ tasks: [effortTask('task-old', 'workload-old', 3, 'effort-old', 'task-old', 45)] }),
+      conversationId: 'conversation-support', turnId: 'turn-1',
+    });
+    const second = canonicalize({
+      graph: first.graph,
+      document: document({
+        tasks: [effortTask('task-new', 'workload-new', 1, 'effort-new', 'workload-new', 30)],
+        corrections: [{
+          localId: 'correction-effort',
+          target: { kind: 'effort_estimate', publicId: first.localToFactId['effort-old'], localId: null, mention: null },
+          operation: 'replace', replacementLocalId: 'effort-new', sourceText: '1回30分',
+        }],
+      }),
+      conversationId: 'conversation-support', turnId: 'turn-2',
+    });
+    const applied = applyWeeklyPlanningCanonicalCorrectionsV5({
+      originalGraph: first.graph, canonicalization: second, operationKeyPrefix: 'conversation-support:turn-2',
+    });
+    expect(applied.status).toBe('rejected');
+    expect(applied.errors.join('|')).toContain('replacement-support-not-installed:');
+  });
+});
+
+
+describe('x9a: retargeting a correction to the migrated fact (typed, same transaction only)', () => {
+  const holder = (localId: string, workloadLocalId: string, hours: number, efforts: Array<{ localId: string; target: string; minutes: number }>): SemanticTaskV5 => ({
+    ...task(localId, '数学', workloadLocalId, hours),
+    effortEstimates: efforts.map((effort) => ({ localId: effort.localId, targetLocalId: effort.target, kind: 'session_duration' as const,
+      minutes: effort.minutes, unitCode: null, precision: 'approximate' as const, sourceText: '1回分' })),
+  });
+  const correction = (localId: string, kind: 'workload' | 'effort_estimate', publicId: string, replacementLocalId: string) => ({
+    localId, target: { kind, publicId, localId: null, mention: null }, operation: 'replace' as const, replacementLocalId, sourceText: '変更',
+  });
+  const setup = () => {
+    const first = canonicalize({ document: document({ tasks: [holder('task-old', 'workload-old', 3, [{ localId: 'effort-old', target: 'workload-old', minutes: 45 }])] }),
+      conversationId: 'conversation-x9a', turnId: 'turn-1' });
+    return { first, workloadId: first.localToFactId['workload-old'], effortId: first.localToFactId['effort-old'] };
+  };
+  const apply = (first: ReturnType<typeof canonicalize>, corrections: ReturnType<typeof correction>[], tasks: SemanticTaskV5[]) => {
+    const second = canonicalize({ graph: first.graph, document: document({ tasks, corrections }), conversationId: 'conversation-x9a', turnId: 'turn-2' });
+    return applyWeeklyPlanningCanonicalCorrectionsV5({ originalGraph: first.graph, canonicalization: second, operationKeyPrefix: 'conversation-x9a:turn-2' });
+  };
+
+  it.each(['replace', 'modify'] as const)('preserves paired effort corrections when workload operation is %s', workloadOperation => {
+    for (const effortOperation of ['replace', 'modify'] as const) for (const minutes of [30, 45]) for (const order of ['workload-first', 'effort-first']) {
+      const { first, workloadId, effortId } = setup();
+      const corrections = [{ ...correction('c1', 'workload', workloadId, 'workload-new'), operation: workloadOperation },
+        { ...correction('c2', 'effort_estimate', effortId, 'effort-new'), operation: effortOperation }];
+      const second = canonicalize({ graph: first.graph, document: document({ tasks: [holder('task-new', 'workload-new', 1,
+        [{ localId: 'effort-new', target: 'workload-new', minutes }])], corrections: order === 'workload-first' ? corrections : [...corrections].reverse() }),
+        conversationId: 'conversation-x9a', turnId: 'turn-2' });
+      const applied = applyWeeklyPlanningCanonicalCorrectionsV5({ originalGraph: first.graph, canonicalization: second, operationKeyPrefix: 'conversation-x9a:turn-2' });
+      expect(applied.status, `${workloadOperation}/${effortOperation}/${minutes}/${order}: ${applied.errors}`).toBe('applied');
+      const active = activeIds(applied.graph);
+      const efforts = applied.graph.effortEstimates.filter(fact => active.has(fact.id));
+      const workloads = applied.graph.workloads.filter(fact => active.has(fact.id));
+      expect(efforts.map(fact => fact.minutes)).toEqual([minutes]);
+      expect(workloads.map(fact => fact.amount)).toEqual([1]);
+      expect(efforts[0].targetFactId).toBe(workloads[0].id);
+      expect(validateWeeklyPlanningFactGraphValueV5(applied.graph).errors).toEqual([]);
+    }
+  });
+
+  it('only a migration of this transaction retargets: a target superseded by another correction of the same turn stays rejected', () => {
+    const { first, effortId } = setup();
+    const applied = apply(first, [correction('c2', 'effort_estimate', effortId, 'effort-new'), correction('c2b', 'effort_estimate', effortId, 'effort-new2')],
+      [holder('task-new', 'workload-new', 1, [{ localId: 'effort-new', target: 'workload-new', minutes: 30 }, { localId: 'effort-new2', target: 'workload-new', minutes: 20 }])]);
+    expect(applied.status).toBe('rejected');
+    expect(applied.errors.join('|')).toContain('not-active');
+  });
+});
+
+describe('same-turn migration authorization is bounded', () => {
+  it.each(['workload-first', 'effort-first'])('reuses the exact explicit equivalent effort for %s', order => {
+    const holder = (localId: string, amount: number): SemanticTaskV5 => ({ ...task(localId, 'synthetic', `${localId}-work`, amount),
+      effortEstimates: [{ localId: `${localId}-effort`, targetLocalId: `${localId}-work`, kind: 'duration_per_unit', minutes: 3,
+        unitCode: 'hour', precision: 'approximate', sourceText: 'synthetic' }] });
+    const first = canonicalize({ document: document({ tasks: [holder('old', 3)] }), conversationId: 'reuse', turnId: 'one' });
+    const corrections: WeeklyPlanningSemanticDocumentV5['corrections'] = [
+      { localId: 'work-correction', target: { kind: 'workload', publicId: first.localToFactId['old-work'], localId: null, mention: null }, operation: 'modify', replacementLocalId: 'new-work', sourceText: 'synthetic' },
+      { localId: 'effort-correction', target: { kind: 'effort_estimate', publicId: first.localToFactId['old-effort'], localId: null, mention: null }, operation: 'replace', replacementLocalId: 'new-effort', sourceText: 'synthetic' },
+    ];
+    const second = canonicalize({ graph: first.graph, document: document({ tasks: [holder('new', 1)], corrections: order === 'workload-first' ? corrections : corrections.reverse() }),
+      conversationId: 'reuse', turnId: 'two' });
+    const applied = applyWeeklyPlanningCanonicalCorrectionsV5({ originalGraph: first.graph, canonicalization: second, operationKeyPrefix: 'reuse:two' });
+    expect(applied.status, applied.errors.join('|')).toBe('applied');
+    const active = activeIds(applied.graph);
+    expect(applied.graph.effortEstimates.filter(fact => active.has(fact.id))).toEqual([expect.objectContaining({ id: second.localToFactId['new-effort'], targetFactId: second.localToFactId['new-work'], minutes: 3 })]);
+    expect(applied.graph.factLifecycles.find(entry => entry.factId === first.localToFactId['old-effort'])?.supersededByFactId).toBe(second.localToFactId['new-effort']);
+    expect(applied.graph.factLifecycles.find(entry => entry.factId === second.localToFactId['effort-correction'])?.status).toBe('removed');
+    expect(applied.graph.appliedLifecycleOperationKeys).toContain(`reuse:two:correction:${second.localToFactId['effort-correction']}`);
+    expect(applied.graph.factLifecycles.every(entry => entry.supersededByFactId !== entry.factId)).toBe(true);
+    expect(applied.graph.effortEstimates).toHaveLength(2);
+    expect(validateWeeklyPlanningFactGraphValueV5(applied.graph).errors).toEqual([]);
+
+    const thirdDocument = document({ tasks: [holder('new', 1)], corrections: [...corrections,
+      { ...corrections.find(correction => correction.localId === 'effort-correction')!, localId: 'third-effort-correction' }] });
+    const thirdStaged = canonicalize({ graph: first.graph, document: thirdDocument, conversationId: 'reuse', turnId: 'two' });
+    const third = applyWeeklyPlanningCanonicalCorrectionsV5({ originalGraph: first.graph, canonicalization: thirdStaged, operationKeyPrefix: 'reuse:two' });
+    expect(third.status).toBe('rejected');
+    expect(third.graph).toBe(first.graph);
+    expect(third.added).toEqual([]);
+    expect(third.superseded).toEqual([]);
+    expect(third.removed).toEqual([]);
+  });
+
+  it('a retained historical correction cannot authorize an effort rebind in a later turn', () => {
+    const original = createEmptyWeeklyPlanningFactGraphV5();
+    const source = { conversationId: 'decoy', turnId: 'old', semanticLocalId: 'old', sourceText: 'synthetic', origin: 'user' as const };
+    original.revision = 2;
+    original.tasks = [{ id: 'task', category: 'study', title: 'synthetic', source, createdRevision: 1 }];
+    const workload = { taskId: 'task', componentId: null, quantityRole: 'target' as const, amount: 20, unitCode: 'problem' as const, unitLabel: '問', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, source, createdRevision: 1 };
+    original.workloads = [{ ...workload, id: 'work' }, { ...workload, id: 'unrelated', amount: 5 }];
+    original.effortEstimates = [{ id: 'effort', taskId: 'task', targetFactId: 'work', kind: 'session_duration', minutes: 30, unitCode: null, precision: 'exact', source, createdRevision: 1 }];
+    original.correctionIntents = [{ id: 'historical-decoy', target: { kind: 'workload', factId: 'work', publicId: 'work', mention: null }, operation: 'replace', replacementFactId: 'unrelated', source, createdRevision: 1 }];
+    original.factLifecycles = [...original.tasks, ...original.workloads, ...original.effortEstimates].map(fact => ({ factId: fact.id, status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null }));
+    original.factLifecycles.push({ factId: 'historical-decoy', status: 'removed', createdRevision: 1, terminalRevision: 2, supersededByFactId: null });
+    expect(validateWeeklyPlanningFactGraphValueV5(original).errors).toEqual([]);
+    const graph = structuredClone(original);
+    graph.revision = 3;
+    graph.effortEstimates.push({ ...graph.effortEstimates[0], id: 'new-effort', targetFactId: 'unrelated', minutes: 20, createdRevision: 3 });
+    graph.correctionIntents.push({ ...graph.correctionIntents[0], id: 'current', target: { kind: 'effort_estimate', factId: 'effort', publicId: 'effort', mention: null }, replacementFactId: 'new-effort', createdRevision: 3 });
+    graph.factLifecycles.push(...['new-effort', 'current'].map(factId => ({ factId, status: 'active' as const, createdRevision: 3, terminalRevision: null, supersededByFactId: null })));
+    const applied = applyWeeklyPlanningCanonicalCorrectionsV5({ originalGraph: original, canonicalization: {
+      status: 'applied', graph, localToFactId: {}, errors: [], diff: { fromRevision: 2, toRevision: 3, added: [{ kind: 'effort_estimate', id: 'new-effort' }, { kind: 'correction_intent', id: 'current' }], superseded: [], removed: [] },
+    }, operationKeyPrefix: 'decoy:current' });
+    expect(applied.status).toBe('rejected');
+    expect(applied.graph).toBe(original);
+    expect(applied.errors.join('|')).toContain('replacement-support-not-created-in-turn');
+  });
+});
+
+describe('pruneableSupportFactIdsV5', () => {
+  it('keeps a support fact that is the replacement of a correction of the turn and still prunes a stub', () => {
+    expect(pruneableSupportFactIdsV5({
+      supportFactIds: new Set(['new-workload', 'stub']),
+      correctionReplacementFactIds: ['new-workload', null],
+    })).toEqual(['stub']);
+  });
+  it('prunes every support fact when no correction names it as a replacement', () => {
+    expect(pruneableSupportFactIdsV5({ supportFactIds: ['a', 'b'], correctionReplacementFactIds: ['c'] })).toEqual(['a', 'b']);
+  });
+});
+
+describe('isRedundantSupportFactV5', () => {
+  const workload = (id: string, over: Record<string, unknown> = {}) => ({ id, taskId: 't', componentId: null, quantityRole: 'target', amount: 90,
+    unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, ...over });
+  const graph = (workloads: Array<{ id: string }>) => ({ workloads, factLifecycles: workloads.map(w => ({ factId: w.id, status: 'active' })) }) as never;
+  it('a workload restating another active workload of the task is redundant', () => {
+    expect(isRedundantSupportFactV5(graph([workload('a'), workload('b')]), 'b')).toBe(true);
+    expect(isRedundantSupportFactV5(graph([workload('a'), workload('b', { unitLabel: 'minutes' })]), 'b')).toBe(true);
+  });
+  it('a workload with content absent from the graph is not redundant', () => {
+    expect(isRedundantSupportFactV5(graph([workload('a'), workload('b', { amount: 60 })]), 'b')).toBe(false);
+    expect(isRedundantSupportFactV5(graph([workload('a'), workload('b', { perOccurrence: true })]), 'b')).toBe(false);
+    expect(isRedundantSupportFactV5(graph([workload('a', { unitCode: 'custom', unitLabel: 'chapter' }), workload('b', { unitCode: 'custom', unitLabel: 'set' })]), 'b')).toBe(false);
+  });
+  it('a non-workload support fact is never redundant', () => {
+    expect(isRedundantSupportFactV5(graph([workload('a')]), 'not-a-workload')).toBe(false);
   });
 });
