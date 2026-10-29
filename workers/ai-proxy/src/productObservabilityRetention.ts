@@ -5,11 +5,17 @@ import {
   type FirestoreServiceAccountEnv,
 } from './firestoreServiceAccountClient';
 
-const RETENTION_COLLECTIONS = [
+export const PRODUCT_OBSERVABILITY_RETENTION_COLLECTIONS = [
   'observability_events',
   'observability_actor_day',
   'observability_daily_rollups',
   'observability_active_user_windows',
+] as const;
+// Swept in a separate schedule phase so each commit stays below 500 writes.
+export const WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS = [
+  'weekly_planning_trace_sessions',
+  'weekly_planning_trace_entries',
+  'weekly_planning_trace_access_audit',
 ] as const;
 const DEFAULT_RETENTION_BATCH_SIZE = 100;
 const MAX_RETENTION_BATCH_SIZE = 100;
@@ -47,6 +53,7 @@ export class ProductObservabilityRetentionService {
     env: ProductObservabilityRetentionEnv,
     private readonly firestore: ObservabilityRetentionFirestore = new FirestoreServiceAccountClient(env),
     private readonly now: () => Date = () => new Date(),
+    private readonly collections: readonly string[] = PRODUCT_OBSERVABILITY_RETENTION_COLLECTIONS,
   ) {}
 
   async runBatch(
@@ -58,7 +65,7 @@ export class ProductObservabilityRetentionService {
     let hasMore = false;
     const deletes: FirestoreBulkDocumentWrite[] = [];
 
-    for (const collection of RETENTION_COLLECTIONS) {
+    for (const collection of this.collections) {
       const first = await this.firestore.queryDocumentsAfter({
         collection,
         orderByField: 'expireAt',

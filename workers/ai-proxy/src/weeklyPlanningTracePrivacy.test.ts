@@ -233,6 +233,15 @@ describe('weekly planning trace privacy boundary', () => {
     expect(withOldExpired['691']).toBeUndefined();
     expect(withOldExpired['692']).toBe(nextMonth['692']);
     expect(withOldExpired['698']).toMatch(/^[a-f0-9]{64}$/);
+    const forDeletion = await resolveWeeklyPlanningTraceHmacSecretRing({
+      raw,
+      now: new Date(698 * 30 * 24 * 60 * 60 * 1000),
+      derivedCoverage: 'since-root',
+    });
+    expect(forDeletion['691']).toBe(first['691']);
+    expect(forDeletion['698']).toBe(withOldExpired['698']);
+    expect(traceSubjectEpochsForDeletion(forDeletion))
+      .toEqual(Array.from({ length: 10 }, (_, index) => String(689 + index)));
   });
 
   it('uses epochs no longer than thirty days and assigns a 180 day expiry', () => {

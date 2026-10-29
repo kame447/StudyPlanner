@@ -46,7 +46,9 @@ import {
   type ProductObservabilityUserEnrichmentBackfillEnv,
 } from './productObservabilityUserEnrichmentBackfill';
 import {
+  PRODUCT_OBSERVABILITY_RETENTION_COLLECTIONS,
   ProductObservabilityRetentionService,
+  WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS,
   type ProductObservabilityRetentionEnv,
 } from './productObservabilityRetention';
 import {
@@ -86,6 +88,7 @@ export type ScheduledObservabilityPhase =
   | 'active_user_snapshot'
   | 'profile_registration_backfill'
   | 'retention'
+  | 'trace_retention'
   | 'no_op';
 
 export function scheduledObservabilityPhase(scheduledTime: number): ScheduledObservabilityPhase {
@@ -96,7 +99,8 @@ export function scheduledObservabilityPhase(scheduledTime: number): ScheduledObs
     case 1: return 'active_user_snapshot';
     case 2: return 'profile_registration_backfill';
     case 3: return 'retention';
-    default: return 'no_op';
+    // Firestore TTL needs billing, so the Worker enforces the trace expireAt.
+    default: return minute % 10 === 4 ? 'trace_retention' : 'no_op';
   }
 }
 
@@ -184,10 +188,13 @@ async function runScheduledProfileRegistrationBackfill(
 async function runScheduledObservabilityRetention(
   env: Record<string, unknown>,
   firestore: FirestoreServiceAccountClient,
+  collections: readonly string[] = PRODUCT_OBSERVABILITY_RETENTION_COLLECTIONS,
 ): Promise<void> {
   const retention = new ProductObservabilityRetentionService(
     env as unknown as ProductObservabilityRetentionEnv,
     firestore,
+    undefined,
+    collections,
   );
   for (let index = 0; index < MAX_RETENTION_BATCHES_PER_SCHEDULE; index += 1) {
     const result = await retention.runBatch(RETENTION_BATCH_SIZE);
@@ -216,6 +223,13 @@ async function runScheduledObservabilityMaintenance(
       return;
     case 'retention':
       await runScheduledObservabilityRetention(env, firestore);
+      return;
+    case 'trace_retention':
+      await runScheduledObservabilityRetention(
+        env,
+        firestore,
+        WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS,
+      );
   }
 }
 

@@ -539,7 +539,7 @@ describe('traceWorker scheduled subrequest budget', () => {
       'active_user_snapshot',
       'profile_registration_backfill',
       'retention',
-      'no_op',
+      'trace_retention',
       'active_user_snapshot',
       'no_op',
       'rollup',
@@ -555,7 +555,7 @@ describe('traceWorker scheduled subrequest budget', () => {
 
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal('fetch', fetchMock);
-    await runScheduled(4);
+    await runScheduled(9);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -746,5 +746,23 @@ describe('traceWorker scheduled subrequest budget', () => {
     await runScheduled(3);
     expect(externalCalls(backlog) - firstCalls).toBe(19);
     expect(backlog.retentionDeleted).toBe(1_600);
+  });
+
+  it('sweeps only the three trace collections in two 300-delete commits at exact 4 and 15', async () => {
+    const steady = installScenario('retention');
+    await runScheduled(4);
+    expect(externalCalls(steady)).toBe(4);
+    expect(steady.calls.filter((call) => call.url.includes(':runQuery'))
+      .map((call) => collectionFromQuery(call.init))).toEqual([
+      'weekly_planning_trace_sessions',
+      'weekly_planning_trace_entries',
+      'weekly_planning_trace_access_audit',
+    ]);
+
+    vi.unstubAllGlobals();
+    const backlog = installScenario('retention', { retentionMax: true });
+    await runScheduled(14);
+    expect(externalCalls(backlog)).toBe(15);
+    expect(backlog.retentionDeleted).toBe(600);
   });
 });

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ProductObservabilityRetentionService } from './productObservabilityRetention';
+import {
+  ProductObservabilityRetentionService,
+  WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS,
+} from './productObservabilityRetention';
 
 type Row = Record<string, unknown> & {
   id: string;
@@ -53,7 +56,10 @@ class MemoryRetentionFirestore {
   }
 }
 
-function service(firestore: MemoryRetentionFirestore): ProductObservabilityRetentionService {
+function service(
+  firestore: MemoryRetentionFirestore,
+  collections?: readonly string[],
+): ProductObservabilityRetentionService {
   return new ProductObservabilityRetentionService(
     {
       FIREBASE_PROJECT_ID: 'test',
@@ -62,10 +68,32 @@ function service(firestore: MemoryRetentionFirestore): ProductObservabilityReten
     },
     firestore as never,
     () => new Date('2026-08-28T12:00:00.000Z'),
+    collections,
   );
 }
 
 describe('ProductObservabilityRetentionService', () => {
+  it('sweeps expired trace sessions, entries and audits only when given the trace collections', async () => {
+    const firestore = new MemoryRetentionFirestore();
+    firestore.add('weekly_planning_trace_sessions', 'expired-session', '2026-08-28T11:00:00.000Z');
+    firestore.add('weekly_planning_trace_sessions', 'live-session', '2027-02-24T11:00:00.000Z');
+    firestore.add('weekly_planning_trace_entries', 'expired-entry', '2026-08-27T11:00:00.000Z');
+    firestore.add('weekly_planning_trace_access_audit', 'expired-audit', '2026-08-28T10:00:00.000Z');
+    firestore.add('observability_events', 'expired-event', '2026-08-28T11:00:00.000Z');
+
+    expect(await service(firestore).runBatch(100)).toEqual({ deleted: 1, hasMore: false });
+    expect(await service(firestore, WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS).runBatch(100))
+      .toEqual({ deleted: 3, hasMore: false });
+    expect(firestore.deleted).toEqual([
+      'observability_events/expired-event',
+      'weekly_planning_trace_sessions/expired-session',
+      'weekly_planning_trace_entries/expired-entry',
+      'weekly_planning_trace_access_audit/expired-audit',
+    ]);
+    expect(firestore.rows.get('weekly_planning_trace_sessions')?.map((row) => row.id))
+      .toEqual(['live-session']);
+  });
+
   it('deletes only the expired ordered prefix from retained observability collections', async () => {
     const firestore = new MemoryRetentionFirestore();
     firestore.add('observability_events', 'expired-event', '2026-08-28T11:00:00.000Z');
