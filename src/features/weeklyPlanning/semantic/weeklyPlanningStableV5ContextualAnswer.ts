@@ -32,6 +32,7 @@ import {
 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
+  WeeklyPlanningSemanticCanonicalizationContextV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
 
 /*
@@ -59,6 +60,7 @@ export interface WeeklyPlanningStableV5ContextualAnswerInput {
   turnId: string;
   expectedRevision: number;
   userText: string;
+  calendarContext?: WeeklyPlanningSemanticCanonicalizationContextV5['calendarContext'];
 }
 
 export type WeeklyPlanningStableV5ContextualAnswerEvaluationStatus =
@@ -468,6 +470,7 @@ function applySemanticUncertaintyAnswer(
       conversationId: input.conversationId,
       turnId: input.turnId,
       expectedRevision: input.expectedRevision,
+      calendarContext: input.calendarContext,
     },
   });
   if (canonicalization.status !== 'applied' || !canonicalization.diff) {

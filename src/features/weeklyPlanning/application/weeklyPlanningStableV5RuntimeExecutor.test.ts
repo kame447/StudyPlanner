@@ -619,7 +619,9 @@ describe('Stable V5 runtime executor', () => {
     const corrected = getWeeklyPlanningStableV5StagedGraph({ ownerId: common.userId,
       conversationId: common.conversationId, requestId: 'request-date-2' });
     const activeIds = new Set(corrected?.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
-    expect(corrected?.planningWindows.filter(window => activeIds.has(window.id))).toEqual([expect.objectContaining({ value: 'today' })]);
+    expect(corrected?.planningWindows.filter(window => activeIds.has(window.id))).toEqual([expect.objectContaining({
+      kind: 'absolute', value: '2026-07-24', start: '2026-07-24', end: '2026-07-24',
+    })]);
     expect(corrected?.tasks).toEqual([]);
   });
 

@@ -18,6 +18,8 @@ import {
 } from './weeklyPlanningSemanticDocumentV5';
 import { validateWeeklyPlanningSemanticValueV5 } from './weeklyPlanningSemanticValidatorV5';
 import { weeklyPlanningEvidenceChannelForSourceTextV5 } from './weeklyPlanningCurrentTurnProvenanceV5';
+import { CANONICAL_RELATIVE_DATE_EXPRESSIONS, resolveCanonicalDateExpression,
+  type CalendarWeekStartsOn } from './weeklyPlanningCalendarResolver';
 
 export interface WeeklyPlanningSemanticCanonicalizationContextV5 {
   conversationId: string;
@@ -25,6 +27,20 @@ export interface WeeklyPlanningSemanticCanonicalizationContextV5 {
   expectedRevision: number;
   userText?: string;
   supplementalContext?: string;
+  /** Captured acceptance-turn calendar, never a clock reconstructed from stored facts. */
+  calendarContext?: { currentDate: string; weekStartsOn?: CalendarWeekStartsOn };
+}
+
+function acceptedDateExpression(
+  expression: string | null,
+  context: WeeklyPlanningSemanticCanonicalizationContextV5,
+): string | null {
+  if (!expression || !context.calendarContext
+    || !(CANONICAL_RELATIVE_DATE_EXPRESSIONS as readonly string[]).includes(expression)) return expression;
+  const resolved = resolveCanonicalDateExpression({ expression, ...context.calendarContext });
+  if (resolved.status !== 'resolved') return expression;
+  return resolved.range.start === resolved.range.end
+    ? resolved.range.start : `${resolved.range.start}/${resolved.range.end}`;
 }
 
 export interface WeeklyPlanningSemanticCanonicalizationResultV5 {
@@ -251,13 +267,16 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
     added.push({ kind, id });
   };
 
+  const dayExpression = document.planningWindow?.kind === 'relative_day'
+    ? acceptedDateExpression(document.planningWindow.value, params.context) : null;
+  const absoluteDay = dayExpression && dayExpression !== document.planningWindow?.value ? dayExpression : null;
   const planningWindows = document.planningWindow
     ? [{
         id: requireFactId(document.planningWindow.localId),
-        kind: document.planningWindow.kind,
-        value: document.planningWindow.value,
-        start: document.planningWindow.start,
-        end: document.planningWindow.end,
+        kind: absoluteDay ? 'absolute' as const : document.planningWindow.kind,
+        value: absoluteDay ?? document.planningWindow.value,
+        start: absoluteDay ?? document.planningWindow.start,
+        end: absoluteDay ?? document.planningWindow.end,
         source: createSource({
           context: params.context,
           semanticLocalId: document.planningWindow.localId,
@@ -397,7 +416,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
         targetFactId: requireFactId(constraint.targetLocalId),
         kind: constraint.kind,
         constraintLevel: constraint.constraintLevel,
-        dateExpression: constraint.dateExpression,
+        dateExpression: acceptedDateExpression(constraint.dateExpression, params.context),
         namedTimePeriod: constraint.namedTimePeriod,
         startTime: constraint.startTime,
         endTime: constraint.endTime,
@@ -420,7 +439,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
         taskId: requireFactId(task.localId),
         targetFactId: requireFactId(constraint.targetLocalId),
         kind: constraint.kind,
-        dateExpression: constraint.dateExpression ?? '',
+        dateExpression: acceptedDateExpression(constraint.dateExpression, params.context) ?? '',
         constraintLevel: constraint.constraintLevel,
         source: createSource({
           context: params.context,
@@ -474,7 +493,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
     const fact = {
       id: requireFactId(declaration.localId),
       kind: declaration.kind,
-      dateExpression: declaration.dateExpression,
+      dateExpression: acceptedDateExpression(declaration.dateExpression, params.context),
       namedTimePeriod: declaration.namedTimePeriod,
       startTime: declaration.startTime,
       endTime: declaration.endTime,
