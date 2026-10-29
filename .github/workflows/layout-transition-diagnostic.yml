@@ -1,0 +1,59 @@
+name: Layout Transition Frame Diagnostic
+on:
+  push:
+    branches: [diagnostic/layout-transition-frames-20261029]
+permissions:
+  contents: read
+concurrency:
+  group: layout-frame-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+  CLOUDFLARE_CF_FETCH_ENABLED: 'false'
+  WRANGLER_SEND_METRICS: 'false'
+  DO_NOT_TRACK: '1'
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --user 1001
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Snapshot application manifests
+        run: sha256sum package.json package-lock.json > /tmp/layout-frame-manifests.sha256
+      - name: Install isolated existing Playwright version
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+      - name: Verify application manifests unchanged
+        run: sha256sum -c /tmp/layout-frame-manifests.sha256
+      - name: Build unchanged production source
+        run: npm run build
+      - name: Measure exact diagnostic spec on WebKit mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_home="$(mktemp -d)"
+          env -i PATH="$PATH" HOME="$diagnostic_home" CI=true \
+            PLAYWRIGHT_BROWSERS_PATH=/ms-playwright TZ=Asia/Tokyo \
+            CLOUDFLARE_CF_FETCH_ENABLED=false WRANGLER_SEND_METRICS=false DO_NOT_TRACK=1 \
+            ./tests/e2e/node_modules/.bin/playwright test \
+            --config=tests/e2e/playwright.layout-transition.config.mjs \
+            --project=webkit-mobile '(^|/)layout-transition-frames\.spec\.mjs$'
+      - name: Retain synthetic frame evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: layout-frame-diagnostic-${{ github.sha }}
+          path: artifacts/layout-frame-diagnostic/
+          if-no-files-found: error
+          retention-days: 7
