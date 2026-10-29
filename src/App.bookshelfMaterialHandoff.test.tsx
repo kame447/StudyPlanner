@@ -208,3 +208,14 @@ it('keeps an actionable selector when the last material disappears and permits e
   await submit();
   expect((await fixture.repository.getPlans('owner-a'))[0]).toMatchObject({ title: materialA.name, materialId: null, materialName: '' });
 });
+
+it('selects workspace layout from the route and removes it when returning Home', async () => {
+  await mount();
+  expect(renderer!.root.findAllByProps({ className: 'app-shell bookshelf-workspace-shell' })).toHaveLength(1);
+  act(() => { state.setViewMode('report'); });
+  expect(renderer!.root.findAllByProps({ className: 'app-shell report-workspace-shell' })).toHaveLength(1);
+  expect(renderer!.root.findAllByProps({ className: 'app-shell bookshelf-workspace-shell' })).toHaveLength(0);
+  await act(async () => { renderer!.root.findByType(PrimaryBottomNav).props.onOpenHome(); });
+  expect(renderer!.root.findAllByProps({ className: 'app-shell home-app-shell' })).toHaveLength(1);
+  expect(renderer!.root.findAllByProps({ className: 'app-shell report-workspace-shell' })).toHaveLength(0);
+});

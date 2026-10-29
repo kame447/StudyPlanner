@@ -1,3 +1,4 @@
+import { buildTimetableDisplayModel, DEFAULT_PERIODS, WEEKDAY_OPTIONS, type DisplayPeriod } from '../lib/timetableDisplayModel';
 import { TimetableClassDetail } from './TimetableClassDetail';
 import { classAttendanceRepository } from '../repositories';
 import { useDialogFocus } from '../hooks/useDialogFocus';
@@ -69,10 +70,6 @@ interface TimetableViewProps {
   onDeleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
 }
 
-type DisplayPeriod = TimetablePeriodDraft & {
-  id?: string;
-};
-
 interface PeriodFormState {
   id?: string;
   label: string;
@@ -81,24 +78,6 @@ interface PeriodFormState {
   usesAlternatingWeeks: boolean;
   alternatingWeekAnchorDate: string;
 }
-
-const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
-  { value: 'mon', label: '月' },
-  { value: 'tue', label: '火' },
-  { value: 'wed', label: '水' },
-  { value: 'thu', label: '木' },
-  { value: 'fri', label: '金' },
-  { value: 'sat', label: '土' },
-];
-
-const DEFAULT_PERIODS: DisplayPeriod[] = [
-  { userId: '', termId: 'default', periodNumber: 1, label: '1', startTime: '08:40', endTime: '10:10' },
-  { userId: '', termId: 'default', periodNumber: 2, label: '2', startTime: '10:20', endTime: '11:50' },
-  { userId: '', termId: 'default', periodNumber: 3, label: '3', startTime: '12:45', endTime: '14:15' },
-  { userId: '', termId: 'default', periodNumber: 4, label: '4', startTime: '14:25', endTime: '15:55' },
-  { userId: '', termId: 'default', periodNumber: 5, label: '5', startTime: '16:05', endTime: '17:35' },
-  { userId: '', termId: 'default', periodNumber: 6, label: '6', startTime: '18:00', endTime: '19:30' },
-];
 
 const TIMETABLE_IMPORT_FILE_ACCEPT = 'image/png,image/jpeg,.png,.jpg,.jpeg,.pdf,application/pdf';
 const EMPTY_CELL_DOUBLE_TAP_DELAY_MS = 320;
@@ -193,10 +172,6 @@ function createTemplateDraftFromTemplate(
   };
 }
 
-function comparePeriods(left: DisplayPeriod, right: DisplayPeriod): number {
-  return left.periodNumber - right.periodNumber;
-}
-
 function getTemplatePatternLabel(template: ScheduleTemplate): string {
   const labels: string[] = [];
 
@@ -265,20 +240,9 @@ export function TimetableView({
   );
   const usesAlternatingWeeks = activeTerm?.usesAlternatingWeeks === true;
   const selectedTermLabel = activeTerm?.label ?? '時間割の期間を設定';
-  const savedPeriodsForTerm = useMemo(
-    () =>
-      timetablePeriods
-        .filter((period) => period.termId === activeTermId)
-        .map((period) => ({ ...period }))
-        .sort(comparePeriods),
-    [activeTermId, timetablePeriods],
-  );
-  const termTemplates = useMemo(
-    () =>
-      scheduleTemplates.filter(
-        (template) => getTemplateTermId(template) === activeTermId,
-      ),
-    [activeTermId, scheduleTemplates],
+  const { savedPeriodsForTerm, termTemplates, displayPeriods } = useMemo(
+    () => buildTimetableDisplayModel({ userId, activeTermId, timetablePeriods, scheduleTemplates }),
+    [userId, activeTermId, timetablePeriods, scheduleTemplates],
   );
   const visibleTermTemplates = useMemo(
     () =>
@@ -287,36 +251,6 @@ export function TimetableView({
       ),
     [alternatingWeekView, termTemplates, usesAlternatingWeeks],
   );
-  const displayPeriods = useMemo(() => {
-    const basePeriods =
-      savedPeriodsForTerm.length > 0
-        ? savedPeriodsForTerm
-        : DEFAULT_PERIODS.map((period) => ({
-            ...period,
-            userId,
-            termId: activeTermId,
-          }));
-    const periods = new Map<number, DisplayPeriod>();
-
-    basePeriods.forEach((period) => {
-      periods.set(period.periodNumber, period);
-    });
-
-    termTemplates.forEach((template) => {
-      if (template.periodNumber && !periods.has(template.periodNumber)) {
-        periods.set(template.periodNumber, {
-          userId,
-          termId: activeTermId,
-          periodNumber: template.periodNumber,
-          label: String(template.periodNumber),
-          startTime: template.startTime,
-          endTime: template.endTime,
-        });
-      }
-    });
-
-    return Array.from(periods.values()).sort(comparePeriods);
-  }, [activeTermId, savedPeriodsForTerm, termTemplates, userId]);
   const templateByCell = useMemo(() => {
     const map = new Map<string, ScheduleTemplate[]>();
 

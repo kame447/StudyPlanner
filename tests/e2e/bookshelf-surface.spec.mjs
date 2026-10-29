@@ -570,7 +570,10 @@ test('leaving a pending bookshelf entry prevents late failure from replacing Hom
     const persisted = await persistedShelfInputs(page);
     await deliveryNav(page, '教材').click();
     await expect.poll(() => attempts).toBe(1);
-    await expect(page.locator('.bookshelf-view')).toHaveCount(0);
+    const pendingShelf = page.locator('.route-skeleton--bookshelf');
+    await expect(pendingShelf).toBeVisible();
+    await expect(pendingShelf).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('.bookshelf-view:not(.route-skeleton--bookshelf .bookshelf-view)')).toHaveCount(0);
     await deliveryNav(page, 'ホーム').click();
     release(); await rejected;
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
