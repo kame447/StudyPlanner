@@ -66,7 +66,9 @@ describe('VNext V5 adapter and shadow comparison', () => {
       source: source('completed-50:derived-remaining-percent:derived-50'),
     });
     const { state, notes } = adaptWeeklyPlanningV5GraphToVNext(graph([completed, derived], [effort('total', 'total_duration', 60, 'derived-50')]));
-    expect(notes).toContainEqual({ code: 'effort_bound', factId: 'total', workLineageId: 'completed-50', boundAmount: 50 });
+    expect(notes).toContainEqual(expect.objectContaining({
+      code: 'effort_bound', factId: 'total', workLineageId: 'completed-50', boundAmount: 50,
+    }));
     expect(state.graph.effortEstimates[0].targetFactId).toBe('completed-50');
     expect(projectWeeklyPlanningVNext(state).owners[0]).toMatchObject({ status: 'ready', work: [{ minutes: 60 }] });
   });

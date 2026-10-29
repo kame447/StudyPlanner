@@ -90,14 +90,22 @@ export function adaptWeeklyPlanningV5GraphToVNext(
       return {
         kind: 'bound',
         targetFactId: matches[0].definingFactId,
-        binding: { workLineageId: matches[0].workLineageId, boundAmount: target.amount },
+        binding: {
+          workLineageId: matches[0].workLineageId,
+          boundAmount: target.amount,
+          boundBasisKey: vnextQuantityBasisKey(target),
+        },
       };
     }
     // Stated workload (any version): its lineage, at the amount of the version it targeted.
     return {
       kind: 'bound',
       targetFactId: effort.targetFactId,
-      binding: { workLineageId: resolver.lineageOf(target.id), boundAmount: target.amount },
+      binding: {
+        workLineageId: resolver.lineageOf(target.id),
+        boundAmount: target.amount,
+        boundBasisKey: vnextQuantityBasisKey(target),
+      },
     };
   };
 

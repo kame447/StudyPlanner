@@ -23,10 +23,15 @@ export const WEEKLY_PLANNING_VNEXT_STATE_VERSION = 'weekly-planning-vnext-state-
 // graphs never contain derived workloads (remaining computed from total and
 // completed, percent remaining, bounded remaining, task-total minute targets).
 
-/** A total stated for one work, bound by code to that work's lineage and amount. */
+/**
+ * A total stated for one work, bound by code to that work's lineage, amount and
+ * quantity basis (unit identity, range, per-occurrence, period). It applies only
+ * while all three still match.
+ */
 export interface VNextEffortWorkBinding {
   workLineageId: string;
   boundAmount: number;
+  boundBasisKey: string;
 }
 
 export interface VNextEffortEstimateFact extends EffortEstimateFactV5 {

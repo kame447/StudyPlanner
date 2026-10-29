@@ -100,7 +100,8 @@ export type VNextWorkUnitIssue =
       ownerKey: string;
       basisKey: string;
       lineageIds: string[];
-      totalFactId: string;
+      /** Null when a percent total of 100 is implied. */
+      totalFactId: string | null;
       completedFactId: string;
       remainingFactId: string;
       totalAmount: number;
@@ -124,7 +125,8 @@ function byRole(group: WorkloadFactV5[], role: WorkloadFactV5['quantityRole']): 
 /**
  * Amount of work per owner and basis, from active stated workloads only.
  * A target governs its basis; otherwise a stated remaining, or total − completed
- * (percent without a total uses 100). A zero amount is not work.
+ * (no completed counts as 0; percent without a total uses 100). Completed work
+ * alone is a record of progress, not work. A zero amount is not work.
  */
 export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWorkUnitsByOwner[] {
   const resolver = createVNextLineageResolver(graph);
@@ -194,17 +196,18 @@ export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWor
         };
         break;
       }
-      const derived = done_ && totalAmount !== null ? totalAmount - done_.amount : null;
-      if (stated && derived !== null && total && done_ && stated.amount !== derived) {
+      // No completed statement means nothing is done yet, as an implied percent total means 100.
+      const derived = totalAmount !== null ? totalAmount - (done_?.amount ?? 0) : null;
+      if (stated && derived !== null && done_ && totalAmount !== null && stated.amount !== derived) {
         issue = {
           code: 'remaining_inconsistent',
           ownerKey,
           basisKey,
-          lineageIds: [lineageOf(total), lineageOf(done_), lineageOf(stated)],
-          totalFactId: total.id,
+          lineageIds: [...(total ? [lineageOf(total)] : []), lineageOf(done_), lineageOf(stated)],
+          totalFactId: total?.id ?? null,
           completedFactId: done_.id,
           remainingFactId: stated.id,
-          totalAmount: total.amount,
+          totalAmount,
           derivedAmount: derived,
           statedAmount: stated.amount,
         };
@@ -223,21 +226,25 @@ export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWor
 }
 
 /**
- * Lineage and current amount of the work a workload fact stands for, used to
- * bind a total-duration estimate. A completed workload stands for itself (its
- * total is an observed pace); a total stands for its derived remaining.
+ * Lineage, current amount and basis of the work a workload fact stands for, used
+ * to bind a total-duration estimate. A total stands for its derived remaining
+ * (percent progress without a total is named by the completed fact); other
+ * completed work stands for itself and its total is an observed pace.
  */
 export function resolveVNextBindableWork(
   graph: WeeklyPlanningVNextGraph,
   workloadFactId: string,
-): { workLineageId: string; amount: number } | null {
+): { workLineageId: string; amount: number; basisKey: string } | null {
   const workload = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads)
     .find((fact) => fact.id === workloadFactId);
   if (!workload) return null;
   const resolver = createVNextLineageResolver(graph);
   const lineageId = resolver.lineageOf(workload.id);
-  if (workload.quantityRole === 'completed') return { workLineageId: lineageId, amount: workload.amount };
   const owner = computeVNextWorkUnits(graph).find((entry) => entry.ownerKey === resolver.ownerKeyOf(workload));
   const unit = owner?.units.find((candidate) => candidate.workLineageId === lineageId);
-  return unit ? { workLineageId: unit.workLineageId, amount: unit.amount } : null;
+  if (unit) return { workLineageId: unit.workLineageId, amount: unit.amount, basisKey: unit.basisKey };
+  // Completed work that names no remaining work: its total is an observed pace.
+  return workload.quantityRole === 'completed'
+    ? { workLineageId: lineageId, amount: workload.amount, basisKey: vnextQuantityBasisKey(workload) }
+    : null;
 }

@@ -166,4 +166,99 @@ describe('projectWeeklyPlanningVNext', () => {
       status: 'ready', work: [{ minutes: 90, estimateBasis: 'task_total' }],
     });
   });
+
+  describe('Astra audit #926 counterexamples (GustyCurie, c22f0627)', () => {
+    const page = (localId: string, role: VNextAddWorkload['quantityRole'], amount: number, extra: Partial<VNextAddWorkload> = {}) =>
+      ({ ...W(localId, role, amount, 'page', 'ページ'), ...extra });
+    const component = (localId: string): VNextAddFact => ({
+      kind: 'component', localId, taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: localId,
+    });
+    const minutesOf = (state: WeeklyPlanningVNextState) =>
+      projectWeeklyPlanningVNext(state).owners.flatMap((owner) => owner.work).map((item) => item.minutes);
+
+    it('A01 two stated works without a target can always be closed by keeping one', () => {
+      let state = withTask([page('a', 'remaining', 10), W('b', 'remaining', 45, 'minute', '分'), rate('rate', 4, 'page', null)]);
+      const [question] = projectWeeklyPlanningVNext(state).questions;
+      expect(question.code).toBe('same_or_distinct_work');
+      expect(question.options.map((option) => option.optionId)).not.toContain('same');
+      const keep = question.options.find((option) => option.optionId.startsWith('keep:') && option.value === 10)!;
+      state = turn(state, keep.delta);
+      expect(projectWeeklyPlanningVNext(state)).toMatchObject({ questions: [], readiness: 'ready' });
+      expect(minutesOf(state)).toEqual([40]);
+    });
+
+    it('A02 two targets on different bases are asked, not both scheduled', () => {
+      const state = withTask([page('a', 'target', 10), W('b', 'target', 40, 'minute', '分'), rate('rate', 4, 'page', null)]);
+      expect(projectWeeklyPlanningVNext(state).questions[0]?.code).toBe('same_or_distinct_work');
+    });
+
+    it('A03 an estimate answer for percent progress binds to the remaining amount', () => {
+      let state = withTask([W('c', 'completed', 20, 'custom', '％')]);
+      const [question] = projectWeeklyPlanningVNext(state).questions;
+      expect(question.forWork?.amount).toBe(80);
+      state = turn(state, { add: [total(state, 'answer', question.forWork!.definingFactId, 60)] });
+      expect(minutesOf(state)).toEqual([60]);
+    });
+
+    it('A04 an implied percent total still detects an inconsistent stated remaining', () => {
+      const state = withTask([W('c', 'completed', 20, 'custom', '%'), W('r', 'remaining', 90, 'custom', '%'), rate('rate', 1, 'custom', '%')]);
+      const [question] = projectWeeklyPlanningVNext(state).questions;
+      expect(question.code).toBe('remaining_inconsistent');
+      expect(question.options.map((option) => option.value)).toEqual([80, 10]);
+    });
+
+    it('A05 component totals are scoped to their component, not the whole task', () => {
+      const componentTotal = (localId: string, target: string, minutes: number): VNextAddEffort => ({
+        kind: 'effort_estimate', localId, taskRef: { localId: 'task' }, targetRef: { localId: target },
+        effortKind: 'total_duration', minutes, unitCode: null, unitLabel: null, precision: 'exact',
+      });
+      const state = withTask([
+        component('a'), component('b'),
+        page('a-work', 'remaining', 10, { componentRef: { localId: 'a' } }),
+        page('b-work', 'remaining', 5, { componentRef: { localId: 'b' } }),
+        componentTotal('a-total', 'a', 30), componentTotal('b-total', 'b', 20),
+      ]);
+      expect(minutesOf(state)).toEqual([30, 20]);
+    });
+
+    it('A08 a total stops applying after a real unit change with an equal count', () => {
+      let state = withTask([W('r', 'remaining', 10)]);
+      state = turn(state, { add: [total(state, 'e60', active(state, 'remaining'), 60)] });
+      state = turn(state, { patch: [{ ...amountPatch('set', active(state, 'remaining'), 10),
+        changes: { ...amountPatch('x', '', 0).changes, amount: null, unitLabel: 'セット' } }] });
+      expect(projectWeeklyPlanningVNext(state).questions[0]?.code).toBe('missing_effort_estimate');
+    });
+
+    it('A09 an observed pace stops applying when the completed amount it measured is corrected', () => {
+      let state = withTask([page('c', 'completed', 10), page('r', 'remaining', 5)]);
+      state = turn(state, { add: [total(state, 'pace', active(state, 'completed'), 80)] });
+      expect(minutesOf(state)).toEqual([40]);
+      state = turn(state, { patch: [amountPatch('c20', active(state, 'completed'), 20)] });
+      expect(projectWeeklyPlanningVNext(state).questions[0]?.code).toBe('missing_effort_estimate');
+    });
+
+    it('A10 a task total applies after "same" leaves a single scheduled work', () => {
+      let state = withTask([page('a', 'target', 10), W('b', 'remaining', 45, 'minute', '分')]);
+      state = turn(state, { add: [{ ...total(state, 'budget', taskId(state), 60) }] });
+      const [question] = projectWeeklyPlanningVNext(state).questions;
+      state = turn(state, question.options.find((option) => option.optionId === 'same')!.delta);
+      expect(minutesOf(state)).toEqual([60]);
+    });
+
+    it('A11 the "completed follows remaining" option for zero progress is executable', () => {
+      const state = withTask([page('t', 'scope_total', 20), page('c', 'completed', 10), page('r', 'remaining', 20), rate('rate', 1, 'page', null)]);
+      const option = projectWeeklyPlanningVNext(state).questions[0].options.find((candidate) => candidate.optionId === 'completed_follows_remaining')!;
+      expect(option.value).toBe(0);
+      const next = turn(state, option.delta);
+      expect(projectWeeklyPlanningVNext(next)).toMatchObject({ questions: [], owners: [{ work: [{ amount: 20, minutes: 20 }] }] });
+    });
+
+    it('A12 a deferred inconsistency returns when the values it asked about change', () => {
+      let state = withTask([page('t', 'scope_total', 20), page('c', 'completed', 10), page('r', 'remaining', 7)]);
+      state = turn(state, { defer: [{ questionKey: projectWeeklyPlanningVNext(state).questions[0].key }] });
+      expect(projectWeeklyPlanningVNext(state).questions).toEqual([]);
+      state = turn(state, { patch: [amountPatch('c12', active(state, 'completed'), 12)] });
+      expect(projectWeeklyPlanningVNext(state).questions[0]?.code).toBe('remaining_inconsistent');
+    });
+  });
 });

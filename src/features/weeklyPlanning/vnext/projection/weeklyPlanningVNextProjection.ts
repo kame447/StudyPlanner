@@ -18,6 +18,7 @@ import type {
 import {
   computeVNextWorkUnits,
   createVNextLineageResolver,
+  vnextQuantityBasisKey,
   vnextUnitIdentity,
   type VNextLineageResolver,
   type VNextWorkUnit,
@@ -33,13 +34,14 @@ function nullWorkloadChanges() {
   };
 }
 
+/** The key changes whenever the subject or the values being asked about change. */
 function questionKey(params: {
   code: VNextQuestionCode;
   ownerKey: string;
   lineageIds: string[];
-  amount: number | null;
+  values: number[];
 }): string {
-  return [params.code, params.ownerKey, [...params.lineageIds].sort().join(','), params.amount ?? '']
+  return [params.code, params.ownerKey, [...params.lineageIds].sort().join(','), params.values.join('/')]
     .join(':');
 }
 
@@ -62,26 +64,37 @@ function hasRelation(
     relation.kind === kind && relation.lineageIds[0] === first && relation.lineageIds[1] === second);
 }
 
-function allPairs(lineages: string[], test: (a: string, b: string) => boolean): boolean {
-  return lineages.every((a, index) => lineages.slice(index + 1).every((b) => test(a, b)));
-}
-
-function relateOptions(context: ProjectionContext, lineageIds: string[]): VNextQuestionOption[] {
-  const ref = (lineageId: string) => ({ factId: context.resolver.leafOf(lineageId) ?? lineageId });
-  const pairs = lineageIds.flatMap((a, index) => lineageIds.slice(index + 1).map((b) => [a, b] as const));
-  const option = (kind: VNextWorkRelationKind): VNextQuestionOption => ({
-    optionId: kind,
-    value: kind === 'same' ? 1 : 0,
-    delta: { ...EMPTY_DELTA, relate: pairs.map(([a, b]) => ({ kind, a: ref(a), b: ref(b) })) },
-  });
-  // "Same" is a single answer only for a pair; for more work it would hide which ones.
-  return lineageIds.length === 2 ? [option('same'), option('distinct')] : [option('distinct')];
+function workOptions(context: ProjectionContext, open: VNextWorkUnit[], pairs: Array<readonly [VNextWorkUnit, VNextWorkUnit]>): VNextQuestionOption[] {
+  const ref = (unit: VNextWorkUnit) => ({ factId: context.resolver.leafOf(unit.workLineageId) ?? unit.definingFactId });
+  const relateAll = (kind: VNextWorkRelationKind): VNextTurnDelta =>
+    ({ ...EMPTY_DELTA, relate: pairs.map(([a, b]) => ({ kind, a: ref(a), b: ref(b) })) });
+  const options: VNextQuestionOption[] = [{ optionId: 'distinct', value: 0, delta: relateAll('distinct') }];
+  const targets = open.filter((unit) => unit.role === 'target');
+  if (targets.length === 1) {
+    // "Same": the one target stands for the other work.
+    options.push({ optionId: 'same', value: 1, delta: relateAll('same') });
+  } else if (open.length === 2) {
+    // Same work stated twice without a single target: the user keeps one statement.
+    for (const [keep, drop] of [[open[0], open[1]], [open[1], open[0]]] as const) {
+      options.push({
+        optionId: `keep:${keep.workLineageId}`,
+        value: keep.amount,
+        delta: { ...EMPTY_DELTA, remove: [{ targetFactId: drop.definingFactId }] },
+      });
+    }
+  }
+  return options;
 }
 
 function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; componentId: string | null }): VNextQuestion {
   const base = {
     code: issue.code,
-    key: questionKey({ code: issue.code, ownerKey: issue.ownerKey, lineageIds: issue.lineageIds, amount: null }),
+    key: questionKey({
+      code: issue.code,
+      ownerKey: issue.ownerKey,
+      lineageIds: issue.lineageIds,
+      values: issue.code === 'remaining_inconsistent' ? [issue.derivedAmount, issue.statedAmount] : [],
+    }),
     ownerKey: issue.ownerKey,
     taskId: owner.taskId,
     componentId: owner.componentId,
@@ -105,10 +118,17 @@ function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; compo
     },
   });
   // Either the stated remaining follows progress, or progress follows the stated remaining.
+  // Progress of zero is no completed statement at all.
   const completedForStated = issue.totalAmount - issue.statedAmount;
   const options = [patchAmount('remaining_follows_progress', issue.remainingFactId, issue.derivedAmount)];
-  if (completedForStated >= 0) {
+  if (completedForStated > 0) {
     options.push(patchAmount('completed_follows_remaining', issue.completedFactId, completedForStated));
+  } else if (completedForStated === 0) {
+    options.push({
+      optionId: 'completed_follows_remaining',
+      value: 0,
+      delta: { ...EMPTY_DELTA, remove: [{ targetFactId: issue.completedFactId }] },
+    });
   }
   return { ...base, options };
 }
@@ -137,7 +157,7 @@ interface EstimateCandidate {
 function estimateCandidates(
   context: ProjectionContext,
   unit: VNextWorkUnit,
-  unitCountInTaskScope: number,
+  scheduled: VNextWorkUnit[],
 ): EstimateCandidate[] {
   const workload = unit.workload;
   if (workload.unitCode === 'minute') return [{ minutes: unit.amount, basis: 'intrinsic_duration', effortIds: [] }];
@@ -160,21 +180,24 @@ function estimateCandidates(
     }
     const binding = effort.workBinding;
     if (binding === null) {
-      // A total about the whole task/component measures this work only when it is the only work there.
-      if (unitCountInTaskScope === 1 && effortAppliesToWork(context, effort, unit)) {
+      // A total about a task/component measures this work only when it is the only scheduled work there.
+      if (effortAppliesToWork(context, effort, unit)
+        && scheduled.filter((other) => effortAppliesToWork(context, effort, other)).length === 1) {
         candidates.push({ minutes: effort.minutes, basis: 'task_total', effortIds: [effort.id] });
       }
       continue;
     }
     if (binding.workLineageId === unit.workLineageId) {
-      if (binding.boundAmount === unit.amount) {
+      if (binding.boundAmount === unit.amount && binding.boundBasisKey === unit.basisKey) {
         candidates.push({ minutes: effort.minutes, basis: 'work_total', effortIds: [effort.id] });
       }
       continue;
     }
-    // A total stated for completed work of the same owner and unit is an observed pace.
+    // A total stated for completed work of the same owner and unit is an observed pace,
+    // while that completed statement is still the one it measured.
     const paceWork = context.workloadsById.get(context.resolver.leafOf(binding.workLineageId) ?? '');
     if (paceWork && paceWork.quantityRole === 'completed' && binding.boundAmount > 0
+      && binding.boundAmount === paceWork.amount && binding.boundBasisKey === vnextQuantityBasisKey(paceWork)
       && context.resolver.ownerKeyOf(paceWork) === unit.ownerKey && vnextUnitIdentity(paceWork) === workIdentity) {
       candidates.push({
         minutes: (effort.minutes / binding.boundAmount) * unit.amount,
@@ -213,67 +236,97 @@ function workItem(unit: VNextWorkUnit, estimate: EstimateCandidate | null): VNex
   };
 }
 
-function projectWorkloadOwner(
-  context: ProjectionContext,
-  owner: ReturnType<typeof computeVNextWorkUnits>[number],
-  unitsPerTask: Map<string, number>,
+type OwnerWorkUnits = ReturnType<typeof computeVNextWorkUnits>[number];
+
+function ownerQuestion(
+  owner: OwnerWorkUnits,
+  code: VNextQuestionCode,
+  lineageIds: string[],
+  extra: { values?: number[]; forWork?: VNextQuestion['forWork']; options?: VNextQuestionOption[] } = {},
 ): VNextOwnerProjection {
-  const result = (status: VNextOwnerProjection['status'], work: VNextWorkItem[], question: VNextQuestion | null) =>
-    ({ ownerKey: owner.ownerKey, taskId: owner.taskId, componentId: owner.componentId, status, work, question });
-  const ask = (code: VNextQuestionCode, lineageIds: string[], extra: Partial<VNextQuestion> = {}) =>
-    result('question', [], {
+  return {
+    ownerKey: owner.ownerKey,
+    taskId: owner.taskId,
+    componentId: owner.componentId,
+    status: 'question',
+    work: [],
+    question: {
       code,
-      key: questionKey({ code, ownerKey: owner.ownerKey, lineageIds, amount: extra.forWork?.amount ?? null }),
+      key: questionKey({ code, ownerKey: owner.ownerKey, lineageIds, values: extra.values ?? [] }),
       ownerKey: owner.ownerKey,
       taskId: owner.taskId,
       componentId: owner.componentId,
       subjectLineageIds: lineageIds,
-      forWork: null,
-      options: [],
-      ...extra,
-    });
-  if (owner.issue) return result('question', [], issueQuestion(owner.issue, owner));
-  let units = owner.units;
-  if (units.length === 0) return result('nothing_to_schedule', [], null);
+      forWork: extra.forWork ?? null,
+      options: extra.options ?? [],
+    },
+  };
+}
 
-  // A target stands for other work of the owner only when the user said it is the same work;
-  // explicitly distinct work is scheduled beside it; anything else is asked, never dropped.
-  const same = (a: string, b: string) => hasRelation(context, 'same', a, b);
-  const distinct = (a: string, b: string) => hasRelation(context, 'distinct', a, b);
-  const targets = units.filter((unit) => unit.role === 'target');
-  const others = units.filter((unit) => unit.role !== 'target');
-  if (targets.length > 0) {
-    const targetLineages = targets.map((unit) => unit.workLineageId);
-    const open = others.filter((unit) =>
-      !allPairs([...targetLineages, unit.workLineageId], distinct)
-      && !targetLineages.every((target) => same(target, unit.workLineageId)));
-    if (open.length > 0) {
-      const lineageIds = [...targetLineages, ...open.map((unit) => unit.workLineageId)];
-      return ask('same_or_distinct_work', lineageIds, { options: relateOptions(context, lineageIds) });
-    }
-    units = [...targets, ...others.filter((unit) => allPairs([...targetLineages, unit.workLineageId], distinct))];
-  } else if (others.length > 1 && !allPairs(others.map((unit) => unit.workLineageId), distinct)) {
-    const lineageIds = others.map((unit) => unit.workLineageId);
-    return ask('same_or_distinct_work', lineageIds, { options: relateOptions(context, lineageIds) });
+/**
+ * Which work of an owner is scheduled. Every pair must be settled: "distinct"
+ * keeps both, "same" lets the single target stand for the other. Any other pair
+ * is asked, so work is never silently dropped or double-counted.
+ */
+function resolveOwnerWork(
+  context: ProjectionContext,
+  owner: OwnerWorkUnits,
+): { scheduled: VNextWorkUnit[] } | { projection: VNextOwnerProjection } {
+  if (owner.issue) {
+    return { projection: { ...ownerQuestion(owner, owner.issue.code, []), question: issueQuestion(owner.issue, owner) } };
   }
+  const units = owner.units;
+  const represented = new Set<VNextWorkUnit>();
+  const openPairs: Array<readonly [VNextWorkUnit, VNextWorkUnit]> = [];
+  units.forEach((a, index) => units.slice(index + 1).forEach((b) => {
+    if (hasRelation(context, 'distinct', a.workLineageId, b.workLineageId)) return;
+    const oneTarget = (a.role === 'target') !== (b.role === 'target');
+    if (oneTarget && hasRelation(context, 'same', a.workLineageId, b.workLineageId)) {
+      represented.add(a.role === 'target' ? b : a);
+      return;
+    }
+    openPairs.push([a, b]);
+  }));
+  if (openPairs.length > 0) {
+    const open = units.filter((unit) => openPairs.some((pair) => pair.includes(unit)));
+    return {
+      projection: ownerQuestion(owner, 'same_or_distinct_work', open.map((unit) => unit.workLineageId), {
+        options: workOptions(context, open, openPairs),
+      }),
+    };
+  }
+  return { scheduled: units.filter((unit) => !represented.has(unit)) };
+}
 
+function estimateOwnerWork(
+  context: ProjectionContext,
+  owner: OwnerWorkUnits,
+  units: VNextWorkUnit[],
+  allScheduled: VNextWorkUnit[],
+): VNextOwnerProjection {
+  if (units.length === 0) {
+    return { ownerKey: owner.ownerKey, taskId: owner.taskId, componentId: owner.componentId, status: 'nothing_to_schedule', work: [], question: null };
+  }
   const work: VNextWorkItem[] = [];
   for (const unit of units) {
-    const candidates = estimateCandidates(context, unit, unitsPerTask.get(context.resolver.lineageOf(unit.workload.taskId)) ?? 0);
+    const candidates = estimateCandidates(context, unit, allScheduled);
     const forWork = { workLineageId: unit.workLineageId, definingFactId: unit.definingFactId, amount: unit.amount };
     if (candidates.length === 0) {
-      return ask('missing_effort_estimate', [unit.workLineageId], { forWork });
+      return ownerQuestion(owner, 'missing_effort_estimate', [unit.workLineageId], { forWork, values: [unit.amount] });
     }
     if (candidates.some((candidate) => !sameMinutes(candidate.minutes, candidates[0].minutes))) {
       const effortLineages = candidates.flatMap((candidate) => candidate.effortIds.map(context.resolver.lineageOf));
-      return ask('effort_inconsistent', [unit.workLineageId, ...effortLineages], { forWork });
+      return ownerQuestion(owner, 'effort_inconsistent', [unit.workLineageId, ...effortLineages], {
+        forWork,
+        values: candidates.map((candidate) => candidate.minutes).sort((a, b) => a - b),
+      });
     }
     work.push(workItem(unit, {
       ...candidates[0],
       effortIds: candidates.flatMap((candidate) => candidate.effortIds),
     }));
   }
-  return result('ready', work, null);
+  return { ownerKey: owner.ownerKey, taskId: owner.taskId, componentId: owner.componentId, status: 'ready', work, question: null };
 }
 
 /** A task with no stated workload but a stated total time is minute work of that size. */
@@ -289,7 +342,12 @@ function projectTaskTotalOwner(
       ownerKey, taskId, componentId: null, status: 'question', work: [],
       question: {
         code: 'effort_inconsistent',
-        key: questionKey({ code: 'effort_inconsistent', ownerKey, lineageIds, amount: null }),
+        key: questionKey({
+          code: 'effort_inconsistent',
+          ownerKey,
+          lineageIds,
+          values: totals.map((effort) => effort.minutes).sort((a, b) => a - b),
+        }),
         ownerKey, taskId, componentId: null, subjectLineageIds: lineageIds, forWork: null, options: [],
       },
     };
@@ -325,13 +383,12 @@ export function projectWeeklyPlanningVNext(state: WeeklyPlanningVNextState): Wee
     efforts: filterActiveWeeklyPlanningFactsV5(graph, graph.effortEstimates),
   };
 
-  const workOwners = computeVNextWorkUnits(graph);
-  const unitsPerTask = new Map<string, number>();
-  for (const owner of workOwners) {
-    const taskLineage = resolver.lineageOf(owner.taskId);
-    unitsPerTask.set(taskLineage, (unitsPerTask.get(taskLineage) ?? 0) + owner.units.length);
-  }
-  const owners = workOwners.map((owner) => projectWorkloadOwner(context, owner, unitsPerTask));
+  // Settle which work is scheduled first, so scope-wide totals see the final work set.
+  const resolved = computeVNextWorkUnits(graph).map((owner) => ({ owner, resolution: resolveOwnerWork(context, owner) }));
+  const allScheduled = resolved.flatMap(({ resolution }) => ('scheduled' in resolution ? resolution.scheduled : []));
+  const owners = resolved.map(({ owner, resolution }) => ('projection' in resolution
+    ? resolution.projection
+    : estimateOwnerWork(context, owner, resolution.scheduled, allScheduled)));
 
   const tasks = filterActiveWeeklyPlanningFactsV5(graph, graph.tasks);
   for (const task of tasks) {

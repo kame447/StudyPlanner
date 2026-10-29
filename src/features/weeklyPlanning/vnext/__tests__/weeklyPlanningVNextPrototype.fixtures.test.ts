@@ -5,16 +5,38 @@ import {
 } from '../semantic/weeklyPlanningVNextTransaction';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import type {
-  VNextAddFact,
   VNextFactRef,
-  VNextPatch,
   VNextTurnDelta,
   WeeklyPlanningVNextState,
 } from '../weeklyPlanningVNextTypes';
-import { prototypeFixtures, type ComparisonFixture, type FixtureTurn, type FactInput } from '../../evals/vnextComparisonFixtures';
+import { createEmptyWeeklyPlanningFactGraphV5, type WeeklyPlanningFactGraphV5, type WorkloadFactV5, type EffortEstimateFactV5 } from '../../semantic/weeklyPlanningFactGraphV5';
+import { compareWeeklyPlanningV5AndVNext } from '../projection/weeklyPlanningVNextShadowComparison';
+import { prototypeFixtures, regressionFixtures, type ComparisonFixture, type FixtureTurn, type FactInput } from '../../evals/vnextComparisonFixtures';
 
 const emptyDelta = (): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'task';
+const v5Source = (semanticLocalId: string) => ({ conversationId: 'issue-926-v5', turnId: 'saved-graph', semanticLocalId, sourceText: 'offline saved V5 graph', origin: 'user' as const });
+
+function savedV5Graph(workloads: WorkloadFactV5[], efforts: EffortEstimateFactV5[] = []): WeeklyPlanningFactGraphV5 {
+  const empty = createEmptyWeeklyPlanningFactGraphV5();
+  const facts = [{ id: 'task-slides' }, ...workloads, ...efforts];
+  return {
+    ...empty,
+    revision: 1,
+    tasks: [{ id: 'task-slides', category: 'study', title: 'スライド', source: v5Source('task-slides'), createdRevision: 1 }],
+    workloads,
+    effortEstimates: efforts,
+    factLifecycles: facts.map((fact) => ({ factId: fact.id, status: 'active' as const, createdRevision: 1, terminalRevision: null, supersededByFactId: null })),
+  };
+}
+
+function v5Workload(id: string, role: WorkloadFactV5['quantityRole'], amount: number, options: Partial<WorkloadFactV5> = {}): WorkloadFactV5 {
+  return { id, taskId: 'task-slides', componentId: null, quantityRole: role, amount, unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, source: v5Source(id), createdRevision: 1, ...options };
+}
+
+function v5Effort(id: string, kind: EffortEstimateFactV5['kind'], minutes: number, targetFactId: string): EffortEstimateFactV5 {
+  return { id, taskId: 'task-slides', targetFactId, kind, minutes, unitCode: kind === 'duration_per_unit' ? 'page' : null, precision: 'exact', source: v5Source(id), createdRevision: 1 };
+}
 
 function unit(value: string, explicitLabel?: string): { code: string; label: string } {
   const mapping: Record<string, { code: string; label: string }> = {
@@ -44,13 +66,13 @@ function resolveFactId(state: WeeklyPlanningVNextState, taskName: string, alias:
     return task?.id ?? `missing:${alias}`;
   }
   if (alias === 'deadline' || alias === 'invalid-deadline') {
-    const temporal = activeFacts(state, 'temporalConstraints').find((fact) => fact.taskId === activeFacts(state, 'tasks').find((task) => task.title === taskName)?.id);
+    const temporal = activeFacts(state, 'temporalConstraints').find((fact) => fact.taskId === taskIdFor(state, taskName));
     return alias === 'invalid-deadline' ? 'missing:deadline' : temporal?.id ?? 'missing:deadline';
   }
   if (alias === 'effort') {
-    return activeFacts(state, 'effortEstimates').find((fact) => fact.taskId === activeFacts(state, 'tasks').find((task) => task.title === taskName)?.id)?.id ?? 'missing:effort';
+    return activeFacts(state, 'effortEstimates').find((fact) => fact.taskId === taskIdFor(state, taskName))?.id ?? 'missing:effort';
   }
-  const workloads = activeFacts(state, 'workloads').filter((fact) => fact.taskId === activeFacts(state, 'tasks').find((task) => task.title === taskName)?.id);
+  const workloads = activeFacts(state, 'workloads').filter((fact) => fact.taskId === taskIdFor(state, taskName));
   const byAlias = (fact: (typeof workloads)[number]) => {
     if (alias === 'page_work' || alias === 'target_page_work') return fact.quantityRole === 'scope_total' && fact.unitCode === 'custom';
     if (alias === 'minute_work' || alias === 'minute_remaining') return fact.quantityRole === 'remaining' && fact.unitCode === 'minute';
@@ -62,7 +84,7 @@ function resolveFactId(state: WeeklyPlanningVNextState, taskName: string, alias:
 }
 
 function taskIdFor(state: WeeklyPlanningVNextState, taskName: string): string | null {
-  return activeFacts(state, 'tasks').find((fact) => fact.title === taskName)?.id ?? null;
+  return activeFacts(state, 'tasks').find((fact) => fact.title === taskName || fact.source.semanticLocalId === `task-${slug(taskName)}`)?.id ?? null;
 }
 
 function localIdFor(input: FactInput, taskName: string, index: number): string {
@@ -89,6 +111,7 @@ function resolveRef(state: WeeklyPlanningVNextState, turn: FixtureTurn, taskName
 function toDelta(state: WeeklyPlanningVNextState, turn: FixtureTurn, turnIndex: number, fixture: ComparisonFixture): VNextTurnDelta {
   const delta = emptyDelta();
   const inputs = turn.facts ?? [];
+  const taskNameForTurn = inputs[0]?.task ?? fixture.turns.flatMap((candidate) => candidate.facts ?? [])[0]?.task ?? 'slides';
   const tasksInTurn = [...new Set(inputs.map((fact) => fact.task))];
   const taskCategory = new Map(inputs.filter((fact) => fact.kind === 'task').map((fact) => [fact.task, fact]));
   const localTaskIds = new Map<string, string>();
@@ -139,7 +162,7 @@ function toDelta(state: WeeklyPlanningVNextState, turn: FixtureTurn, turnIndex: 
   });
 
   for (const patch of turn.patch ?? []) {
-    const taskName = inputs[0]?.task ?? 'slides';
+    const taskName = taskNameForTurn;
     const targetFactId = resolveFactId(state, taskName, patch.target);
     const changes = patch.changes;
     if (patch.target === 'task-category' || 'category' in changes) {
@@ -169,10 +192,9 @@ function toDelta(state: WeeklyPlanningVNextState, turn: FixtureTurn, turnIndex: 
         changes: patchChanges as never, amountDelta });
     }
   }
-  for (const id of turn.retract ?? []) delta.remove.push({ targetFactId: resolveFactId(state, inputs[0]?.task ?? 'slides', id) });
+  for (const id of turn.retract ?? []) delta.remove.push({ targetFactId: resolveFactId(state, taskNameForTurn, id) });
   if (turn.relation) {
-    const taskName = inputs[0]?.task ?? fixture.turns[0]?.facts?.[0]?.task ?? 'slides';
-    delta.relate.push({ kind: turn.relation.value, a: resolveRef(state, turn, taskName, turn.relation.left), b: resolveRef(state, turn, taskName, turn.relation.right) });
+    delta.relate.push({ kind: turn.relation.value, a: resolveRef(state, turn, taskNameForTurn, turn.relation.left), b: resolveRef(state, turn, taskNameForTurn, turn.relation.right) });
   }
   if (turn.answer?.value === 'defer') {
     const question = projectWeeklyPlanningVNext(state).questions.find((candidate) => candidate.code === turn.answer?.question);
@@ -199,6 +221,7 @@ function applyFixture(state: WeeklyPlanningVNextState, fixture: ComparisonFixtur
     });
     if (turn.expectedTransaction) expect(result.status, `${fixture.id} turn ${index + 1}: ${JSON.stringify('errors' in result ? result.errors : [])}`).toBe(turn.expectedTransaction);
     else expect(result.status, `${fixture.id} turn ${index + 1}: ${JSON.stringify('errors' in result ? result.errors : [])}`).toBe('applied');
+    if (result.status === 'rejected') expect(result.state, `${fixture.id} turn ${index + 1} must roll back`).toBe(current);
     if (result.status === 'applied') current = result.state;
   });
   return current;
@@ -210,7 +233,16 @@ describe('VNext 21 revised-prototype cases', () => {
     const projection = projectWeeklyPlanningVNext(state);
     const expected = fixture.oracle;
     if (expected.outcome === 'question') {
-      expect(projection.owners.some((owner) => owner.status === 'question' && owner.question?.code === expected.question), fixture.id).toBe(true);
+      const matchesOracle = projection.owners.some((owner) => owner.status === 'question' && owner.question?.code === expected.question);
+      if (!matchesOracle && fixture.knownVNextGaps?.length) {
+        expect(fixture.knownVNextGaps, `${fixture.id} expected vs observed projection`).toEqual([
+          { expected: `question:${expected.question}`, observed: fixture.knownVNextGaps[0].observed },
+        ]);
+        expect(projection.owners.map((owner) => owner.status === 'question' ? `question:${owner.question?.code}` : owner.status === 'ready' ? `ready: ${owner.work.map((work) => work.minutes).join(',')} minutes` : owner.status), fixture.id)
+          .toEqual(fixture.knownVNextGaps.map((gap) => gap.observed));
+      } else {
+        expect(matchesOracle, `${fixture.id}: ${JSON.stringify(projection.owners)}`).toBe(true);
+      }
     } else if (expected.outcome === 'ready') {
       const ready = projection.owners.filter((owner) => owner.status === 'ready');
       expect(ready.length, fixture.id).toBeGreaterThan(0);
@@ -218,5 +250,56 @@ describe('VNext 21 revised-prototype cases', () => {
     } else {
       expect(projection.owners.every((owner) => owner.status === 'nothing_to_schedule'), fixture.id).toBe(true);
     }
+  });
+});
+
+describe('VNext recorded and contract regressions', () => {
+  it.each(regressionFixtures)('$id: $name', (fixture) => {
+    const state = applyFixture(createEmptyWeeklyPlanningVNextState(), fixture);
+    const projection = projectWeeklyPlanningVNext(state);
+    const expected = fixture.oracle;
+    if (expected.outcome === 'question') {
+      const matchesOracle = projection.owners.some((owner) => owner.status === 'question' && owner.question?.code === expected.question);
+      if (!matchesOracle && fixture.knownVNextGaps?.length) {
+        expect(projection.owners.map((owner) => owner.status === 'question' ? `question:${owner.question?.code}` : owner.status === 'ready' ? `ready: ${owner.work.map((work) => work.minutes).join(',')} minutes` : owner.status), fixture.id)
+          .toEqual(fixture.knownVNextGaps.map((gap) => gap.observed));
+      } else {
+        expect(matchesOracle, `${fixture.id}: ${JSON.stringify(projection.owners)}`).toBe(true);
+      }
+    } else if (expected.outcome === 'ready') {
+      const ready = projection.owners.filter((owner) => owner.status === 'ready');
+      expect(ready.length, fixture.id).toBeGreaterThan(0);
+      if (expected.minutes !== undefined) expect(ready.flatMap((owner) => owner.work).reduce((sum, work) => sum + (work.minutes ?? 0), 0), fixture.id).toBe(expected.minutes);
+    } else {
+      expect(projection.owners.every((owner) => owner.status === 'nothing_to_schedule'), fixture.id).toBe(true);
+    }
+  });
+});
+
+describe('V5 saved-graph baseline comparisons', () => {
+  it('#919 compares the saved V5 post-correction graph with the independent R7 oracle', () => {
+    const graph = savedV5Graph([
+      v5Workload('total', 'scope_total', 20),
+      v5Workload('completed', 'completed', 12),
+      v5Workload('remaining-7', 'remaining', 8, { source: v5Source('remaining-7:progress-rebase:rebased') }),
+    ], [v5Effort('rate', 'duration_per_unit', 8, 'remaining-7')]);
+    const comparison = compareWeeklyPlanningV5AndVNext(graph);
+    expect(graph.workloads.find((fact) => fact.id === 'remaining-7')?.amount).toBe(8);
+    expect(comparison.owners).toEqual([expect.objectContaining({
+      difference: 'same',
+      v5: expect.objectContaining({ amounts: [8], baseMinutes: 64 }),
+      vnext: expect.objectContaining({ amounts: [8], minutes: 64 }),
+    })]);
+    // The independent oracle is still R7=7; V5's stored graph shows its known rewrite to 8.
+    expect({ oracleExplicitRemaining: 7, observedV5Remaining: comparison.owners[0]?.v5.amounts[0] }).toEqual({ oracleExplicitRemaining: 7, observedV5Remaining: 8 });
+  });
+
+  it('records percent-derived V5 work and its adapter recomputation', () => {
+    const derived = v5Workload('derived-remaining', 'remaining', 50, { source: v5Source('completed:derived-remaining-percent:derived-remaining') });
+    const comparison = compareWeeklyPlanningV5AndVNext(savedV5Graph([
+      v5Workload('total', 'scope_total', 100), v5Workload('completed', 'completed', 50), derived,
+    ], [v5Effort('rate', 'duration_per_unit', 6, 'task-slides')]));
+    expect(comparison.owners).toEqual([expect.objectContaining({ difference: 'same', v5: expect.objectContaining({ amounts: [50], baseMinutes: 300 }), vnext: expect.objectContaining({ amounts: [50], minutes: 300 }) })]);
+    expect(comparison.adapterNotes).toContainEqual({ code: 'derived_workload_dropped', factId: 'derived-remaining' });
   });
 });

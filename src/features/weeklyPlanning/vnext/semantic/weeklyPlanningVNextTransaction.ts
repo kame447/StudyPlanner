@@ -223,7 +223,7 @@ export function applyWeeklyPlanningVNextTurn(
     if (effort.kind !== 'total_duration' || !workload) { effort.workBinding = null; continue; }
     const binding = resolveVNextBindableWork(graph, targetId);
     if (!binding) { error('work_unavailable', location.path, effort.id, location.localId); continue; }
-    effort.workBinding = { workLineageId: binding.workLineageId, boundAmount: binding.amount };
+    effort.workBinding = { workLineageId: binding.workLineageId, boundAmount: binding.amount, boundBasisKey: binding.basisKey };
   }
 
   // A repeated estimate may have refreshed its binding, even with identical minutes.
