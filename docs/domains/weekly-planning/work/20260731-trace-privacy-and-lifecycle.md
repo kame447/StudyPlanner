@@ -30,14 +30,26 @@ Production findings (read-only, Firestore console, 2026-10-29):
 
 Changes:
 
-- Retention: the existing Worker cron sweeper (`ProductObservabilityRetentionService`) now also deletes expired `weekly_planning_trace_sessions` / `weekly_planning_trace_entries` / `weekly_planning_trace_access_audit` documents. It runs in its own schedule phase at UTC minutes ending in 4, every 10 minutes, at most 2 × 100 per collection per run. The phase is separate so a commit stays below Firestore's 500-write limit. The existing observability retention budget is unchanged. It deletes only documents whose `expireAt` has passed. The first run after deployment removes the expired legacy raw-`userId` traces. That is expiry, not manual deletion.
+- Retention: the existing Worker cron sweeper (`ProductObservabilityRetentionService`) now also deletes expired `weekly_planning_trace_sessions` / `weekly_planning_trace_entries` / `weekly_planning_trace_access_audit` documents. It runs in its own schedule phase at UTC minutes ending in 4, every 10 minutes (144 runs/day), at most 1 batch × 20 documents per collection per run.
+  - The full-page query uses `endAt = now`, so billed reads are the expired documents only, not a 100-row page.
+  - Timestamps are compared at nanosecond precision.
+  - Each delete carries the `updateTime` it read as a precondition, so a session extended by a concurrent append is kept and the batch retries on a later run.
+  - Only documents whose `expireAt` has passed are deleted. The first runs after deployment remove the expired legacy raw-`userId` traces. That is expiry, not manual deletion.
+- Free-tier bound, from Firestore usage and COUNT aggregations (about 2 reads) on 2026-10-29: trace totals are sessions 69, entries 1,078, audit 271. Daily usage was 1,825 reads, 31 writes and 0 deletes against the 50k/20k/20k free quotas.
+  - Trace retention worst case: 144 × (3 probe reads + 60 rows) = **9,072 reads/day** and **8,640 deletes/day**.
+  - Idle cost: 432 reads/day.
+  - The whole current trace corpus (1,418 docs) would take at most 24 runs (about 4 hours) to clear if it were all expired.
+  - The pre-existing observability retention phase is unchanged. Its theoretical maximum (2 × 4 × 100 per 5 min, up to 230,400 deletes/day) is not bounded by this change. Actual observability deletes were 0 on 2026-10-29. That is a separate, pre-existing free-tier risk.
 - Deletion: `/weekly-planning-trace/delete` now
   - derives HMAC subjects for every epoch since the primary root (`derivedCoverage: 'since-root'`), not only the 180-day derivation window. Append extends `expireAt` while keeping the original subject epoch, so a session can outlive that window;
   - also deletes legacy browser-written documents by the raw `userId` field;
-  - writes a `delete_own_traces` access-audit record (pseudonymous actor token, 180-day `expireAt`) before deleting, matching the privacy policy's statement that viewing and deletion operations are recorded.
+  - writes a `delete_own_traces` access-audit record (pseudonymous actor token, 180-day `expireAt`) before deleting, matching the privacy policy's statement that viewing and deletion operations are recorded. If the audit write fails, nothing is deleted;
+  - finds documents with `IN` queries (≤ 30 subject tokens per query, `__name__` only) and deletes each page with one bulk commit. A 44-entry, 1-session, 25-epoch delete uses 7 Firestore subrequests. The old per-document DELETE path exceeded the Worker subrequest limit at that size (independent review).
 - Emulator E2E `tests/firestore/weeklyPlanningTraceLifecycle.emulator.test.ts` (run by `npm run test:firestore-rules`): consent → session/start → append → redaction and raw-UID absence in stored fields → 403 for non-readers with no audit write → audited Logs listing, entry page and redacted Debug Bundle → audited delete covering the current epoch, an epoch outside the retention window and the legacy `userId` schema, keeping another user's traces → the sweeper removes expired traces on real Firestore timestamps.
 
 ## Remaining production work
+
+- Privacy notice vs v2 diagnostic text (see the table): open, owner decision.
 
 - Deploy the Worker carrying these changes (keep Jev and the other bindings; ACQUIRE/RELEASE on #305), then confirm that a `trace_retention` run removed the expired legacy traces and left unexpired ones.
 - Production delete / audit verification with the live test account (consent → append → admin Logs and Debug Bundle → delete → second delete returns 0 → `delete_own_traces` audit present).
@@ -49,7 +61,7 @@ Changes:
 | Policy statement (LegalPage) | Stored / enforced |
 | --- | --- |
 | アカウント番号を直接保存しない、30日ごとに変わる匿名化識別子 | Server writes: `traceSubjectToken` / `traceSubjectEpoch` (HMAC, 30-day epoch), no raw UID (emulator E2E asserts it). Legacy pre-07-18 browser writes with raw `userId` are expired and removed by the sweeper after deployment |
-| メール・電話・URL識別情報・長い認証情報候補を保存前に除去 | Server-side redaction before write; the E2E asserts the stored and exported email is absent |
+| メール・電話・URL識別情報・長い認証情報候補を保存前に除去 | **Not consistent today.** v1 entries are redacted server-side; the E2E checks only a v1 entry. `turn_diagnostic` schema v2 entries are stored **without** server redaction (`preserveDiagnosticText`, 1c822a64, kept to avoid losing raw AI output for debugging), so v2 diagnostic text can contain email addresses or phone numbers. The owner must decide between redacting v2 text and revising the policy; that choice affects #89/#488 debugging evidence |
 | 会話本文などは原則180日で削除 | `expireAt` = write time + 180 days, enforced by the Worker sweeper (not Firestore TTL) |
 | 閲覧は調査権限者に限る | `admins/{uid}.enabled && weeklyPlanningTraceReader`; Firestore Rules deny all client access |
 | 閲覧や削除などの操作は記録 | Audit actions: `list_sessions`, `list_entries(_page)`, `create_debug_bundle`, `archive_session`, `delete_own_traces` |

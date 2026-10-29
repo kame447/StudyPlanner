@@ -748,7 +748,7 @@ describe('traceWorker scheduled subrequest budget', () => {
     expect(backlog.retentionDeleted).toBe(1_600);
   });
 
-  it('sweeps only the three trace collections in two 300-delete commits at exact 4 and 15', async () => {
+  it('sweeps only the three trace collections in one 60-delete commit at exact 4 and 8', async () => {
     const steady = installScenario('retention');
     await runScheduled(4);
     expect(externalCalls(steady)).toBe(4);
@@ -762,7 +762,7 @@ describe('traceWorker scheduled subrequest budget', () => {
     vi.unstubAllGlobals();
     const backlog = installScenario('retention', { retentionMax: true });
     await runScheduled(14);
-    expect(externalCalls(backlog)).toBe(15);
-    expect(backlog.retentionDeleted).toBe(600);
+    expect(externalCalls(backlog)).toBe(8);
+    expect(backlog.retentionDeleted).toBe(60);
   });
 });

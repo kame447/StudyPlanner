@@ -208,6 +208,14 @@ describe.skipIf(!enabled)('weekly planning trace lifecycle on the Firestore emul
 
     // The scheduled sweeper enforces expireAt on real Firestore timestamps:
     // the already-expired legacy trace goes, unexpired traces and audits stay.
+    const expiredOnly = await new WeeklyPlanningTraceFirestoreClient(env, tokenProvider)
+      .queryDocumentsAfter({
+        collection: 'weekly_planning_trace_sessions',
+        orderByField: 'expireAt',
+        limit: 100,
+        endAtTimestamp: new Date().toISOString(),
+      });
+    expect(expiredOnly.map((document) => document.id)).toEqual([legacyOther]);
     const sweeper = new ProductObservabilityRetentionService(
       env,
       new WeeklyPlanningTraceFirestoreClient(env, tokenProvider),
