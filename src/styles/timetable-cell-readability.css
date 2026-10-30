@@ -175,6 +175,11 @@
     gap: 3px;
   }
 
+  .timetable-workspace-shell .timetable-class-card strong {
+    min-height: 0;
+    max-height: 100%;
+  }
+
   .timetable-workspace-shell .timetable-period-cell {
     grid-template-columns: minmax(16px, auto) minmax(0, 1fr);
     grid-template-rows: auto auto;

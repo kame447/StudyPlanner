@@ -26,6 +26,14 @@ describe('timetable remaining-viewport contract', () => {
       .toBe('var(--timetable-grid-rows)');
     expect(source('../App.tsx')).toContain("viewMode === 'timetable' ? ' timetable-workspace-shell'");
   });
+  it('keeps clamped lesson titles inside their allocated track rather than overlapping metadata', () => {
+    expect(declarations('.timetable-workspace-shell .timetable-class-card strong')).toMatchObject({
+      'min-height': '0', 'max-height': '100%',
+    });
+    // Existing full accessible names and detail entry remain the overflow path.
+    expect(source('../components/TimetableView.tsx')).toContain('${primaryTemplate.title}の詳細');
+    expect(source('./timetable-cell-readability.css')).toContain('-webkit-line-clamp: 4');
+  });
   it('uses the same data-derived count for loading and loaded grids, not a hardcoded six-row crop', () => {
     for (const file of ['TimetableView.tsx', 'TimetableSkeleton.tsx']) {
       expect(source(`../components/${file}`)).toContain("'--timetable-grid-rows': gridRows");
