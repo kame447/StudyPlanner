@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { WeeklyPlanningVNextInterpretationInput } from '../weeklyPlanningVNextInterpretationContract';
+import type { VNextAddFact } from '../weeklyPlanningVNextTypes';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
@@ -418,6 +419,69 @@ describe('VNext native provider', () => {
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     expect(projectWeeklyPlanningVNext(applied.state).owners.flatMap(owner => owner.work)).toContainEqual(
       expect.objectContaining({ amount: 2, minutes: 40, estimateBasis: 'rate' }));
+  });
+
+  it.each(['patch', 'remove'] as const)('rereads an option answer restated by %s once, preserving independent facts', async collection => {
+    const params = input([]);
+    const facts: VNextAddFact[] = collection === 'patch'
+      ? VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === 'option-answer')!.seed
+      : [{ kind: 'task', localId: 'task', category: 'study', title: 'Synthetic slides' },
+        { kind: 'workload', localId: 'pages', taskRef: { localId: 'task' }, componentRef: null,
+          quantityRole: 'remaining', amount: 10, unitCode: 'page', unitLabel: '枚', rangeStart: null, rangeEnd: null,
+          perOccurrence: false, periodExpression: null },
+        { kind: 'workload', localId: 'time', taskRef: { localId: 'task' }, componentRef: null,
+          quantityRole: 'remaining', amount: 45, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
+          perOccurrence: false, periodExpression: null }];
+    const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: facts }, { expectedRevision: 0,
+      acceptedDate: params.clock.currentDate, turnKey: 'option-seed', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
+    if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
+    params.state = seed.state;
+    params.projection = projectWeeklyPlanningVNext(params.state);
+    params.presentedQuestion = params.projection.questions[0];
+    const question = params.presentedQuestion;
+    const optionIndex = question.options.findIndex(option => collection === 'patch'
+      ? option.optionId === 'completed_follows_remaining' : option.optionId.startsWith('keep:') && option.value === 10);
+    expect(optionIndex).toBeGreaterThanOrEqual(0);
+    const before = structuredClone(params.state);
+    params.client = { createChatCompletion: vi.fn(async request => {
+      const context = JSON.parse(request.messages[1].content);
+      const answer = { kind: 'option', optionId: context.presentedQuestion.options[optionIndex].optionId, minutes: null, per: null };
+      const delta = { ...emptyDelta(), add: [task('other', 'English')] };
+      if (request.messages.length > 2) return JSON.stringify({ delta, answer });
+      const restated = collection === 'patch'
+        ? { kind: 'workload', localId: 'again', targetFactId: context.activeFacts.workloads.find((fact: { quantityRole: string }) => fact.quantityRole === 'completed').id,
+            amountDelta: null, changes: { amount: 13, unitCode: null, unitLabel: null, quantityRole: null,
+              rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }
+        : { targetFactId: context.activeFacts.workloads.find((fact: { unitCode: string }) => fact.unitCode === 'minute').id };
+      return JSON.stringify({ delta: { ...delta, [collection]: [restated] }, answer });
+    }) };
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    expect(params.state).toEqual(before);
+    const messages = vi.mocked(params.client.createChatCompletion).mock.calls[1][0].messages;
+    const repair = JSON.parse(messages[messages.length - 1].content);
+    expect(repair.errors).toEqual([{ path: `${collection}[0]`, localId: collection === 'patch' ? 'again' : null }]);
+    expect(repair.instruction).toContain('Keep every clause of the first reading and fix only the reported problems');
+    expect(repair.instruction).toContain("An option answer already carries that option's change; do not restate it in delta.");
+    expect(messages[0].content).toContain(VNEXT_ESTIMATE_ANSWER_REQUIREMENT);
+    if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+    expect(result.delta[collection]).toEqual([]);
+    expect(result.delta.add).toEqual([task('other', 'English')]);
+    const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
+      presented: { questionKey: question.key, graphRevision: params.projection.graphRevision },
+      projection: params.projection, graph: params.state.graph, interpreted: result });
+    if (resolved.status !== 'delta') throw new Error(JSON.stringify(resolved));
+    expect(resolved.delta[collection]).toHaveLength(1);
+    const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, { expectedRevision: params.state.graph.revision,
+      acceptedDate: params.clock.currentDate, turnKey: 'option-turn', conversationId: 'synthetic', turnId: 'turn', sourceText: 'synthetic option answer' });
+    if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
+    const active = new Set(applied.state.graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
+    const activeWork = applied.state.graph.workloads.filter(work => active.has(work.id));
+    if (collection === 'patch') {
+      expect(activeWork.find(work => work.quantityRole === 'completed')?.amount).toBe(13);
+      expect(activeWork).toHaveLength(3);
+    } else expect(activeWork).toEqual([expect.objectContaining({ amount: 10, unitCode: 'page' })]);
+    expect(applied.state.graph.tasks.filter(task => task.title === 'English')).toHaveLength(1);
   });
 
   it('fails after one reread when the answer still duplicates the same work estimate', async () => {
