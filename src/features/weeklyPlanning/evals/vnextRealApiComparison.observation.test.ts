@@ -643,8 +643,8 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
       planningStartDate: clock.weekStartDate,
       planningEndDate: clock.planningEndDate,
       timeZone: 'Asia/Tokyo',
+      weekStartsOn: 'monday',
     },
-    weekStartsOn: 'monday',
     notBeforeTime: '09:00',
   };
   const slots = new Map<string, string>();

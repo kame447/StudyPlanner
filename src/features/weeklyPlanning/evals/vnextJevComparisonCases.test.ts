@@ -15,7 +15,9 @@ function seedState(testCase: VNextJevComparisonCase): WeeklyPlanningVNextState {
   const result = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), {
     add: [{ kind: 'task', localId: 'task', category: 'study', title: testCase.seed.taskTitle }, ...testCase.seed.facts],
     patch: [], remove: [], relate: [], defer: [],
-  }, { acceptedDate: testCase.seed.acceptedDate, turnKey: `${testCase.id}:seed`, expectedRevision: 0,
+  }, { acceptedDate: testCase.seed.acceptedDate, weekStartsOn: 'monday',
+    planningHorizon: { startDate: testCase.seed.acceptedDate, endDate: '2026-11-08' },
+    turnKey: `${testCase.id}:seed`, expectedRevision: 0,
     conversationId: `jev-case:${testCase.id}`, turnId: `${testCase.id}:seed`, sourceText: 'synthetic seeded state' });
   if (result.status !== 'applied') throw new Error(`Invalid seed ${testCase.id}: ${JSON.stringify(result)}`);
   return result.state;
@@ -56,7 +58,9 @@ function appliedChoiceState(testCase: VNextJevComparisonCase, state: WeeklyPlann
   const option = resolveChoice(testCase, state, question);
   if (!option) throw new Error(`Expected menu choice missing for ${testCase.id}`);
   const result = applyWeeklyPlanningVNextTurn(state, option.delta, {
-    acceptedDate: testCase.seed.acceptedDate, turnKey: `${testCase.id}:choice`, expectedRevision: state.graph.revision,
+    acceptedDate: testCase.seed.acceptedDate, weekStartsOn: 'monday',
+    planningHorizon: { startDate: testCase.seed.acceptedDate, endDate: '2026-11-08' },
+    turnKey: `${testCase.id}:choice`, expectedRevision: state.graph.revision,
     conversationId: `jev-case:${testCase.id}`, turnId: `${testCase.id}:choice`, sourceText: testCase.userText,
   });
   if (result.status !== 'applied') throw new Error(`Option delta rejected for ${testCase.id}: ${JSON.stringify(result)}`);

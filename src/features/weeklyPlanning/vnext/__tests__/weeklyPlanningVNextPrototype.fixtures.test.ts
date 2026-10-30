@@ -218,7 +218,9 @@ function applyFixture(state: WeeklyPlanningVNextState, fixture: ComparisonFixtur
     }
     if (![delta.add, delta.patch, delta.remove, delta.relate, delta.defer].some((operations) => operations.length)) return;
     const result = applyWeeklyPlanningVNextTurn(current, delta, {
-      acceptedDate: '2026-11-02', turnKey: `${fixture.id}:${index + 1}`,
+      acceptedDate: '2026-11-02', weekStartsOn: 'monday',
+      planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' },
+      turnKey: `${fixture.id}:${index + 1}`,
       expectedRevision: current.graph.revision,
       conversationId: fixture.id,
       turnId: `${fixture.id}:turn:${index + 1}`,

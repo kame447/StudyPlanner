@@ -20,9 +20,8 @@ const scope: WeeklyPlanningVNextExperimentalScope = {
   weekStartDate: '2026-11-02',
   conversationId: 'v5-port-comparison',
   clock: {
-    currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo',
+    currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo', weekStartsOn: 'monday',
   },
-  weekStartsOn: 'monday',
   notBeforeTime: '09:00',
 };
 
@@ -43,7 +42,7 @@ const window = (localId: string, start: string, end: string): VNextAddFact => ({
 
 type ScriptStep = VNextTurnDelta | ((input: WeeklyPlanningVNextInterpretationInput) => VNextTurnDelta);
 
-function harness(script: ScriptStep[]) {
+function harness(script: ScriptStep[], sessionScope: WeeklyPlanningVNextExperimentalScope = scope) {
   const slots = new Map<string, string>();
   const saved = new Map<string, WeeklyPlanDraftBlock>();
   let saveCalls = 0;
@@ -82,7 +81,7 @@ function harness(script: ScriptStep[]) {
     saveCalls: () => saveCalls,
     async turn(turnId: string, userText: string) {
       const result = await submitWeeklyPlanningVNextExperimentalTurn({
-        scope, ports, turnId, userText, shownRevision,
+        scope: sessionScope, ports, turnId, userText, shownRevision,
       });
       if (result.graphRevision !== null) shownRevision = result.graphRevision;
       return result;
@@ -139,6 +138,63 @@ const orderedBlocks = (blocks: WeeklyPlanDraftBlock[]) => [...blocks]
 const dates = (blocks: WeeklyPlanDraftBlock[]) => orderedBlocks(blocks).map(block => block.date);
 
 describe('V5 scheduling regressions through VNext transaction, session, and Stable V5 scheduler', () => {
+  it('resolves next_week from a Sunday-start session week', async () => {
+    const sundayScope: WeeklyPlanningVNextExperimentalScope = {
+      ...scope,
+      weekStartDate: '2026-11-01',
+      conversationId: 'v5-port-sunday-next-week',
+      clock: { ...scope.clock, currentDate: '2026-11-02', planningStartDate: '2026-11-01',
+        planningEndDate: '2026-11-07', weekStartsOn: 'sunday' },
+    };
+    const h = harness([{ ...emptyDelta(), add: [task('english', '英語の音読'), work('reading', 'english'), {
+      kind: 'planning_window', localId: 'next-week', windowKind: 'relative_week', value: 'next_week', start: null, end: null,
+    }] }], sundayScope);
+    const result = await h.turn('next-week', '来週の計画');
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'ready' });
+    expect(result.preview).not.toBeNull();
+    expect(dates(result.preview!.blocks)[0]).toBe('2026-11-08');
+    const loaded = readWeeklyPlanningVNextExperimentalSession(sundayScope, h.ports);
+    expect(loaded.status).toBe('ready');
+    if (loaded.status === 'ready') expect(loaded.checkpoint.state.graph.planningWindows).toMatchObject([
+      { kind: 'absolute', start: '2026-11-08', end: '2026-11-14' },
+    ]);
+  });
+
+  it('keeps the accepted hard Friday deadline when a later amount correction advances the clock', async () => {
+    const initial: VNextTurnDelta = { ...emptyDelta(), add: [task('math', '数学'), work('math-work', 'math'),
+      window('fortnight', '2026-11-02', '2026-11-15'), {
+        kind: 'temporal_constraint', localId: 'friday-deadline', taskRef: { localId: 'math' }, targetRef: { localId: 'math' },
+        constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: 'weekday:friday',
+        namedTimePeriod: null, startTime: null, endTime: '13:00', precision: 'exact',
+      }] };
+    const deadlineScope: WeeklyPlanningVNextExperimentalScope = {
+      ...scope, conversationId: 'v5-port-expired-hard-deadline',
+      clock: { ...scope.clock, planningEndDate: '2026-11-15' },
+    };
+    const h = harness([initial, input => ({ ...emptyDelta(), patch: [{ kind: 'workload', localId: 'amount-correction',
+      targetFactId: input.state.graph.workloads[0].id,
+      amountDelta: 30,
+      changes: { amount: null, quantityRole: null, unitCode: null, unitLabel: null,
+        rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null },
+    }] })], deadlineScope);
+    const first = await h.turn('initial', '金曜が締切です');
+    expect(first).toMatchObject({ outcome: 'applied', readiness: 'ready' });
+    expect(first.preview).not.toBeNull();
+    expect(dates(first.preview!.blocks)).toEqual(['2026-11-02']);
+
+    deadlineScope.clock.currentDate = '2026-11-07';
+    const corrected = await h.turn('correction', '作業量は90分です');
+    expect(corrected).toMatchObject({ outcome: 'applied' });
+    expect(corrected.preview).toBeNull();
+    const loaded = readWeeklyPlanningVNextExperimentalSession(deadlineScope, h.ports);
+    expect(loaded.status).toBe('ready');
+    if (loaded.status === 'ready') {
+      expect(loaded.checkpoint.state.graph.temporalConstraints).toMatchObject([
+        expect.objectContaining({ kind: 'deadline', dateExpression: '2026-11-06', constraintLevel: 'hard', endTime: '13:00' }),
+      ]);
+    }
+  });
+
   it('resolves and corrects a relative planning window through the session horizon', async () => {
     await applyCorrectSaveAndReload({
       initial: { ...emptyDelta(), add: [task('english', '英語の音読'), work('reading', 'english'), {

@@ -137,8 +137,7 @@ function makeScope(testCase: VNextJevComparisonCase, repetition: number): Weekly
     weekStartDate: testCase.seed.acceptedDate,
     conversationId: `jev-comparison:${testCase.id}:r${repetition}`,
     clock: { currentDate: testCase.seed.acceptedDate, planningStartDate: testCase.seed.acceptedDate,
-      planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
-    weekStartsOn: 'monday',
+      planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' },
     notBeforeTime: '09:00',
   };
 }
@@ -187,7 +186,8 @@ async function captureCandidateRequest(testCase: VNextJevComparisonCase, repetit
   const scope = { ...makeScope(testCase, repetition), ownerId, conversationId };
   const seedDelta = taskSeedDelta(testCase);
   const seed = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), seedDelta, {
-    expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate, turnKey: 'seed',
+    expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate, weekStartsOn: scope.clock.weekStartsOn,
+    planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate }, turnKey: 'seed',
     conversationId: scope.conversationId, turnId: 'seed', sourceText: rawDev ? 'Synthetic development seed' : 'synthetic seed',
   });
   if (seed.status !== 'applied') throw new Error(`Invalid seed for ${testCase.id}.`);
@@ -562,7 +562,8 @@ function selectionMatches(testCase: VNextJevComparisonCase, selectedId: string |
 function reconstructObservedState(testCase: VNextJevComparisonCase, observation: CaseObservation): WeeklyPlanningVNextState {
   const scope = makeScope(testCase, observation.repetition);
   const seed = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), taskSeedDelta(testCase), {
-    expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate,
+    expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate, weekStartsOn: scope.clock.weekStartsOn,
+    planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
     turnKey: `${scope.conversationId}:seed`, conversationId: scope.conversationId,
     turnId: 'seed', sourceText: 'synthetic seed',
   });
@@ -571,6 +572,8 @@ function reconstructObservedState(testCase: VNextJevComparisonCase, observation:
   if (!isRecord(observation.appliedDelta)) throw new Error(`Applied observation lacks a typed delta: ${testCase.id}/${observation.repetition}.`);
   const applied = applyWeeklyPlanningVNextTurn(seed.state, observation.appliedDelta as unknown as VNextTurnDelta, {
     expectedRevision: seed.state.graph.revision, acceptedDate: testCase.seed.acceptedDate,
+    weekStartsOn: scope.clock.weekStartsOn,
+    planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
     turnKey: `${scope.conversationId}:reply`, conversationId: scope.conversationId,
     turnId: 'reply', sourceText: testCase.userText,
   });
@@ -864,7 +867,9 @@ describe('VNext Jev comparison session controls (offline)', () => {
     const testCase = VNEXT_JEV_COMPARISON_CASES.find((item) => item.id === 'h-mixed-deadline')!;
     const scope = makeScope(testCase, 1);
     const seeded = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), taskSeedDelta(testCase), {
-      expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate, turnKey: `${scope.conversationId}:seed`,
+      expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate, weekStartsOn: scope.clock.weekStartsOn,
+      planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
+      turnKey: `${scope.conversationId}:seed`,
       conversationId: scope.conversationId, turnId: 'seed', sourceText: 'synthetic seed',
     });
     if (seeded.status !== 'applied') throw new Error('Deadline oracle seed failed.');
@@ -883,6 +888,8 @@ describe('VNext Jev comparison session controls (offline)', () => {
       };
       const result = applyWeeklyPlanningVNextTurn(seeded.state, delta, {
         expectedRevision: seeded.state.graph.revision, acceptedDate: testCase.seed.acceptedDate,
+        weekStartsOn: scope.clock.weekStartsOn,
+        planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
         turnKey: `${scope.conversationId}:${constraintKind}`, conversationId: scope.conversationId,
         turnId: constraintKind, sourceText: 'synthetic deadline meaning',
       });
