@@ -23,12 +23,12 @@ describe('timetable remaining-viewport contract', () => {
       flex: '1', 'min-height': '0', overflow: 'auto',
     });
     expect(declarations('.timetable-workspace-shell .timetable-grid')['grid-template-rows'])
-      .toBe('auto repeat(var(--timetable-period-count), minmax(min-content, 1fr))');
+      .toBe('var(--timetable-grid-rows)');
     expect(source('../App.tsx')).toContain("viewMode === 'timetable' ? ' timetable-workspace-shell'");
   });
   it('uses the same data-derived count for loading and loaded grids, not a hardcoded six-row crop', () => {
     for (const file of ['TimetableView.tsx', 'TimetableSkeleton.tsx']) {
-      expect(source(`../components/${file}`)).toContain("'--timetable-period-count': displayPeriods.length");
+      expect(source(`../components/${file}`)).toContain("'--timetable-grid-rows': gridRows");
     }
     expect(declarations('.timetable-workspace-shell > main > .route-skeleton--timetable'))
       .toMatchObject({ display: 'flex', flex: '1', 'min-height': '0' });

@@ -89,7 +89,7 @@ async function recordCovers(page) {
           const card = node.closest('[data-material-entry], .bookshelf-detail-hero');
           const c = card?.getBoundingClientRect();
           frames.push({ t: performance.now(), phase, id: ids.get(node), key: node.dataset.coverOf ?? 'category',
-            section: node.closest('.bookshelf-detail-page') ? 'detail' : 'list',
+            section: node.closest('.bookshelf-detail-page') ? 'detail' : 'list', categoryContent: Boolean(node.closest('.bookshelf-expanded-materials')),
             x: r.x - origin.x, y: r.y - origin.y, width: r.width, height: r.height,
             transform: s.transform, translate: s.translate, scale: s.scale, rotate: s.rotate,
             decoded: node instanceof HTMLImageElement ? node.complete && node.naturalWidth > 0 : null,
@@ -106,13 +106,13 @@ async function recordCovers(page) {
 async function expectStationaryCovers(page, phase, section) {
   await expect.poll(() => page.evaluate(({ phase, section }) => {
     const frames = window.__coverFrames.frames.filter(f => f.phase === phase && f.section === section);
-    const targets = frames.filter(f => phase === 'category-open' ? f.key === 'category' : f.key !== 'category');
+    const targets = frames.filter(f => phase === 'category-open' ? f.categoryContent : f.key !== 'category');
     return targets.length > 0 && [...new Set(targets.map(f => f.id))].every(id => {
       const same = targets.filter(f => f.id === id);
       return same.length >= 8 && same.at(-1).t - same[0].t >= 120;
     });
   }, { phase, section })).toBe(true);
-  const frames = await page.evaluate(({ phase, section }) => window.__coverFrames.frames.filter(f => f.phase === phase && f.section === section), { phase, section });
+  const frames = await page.evaluate(({ phase, section }) => window.__coverFrames.frames.filter(f => f.phase === phase && f.section === section && (phase !== 'category-open' || f.categoryContent)), { phase, section });
   expect(frames.length).toBeGreaterThan(0);
   for (const frame of frames) {
     expect(frame.transform).toBe('none');
@@ -203,6 +203,7 @@ for (const width of [320, 375, 390, 1280]) {
         expect((await motionLog(page)).filter(entry => entry.key.startsWith('cover:'))).toEqual([]);
       }
       const category = page.locator('.bookshelf-subject-toggle').filter({ hasText: '情報科学' });
+      await page.evaluate(() => window.__coverFrames.arm('category-close'));
       await category.click(); await expect(category).toHaveAttribute('aria-expanded', 'false');
       await page.evaluate(() => window.__coverFrames.arm('category-open'));
       await category.click(); await expect(category).toHaveAttribute('aria-expanded', 'true');
@@ -219,8 +220,9 @@ for (const width of [320, 375, 390, 1280]) {
 }
 
 test('marking a favourite brings that card in without replaying the others', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await seed(page);
+  await seed(page, 'standard');
   await openBookshelf(page);
   // よく使う教材 shows three: the favourite first, then the others.
   const featured = page.locator('.bookshelf-featured-card');

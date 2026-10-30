@@ -191,7 +191,7 @@ it('locks the deleting session without locking a reopened draft', async () => {
 
 it('keeps period controls and meaningful state while omitting redundant descriptions', () => {
   mount();
-  act(() => renderer.root.findAllByType('button').find(node => node.children.includes('期間'))!.props.onClick());
+  act(() => renderer.root.findAllByType('button').find(node => String(node.props['aria-label'] ?? '').startsWith('期間を編集:'))!.props.onClick());
   const sheet = renderer.root.findByProps({ className: 'timetable-term-sheet timetable-period-sheet' });
   const text = JSON.stringify(sheet.findAllByType('p').map(node => node.children));
   expect(text).not.toContain('実際に使う日付で管理');
@@ -203,4 +203,21 @@ it('keeps period controls and meaningful state while omitting redundant descript
   expect(sheet.findAllByType('input').filter(node => node.props.type === 'date')).toHaveLength(3);
   expect(sheet.findByType('small').children.join('')).toContain('この日を含む週をA週');
   expect(sheet.findAllByType('button').some(node => node.children.includes('保存して使用'))).toBe(true);
+});
+
+
+it('finishes only its own route entry before pointer or keyboard click opens an overlay', () => {
+  mount();
+  const section = renderer.root.findByType('section');
+  const entry = { animationName: 'ui-surface-fade', playState: 'running', finish: vi.fn() };
+  const feedback = { animationName: 'feedback', playState: 'running', finish: vi.fn() };
+  const finished = { animationName: 'ui-surface-fade', playState: 'finished', finish: vi.fn() };
+  const getAnimations = vi.fn(() => [entry, feedback, finished]);
+  expect(section.props.onPointerDownCapture).toBe(section.props.onClickCapture);
+  section.props.onPointerDownCapture({ currentTarget: { getAnimations } });
+  section.props.onClickCapture({ currentTarget: { getAnimations } });
+  expect(entry.finish).toHaveBeenCalledTimes(2);
+  expect(feedback.finish).not.toHaveBeenCalled();
+  expect(finished.finish).not.toHaveBeenCalled();
+  expect(getAnimations.mock.calls).toEqual([[], []]);
 });

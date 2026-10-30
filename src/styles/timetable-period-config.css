@@ -35,6 +35,7 @@
 }
 
 .timetable-period-trigger > small {
+  white-space: nowrap;
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 700;
@@ -387,6 +388,7 @@
   }
 
   .timetable-period-trigger > small {
+  white-space: nowrap;
     font-size: 0.62rem;
   }
 

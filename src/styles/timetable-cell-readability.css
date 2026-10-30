@@ -132,6 +132,7 @@
   }
 
   .timetable-workspace-shell .timetable-header {
+    grid-template-columns: minmax(0, 1fr);
     flex: none;
     min-height: 0;
     gap: 4px;
@@ -139,14 +140,6 @@
 
   .timetable-workspace-shell .timetable-period-trigger {
     padding-inline: 2px;
-  }
-
-  .timetable-workspace-shell .timetable-term-control {
-    gap: 4px;
-  }
-
-  .timetable-workspace-shell .timetable-term-control > .ghost-button {
-    padding-inline: 8px;
   }
 
   .timetable-workspace-shell .timetable-grid-shell {
@@ -160,13 +153,26 @@
 
   .timetable-workspace-shell .timetable-grid {
     height: 100%;
-    grid-template-rows: auto repeat(var(--timetable-period-count), minmax(min-content, 1fr));
+    grid-template-rows: var(--timetable-grid-rows);
   }
 
   .timetable-workspace-shell .timetable-period-cell,
   .timetable-workspace-shell .timetable-grid-cell {
     height: auto;
     min-height: 4rem;
+  }
+
+  .timetable-workspace-shell .timetable-grid-cell {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .timetable-workspace-shell .timetable-cell-stack {
+    min-height: 0;
+  }
+
+  .timetable-workspace-shell .timetable-class-card {
+    padding-block: 4px;
+    gap: 3px;
   }
 
   .timetable-workspace-shell .timetable-period-cell {
@@ -202,6 +208,12 @@
   .timetable-workspace-shell .route-skeleton--timetable .timetable-period-time-text {
     display: block;
     font-size: 10px;
+  }
+
+  .timetable-workspace-shell .timetable-grid-actions > .timetable-ocr-button {
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 0.74rem;
   }
 
   .timetable-workspace-shell .timetable-grid-actions {
