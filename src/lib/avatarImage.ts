@@ -1,3 +1,5 @@
+import { UserFacingError } from './userFacingError';
+
 const MAX_AVATAR_EDGE = 256;
 const MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -13,11 +15,11 @@ function readFileAsDataUrl(file: File): Promise<string> {
         return;
       }
 
-      reject(new Error('画像を読み込めませんでした。'));
+      reject(new UserFacingError('画像を読み込めませんでした。'));
     };
 
     reader.onerror = () => {
-      reject(new Error('画像の読み込みに失敗しました。'));
+      reject(new UserFacingError('画像の読み込みに失敗しました。'));
     };
 
     reader.readAsDataURL(file);
@@ -29,7 +31,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     const image = new Image();
 
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('画像を表示できませんでした。'));
+    image.onerror = () => reject(new UserFacingError('画像を表示できませんでした。'));
     image.src = src;
   });
 }
@@ -46,7 +48,7 @@ function cropImageToSquare(image: HTMLImageElement): string {
   const context = canvas.getContext('2d');
 
   if (!context) {
-    throw new Error('画像変換の準備に失敗しました。');
+    throw new UserFacingError('画像変換の準備に失敗しました。');
   }
 
   // 小さめの正方形に揃えて、localStorage を圧迫しにくくする。
@@ -71,14 +73,18 @@ export function isImageAvatar(avatar: string): boolean {
 
 export async function createAvatarDataUrl(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) {
-    throw new Error('画像ファイルを選択してください。');
+    throw new UserFacingError('画像ファイルを選択してください。');
   }
 
   if (file.size > MAX_AVATAR_FILE_SIZE) {
-    throw new Error('画像サイズは 5MB 以下にしてください。');
+    throw new UserFacingError('画像サイズは 5MB 以下にしてください。');
   }
 
-  const source = await readFileAsDataUrl(file);
-  const image = await loadImage(source);
-  return cropImageToSquare(image);
+  try {
+    const source = await readFileAsDataUrl(file);
+    const image = await loadImage(source);
+    return cropImageToSquare(image);
+  } catch (error) {
+    throw error instanceof UserFacingError ? error : new UserFacingError('写真を読み込めませんでした。別の画像を選んでください。');
+  }
 }

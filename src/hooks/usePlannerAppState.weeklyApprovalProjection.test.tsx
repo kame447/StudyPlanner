@@ -233,7 +233,7 @@ describe('weekly approval confirmed projection', () => {
 
   it('preserves failed full-read health while projecting an uncontended confirmed save', async () => {
     getters.plans.mockRejectedValueOnce(new Error('full read unavailable'));
-    await act(async () => { await expect(boundary.load('owner')).rejects.toThrow('full read unavailable'); });
+    await act(async () => { await expect(boundary.load('owner')).rejects.toThrow('学習データを読み込めませんでした。接続を確認して再読み込みしてください。'); });
     clearReads();
     let saved!: Plan;
     await act(async () => { saved = await state.saveWeeklyApprovedPlan(draft()); });

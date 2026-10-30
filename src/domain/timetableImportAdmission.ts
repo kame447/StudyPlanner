@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { getRecurrenceWeekday } from '../lib/planRecurrence';
 import { buildTimetableImportCandidates, createPlanDraftFromTimetableImportCandidate } from '../lib/timetableImport';
 import { resolveTimetableTermForDate } from '../lib/timetableCalendar';
@@ -22,7 +23,7 @@ export function requireCurrentTimetableImportTemplates(
   const expected = candidate && createPlanDraftFromTimetableImportCandidate(candidate, ownerId, draft.date);
   if (draft.userId !== ownerId || !candidate || !expected
     || (['title', 'subject', 'type', 'startTime', 'endTime', 'memo'] as const).some(key => draft[key] !== expected[key])) {
-    throw new Error('時間割が更新されました。現在の予定を開き直してください。');
+    throw new UserFacingError('時間割が更新されました。現在の予定を開き直してください。');
   }
   return candidate.templates;
 }

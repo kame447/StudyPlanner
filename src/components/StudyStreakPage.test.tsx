@@ -53,7 +53,8 @@ it('retains acknowledged history and the selected month when automatic saving fa
   await act(async () => { renderer = create(screen()); });
   const view = renderer!.root.findByType(StudyStreakView);
   expect(view.props.model).toMatchObject({ availableTickets: 1, protectedDates: [] });
-  expect(view.props.error).toBe('保存できませんでした。');
+  expect(view.props.error).toBe('お休みチケットの保存結果を確認できませんでした。確認し直してから操作してください。');
+  expect(view.props.error).not.toBe('保存できませんでした。');
   const previous = renderer!.root.findByProps({ 'aria-label': '前の月' });
   act(() => previous.props.onClick());
   repository.useRestDay.mockImplementation(async (current: StudyStreakHistory, date: string) => ({ ...current, restDays: [{ date }] }));

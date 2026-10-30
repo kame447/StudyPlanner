@@ -1,3 +1,5 @@
+import { UserFacingError } from './userFacingError';
+
 const MAX_MATERIAL_IMAGE_EDGE = 640;
 const MAX_MATERIAL_IMAGE_FILE_SIZE = 3 * 1024 * 1024;
 const MAX_MATERIAL_IMAGE_DATA_URL_LENGTH = 700 * 1024;
@@ -19,11 +21,11 @@ function readFileAsDataUrl(file: File): Promise<string> {
         return;
       }
 
-      reject(new Error('画像を読み込めませんでした。'));
+      reject(new UserFacingError('画像を読み込めませんでした。'));
     };
 
     reader.onerror = () => {
-      reject(new Error('画像の読み込みに失敗しました。'));
+      reject(new UserFacingError('画像の読み込みに失敗しました。'));
     };
 
     reader.readAsDataURL(file);
@@ -35,7 +37,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     const image = new Image();
 
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('画像を表示できませんでした。'));
+    image.onerror = () => reject(new UserFacingError('画像を表示できませんでした。'));
     image.src = src;
   });
 }
@@ -55,7 +57,7 @@ function resizeImage(image: HTMLImageElement): string {
   const context = canvas.getContext('2d');
 
   if (!context) {
-    throw new Error('画像変換の準備に失敗しました。');
+    throw new UserFacingError('画像変換の準備に失敗しました。');
   }
 
   context.drawImage(image, 0, 0, width, height);
@@ -65,24 +67,28 @@ function resizeImage(image: HTMLImageElement): string {
 
 export async function createMaterialCoverDataUrl(file: File): Promise<string> {
   if (file.name.trim().toLowerCase().endsWith('.svg')) {
-    throw new Error('svg 画像は登録できません。');
+    throw new UserFacingError('svg 画像は登録できません。');
   }
 
   if (!ALLOWED_MATERIAL_IMAGE_TYPES.has(file.type)) {
-    throw new Error('jpeg / png / webp の画像を選択してください。');
+    throw new UserFacingError('jpeg / png / webp の画像を選択してください。');
   }
 
   if (file.size > MAX_MATERIAL_IMAGE_FILE_SIZE) {
-    throw new Error('教材写真は 3MB 以下にしてください。');
+    throw new UserFacingError('教材写真は 3MB 以下にしてください。');
   }
 
-  const source = await readFileAsDataUrl(file);
-  const image = await loadImage(source);
-  const dataUrl = resizeImage(image);
+  try {
+    const source = await readFileAsDataUrl(file);
+    const image = await loadImage(source);
+    const dataUrl = resizeImage(image);
 
-  if (dataUrl.length > MAX_MATERIAL_IMAGE_DATA_URL_LENGTH) {
-    throw new Error('変換後の画像が大きすぎます。小さめの画像を選んでください。');
+    if (dataUrl.length > MAX_MATERIAL_IMAGE_DATA_URL_LENGTH) {
+      throw new UserFacingError('変換後の画像が大きすぎます。小さめの画像を選んでください。');
+    }
+
+    return dataUrl;
+  } catch (error) {
+    throw error instanceof UserFacingError ? error : new UserFacingError('写真を読み込めませんでした。別の画像を選んでください。');
   }
-
-  return dataUrl;
 }

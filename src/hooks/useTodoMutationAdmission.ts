@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import type { PlannerDataProjectionLease, PlannerDataReadAuthority } from '../domain/plannerDataReadAuthority';
 import type { TodoTask } from '../types/domain';
@@ -18,9 +19,9 @@ export function useTodoMutationAdmission(
     const claims = new Map<string, { settledAt?: number }>();
     function currentTarget(id: string, targetOwner: string) {
       if (!scope.isCurrent() || targetOwner !== ownerId) throw new PlannerMutationScopeExpiredError();
-      if (claims.has(id)) throw new Error('このTodoは保存・更新中です。完了してから開き直してください。');
+      if (claims.has(id)) throw new UserFacingError('このTodoは保存・更新中です。完了してから開き直してください。');
       if (!currentProjection || !authority.canAdmitMutationFromProjection(currentProjection, ['plans-todos'])) {
-        throw new Error('Todoの最新状態を確認できていません。再読み込みしてから開き直してください。');
+        throw new UserFacingError('Todoの最新状態を確認できていません。再読み込みしてから開き直してください。');
       }
       return current.find(item => item.id === id && item.userId === ownerId);
     }
@@ -36,7 +37,7 @@ export function useTodoMutationAdmission(
     return {
       begin(id: string, targetOwner: string) {
         const todo = currentTarget(id, targetOwner);
-        if (!todo) throw new Error('このTodoは削除または更新されています。現在の一覧を確認して開き直してください。');
+        if (!todo) throw new UserFacingError('このTodoは削除または更新されています。現在の一覧を確認して開き直してください。');
         return reserve(todo);
       },
       beginLinkedPlanDelete(id: string, targetOwner: string, planId: string) {

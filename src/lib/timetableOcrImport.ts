@@ -1,3 +1,4 @@
+import { UserFacingError } from './userFacingError';
 import { getCloudflareAiProxyUrl } from './aiConfig';
 import {
   createAiImageFilePayload,
@@ -203,7 +204,7 @@ export async function createTimetableOcrFilePayload(
   file: File,
 ): Promise<TimetableOcrFilePayload> {
   if (!getAiImageMimeType(file)) {
-    throw new Error('画像読み取りは png / jpg / jpeg のみ対応しています。PDFは後で対応予定です。');
+    throw new UserFacingError('画像読み取りは png / jpg / jpeg のみ対応しています。PDFは後で対応予定です。');
   }
 
   return createAiImageFilePayload(file);
@@ -215,40 +216,44 @@ export async function requestTimetableOcr(
   const proxyUrl = getCloudflareAiProxyUrl();
 
   if (!proxyUrl) {
-    throw new Error('AI proxy URL が設定されていません。');
+    throw new UserFacingError('画像読み取りを現在利用できません。時間割を手入力してください。');
   }
 
   const firebaseAuth = getFirebaseAuth();
 
   if (!firebaseAuth?.currentUser) {
-    throw new Error('ログイン済みユーザーの Firebase セッションが見つかりません。');
+    throw new UserFacingError('画像読み取りにはログインが必要です。ログインし直してください。');
   }
 
-  const idToken = await firebaseAuth.currentUser.getIdToken();
-  const endpoint = buildTimetableOcrEndpoint(proxyUrl);
+  try {
+    const idToken = await firebaseAuth.currentUser.getIdToken();
+    const endpoint = buildTimetableOcrEndpoint(proxyUrl);
 
-  console.info('[Timetable OCR] request endpoint', endpoint);
+    console.info('[Timetable OCR] request endpoint', endpoint);
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
-    },
-    body: JSON.stringify({
-      mimeType: payload.mimeType,
-      base64: payload.base64,
-    }),
-  });
-  const result = (await response.json()) as TimetableOcrWorkerResponse;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        mimeType: payload.mimeType,
+        base64: payload.base64,
+      }),
+    });
+    const result = (await response.json()) as TimetableOcrWorkerResponse;
 
-  if (!response.ok || !result.result) {
-    throw new Error(
-      result.error || '読み取りに失敗しました。画像を明るく撮り直してください。',
-    );
+    if (!response.ok || !result.result) {
+      throw new UserFacingError(
+        response.status === 429 ? '画像読み取りの利用上限です。時間をおいてお試しください。' : '読み取りに失敗しました。画像を明るく撮り直すか、手入力してください。',
+      );
+    }
+
+    return normalizeTimetableOcrResult(result.result);
+  } catch (error) {
+    throw error instanceof UserFacingError ? error : new UserFacingError('画像を読み取れませんでした。通信を確認するか、手入力してください。');
   }
-
-  return normalizeTimetableOcrResult(result.result);
 }
 
 export function buildMockTimetableOcrResult(

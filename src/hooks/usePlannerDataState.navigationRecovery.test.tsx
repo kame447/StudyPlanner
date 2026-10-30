@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { usePlannerDataState, type UsePlannerDataStateResult } from './usePlannerDataState';
@@ -58,7 +59,7 @@ async function finish(operation: Awaited<ReturnType<typeof begin>>, success: boo
   await act(async () => {
     if (success) operation.gate.resolve(); else operation.gate.reject(failure);
     const result = await operation.done;
-    if (!success) expect(result).toBe(failure);
+    if (!success) expect(result).toEqual(new UserFacingError(({ plan: '学習予定を保存できませんでした。', todo: 'Todoを予定化できませんでした。', month: '月の主要予定を保存できませんでした。' })[operation.family]));
     else if (operation.family === 'todo') expect(result).toMatchObject({ sourceType: 'todo' });
     else expect(result).toBeUndefined();
   });

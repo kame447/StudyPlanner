@@ -85,7 +85,7 @@ describe('month-event Undo captures the event admitted for deletion', () => {
     const restore = undoAction();
     vi.spyOn(boundary.repository, 'upsertMonthEvent').mockRejectedValueOnce(new Error('offline'));
     await act(async () => { await restore(); });
-    expect(showNotice).toHaveBeenLastCalledWith('offline', 'error');
+    expect(showNotice).toHaveBeenLastCalledWith('復元できませんでした。', 'error');
     expect(state.monthEvents).toEqual([]);
     expect(await fixture.repository.getMonthEvents('owner')).toEqual([]);
     expect(await fixture.repository.getActuals('owner')).toEqual(fixture.actuals);

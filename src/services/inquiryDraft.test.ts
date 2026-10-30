@@ -117,3 +117,17 @@ describe('owner-scoped inquiry draft and receipt recovery', () => {
     draft.setPhotos([]); await draft.send(); expect(draft.getSnapshot().phase).toBe('sent');
   });
 });
+
+
+it('does not expose raw receipt lookup errors or resubmit an uncertain inquiry', async () => {
+  vi.mocked(uploadInquiryAttachments).mockRejectedValueOnce(new Error('offline'));
+  await draft.send();
+  const receipt = draft.getSnapshot().marker!.receipt;
+  draft.dispose(); draft = new InquiryDraft(auth.session);
+  vi.mocked(recoverInquiryReceipt).mockRejectedValueOnce(new Error('Firebase private-project permission-denied'));
+  auth.emit(owner); await tick();
+  expect(draft.getSnapshot()).toMatchObject({ phase: 'recovery-failed', error: '受付を確認できませんでした。本文は再送せず、時間をおいて受付を確認してください。' });
+  expect(draft.getSnapshot().marker!.receipt).toBe(receipt);
+  expect(submitInquiry).toHaveBeenCalledTimes(1);
+  expect(uploadInquiryAttachments).toHaveBeenCalledTimes(1);
+});

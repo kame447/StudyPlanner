@@ -144,10 +144,7 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
   return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
 }
 
-function speechRecognitionErrorMessage(error: string, detail?: string): string {
-  const normalizedDetail = detail?.trim();
-  if (normalizedDetail) return normalizedDetail;
-
+function speechRecognitionErrorMessage(error: string): string {
   switch (error) {
     case 'not-allowed':
     case 'service-not-allowed':
@@ -157,9 +154,9 @@ function speechRecognitionErrorMessage(error: string, detail?: string): string {
     case 'no-speech':
       return '音声を認識できませんでした。もう一度話してください。';
     case 'network':
-      return '音声文字起こしAPIへ接続できませんでした。Workerの接続設定を確認してください。';
+      return '音声入力に接続できませんでした。通信を確認するか、文字で入力してください。';
     default:
-      return '音声入力に失敗しました。もう一度試してください。';
+      return '音声入力を利用できませんでした。時間をおくか、文字で入力してください。';
   }
 }
 
@@ -628,7 +625,7 @@ export function AiPlanningView({
 
     recognition.onerror = (event) => {
       if (event.error === 'aborted') return;
-      setError(speechRecognitionErrorMessage(event.error, event.message));
+      setError(speechRecognitionErrorMessage(event.error));
     };
 
     recognition.onend = () => {

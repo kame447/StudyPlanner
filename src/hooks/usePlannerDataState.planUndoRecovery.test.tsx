@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { plannerReadMethods as allGetters, plannerFullReadMethods, spyPlannerReads } from './plannerReadSpies.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -352,7 +353,7 @@ describe('Plan Undo repair through the public local factory', () => {
     await act(async () => { done = undo(); await gate.persisted.promise; });
     await act(async () => { await state.loadPlannerData('owner'); });
     vi.spyOn(boundary.repository, 'getDayNotes').mockRejectedValueOnce(Error('New full read failed'));
-    await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('New full read failed'); });
+    await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。")); });
     const reads = spyReads();
     for (const read of Object.values(reads)) read.mockClear();
     const normalize = vi.spyOn(boundary.repository, 'applyTimetableMutation');
@@ -379,7 +380,7 @@ describe('Plan Undo repair through the public local factory', () => {
     let done!: Promise<void>;
     await act(async () => { done = undo(); await gate.persisted.promise; });
     vi.spyOn(boundary.repository, 'getDayNotes').mockRejectedValueOnce(Error('Only full attempt fails'));
-    await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('Only full attempt fails'); });
+    await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。")); });
     const reads = spyReads();
     for (const read of Object.values(reads)) read.mockClear();
     const normalize = vi.spyOn(boundary.repository, 'applyTimetableMutation');
@@ -545,7 +546,7 @@ describe('Plan Undo repair through the public local factory', () => {
     expect(restore).toHaveBeenCalledTimes(1);
     expectRepairCost(reads);
     expect(normalize).not.toHaveBeenCalled();
-    expect(showNotice).toHaveBeenLastCalledWith(error.message, 'error');
+    expect(showNotice).toHaveBeenLastCalledWith('復元できませんでした。', 'error');
     expect(showNotice.mock.calls.some(call => call[0] === '元に戻しました。')).toBe(false);
     expect(state.plans).toHaveLength(1);
     expect(state.actuals).toEqual([]);
@@ -570,7 +571,7 @@ describe('Plan Undo repair through the public local factory', () => {
     expect(restore).toHaveBeenCalledTimes(1);
     expectRepairCost(reads);
     expect(normalize).not.toHaveBeenCalled();
-    expect(showNotice).toHaveBeenLastCalledWith(error.message, 'error');
+    expect(showNotice).toHaveBeenLastCalledWith('復元できませんでした。', 'error');
     expect(showNotice.mock.calls.some(call => call[0] === '元に戻しました。')).toBe(false);
     expect(projection()).toEqual(before);
     expect(unrelated()).toEqual(untouched);
@@ -599,7 +600,7 @@ describe('Plan Undo repair through the public local factory', () => {
     expect(state.plannerDataAvailability.status).toBe('stale');
     expect(state.plannerDataRecovery).toMatchObject({ reason: 'projections', phase: 'failed', canRetry: true });
     expect(state.isPlannerDataSnapshotCurrent()).toBe(false);
-    expect(showNotice).toHaveBeenLastCalledWith(error.message, 'error');
+    expect(showNotice).toHaveBeenLastCalledWith('復元できませんでした。', 'error');
     expect(showNotice.mock.calls.some(call => call[0] === '元に戻しました。')).toBe(false);
     const notices = showNotice.mock.calls.length;
     await act(async () => { await microtasks(); });
@@ -610,7 +611,7 @@ describe('Plan Undo repair through the public local factory', () => {
     expect(normalize).not.toHaveBeenCalled();
     expect(progress).not.toHaveBeenCalled();
     expect(showNotice).toHaveBeenCalledTimes(notices);
-    expect(showNotice).toHaveBeenLastCalledWith(error.message, 'error');
+    expect(showNotice).toHaveBeenLastCalledWith('復元できませんでした。', 'error');
     expect(unrelated()).toEqual(untouched);
     expect(state.plans).toHaveLength(1);
     await expectStoredProjection(fixture.repository);

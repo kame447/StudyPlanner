@@ -987,6 +987,14 @@
   overflow-wrap: anywhere;
 }
 
+.support-link-button {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .support-link-row-static {
   color: var(--text-muted);
 }

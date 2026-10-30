@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { getRecurrenceWeekday } from '../lib/planRecurrence';
 import { buildTimetableImportCandidates } from '../lib/timetableImport';
 import { resolveTimetableTermForDate } from '../lib/timetableCalendar';
@@ -24,12 +25,12 @@ export interface DayOccurrenceCancellationInput {
 // This is deliberately separate from series/Plan deletion, which owns dependents.
 export function buildDayOccurrenceCancellation(input: DayOccurrenceCancellationInput): DayOccurrenceCancellation {
   const { occurrence, ownerId } = input;
-  if (occurrence.ownerId !== ownerId) throw new Error('この予定を変更できません。');
+  if (occurrence.ownerId !== ownerId) throw new UserFacingError('この予定を変更できません。');
   const date = occurrence.start.date;
   const projected = createScheduleOccurrenceProjection({ ...input, startDate: date, endDate: date });
   const current = projected.occurrences.find(row => row.id === occurrence.id);
   if (!current || JSON.stringify(current) !== JSON.stringify(occurrence)) {
-    throw new Error('予定が更新されました。現在の予定を開き直してください。');
+    throw new UserFacingError('予定が更新されました。現在の予定を開き直してください。');
   }
   const updatedAt = new Date().toISOString();
   const exclude = (dates: readonly string[] = []) => [...new Set([...dates, date])].sort();
@@ -49,7 +50,7 @@ export function buildDayOccurrenceCancellation(input: DayOccurrenceCancellationI
   const candidate = buildTimetableImportCandidates({ templates: input.scheduleTemplates.filter(row => row.userId === ownerId),
     date, weekday: getRecurrenceWeekday(date), termId: term?.id ?? input.timetableTermId ?? 'default', term,
   }).find(row => row.sourceId === occurrence.source.backingId);
-  if (!candidate) throw new Error('時間割が更新されました。現在の予定を開き直してください。');
+  if (!candidate) throw new UserFacingError('時間割が更新されました。現在の予定を開き直してください。');
   return { kind: 'timetable', before: candidate.templates,
     after: candidate.templates.map(row => ({ ...row, excludedDates: exclude(row.excludedDates), updatedAt })) };
 }

@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import type { ReactNode } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -107,6 +108,7 @@ function deferredGate(label: string) {
   return {
     promise, resolve, reject,
     error: new Error(`${label} persistence failed`),
+    safeMessage: '月の主要予定を保存できませんでした。',
     entries: 0,
     writes: 0,
     outcome: null as Outcome | null,
@@ -142,6 +144,7 @@ type OperationKind = 'edit' | 'create' | 'delete';
 function gateFor(kind: OperationKind, record: MonthEvent) {
   if (kind !== 'delete') return holdUpsert(`${kind} ${record.id}`, candidate => candidate.title === `${record.title} saved`);
   const gate = deferredGate(`delete ${record.id}`);
+  gate.safeMessage = '月の主要予定を削除できませんでした。';
   boundary.repository.deleteMonthEvent = gateMethod(
     boundary.repository.deleteMonthEvent,
     (owner, id) => owner === OWNER && id === record.id,
@@ -187,7 +190,7 @@ async function finish(
     if (outcome.status === 'rejected') expect(outcome.reason).toBeInstanceOf(PlannerMutationScopeExpiredError);
   } else {
     expect(outcome).toEqual(success || caller === 'undo'
-      ? { status: 'fulfilled' } : { status: 'rejected', reason: gate.error });
+      ? { status: 'fulfilled' } : { status: 'rejected', reason: new UserFacingError(gate.safeMessage) });
   }
 }
 function undoAction(): () => Promise<void> {
@@ -247,7 +250,7 @@ it('preserves successful Undo across overlapping save outcomes and both start/co
       else { await finish(save, saveSuccess); await finish(restoration, undoSuccess, 'undo'); }
       await expectStoredProjection(JSON.stringify({ undoSuccess, saveSuccess, undoStartsFirst, undoFinishesFirst }));
       expect(state.monthEvents.some(record => record.id === A.id)).toBe(undoSuccess);
-      if (!undoSuccess) expect(showNotice).toHaveBeenCalledWith(undoGate.error.message, 'error');
+      if (!undoSuccess) expect(showNotice).toHaveBeenCalledWith('復元できませんでした。', 'error');
       unmount();
     }
   }

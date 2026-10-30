@@ -52,6 +52,12 @@ Client-first/runtime work:
 3. `docs/domains/client-runtime/architecture/planner-read-projection-recovery.md` (local read freshness / recovery / consumer lease)
 4. Issue #164
 
+Account deletion / personal-data retention work:
+
+1. [Account domain](docs/domains/account/README.md)
+2. [Deletion and retention policy / operator runbook](docs/domains/account/policies/account-deletion-and-retention.md)
+3. Issue #917 (implementation and verification evidence)
+
 Reporting work:
 
 1. `docs/domains/reporting/README.md`

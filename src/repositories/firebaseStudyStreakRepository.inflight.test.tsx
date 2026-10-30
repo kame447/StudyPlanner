@@ -336,7 +336,8 @@ describe('explicit retry lifetime', () => {
     function Harness({ source }: { source: StudyHistoryHint }) { state = useStudyStreak('owner', today, repo, source); return null; }
     let renderer!: ReturnType<typeof create>;
     await act(async () => { renderer = create(<Harness source={hint} />); });
-    expect(state).toMatchObject({ status: 'error', readError: 'offline' });
+    expect(state).toMatchObject({ status: 'error', readError: '学習履歴を読み込めませんでした。' });
+    expect(state.readError).not.toContain('offline');
     await act(async () => state.retry());
     expect(sdk.getDocs).toHaveBeenCalledTimes(2);
     expect(read.mock.calls[read.mock.calls.length - 1]?.[1]?.refresh).toBe(true);

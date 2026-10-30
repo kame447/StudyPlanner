@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { expect, it, vi } from 'vitest';
 import { useClassAttendance } from './useClassAttendance';
@@ -75,5 +76,22 @@ it('keeps a same-scope ready callback valid across benign renders and successful
   await act(async () => { expect(await retained('2026-10-20', 'present')).toBe(true); });
   await act(async () => { expect(await retained('2026-10-21', 'present')).toBe(true); });
   expect(repo.save).toHaveBeenCalledTimes(2);
+  act(() => ui.unmount());
+});
+
+
+it.each([
+  [new Error('Firebase: permission-denied private-project'), '出欠の保存結果を確認できませんでした。再読み込みして記録を確認してください。'],
+  [new UserFacingError('この授業は削除されたか、利用できなくなりました。'), 'この授業は削除されたか、利用できなくなりました。'],
+])('keeps authored attendance guidance but hides unknown repository errors', async (error, message) => {
+  const repo = { list: vi.fn(async () => []), save: vi.fn(async () => { throw error; }) };
+  let state!: ReturnType<typeof useClassAttendance>;
+  function Harness() { state = useClassAttendance('owner', 'class', repo); return null; }
+  let ui!: ReactTestRenderer;
+  await act(async () => { ui = create(<Harness />); });
+  await act(async () => { expect(await state.save('2026-10-20', 'present')).toBe(false); });
+  expect(state.saveError).toBe(message);
+  expect(repo.save).toHaveBeenCalledOnce();
+  expect(repo.list).toHaveBeenCalledOnce();
   act(() => ui.unmount());
 });

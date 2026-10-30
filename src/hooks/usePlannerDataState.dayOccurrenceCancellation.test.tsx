@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createLocalFixture, deferred, plan, event, actual, STAMP } from '../repositories/localPersistenceConcurrency.testUtils';
@@ -145,7 +146,7 @@ it.each(['plan', 'month-event', 'timetable-template'] as const)('repairs an unkn
   const method = kind === 'plan' ? 'applyRecurringPlanMutation' : kind === 'month-event' ? 'upsertMonthEvent' : 'applyTimetableMutation';
   const original = boundary.repository[method] as (...args: never[]) => Promise<unknown>;
   boundary.repository = { ...boundary.repository, [method]: async (...args: never[]) => { await original(...args); throw Error('ack lost'); } };
-  await act(async () => { await expect(state.deleteDayOccurrence(occurrence)).rejects.toThrow('ack lost'); });
+  await act(async () => { await expect(state.deleteDayOccurrence(occurrence)).rejects.toThrow(new UserFacingError("この日の予定を削除できませんでした。")); });
   expect(project().some(row => row.id === occurrence.id)).toBe(false);
   expect(state.plans).toEqual(await repository.getPlans('owner'));
   expect(state.monthEvents).toEqual(await repository.getMonthEvents('owner'));
@@ -158,7 +159,7 @@ it('blocks resending and undo until a failed reconciliation is successfully retr
   const read = boundary.repository.getScheduleTemplates;
   boundary.repository.getScheduleTemplates = async () => { throw Error('read offline'); };
   const writes = vi.spyOn(boundary.repository, 'applyTimetableMutation');
-  await act(async () => { await expect(state.deleteDayOccurrence(occurrence)).rejects.toThrow('ack lost'); });
+  await act(async () => { await expect(state.deleteDayOccurrence(occurrence)).rejects.toThrow(new UserFacingError("この日の予定を削除できませんでした。")); });
   expect(state.plannerDataAvailability.status).toBe('stale');
   await act(async () => { await expect(state.deleteDayOccurrence(occurrence)).rejects.toThrow('保存状態を確認できません'); });
   expect(writes).toHaveBeenCalledTimes(1);
@@ -182,7 +183,7 @@ it('does not let template editing overwrite an uncertain cancellation after its 
   const put = boundary.repository.applyTimetableMutation, read = boundary.repository.getScheduleTemplates;
   boundary.repository.applyTimetableMutation = async value => { await put(value); throw Error('ack lost'); };
   boundary.repository.getScheduleTemplates = async () => { throw Error('offline'); };
-  await act(async () => { await expect(state.deleteDayOccurrence(occurrence)).rejects.toThrow('ack lost'); });
+  await act(async () => { await expect(state.deleteDayOccurrence(occurrence)).rejects.toThrow(new UserFacingError("この日の予定を削除できませんでした。")); });
   const write = vi.spyOn(boundary.repository, 'upsertScheduleTemplate');
   await act(async () => { await expect(state.saveScheduleTemplate({ ...row, title: 'Unsafe stale save' }, row.id)).rejects.toThrow('保存状態を確認できません'); });
   expect(write).not.toHaveBeenCalled();
@@ -278,7 +279,7 @@ it.each(['time', 'record'] as const)('recovers acknowledged-lost %s materializat
   const writes = vi.spyOn(boundary.repository, 'upsertPlan');
   const time = { startTime: '17:00', endTime: '18:00' };
   const save = () => operation === 'time' ? state.changeDayTimetableTime(occurrence, time) : state.prepareDayTimetableRecord(occurrence);
-  await act(async () => { await expect(save()).rejects.toThrow('ack lost'); });
+  await act(async () => { await expect(save()).rejects.toThrow(new UserFacingError("この日の予定を変更できませんでした。再読み込みして保存結果を確認してください。")); });
   await act(async () => { await expect(save()).rejects.toThrow('保存状態'); });
   expect(writes).toHaveBeenCalledTimes(1);
   boundary.repository.getPlans = read;

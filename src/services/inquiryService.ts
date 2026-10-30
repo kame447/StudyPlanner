@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { isInquiryAttachmentList, sameInquiryAttachments, type InquiryAttachment } from '../../shared/inquiryAttachments';
 import {
   collection,
@@ -28,13 +29,13 @@ const COLLECTION = 'support_inquiries';
 
 function requireDatabase() {
   const db = getFirestoreDb();
-  if (!db) throw new Error('現在、お問い合わせに接続できません。');
+  if (!db) throw new UserFacingError('現在、お問い合わせに接続できません。');
   return db;
 }
 
 function requireOwner(userId: string) {
   if (!userId || getFirebaseAuth()?.currentUser?.uid !== userId) {
-    throw new Error('ログイン状態が変わりました。ログインし直してください。');
+    throw new UserFacingError('ログイン状態が変わりました。ログインし直してください。');
   }
 }
 
@@ -58,7 +59,7 @@ export async function submitInquiry(userId: string, input: InquirySubmission): P
       if (existing.exists()) {
         const saved = existing.data();
         if (!matchesReceipt(saved, userId, submission)) {
-          throw new Error('受付番号と送信内容が一致しません。');
+          throw new UserFacingError('受付番号と送信内容が一致しません。');
         }
         return;
       }
@@ -88,7 +89,7 @@ export async function submitInquiry(userId: string, input: InquirySubmission): P
 
 // Read-only reconciliation after reload. Never creates or rewrites a receipt.
 export async function recoverInquiryReceipt(userId: string, receiptId: string, attachments?: InquiryAttachment[]): Promise<boolean> {
-  if (!/^[a-zA-Z0-9_-]{20,80}$/.test(receiptId)) throw new Error('受付番号が無効です。');
+  if (!/^[a-zA-Z0-9_-]{20,80}$/.test(receiptId)) throw new UserFacingError('受付番号が無効です。');
   requireOwner(userId);
   const saved = await getDocFromServer(doc(requireDatabase(), COLLECTION, receiptId));
   requireOwner(userId);
@@ -113,7 +114,7 @@ export async function listInquiries(cursor: InquiryCursor | null = null): Promis
       || (value.schemaVersion === 2 && !isInquiryAttachmentList(value.attachments))
       || typeof value.userId !== 'string'
       || typeof value.body !== 'string' || !(value.createdAt instanceof Timestamp)) {
-      throw new Error('お問い合わせのデータを読み取れませんでした。');
+      throw new UserFacingError('お問い合わせのデータを読み取れませんでした。');
     }
     return {
       id: row.id,
