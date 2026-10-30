@@ -38,8 +38,8 @@ it('loads only on contact entry, keeps its shell, and does not mount a cancelled
   expect(body.mounted).not.toHaveBeenCalled();
   expect(renderer.root.findAllByType('h1').map(node => node.children)).toEqual([['お問い合わせ'], ['お問い合わせ']]);
   expect(renderer.root.findAllByProps({ role: 'status' })).toHaveLength(2);
-  expect(renderer.root.findAllByProps({ role: 'status' }).every(node => node.props['aria-label'] === 'お問い合わせを読み込み中')).toBe(true);
-  expect(JSON.stringify(renderer.toJSON())).not.toContain('お問い合わせを読み込んでいます');
+  expect(renderer.root.findAllByProps({ 'aria-label': 'お問い合わせを読み込み中', 'aria-busy': true })).toHaveLength(2);
+  expect(renderer.root.findAllByProps({ role: 'status' }).every(node => node.props.className === 'route-skeleton__status')).toBe(true);
   const returnLink = renderer.root.findAllByProps({ className: 'legal-back-link' })[0];
   expect(returnLink.props.href).toBe('/');
 

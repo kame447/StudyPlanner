@@ -155,6 +155,7 @@ export function HomeView({
   const homeTextSize = useHomeTextReflow(coreSectionsRef, isGettingStarted);
   const materialProbeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const layoutRelaxationRef = useRef<HomeLayoutRelaxation>(emptyLayoutRelaxation());
+  const [initialLayoutReady, setInitialLayoutReady] = useState(isGettingStarted);
   const [supplementalMaterialRows, setSupplementalMaterialRows] = useState<number | null>(null);
   const supplementalStudyMaterials = useMemo(() => {
     if (supplementalMaterialRows === null) return [];
@@ -164,6 +165,7 @@ export function HomeView({
   useEffect(() => {
     if (publicPageOpen) return undefined;
     if (isGettingStarted) {
+      setInitialLayoutReady(true);
       setSupplementalMaterialRows(null);
       return undefined;
     }
@@ -197,6 +199,7 @@ export function HomeView({
           !alertGrid ||
           !topbar
         ) {
+          setInitialLayoutReady(true);
           return;
         }
 
@@ -214,10 +217,14 @@ export function HomeView({
           delete header.dataset.homeChromeViewport;
           layoutRelaxationRef.current = emptyLayoutRelaxation();
           setSupplementalMaterialRows(supplementalMaterialCandidates[0] ?? null);
+          setInitialLayoutReady(true);
           return;
         }
 
-        if (dashboardElement.dataset.contentScroll === 'true') return;
+        if (dashboardElement.dataset.contentScroll === 'true') {
+          setInitialLayoutReady(true);
+          return;
+        }
 
         const chromeViewportKey = `${window.innerWidth}x${window.innerHeight}`;
         let chromeLocked = header.dataset.homeChromeViewport === chromeViewportKey;
@@ -394,6 +401,7 @@ export function HomeView({
           setScheduleMaxHeight(emergencyScheduleHeight);
           setSupplementalMaterialRows((current) => (current === null ? current : null));
           if (!chromeLocked) lockPrimaryChrome();
+          if (supplementalMaterialRows === null) setInitialLayoutReady(true);
           return;
         }
 
@@ -418,6 +426,7 @@ export function HomeView({
         let remaining = currentSlack - TARGET_BOTTOM_GAP;
         if (remaining <= 0.5) {
           if (!chromeLocked) lockPrimaryChrome();
+          setInitialLayoutReady(true);
           return;
         }
 
@@ -534,6 +543,8 @@ export function HomeView({
         if (relaxationChanged && convergencePass < MAX_LAYOUT_CONVERGENCE_PASSES) {
           convergencePass += 1;
           measure();
+        } else {
+          setInitialLayoutReady(true);
         }
       });
     };
@@ -635,7 +646,16 @@ export function HomeView({
     : 'home-dashboard home-dashboard-default';
 
   return (
-    <section className={dashboardClassName} aria-label="ホーム">
+    <>
+    {!initialLayoutReady && <span className="home-initial-layout-status" role="status">ホームを準備しています</span>}
+    <section
+      className={dashboardClassName}
+      aria-label="ホーム"
+      aria-hidden={!initialLayoutReady || undefined}
+      data-initial-layout-pending={!initialLayoutReady || undefined}
+      {...(!initialLayoutReady ? { inert: '' } : {})}
+    >
+      {!initialLayoutReady && <div className="home-initial-layout-placeholder" aria-hidden="true" />}
       {isGettingStarted ? (
         <GettingStartedSection
           onOpenAiPlanning={onOpenAiPlanning}
@@ -674,5 +694,6 @@ export function HomeView({
         </>
       )}
     </section>
+    </>
   );
 }

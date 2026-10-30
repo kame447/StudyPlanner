@@ -119,10 +119,12 @@ for (const width of [375, 1440]) test(`admin return retains session and document
   await expect(page.getByRole('heading', { name: 'お知らせ管理' })).toBeVisible();
   await page.evaluate(() => { window.__sameDocument = 'retained'; });
   if (width < 821) {
-    await expect(page.getByLabel('管理メニュー')).toBeVisible();
-    await page.getByLabel('管理メニュー').selectOption('/admin');
+    await expect(page.getByRole('button', { name: '管理メニューを開く', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '管理メニューを開く', exact: true }).click();
+    await page.locator('#admin-navigation').getByRole('button', { name: 'Overview', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
-    await page.getByLabel('管理メニュー').selectOption('/admin/announcements');
+    await page.getByRole('button', { name: '管理メニューを開く', exact: true }).click();
+    await page.locator('#admin-navigation').getByRole('button', { name: 'お知らせ', exact: true }).click();
   }
   await page.getByRole('button', { name: '新しいお知らせ' }).click();
   await page.getByLabel('タイトル', { exact: true }).fill('作成して直接公開');

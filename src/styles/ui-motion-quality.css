@@ -32,22 +32,25 @@
 }
 
 /* Surface entry ----------------------------------------------------------- */
-/* Home performs precise geometry measurements to fit the viewport. Keep its
-   entrance opacity-only so animation transforms cannot perturb those readings. */
-.home-main > .home-dashboard {
-  animation: ui-surface-fade var(--motion-duration-fast) ease-out both;
+/* Match loaded route roots, never the nested look-alike skeletons. Home
+   starts only after its measured layout is ready; retained AI starts on reveal.
+   Backwards fill leaves no opacity-created stacking context after entry. */
+.home-main > .home-dashboard:not([data-initial-layout-pending]),
+.home-main > .ai-planning-view-shell-v2:not([hidden]) > .ai-planning-view:not([hidden]),
+:where(.app-shell > main) > :is(.schedule-month-view, .schedule-week-view, .swipe-view, .todo-view, .bookshelf-view, .learning-report-view, .timetable-view) {
+  animation: ui-surface-fade var(--route-entry-duration, var(--motion-duration-fast)) ease-out backwards;
 }
 
-.home-main > .ai-planning-view,
-.section-stack > .schedule-month-view,
-.section-stack > .bookshelf-view {
-  animation: ui-surface-enter var(--motion-duration-base) var(--motion-ease-emphasized) both;
+:root[data-motion='reduced'] .app-shell {
+  --route-entry-duration: var(--motion-duration-fade);
 }
 
-/* A transformed route would contain the timetable's fixed editor overlay.
-   Fade only, and leave no animation-created stacking context after entry. */
-.section-stack > .timetable-view {
-  animation: ui-surface-fade var(--motion-duration-fast) ease-out backwards;
+/* These routes contain viewport overlays. Finish opacity immediately while
+   one is open, retaining the animation name/timeline so closing cannot replay
+   entry. Timetable's class-overlay guard remains in timetable-class-detail.css. */
+:where(.app-shell > main) > :is(.schedule-month-view, .swipe-view, .todo-view, .bookshelf-view, .timetable-view):has(.overlay),
+.home-main > .ai-planning-view-shell-v2:not([hidden]) > .ai-planning-view:not([hidden]):has(.ai-chat-drawer-layer, .ai-planning-preview-overlay) {
+  animation-duration: 0s;
 }
 
 @keyframes ui-surface-fade {
@@ -57,18 +60,6 @@
 
   to {
     opacity: 1;
-  }
-}
-
-@keyframes ui-surface-enter {
-  from {
-    opacity: 0;
-    transform: translate3d(0, var(--motion-distance-sm), 0);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
   }
 }
 

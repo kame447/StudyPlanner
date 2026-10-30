@@ -327,3 +327,19 @@ html:has(#root .auth-entry-shell) :is(body, #root) {
   .auth-entry-brand { margin-bottom: 20px; }
   .auth-entry-modes { margin-bottom: 22px; }
 }
+
+/* Switching the existing panel restarts only its opacity, not its inputs. */
+.auth-entry-panel {
+  animation: auth-sign-in-fade var(--motion-duration-slow) var(--motion-ease-standard) both;
+}
+.auth-entry-panel[data-intent='sign-up'] {
+  animation-name: auth-sign-up-fade;
+}
+@keyframes auth-sign-in-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes auth-sign-up-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

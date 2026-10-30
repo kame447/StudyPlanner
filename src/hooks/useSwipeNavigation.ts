@@ -5,6 +5,7 @@ interface SwipeNavigationOptions {
   onPrevious: () => void;
   onNext: () => void;
   disabled?: boolean;
+  allowDialogSwipe?: boolean;
 }
 
 interface SwipeStartState {
@@ -16,7 +17,7 @@ interface SwipeStartState {
 const SWIPE_THRESHOLD_PX = 72;
 const SWIPE_DIRECTION_RATIO = 1.35;
 
-function isIgnoredSwipeTarget(target: EventTarget | null): boolean {
+function isIgnoredSwipeTarget(target: EventTarget | null, allowDialogSwipe: boolean): boolean {
   if (typeof Element === 'undefined' || !(target instanceof Element)) {
     return false;
   }
@@ -31,7 +32,7 @@ function isIgnoredSwipeTarget(target: EventTarget | null): boolean {
         'textarea',
         'select',
         '[contenteditable]:not([contenteditable="false"])',
-        '[role="dialog"]',
+        ...(allowDialogSwipe ? [] : ['[role="dialog"]']),
         '[data-schedule-occurrence-id]',
         '.schedule-week-plan-button',
         '[data-swipe-ignore="true"]',
@@ -48,6 +49,7 @@ export function useSwipeNavigation({
   onPrevious,
   onNext,
   disabled = false,
+  allowDialogSwipe = false,
 }: SwipeNavigationOptions) {
   const startRef = useRef<SwipeStartState | null>(null);
   const suppressClickUntilRef = useRef(0);
@@ -57,7 +59,7 @@ export function useSwipeNavigation({
     () => ({
       onTouchStart(event: TouchEvent<HTMLElement>) {
         suppressClickUntilRef.current = 0;
-        if (disabled || event.defaultPrevented || event.touches.length !== 1 || isIgnoredSwipeTarget(event.target)) {
+        if (disabled || event.defaultPrevented || event.touches.length !== 1 || isIgnoredSwipeTarget(event.target, allowDialogSwipe)) {
           startRef.current = null;
           return;
         }
@@ -101,7 +103,7 @@ export function useSwipeNavigation({
         const { x, y } = deltaRef.current;
         startRef.current = null;
 
-        if (isIgnoredSwipeTarget(start.target)) {
+        if (isIgnoredSwipeTarget(start.target, allowDialogSwipe)) {
           return;
         }
 
@@ -122,6 +124,6 @@ export function useSwipeNavigation({
         onNext();
       },
     }),
-    [disabled, onNext, onPrevious],
+    [disabled, allowDialogSwipe, onNext, onPrevious],
   );
 }

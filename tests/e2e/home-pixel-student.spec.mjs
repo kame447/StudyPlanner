@@ -23,6 +23,22 @@ const student = page => scene(page).locator('[data-pixel-student]');
 const data = page => page.evaluate(() => ['studyplanner.scheduleEvents.v1', 'studyplanner.actuals']
   .map(key => localStorage.getItem(key)));
 
+async function fitHomeBeforeBoundary(page, boundary) {
+  const dashboard = page.locator('.home-main > .home-dashboard-default');
+  await expect(dashboard).toBeAttached();
+  // A paused Playwright clock also pauses requestAnimationFrame. Drive only
+  // pending initial fit frames, then reach the original minute boundary.
+  await expect.poll(async () => {
+    if (await dashboard.getAttribute('data-initial-layout-pending') !== null) {
+      await page.clock.runFor(16);
+    }
+    return dashboard.getAttribute('data-initial-layout-pending');
+  }).toBe(null);
+  expect(await page.evaluate(() => Date.now())).toBeLessThan(boundary.getTime());
+  await page.clock.pauseAt(boundary);
+}
+
+
 for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone: 'America/New_York', offset: '-04:00' }]) {
   for (const width of [390, 1280]) test.describe(`scheduled pixel student ${zone} ${width}px`, () => {
     test.use({ timezoneId: zone, viewport: { width, height: 900 }, reducedMotion: 'no-preference' });
@@ -34,9 +50,10 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
       // Mount with a paused clock so scheduler performance reads cannot move
       // timer registration a millisecond past the exact minute we assert.
       // The production minute timer still drives the entrance below.
-      await page.clock.pauseAt(instant('10:19:59'));
+      await page.clock.pauseAt(instant('10:19:58'));
       await seed(page, { now: instant('10:19:00').toISOString(), sourceType });
       await page.goto('/');
+      await fitHomeBeforeBoundary(page, instant('10:19:59'));
       await expect(scene(page)).toBeVisible();
       await expect(scene(page)).toHaveAttribute('data-scene-kind', sourceType === 'timetable' ? 'class' : 'study');
       expect(await page.evaluate(() => Date.now())).toBe(instant('10:19:59').getTime());
@@ -75,8 +92,10 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
       await expect(student(page)).toHaveAttribute('data-pixel-student', 'studying');
       // Use the same deterministic registration boundary for the reload's
       // minute timer while still verifying an already-active mount.
-      await page.clock.pauseAt(instant('10:20:59'));
-      await page.reload(); await expect(scene(page)).toBeVisible(); await expect(student(page)).toHaveAttribute('data-pixel-student', 'studying');
+      await page.clock.pauseAt(instant('10:20:58'));
+      await page.reload();
+      await fitHomeBeforeBoundary(page, instant('10:20:59'));
+      await expect(scene(page)).toBeVisible(); await expect(student(page)).toHaveAttribute('data-pixel-student', 'studying');
       expect(await page.evaluate(() => Date.now())).toBe(instant('10:20:59').getTime());
       await page.clock.runFor(1000);
       await expect(student(page)).toHaveCount(0);
@@ -88,10 +107,11 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
 
     for (const mode of ['off', 'reduced']) test(`${mode}: shows a seated person without movement`, async ({ page }) => {
       await page.clock.install({ time: instant('10:19:00') });
-      await page.clock.pauseAt(instant('10:19:59'));
+      await page.clock.pauseAt(instant('10:19:58'));
       await seed(page, { now: instant('10:19:00').toISOString(), motion: mode !== 'off' });
       if (mode === 'reduced') await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto('/');
+      await fitHomeBeforeBoundary(page, instant('10:19:59'));
       await expect(scene(page)).toBeVisible(); await expect(student(page)).toHaveCount(0);
       expect(await page.evaluate(() => Date.now())).toBe(instant('10:19:59').getTime());
       await page.clock.runFor(1000);

@@ -130,6 +130,7 @@ for (const viewport of [
   });
 }
 
+
 test('late pixel appearance keeps the auth canvas, input contrast, and compact modes', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -184,3 +185,144 @@ test('switching modes clears passwords and errors, while reset and Google stay r
     { type: 'auth-google-sign-in', payload: null },
   ]);
 });
+
+for (const viewport of [
+  { width: 320, height: 568 }, { width: 360, height: 640 },
+  { width: 375, height: 667 }, { width: 430, height: 760 },
+  { width: 390, height: 480, largeText: true },
+]) {
+  test(`auth anchors and natural scroll at ${viewport.width}x${viewport.height}${viewport.largeText ? ' 200% text' : ''}`, async ({ page }, info) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openAuth(page);
+    if (viewport.largeText) await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+    const measure = () => page.evaluate(() => Object.fromEntries(['.auth-entry-brand', '.auth-entry-modes'].map(selector => {
+      const r = document.querySelector(selector).getBoundingClientRect();
+      return [selector, { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height }];
+    })));
+    const baseline = await measure(); const evidence = [];
+    for (const mode of ['新規会員登録', 'ログイン', '新規会員登録']) {
+      await page.getByRole('tab', { name: mode, exact: true }).click();
+      const rects = await measure(); evidence.push({ mode, rects });
+      for (const selector of Object.keys(baseline)) for (const key of ['x', 'y', 'width', 'height']) {
+        expect(Math.abs(rects[selector][key] - baseline[selector][key])).toBeLessThanOrEqual(1);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    }
+    for (const action of [page.getByRole('button', { name: '登録して確認メールを送る' }), page.getByRole('link', { name: 'プライバシーポリシー', exact: true })]) {
+      await action.focus(); await action.scrollIntoViewIfNeeded();
+      const reach = await action.evaluate(node => {
+        const r = node.getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, viewport: innerHeight, focused: document.activeElement === node,
+          hit: node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) };
+      });
+      expect(reach.focused).toBe(true); expect(reach.hit).toBe(true);
+      expect(reach.top).toBeGreaterThanOrEqual(-1); expect(reach.bottom).toBeLessThanOrEqual(reach.viewport + 1);
+      evidence.push({ reach });
+    }
+    await info.attach('auth-anchor-scroll.json', { body: Buffer.from(JSON.stringify({ viewport, baseline, evidence })), contentType: 'application/json' });
+  });
+}
+
+for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280, level: 'standard' },
+  { width: 390, level: 'reduced' }, { width: 390, level: 'off' }]) {
+  test(`auth form-only fade preserves nodes and focus at ${width}px ${level}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.emulateMedia({ reducedMotion: level === 'reduced' ? 'reduce' : 'no-preference' });
+    await page.addInitScript(level => {
+      localStorage.setItem('study-planner-motion', level === 'off' ? 'off' : 'standard');
+      const frames = [], entries = [], ids = new WeakMap(); let nextId = 1, active = true, phase = 'initial', raf;
+      const id = node => { if (!ids.has(node)) ids.set(node, nextId++); return ids.get(node); };
+      const started = event => {
+        if (!event.target.matches?.('.auth-entry-panel')) return;
+        const style = getComputedStyle(event.target);
+        const animation = event.target.getAnimations().find(a => a.animationName === event.animationName);
+        const rules = [...document.styleSheets].filter(s => !s.href || new URL(s.href).origin === location.origin)
+          .flatMap(s => [...s.cssRules]).filter(r => r.type === CSSRule.KEYFRAMES_RULE && r.name === event.animationName)
+          .map(r => [...new Set([...r.cssRules].flatMap(k => [...k.style]))].sort());
+        entries.push({ phase, t: performance.now(), name: event.animationName, duration: style.animationDuration, rules,
+          liveProperties: animation ? [...new Set(animation.effect.getKeyframes().flatMap(k => Object.keys(k)))].filter(k => !['offset', 'computedOffset', 'easing', 'composite'].includes(k)).sort() : null });
+      };
+      document.addEventListener('animationstart', started, true);
+      const tick = () => {
+        if (!active) return;
+        const nodes = Object.fromEntries(['.auth-entry-brand', '.auth-entry-modes', '.auth-entry-panel', 'input[name=email]'].map(selector => {
+          const node = document.querySelector(selector); if (!node) return [selector, null];
+          const r = node.getBoundingClientRect(), s = getComputedStyle(node);
+          return [selector, { id: id(node), x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height,
+            opacity: Number(s.opacity), transform: s.transform, translate: s.translate, scale: s.scale, animationName: s.animationName }];
+        }));
+        if (nodes['.auth-entry-panel']) frames.push({ phase, t: performance.now(), nodes });
+        if (frames.length < 3000) raf = requestAnimationFrame(tick);
+      };
+      window.__authFade = { frames, entries, arm(next) { phase = next; }, stop() { active = false; cancelAnimationFrame(raf); document.removeEventListener('animationstart', started, true); } };
+      raf = requestAnimationFrame(tick);
+    }, level);
+    try {
+      await openAuth(page);
+      const panel = page.getByRole('tabpanel');
+      const duration = level === 'standard' ? '0.3s' : level === 'reduced' ? '0.12s' : '0s';
+      const settle = async phase => {
+        await expect(panel).toHaveCSS('animation-duration', duration);
+        await expect.poll(() => panel.evaluate(node => node.getAnimations().filter(a => a.playState === 'running').length)).toBe(0);
+        await expect(panel).toHaveCSS('opacity', '1');
+        await expect.poll(() => page.evaluate(phase => {
+          const frames = window.__authFade.frames.filter(f => f.phase === phase);
+          return frames.length >= 8 && frames.at(-1).t - frames[0].t >= 120;
+        }, phase)).toBe(true);
+      };
+      await settle('initial');
+      // ElementHandles, not serialized objects, verify actual DOM identity.
+      const panelNode = await panel.elementHandle(); const emailNode = await page.getByLabel('メールアドレス').elementHandle();
+      for (const [phase, key, name] of [['signup', 'End', '新規会員登録'], ['login', 'Home', 'ログイン'], ['signup-again', 'End', '新規会員登録']]) {
+        await page.getByRole('tab', { selected: true }).focus();
+        await page.evaluate(phase => window.__authFade.arm(phase), phase);
+        await page.keyboard.press(key);
+        await expect(page.getByRole('tab', { name, exact: true })).toBeFocused();
+        await settle(phase);
+        expect(await panelNode.evaluate(node => node === document.querySelector('.auth-entry-panel'))).toBe(true);
+        expect(await emailNode.evaluate(node => node === document.querySelector('input[name=email]'))).toBe(true);
+      }
+      await page.evaluate(() => window.__authFade.arm('typing-error'));
+      const starts = await page.evaluate(() => window.__authFade.entries.length);
+      await page.getByLabel('メールアドレス').fill('motion@example.test');
+      await page.getByLabel('パスワード', { exact: true }).fill('synthetic-password');
+      await page.getByLabel('パスワード確認').fill('different-password');
+      await page.getByRole('button', { name: '登録して確認メールを送る' }).click();
+      await expect(page.getByRole('alert')).toContainText('一致していません');
+      await settle('typing-error');
+      expect(await page.evaluate(() => window.__authFade.entries.length)).toBe(starts);
+      const evidence = await page.evaluate(() => ({ frames: window.__authFade.frames, entries: window.__authFade.entries }));
+      const opacityCapture = ['initial', 'signup', 'login', 'signup-again'].map(phase => ({
+        phase, partialFrames: evidence.frames.filter(f => f.phase === phase && f.nodes['.auth-entry-panel'].opacity > 0 && f.nodes['.auth-entry-panel'].opacity < 1).length,
+      }));
+      await info.attach('auth-fade-opacity-capture.json', { body: Buffer.from(JSON.stringify({ level, phases: opacityCapture })), contentType: 'application/json' });
+      // An individual short phase can miss intermediate paints under CI load;
+      // retain that zero explicitly, but never accept switching with no painted fade.
+      if (level !== 'off') expect(opacityCapture.filter(phase => phase.phase !== 'initial').reduce((sum, phase) => sum + phase.partialFrames, 0)).toBeGreaterThan(0);
+      const baseline = evidence.frames[0].nodes;
+      for (const frame of evidence.frames) {
+        for (const selector of ['.auth-entry-brand', '.auth-entry-modes']) {
+          const node = frame.nodes[selector];
+          expect(node.id).toBe(baseline[selector].id); expect(node.opacity).toBe(1); expect(node.animationName).toBe('none');
+          for (const key of ['x', 'y', 'width', 'height']) expect(Math.abs(node[key] - baseline[selector][key])).toBeLessThanOrEqual(1);
+        }
+        const node = frame.nodes['.auth-entry-panel'];
+        expect(node.transform).toBe('none'); expect(['none', '0px', '0px 0px']).toContain(node.translate); expect(['none', '1', '1 1']).toContain(node.scale);
+      }
+      if (level !== 'off') for (const phase of ['initial', 'signup', 'login', 'signup-again']) {
+        expect(evidence.entries.filter(e => e.phase === phase)).toHaveLength(1);
+      }
+      for (const entry of evidence.entries) {
+        expect(entry.duration).toBe(duration); expect(entry.rules.length).toBeGreaterThan(0);
+        entry.rules.forEach(properties => expect(properties).toEqual(['opacity']));
+        if (entry.liveProperties) expect(entry.liveProperties).toEqual(['opacity']);
+      }
+      if (level === 'off') expect(evidence.frames.every(f => f.nodes['.auth-entry-panel'].opacity === 1)).toBe(true);
+    } finally {
+      const evidence = await page.evaluate(() => { window.__authFade.stop(); return { frames: window.__authFade.frames, entries: window.__authFade.entries }; });
+      expect(evidence.frames.length).toBeLessThan(3000);
+      await info.attach('auth-form-fade-frames.json', { body: Buffer.from(JSON.stringify({ width, level, evidence })), contentType: 'application/json' });
+    }
+  });
+}

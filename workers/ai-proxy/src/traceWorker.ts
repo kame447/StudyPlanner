@@ -46,7 +46,9 @@ import {
   type ProductObservabilityUserEnrichmentBackfillEnv,
 } from './productObservabilityUserEnrichmentBackfill';
 import {
+  PRODUCT_OBSERVABILITY_RETENTION_COLLECTIONS,
   ProductObservabilityRetentionService,
+  WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS,
   type ProductObservabilityRetentionEnv,
 } from './productObservabilityRetention';
 import {
@@ -79,6 +81,10 @@ const MAX_PROFILE_REGISTRATION_BACKFILL_BATCHES_PER_SCHEDULE = 2;
 const PROFILE_REGISTRATION_BACKFILL_BATCH_SIZE = 100;
 const MAX_RETENTION_BATCHES_PER_SCHEDULE = 2;
 const RETENTION_BATCH_SIZE = 100;
+// Free-tier bound for trace retention: 144 runs/day x (3 probes + 3 x 20 rows)
+// is at most 9,072 reads and 8,640 deletes per day.
+const TRACE_RETENTION_BATCH_SIZE = 20;
+const MAX_TRACE_RETENTION_BATCHES_PER_SCHEDULE = 1;
 export const SCHEDULED_INVOCATIONS_PER_DAY = 24 * 60;
 
 export type ScheduledObservabilityPhase =
@@ -86,6 +92,7 @@ export type ScheduledObservabilityPhase =
   | 'active_user_snapshot'
   | 'profile_registration_backfill'
   | 'retention'
+  | 'trace_retention'
   | 'no_op';
 
 export function scheduledObservabilityPhase(scheduledTime: number): ScheduledObservabilityPhase {
@@ -96,7 +103,8 @@ export function scheduledObservabilityPhase(scheduledTime: number): ScheduledObs
     case 1: return 'active_user_snapshot';
     case 2: return 'profile_registration_backfill';
     case 3: return 'retention';
-    default: return 'no_op';
+    // Firestore TTL needs billing, so the Worker enforces the trace expireAt.
+    default: return minute % 10 === 4 ? 'trace_retention' : 'no_op';
   }
 }
 
@@ -184,13 +192,18 @@ async function runScheduledProfileRegistrationBackfill(
 async function runScheduledObservabilityRetention(
   env: Record<string, unknown>,
   firestore: FirestoreServiceAccountClient,
+  collections: readonly string[] = PRODUCT_OBSERVABILITY_RETENTION_COLLECTIONS,
+  batchSize = RETENTION_BATCH_SIZE,
+  maxBatches = MAX_RETENTION_BATCHES_PER_SCHEDULE,
 ): Promise<void> {
   const retention = new ProductObservabilityRetentionService(
     env as unknown as ProductObservabilityRetentionEnv,
     firestore,
+    undefined,
+    collections,
   );
-  for (let index = 0; index < MAX_RETENTION_BATCHES_PER_SCHEDULE; index += 1) {
-    const result = await retention.runBatch(RETENTION_BATCH_SIZE);
+  for (let index = 0; index < maxBatches; index += 1) {
+    const result = await retention.runBatch(batchSize);
     if (!result.hasMore) return;
   }
 }
@@ -216,6 +229,15 @@ async function runScheduledObservabilityMaintenance(
       return;
     case 'retention':
       await runScheduledObservabilityRetention(env, firestore);
+      return;
+    case 'trace_retention':
+      await runScheduledObservabilityRetention(
+        env,
+        firestore,
+        WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS,
+        TRACE_RETENTION_BATCH_SIZE,
+        MAX_TRACE_RETENTION_BATCHES_PER_SCHEDULE,
+      );
   }
 }
 

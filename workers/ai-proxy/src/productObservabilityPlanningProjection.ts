@@ -62,10 +62,6 @@ function mergedDimension(
   return current === normalized ? current : '__mixed__';
 }
 
-function validTurnIndex(value: number | null | undefined): number | null {
-  return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : null;
-}
-
 function base64Url(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = '';
@@ -189,7 +185,10 @@ export function projectPlanningSessionSummary(params: {
     throw new Error('invalid_planning_session_summary');
   }
 
-  const eventTurnIndex = validTurnIndex(payload.turnIndex);
+  const turnIndex = payload.turnIndex;
+  const eventTurnIndex = Number.isSafeInteger(turnIndex) && Number(turnIndex) > 0
+    ? Number(turnIndex)
+    : null;
   const startedAt = payload.outcomeType === 'session_started'
     ? base.startedAt === null || params.event.occurredAt < base.startedAt
       ? params.event.occurredAt

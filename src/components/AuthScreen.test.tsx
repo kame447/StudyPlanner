@@ -51,11 +51,19 @@ describe('login-first authentication presentation', () => {
   it('uses one named panel controlled by either tab', () => {
     mount();
     const panel = renderer!.root.findByProps({ role: 'tabpanel' });
+    const email = input('email');
+    expect(panel.props['data-intent']).toBe('sign-in');
     expect(tab('sign-in').props['aria-controls']).toBe(panel.props.id);
     expect(tab('sign-up').props['aria-controls']).toBe(panel.props.id);
     expect(panel.props['aria-labelledby']).toBe(tab('sign-in').props.id);
     select('sign-up');
     expect(panel.props['aria-labelledby']).toBe(tab('sign-up').props.id);
+    expect(renderer!.root.findByProps({ role: 'tabpanel' })).toBe(panel);
+    expect(input('email')).toBe(email);
+    expect(panel.props['data-intent']).toBe('sign-up');
+    fill('email', 'kept@example.test');
+    expect(renderer!.root.findByProps({ role: 'tabpanel' })).toBe(panel);
+    expect(panel.props['data-intent']).toBe('sign-up');
     expect(renderer!.root.findByType('h1').children).toEqual(['新規会員登録']);
     expect(input('password').props.autoComplete).toBe('new-password');
     expect(input('passwordConfirmation').props.autoComplete).toBe('new-password');

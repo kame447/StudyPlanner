@@ -9,6 +9,10 @@ import type {
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
+import {
+  isGeneratedProgressRemainingV5,
+  prepareWeeklyPlanningWorkloadDependentsV5,
+} from './weeklyPlanningWorkloadDependentMigrationV5';
 
 export const WEEKLY_PLANNING_PROGRESS_CORRECTION_RECONCILIATION_VERSION_V5 =
   'weekly-planning-progress-correction-reconciliation-v5' as const;
@@ -134,9 +138,30 @@ function supersedeWorkload(params: {
     amount: params.amount,
     key: params.operationKey,
   });
+  // Estimates attached to a generated remaining amount follow the explicit-correction dependent policy instead of
+  // blocking the progress correction forever (total invalidated, same-unit rate and session carried).
+  const dependents = isGeneratedProgressRemainingV5(params.oldFact)
+    ? prepareWeeklyPlanningWorkloadDependentsV5({
+        graph: appended.graph,
+        targetFactId: params.oldFact.id,
+        replacementFactId: appended.replacement.id,
+        migrationId: params.operationKey,
+        operationKey: params.operationKey,
+      })
+    : { status: 'not_applicable' as const, graph: appended.graph, added: [], superseded: [], removed: [], errors: [] };
+  if (dependents.status === 'rejected') {
+    return {
+      status: 'rejected',
+      graph: params.graph,
+      added: [],
+      superseded: [],
+      removed: [],
+      errors: dependents.errors,
+    };
+  }
   const lifecycle = applyWeeklyPlanningFactLifecycleOperationV5({
-    graph: appended.graph,
-    expectedRevision: appended.graph.revision,
+    graph: dependents.graph,
+    expectedRevision: dependents.graph.revision,
     operation: {
       operationKey: params.operationKey,
       kind: 'supersede',
@@ -157,9 +182,9 @@ function supersedeWorkload(params: {
   return {
     status: 'applied',
     graph: lifecycle.graph,
-    added: [{ kind: 'workload', id: appended.replacement.id }],
-    superseded: lifecycle.superseded,
-    removed: lifecycle.removed,
+    added: [{ kind: 'workload', id: appended.replacement.id }, ...dependents.added],
+    superseded: [...dependents.superseded, ...lifecycle.superseded],
+    removed: [...dependents.removed, ...lifecycle.removed],
     errors: [],
   };
 }
