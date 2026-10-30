@@ -21,6 +21,8 @@ export interface VNextJevFinalStateOracle {
   hardDeadlines: Array<{ taskTitle: string; date: string }>;
   openQuestionCodes: VNextQuestionCode[];
   deferredQuestionCodes: VNextQuestionCode[];
+  /** Equivalent question outcomes when the user's words allow either preserving an open question or deferring it. */
+  questionStateAlternatives?: Array<{ openQuestionCodes: VNextQuestionCode[]; deferredQuestionCodes: VNextQuestionCode[] }>;
   scheduledWorkMinutes: number[];
   savedPlanCount: 0;
 }
@@ -38,6 +40,8 @@ export interface VNextJevComparisonCase {
   /** Fixed option ID, or a semantic selector for lineage-dependent `keep:*` IDs. */
   expectedChoice: string | { keep: VNextJevWorkOracle } | null;
   finalState: VNextJevFinalStateOracle;
+  /** Short explanation of a corrected oracle against frozen user text; utterances remain unchanged. */
+  oracleCorrectionReason?: string;
 }
 
 const acceptedDate = '2026-11-02';
@@ -152,28 +156,36 @@ for (const split of ['dev', 'holdout'] as const) {
 }
 
 type FallbackSpec = { id: string; split: VNextJevComparisonSplit; shape: VNextJevMenuShape; text: string;
-  holdoutText: string; purpose: string; state: VNextJevFinalStateOracle };
+  holdoutText: string; purpose: string; state: VNextJevFinalStateOracle; oracleCorrectionReason?: string };
 const fallbackSpecs: FallbackSpec[] = [];
 for (const split of ['dev', 'holdout'] as const) {
   const suffix = split === 'dev' ? 'd' : 'h';
   fallbackSpecs.push(
     { id: `${suffix}-unsupported-value`, split, shape: 'remaining_conflict', text: '残りは9枚にします',
       holdoutText: '残りを9枚にしたいです',
-      purpose: 'Menuにない値を勝手に近いoptionへ丸めない', state: remainingOracle(9, 12) },
+      purpose: 'Menuにない値を勝手に近いoptionへ丸めない',
+      state: { ...remainingOracle(9, 12), openQuestionCodes: ['remaining_inconsistent'] },
+      oracleCorrectionReason: 'Remaining 9 conflicts with 20−12=8, so the inconsistency question must remain open.' },
     { id: `${suffix}-refusal`, split, shape: 'one_target_same_or_distinct', text: 'まだ決めたくありません',
       holdoutText: '今はどちらとも決められないです',
       purpose: '拒否・保留を選択へ変換しない', state: baseOracle({
         activeWork: [{ taskTitle: '英語', quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: 'ページ' },
           { taskTitle: '英語', quantityRole: 'remaining', amount: 30, unitCode: 'minute', unitLabel: '分' }],
         openQuestionCodes: ['same_or_distinct_work'],
-      }) },
+        questionStateAlternatives: [
+          { openQuestionCodes: ['same_or_distinct_work'], deferredQuestionCodes: [] },
+          { openQuestionCodes: [], deferredQuestionCodes: ['same_or_distinct_work'] },
+        ],
+      }), oracleCorrectionReason: 'Declining to choose preserves meaning whether the question stays open or is explicitly deferred.' },
     { id: `${suffix}-new-topic`, split, shape: 'remaining_conflict', text: 'その話は後で。英語の音読を25分したいです',
       holdoutText: '数学の確認は保留して、英語の発音練習を25分追加して',
       purpose: '新しい依頼をoption回答として誤読せず、両方をfull readerへ渡す', state: baseOracle({
-        activeWork: remainingOracle(7, 12).activeWork.concat([{ taskTitle: '英語', taskTitleAliases: ['英語の音読', '音読', '英語の発音練習', '発音練習'],
-          quantityRole: 'remaining', amount: 25, unitCode: 'minute', unitLabel: '分' }]),
-        openQuestionCodes: ['remaining_inconsistent'], scheduledWorkMinutes: [25],
-      }) },
+        activeWork: remainingOracle(7, 12).activeWork.concat([{ taskTitle: '英語の発音練習',
+          taskTitleAliases: ['英語の音読', '音読', '英語', '発音練習'],
+          quantityRole: 'target', amount: 25, unitCode: 'minute', unitLabel: '分' }]),
+        deferredQuestionCodes: ['remaining_inconsistent'],
+        scheduledWorkMinutes: [25],
+      }), oracleCorrectionReason: 'The utterance defers the arithmetic conflict and adds pronunciation practice as a 25-minute target.' },
     { id: `${suffix}-unknown-defer`, split, shape: 'one_target_same_or_distinct', text: '今は分かりません',
       holdoutText: '今は答えが分からないので後回しで',
       purpose: '回答不能をtyped deferralにでき、選択や見積もりを捏造しない', state: baseOracle({
@@ -201,29 +213,35 @@ for (const split of ['dev', 'holdout'] as const) {
         activeWork: [
           { taskTitle: '英語', quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: 'ページ' },
           { taskTitle: '英語', quantityRole: 'remaining', amount: 30, unitCode: 'minute', unitLabel: '分' },
-          { taskTitle: '国語の漢字', taskTitleAliases: ['漢字', '国語'],
-            quantityRole: 'remaining', amount: 15, unitCode: 'minute', unitLabel: '分' },
+          { taskTitle: '国語', taskTitleAliases: ['国語の漢字', '漢字'],
+            quantityRole: 'target', amount: 15, unitCode: 'minute', unitLabel: '分' },
         ], relations: [{ kind: 'distinct', leftTaskTitle: '英語 / target-pages', rightTaskTitle: '英語 / other-time' }],
         scheduledWorkMinutes: [40, 30, 15],
-      }) },
+      }), oracleCorrectionReason: 'An added 15-minute item is a target, and 国語 and 国語の漢字 name the same subject.' },
     { id: `${suffix}-mixed-correction`, split, shape: 'one_target_same_or_distinct',
       text: '別々の作業です。音読は35分ではなく30分でした',
       holdoutText: '別々だね。音読は30分じゃなく、35分だった',
       purpose: 'optionに合致する明示回答と既存work量の訂正の両方を保持する', state: baseOracle({
         activeWork: [
           { taskTitle: '英語', quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: 'ページ' },
-          { taskTitle: '英語', quantityRole: 'remaining', amount: 30, unitCode: 'minute', unitLabel: '分' },
+          { taskTitle: '英語', quantityRole: 'remaining', amount: split === 'holdout' ? 35 : 30, unitCode: 'minute', unitLabel: '分' },
         ], relations: [{ kind: 'distinct', leftTaskTitle: '英語 / target-pages', rightTaskTitle: '英語 / other-time' }],
-        scheduledWorkMinutes: [40, 30],
-      }) },
+        scheduledWorkMinutes: split === 'holdout' ? [40, 35] : [40, 30],
+      }), oracleCorrectionReason: split === 'holdout'
+        ? 'The frozen text corrects the seeded 35 minutes to 35 and explicitly rejects 30.' : undefined },
     { id: `${suffix}-ambiguous`, split, shape: 'two_work_keep_or_distinct', text: 'どっちでもいいと思います',
       holdoutText: 'どちらかと言えば、たぶん両方かな',
-      purpose: '曖昧な選好を低確信のままfull readingに送り、どのworkも消さない', state: baseOracle({
+      purpose: split === 'holdout'
+        ? 'A hedged affirmative says both works remain distinct; it no longer represents a truly ambiguous holdout.'
+        : '曖昧な選好を低確信のままfull readingに送り、どのworkも消さない',
+      state: split === 'holdout' ? twoWorkOracle('distinct') : baseOracle({
         activeWork: [
           { taskTitle: '英語', quantityRole: 'remaining', amount: 10, unitCode: 'page', unitLabel: 'ページ' },
           { taskTitle: '英語', quantityRole: 'remaining', amount: 45, unitCode: 'minute', unitLabel: '分' },
         ], openQuestionCodes: ['same_or_distinct_work'],
-      }) },
+      }),
+      oracleCorrectionReason: split === 'holdout'
+        ? 'The holdout hedges but affirms both, so distinct is supported; this is no longer a truly ambiguous instance.' : undefined },
   );
 }
 
@@ -259,6 +277,7 @@ export const VNEXT_JEV_COMPARISON_CASES: readonly VNextJevComparisonCase[] = [
     responsibility: 'Luna_full_semantic_reading', seed: seedForCase(spec),
     userText: spec.split === 'holdout' ? spec.holdoutText : spec.text,
     expectedRoute: 'full_reading', expectedChoice: null, finalState: spec.state,
+    oracleCorrectionReason: spec.oracleCorrectionReason,
   })),
 ];
 

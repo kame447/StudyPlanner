@@ -113,10 +113,14 @@ describe('VNext Jev → Luna comparison corpus', () => {
       expect(activeWork(finalState), testCase.id).toEqual(testCase.finalState.activeWork.slice().sort((a, b) =>
         `${a.taskTitle}:${a.quantityRole}:${a.unitCode}:${a.amount}`.localeCompare(
           `${b.taskTitle}:${b.quantityRole}:${b.unitCode}:${b.amount}`)));
-      expect(finalProjection.questions.map((item) => item.code).sort(), testCase.id)
-        .toEqual(testCase.finalState.openQuestionCodes.slice().sort());
-      expect(finalProjection.deferredQuestions.map((item) => item.code).sort(), testCase.id)
-        .toEqual(testCase.finalState.deferredQuestionCodes.slice().sort());
+      const openCodes = finalProjection.questions.map((item) => item.code).sort();
+      const deferredCodes = finalProjection.deferredQuestions.map((item) => item.code).sort();
+      const questionStates = testCase.finalState.questionStateAlternatives ?? [{
+        openQuestionCodes: testCase.finalState.openQuestionCodes,
+        deferredQuestionCodes: testCase.finalState.deferredQuestionCodes,
+      }];
+      expect(questionStates.some((candidate) => JSON.stringify(openCodes) === JSON.stringify(candidate.openQuestionCodes.slice().sort())
+        && JSON.stringify(deferredCodes) === JSON.stringify(candidate.deferredQuestionCodes.slice().sort())), testCase.id).toBe(true);
       expect(finalProjection.owners.flatMap((owner) => owner.work.map((work) => work.minutes)).sort((a, b) => (a ?? 0) - (b ?? 0)), testCase.id)
         .toEqual(testCase.finalState.scheduledWorkMinutes.slice().sort((a, b) => a - b));
       expect(finalState.graph.temporalConstraints.filter((fact) => finalState.graph.factLifecycles
@@ -140,6 +144,30 @@ describe('VNext Jev → Luna comparison corpus', () => {
       expect(seededQuestion?.code).toBe(testCase.menuShape === 'remaining_conflict'
         ? 'remaining_inconsistent' : 'same_or_distinct_work');
     }
+  });
+
+  it('documents every oracle correction in one line without changing the frozen utterances', () => {
+    const corrected = VNEXT_JEV_COMPARISON_CASES.filter((entry) => entry.oracleCorrectionReason !== undefined);
+    expect(corrected.length).toBeGreaterThan(0);
+    for (const testCase of corrected) {
+      expect(testCase.oracleCorrectionReason, testCase.id).toMatch(/^[^\r\n]+$/);
+    }
+    for (const id of ['d-unsupported-value', 'h-unsupported-value', 'd-refusal', 'h-refusal',
+      'd-new-topic', 'h-new-topic', 'd-mixed-task', 'h-mixed-task', 'h-mixed-correction', 'h-ambiguous']) {
+      expect(corrected.find((entry) => entry.id === id)?.oracleCorrectionReason, id).toBeTruthy();
+    }
+    const devNewTopic = VNEXT_JEV_COMPARISON_CASES.find((entry) => entry.id === 'd-new-topic')!;
+    expect(devNewTopic.finalState.activeWork[devNewTopic.finalState.activeWork.length - 1])
+      .toMatchObject({ quantityRole: 'target', amount: 25 });
+    expect(devNewTopic.finalState.deferredQuestionCodes).toContain('remaining_inconsistent');
+    const devMixedTask = VNEXT_JEV_COMPARISON_CASES.find((entry) => entry.id === 'd-mixed-task')!;
+    expect(devMixedTask.finalState.activeWork.find((work) => work.amount === 15)).toMatchObject({
+      taskTitle: '国語', quantityRole: 'target',
+    });
+    expect(VNEXT_JEV_COMPARISON_CASES.find((entry) => entry.id === 'h-ambiguous')?.finalState.relations)
+      .toEqual([{ kind: 'distinct', leftTaskTitle: '英語 / pages', rightTaskTitle: '英語 / minutes' }]);
+    expect(VNEXT_JEV_COMPARISON_CASES.find((entry) => entry.id === 'h-refusal')?.finalState.questionStateAlternatives)
+      .toHaveLength(2);
   });
 });
 
