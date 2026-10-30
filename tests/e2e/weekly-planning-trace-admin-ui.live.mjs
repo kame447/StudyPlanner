@@ -168,10 +168,28 @@ test('weekly-planning trace: admin Logs, Debug Bundle and archive for one whitel
   expect(countMarkers(bundleText), 'raw synthetic values in the Debug Bundle').toBe(0);
 
   // Runs in the page so the ID token never leaves the browser context or the logs.
+  // After a reload Firebase moves the signed-in user from localStorage to IndexedDB.
   const archived = await page.evaluate(async ({ url, contract, targetSessionId }) => {
     const key = Object.keys(window.localStorage).find((name) => name.startsWith('firebase:authUser:'));
     const stored = key ? JSON.parse(window.localStorage.getItem(key) ?? 'null') : null;
-    const token = stored?.stsTokenManager?.accessToken;
+    const records = stored ? [] : await new Promise((resolve, reject) => {
+      const open = window.indexedDB.open('firebaseLocalStorageDb');
+      open.onerror = () => reject(new Error('Firebase auth storage could not be opened.'));
+      open.onsuccess = () => {
+        const db = open.result;
+        if (!db.objectStoreNames.contains('firebaseLocalStorage')) {
+          db.close();
+          resolve([]);
+          return;
+        }
+        const request = db.transaction('firebaseLocalStorage', 'readonly')
+          .objectStore('firebaseLocalStorage').getAll();
+        request.onsuccess = () => { db.close(); resolve(request.result); };
+        request.onerror = () => { db.close(); reject(new Error('Firebase auth storage could not be read.')); };
+      };
+    });
+    const record = records.find((item) => String(item?.fbase_key ?? '').startsWith('firebase:authUser:'));
+    const token = (stored ?? record?.value)?.stsTokenManager?.accessToken;
     if (!token) throw new Error('Firebase ID token is not available in the signed-in page.');
     const response = await fetch(url, {
       method: 'POST',
