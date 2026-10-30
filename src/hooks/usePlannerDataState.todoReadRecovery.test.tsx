@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { plannerReadMethods as getters, spyPlannerReads } from './plannerReadSpies.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -279,7 +280,7 @@ it.each([false, true])('failed full read does not revoke successful Todo Undo, s
   };
   let loading: Promise<void> | undefined;
   if (superseded) await act(async () => { loading = state.loadPlannerData('owner'); });
-  await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('full read failed'); });
+  await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。")); });
   if (loading) await act(async () => { oldRead.resolve(); await loading; });
   boundary.repository.getScheduleSnapshot = getScheduleSnapshot;
   const reads = vi.spyOn(boundary.repository, 'getTodos');

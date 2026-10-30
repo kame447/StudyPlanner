@@ -65,6 +65,7 @@ export interface FirestoreOrderedCursor {
 export interface FirestoreOrderedDocument extends Record<string, unknown> {
   id: string;
   documentName: string;
+  updateTime?: string;
 }
 
 export interface FirestoreDocumentSnapshot {
@@ -113,6 +114,7 @@ export interface FirestoreBulkDocumentUpdate extends FirestoreTransactionDocumen
 
 export interface FirestoreBulkDocumentDelete extends FirestoreTransactionDocumentKey {
   delete: true;
+  currentDocument?: { updateTime: string };
 }
 
 export type FirestoreBulkDocumentWrite =
@@ -139,6 +141,7 @@ const TOKEN_EARLY_REFRESH_MS = 60_000;
 const QUERY_BATCH_SIZE = 500;
 const BATCH_GET_DOCUMENT_LIMIT = 100;
 const FIRESTORE_COMMIT_WRITE_LIMIT = 500;
+const FIRESTORE_IN_FILTER_LIMIT = 30;
 const FIRESTORE_REQUEST_BODY_LIMIT_BYTES = 10 * 1024 * 1024;
 const workerSafeFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
 
@@ -475,7 +478,10 @@ export class FirestoreServiceAccountClient {
     const body = JSON.stringify({
       writes: writes.map((write) => {
         if ('delete' in write) {
-          return { delete: this.documentName(write.collection, write.id) };
+          return {
+            delete: this.documentName(write.collection, write.id),
+            ...(write.currentDocument ? { currentDocument: write.currentDocument } : {}),
+          };
         }
         const update = {
           update: {
@@ -767,6 +773,8 @@ export class FirestoreServiceAccountClient {
     cursor?: FirestoreOrderedCursor | null;
     limit?: number;
     direction?: 'ASCENDING' | 'DESCENDING';
+    endAtTimestamp?: string;
+    endAtString?: string;
   }): Promise<FirestoreOrderedDocument[]> {
     const where = equalityWhere(params.filters ?? []);
     const direction = params.direction ?? 'ASCENDING';
@@ -789,6 +797,12 @@ export class FirestoreServiceAccountClient {
               before: false,
             },
           } : {}),
+          ...(params.endAtTimestamp ? {
+            endAt: { values: [{ timestampValue: params.endAtTimestamp }], before: false },
+          } : {}),
+          ...(params.endAtString ? {
+            endAt: { values: [{ stringValue: params.endAtString }], before: false },
+          } : {}),
           limit: boundedQueryLimit(params.limit ?? 100),
         },
       }),
@@ -805,6 +819,9 @@ export class FirestoreServiceAccountClient {
         ...decodeFirestoreFields(document.fields ?? {}),
         id: documentId(document.name),
         documentName: document.name,
+        ...((params.endAtTimestamp || params.endAtString) && document.updateTime
+          ? { updateTime: document.updateTime }
+          : {}),
       }];
     });
   }
@@ -966,20 +983,67 @@ export class FirestoreServiceAccountClient {
     await discardResponseBody(response);
   }
 
+  // showMissing includes absent parent documents that still have descendants
+  // (class_attendance stores records without writing the class document).
+  async listCollectionDocuments(
+    collectionPath: string,
+    limit = 100,
+  ): Promise<Array<{ id: string }>> {
+    const path = collectionPath.split('/').map(encodeURIComponent).join('/');
+    const params = new URLSearchParams({
+      pageSize: String(boundedQueryLimit(limit)),
+      showMissing: 'true',
+    });
+    const response = await this.request(`${this.documentsBase()}/${path}?${params}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore list collection failed: ${response.status}`);
+    }
+    const payload = await response.json() as { documents?: FirestoreDocument[] };
+    return (payload.documents ?? []).flatMap((document) => document.name
+      ? [{ id: documentId(document.name) }]
+      : []);
+  }
+
   async deleteByStringField(
     collection: string,
     field: string,
     values: readonly string[],
   ): Promise<number> {
+    // One IN query and one bulk commit per page keep the subrequest count
+    // independent of how many documents or HMAC epochs a subject has.
     let deleted = 0;
-    for (const value of values) {
+    for (let start = 0; start < values.length; start += FIRESTORE_IN_FILTER_LIMIT) {
+      const chunk = values.slice(start, start + FIRESTORE_IN_FILTER_LIMIT);
       while (true) {
-        const documents = await this.queryDocuments(collection, [{ field, value }]);
-        if (documents.length === 0) break;
-        await Promise.all(documents.map((document) =>
-          this.deleteDocument(collection, String(document.id))));
-        deleted += documents.length;
-        if (documents.length < QUERY_BATCH_SIZE) break;
+        const response = await this.request(`${this.documentsBase()}:runQuery`, {
+          method: 'POST',
+          body: JSON.stringify({
+            structuredQuery: {
+              from: [{ collectionId: collection }],
+              where: {
+                fieldFilter: {
+                  field: { fieldPath: field },
+                  op: 'IN',
+                  value: { arrayValue: { values: chunk.map((value) => ({ stringValue: value })) } },
+                },
+              },
+              select: { fields: [{ fieldPath: '__name__' }] },
+              limit: QUERY_BATCH_SIZE,
+            },
+          }),
+        });
+        if (!response.ok) {
+          await discardResponseBody(response);
+          throw new Error(`Firestore query failed: ${response.status}`);
+        }
+        const payload = await response.json() as FirestoreRunQueryResult[];
+        const ids = payload.flatMap((result) =>
+          result.document?.name ? [documentId(result.document.name)] : []);
+        if (ids.length === 0) break;
+        await this.commitWrites(ids.map((id) => ({ collection, id, delete: true as const })));
+        deleted += ids.length;
+        if (ids.length < QUERY_BATCH_SIZE) break;
       }
     }
     return deleted;

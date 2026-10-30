@@ -233,6 +233,15 @@ describe('weekly planning trace privacy boundary', () => {
     expect(withOldExpired['691']).toBeUndefined();
     expect(withOldExpired['692']).toBe(nextMonth['692']);
     expect(withOldExpired['698']).toMatch(/^[a-f0-9]{64}$/);
+    const forDeletion = await resolveWeeklyPlanningTraceHmacSecretRing({
+      raw,
+      now: new Date(698 * 30 * 24 * 60 * 60 * 1000),
+      derivedCoverage: 'since-root',
+    });
+    expect(forDeletion['691']).toBe(first['691']);
+    expect(forDeletion['698']).toBe(withOldExpired['698']);
+    expect(traceSubjectEpochsForDeletion(forDeletion))
+      .toEqual(Array.from({ length: 10 }, (_, index) => String(689 + index)));
   });
 
   it('uses epochs no longer than thirty days and assigns a 180 day expiry', () => {
@@ -298,20 +307,55 @@ describe('weekly planning trace privacy boundary', () => {
     expect(prepared.entries[0].expireAt).toBe('2027-01-14T00:00:00.000Z');
   });
 
-  it('stores schema v2 diagnostic text as supplied while dropping account identity', async () => {
+  it('masks contact details and credentials in schema v2 diagnostic text before storage', async () => {
     const subject = await createWeeklyPlanningTraceSubject(
       'firebase-user-123',
       '100',
       { '100': 'a'.repeat(32) },
     );
+    const taskId = 'task-123e4567-e89b-12d3-a456-426614174000';
+    const digest = `sha256:${'0123456789abcdef'.repeat(4)}`;
+    const credential = 'sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8tUv1w';
+    const longRawResponse = `{"tasks":[]}${' '.repeat(5_000)}end`;
     const prepared = prepareWeeklyPlanningTraceWrite({
       session: validSession(),
-      entries: [validDiagnosticEntry()],
+      entries: [validDiagnosticEntry({
+        userInput: {
+          text: '連絡は person@example.com / 090-1234-5678 https://example.com/p?token=secret '
+            + credential,
+        },
+        aiInterpreter: {
+          ...(validDiagnosticEntry().aiInterpreter as Record<string, unknown>),
+          rawResponses: [{ attempt: 'initial', text: longRawResponse }],
+        },
+        decision: {
+          ...(validDiagnosticEntry().decision as Record<string, unknown>),
+          finalOperations: [{ operation: 'set_planning_window', taskId, candidateSetHash: digest }],
+        },
+      })],
     }, subject, OCCURRED_AT);
     const output = serialized(prepared);
+    const entry = prepared.entries[0] as Record<string, any>;
 
     expect(output).not.toContain('firebase-user-123');
-    expect(output).toContain('person@example.com');
+    expect(output).not.toContain('person@example.com');
+    expect(output).not.toContain('090-1234-5678');
+    expect(output).not.toContain('token=secret');
+    expect(output).not.toContain(credential);
+    expect(entry.userInput.text).toBe(
+      '連絡は [EMAIL] / [PHONE] https://example.com/p?[QUERY_REDACTED] [TOKEN]',
+    );
+    expect(entry.aiInterpreter.input.requests[0].purpose)
+      .toBe('weekly_planning_semantic_normalizer');
+    expect(entry.aiInterpreter.rawResponses[0].text).toBe(longRawResponse);
+    expect(entry.decision.finalOperations[0]).toEqual({
+      operation: 'set_planning_window',
+      taskId,
+      candidateSetHash: digest,
+    });
+    expect(entry.traceSchema).toBe('weekly-planning-turn-diagnostic-v2');
+    expect(entry.requestId).toBe('request-1');
+    expect(entry.sequence).toBe(0);
     expect(prepared.entries).toHaveLength(1);
     expect(prepared.entries[0].kind).toBe('turn_diagnostic');
     expect(prepared.entries[0].traceSubjectToken).toBe(subject.token);

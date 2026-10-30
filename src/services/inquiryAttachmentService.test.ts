@@ -58,3 +58,14 @@ describe('bounded inquiry photos', () => {
     expect(await inquiryAttachmentsAvailable()).toBe(false);
   });
 });
+
+
+it.each(['read', 'digest'])('hides unknown local photo %s errors without uploading', async failure => {
+  const source = file();
+  if (failure === 'read') vi.spyOn(source, 'arrayBuffer').mockRejectedValueOnce(new DOMException('raw local image details'));
+  else vi.spyOn(crypto.subtle, 'digest').mockRejectedValueOnce(new DOMException('raw digest details'));
+  try {
+    await expect(prepareInquiryAttachments([source])).rejects.toThrow('写真を読み込めませんでした。別の画像を選んでください。');
+    expect(fetch).not.toHaveBeenCalled();
+  } finally { vi.restoreAllMocks(); }
+});

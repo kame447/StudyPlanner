@@ -211,6 +211,67 @@ export function redactWeeklyPlanningTraceString(value: string): string {
     .replace(TOKEN_PATTERN, REDACTED_TOKEN);
 }
 
+// v2 diagnostics carry UUID-based ids and digests the debug view correlates on.
+const TURN_DIAGNOSTIC_KEPT_SPAN_PATTERN =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|(?:sha256|fnv1a32):[0-9a-f]+/gi;
+const TURN_DIAGNOSTIC_ENVELOPE_KEYS = new Set([
+  'id',
+  'sessionId',
+  'logicalConversationId',
+  'requestId',
+  'kind',
+  'traceSchema',
+  'occurredAt',
+  'observedAt',
+]);
+
+/** Identifier labels such as `weekly_planning_semantic_normalizer` are not credentials. */
+function maskTurnDiagnosticToken(candidate: string): string {
+  const credentialLike = candidate
+    .split(/[-_]/)
+    .some((segment) => segment.length >= 16 && /\d/.test(segment));
+  return credentialLike ? REDACTED_TOKEN : candidate;
+}
+
+function redactTurnDiagnosticSpan(value: string): string {
+  return value
+    .replace(PHONE_PATTERN, REDACTED_PHONE)
+    .replace(TOKEN_PATTERN, maskTurnDiagnosticToken);
+}
+
+/**
+ * Masks emails, phone numbers, URL queries and credential-like runs in v2 diagnostic text
+ * without truncating it. Pattern matching is best effort, not a guarantee.
+ */
+export function redactWeeklyPlanningTurnDiagnosticText(value: string): string {
+  const text = redactWeeklyPlanningTraceEmails(value.replace(URL_PATTERN, redactUrl));
+  let output = '';
+  let copiedThrough = 0;
+  for (const kept of text.matchAll(TURN_DIAGNOSTIC_KEPT_SPAN_PATTERN)) {
+    output += redactTurnDiagnosticSpan(text.slice(copiedThrough, kept.index)) + kept[0];
+    copiedThrough = kept.index + kept[0].length;
+  }
+  return output + redactTurnDiagnosticSpan(text.slice(copiedThrough));
+}
+
+/** Keeps the typed v2 structure and envelope fields; masks every other string value. */
+export function redactWeeklyPlanningTurnDiagnosticDocument(
+  document: Record<string, unknown>,
+): Record<string, unknown> {
+  const visit = (value: unknown): unknown => {
+    if (typeof value === 'string') return redactWeeklyPlanningTurnDiagnosticText(value);
+    if (Array.isArray(value)) return value.map(visit);
+    if (isRecord(value)) {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, visit(item)]));
+    }
+    return value;
+  };
+  return Object.fromEntries(Object.entries(document).map(([key, value]) => [
+    key,
+    TURN_DIAGNOSTIC_ENVELOPE_KEYS.has(key) ? value : visit(value),
+  ]));
+}
+
 export function redactWeeklyPlanningTraceValue(
   input: unknown,
   maxDepth = 8,
@@ -302,12 +363,18 @@ export function parseWeeklyPlanningTraceHmacSecrets(
  * The oldest primary secret is the fixed derivation root. Do not rotate/remove
  * that primary key without a migration plan for derived trace IDs within the
  * retention window. The derived bytes and the root are never logged.
+ *
+ * `derivedCoverage: 'since-root'` derives every epoch after the root instead of
+ * only the retention window. Deletion needs it: append extends `expireAt` while
+ * a session keeps its original subject epoch, so a stored session can outlive
+ * the 180-day derivation window.
  */
 export async function resolveWeeklyPlanningTraceHmacSecretRing(params: {
   raw: string;
   extension?: string;
   now?: Date | string | number;
   cryptoApi?: Crypto;
+  derivedCoverage?: 'retention' | 'since-root';
 }): Promise<TraceHmacSecretRing> {
   const explicitRing = parseWeeklyPlanningTraceHmacSecrets(params.raw, params.extension);
   const primary = parseWeeklyPlanningTraceHmacSecrets(params.raw);
@@ -319,10 +386,12 @@ export async function resolveWeeklyPlanningTraceHmacSecretRing(params: {
   }
   const rootEpoch = primaryEpochNames[0];
   const current = Number(resolveWeeklyPlanningTraceEpoch(params.now ?? new Date()));
-  const oldestRetained = Math.max(
-    current - Math.ceil(WEEKLY_PLANNING_TRACE_RETENTION_DAYS / WEEKLY_PLANNING_TRACE_EPOCH_DAYS),
-    Number(rootEpoch) + 1,
-  );
+  const oldestRetained = params.derivedCoverage === 'since-root'
+    ? Number(rootEpoch) + 1
+    : Math.max(
+      current - Math.ceil(WEEKLY_PLANNING_TRACE_RETENTION_DAYS / WEEKLY_PLANNING_TRACE_EPOCH_DAYS),
+      Number(rootEpoch) + 1,
+    );
   if (current < oldestRetained) return explicitRing;
   const absent: string[] = [];
   for (let epoch = oldestRetained; epoch <= current; epoch += 1) {
@@ -640,10 +709,10 @@ function preparedDocument(
   input: Record<string, unknown>,
   subject: WeeklyPlanningTraceSubject,
   expireAt: string,
-  preserveDiagnosticText = false,
+  turnDiagnosticV2 = false,
 ): Record<string, unknown> {
-  const prepared = preserveDiagnosticText
-    ? { ...input }
+  const prepared = turnDiagnosticV2
+    ? redactWeeklyPlanningTurnDiagnosticDocument(input)
     : redactWeeklyPlanningTraceValue(input);
   if (!isRecord(prepared)) {
     throw new Error('trace document is invalid after preparation');
@@ -705,7 +774,7 @@ function prepareWrite(params: {
     seenSequences.add(sequence);
     requireTraceEntrySchema(entry);
     const expectedEntryId = weeklyPlanningTraceEntryId(sessionId, sequence);
-    const preserveDiagnosticText = entry.kind === 'turn_diagnostic' && entry.schemaVersion === 2;
+    const turnDiagnosticV2 = entry.kind === 'turn_diagnostic' && entry.schemaVersion === 2;
     return {
       ...preparedDocument({
         ...entry,
@@ -713,7 +782,7 @@ function prepareWrite(params: {
         sessionId,
         logicalConversationId,
         sequence,
-      }, subject, expireAt, preserveDiagnosticText),
+      }, subject, expireAt, turnDiagnosticV2),
       id: expectedEntryId,
       sessionId,
       logicalConversationId,

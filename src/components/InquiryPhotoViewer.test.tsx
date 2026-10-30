@@ -59,3 +59,16 @@ describe('lazy private image viewer', () => {
     expect(button('写真を再取得')).toBeTruthy();
   });
 });
+
+
+it('hides local object URL failures without resending or automatically re-reading', async () => {
+  vi.mocked(readInquiryAttachment).mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
+  vi.mocked(URL.createObjectURL).mockImplementationOnce(() => { throw new DOMException('raw private object URL failure'); });
+  act(() => { renderer = create(<InquiryPhotoViewer receiptId={'x'.repeat(20)} slot={0} photo={photo} />); });
+  await act(async () => button('写真を開く').props.onClick());
+  const rendered = JSON.stringify(renderer.toJSON());
+  expect(rendered).toContain('写真を表示できませんでした。時間をおいて開き直してください。');
+  expect(rendered).not.toContain('raw private');
+  expect(readInquiryAttachment).toHaveBeenCalledOnce();
+  expect(renderer.root.findAllByType('img')).toHaveLength(0);
+});

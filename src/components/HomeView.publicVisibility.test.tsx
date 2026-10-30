@@ -21,6 +21,7 @@ let core: Element;
 let header: Element;
 let nav: Element;
 let dashboard: Element;
+let materialProbe: Element;
 let props: ComponentProps<typeof HomeView>;
 class Element {
   dataset: Record<string, string> = {};
@@ -44,7 +45,7 @@ function render(publicOpen: boolean, planCount = 1) {
   </PublicPageNavigationContext.Provider>;
   act(() => {
     if (renderer) renderer.update(element);
-    else renderer = create(element, { createNodeMock: element => element.props.className === 'home-core-sections' ? core : null });
+    else renderer = create(element, { createNodeMock: element => element.props.className === 'home-core-sections' ? core : element.props.className === 'home-material-measurement' ? materialProbe : null });
   });
 }
 function flush() {
@@ -52,6 +53,7 @@ function flush() {
 }
 beforeEach(() => {
   visible = true; frames = new Map(); fontReady = []; let frameId = 0;
+  materialProbe = new Element(0, 100);
   core = new Element(); header = new Element(); nav = new Element(200); dashboard = new Element();
   const today = new Element(); today.elements.set('.home-schedule-list', new Element());
   core.elements.set('[data-home-section="today-schedule"]', today);
@@ -130,4 +132,90 @@ it('resumes the compact fit when a desktop Home returns to a phone viewport', ()
   flush(); // The next frame measures the restored compact structure.
   expect(renderer!.root.findByType(HomeView)).toBe(instance);
   expect(header.dataset.homeChromeViewport).toBe('390x844');
+});
+
+function pending() {
+  return renderer!.root.findByType('section').props['data-initial-layout-pending'] === true;
+}
+
+it('keeps the measured DOM inert until the initial terminal pass, then never hides an update', () => {
+  render(false);
+  expect(pending()).toBe(true);
+  expect(renderer!.root.findByType('section').props.inert).toBe('');
+  expect(renderer!.root.findAllByProps({ className: 'home-core-sections' })).toHaveLength(1);
+  flush();
+  expect(pending()).toBe(false);
+  expect(renderer!.root.findByType('section').props.inert).toBeUndefined();
+  render(false, 2);
+  expect(pending()).toBe(false);
+  act(() => fontReady.forEach(callback => callback()));
+  expect(pending()).toBe(false);
+});
+
+it('starts pending again on a real Home remount, including a cached route return', () => {
+  render(false); flush();
+  expect(pending()).toBe(false);
+  act(() => renderer!.unmount()); renderer = undefined;
+  render(false);
+  expect(pending()).toBe(true);
+  flush();
+  expect(pending()).toBe(false);
+});
+
+it.each(['hidden', 'desktop', 'text-scroll', 'setup'])('releases the %s terminal path without a loading loop', (path) => {
+  if (path === 'hidden') visible = false;
+  if (path === 'desktop') window.innerWidth = 1280;
+  if (path === 'text-scroll') dashboard.dataset.contentScroll = 'true';
+  render(false, path === 'setup' ? 0 : 1);
+  flush();
+  expect(pending()).toBe(false);
+});
+
+it('does not reveal between existing relaxation passes', () => {
+  nav.getBoundingClientRect.mockImplementation(() => ({ top: 700, height: 100 }));
+  render(false);
+  flush(); // Commit the existing zero-row supplemental candidate first.
+  expect(pending()).toBe(true);
+  flush();
+  expect(dashboard.style.setProperty).toHaveBeenCalled();
+  expect(frames.size).toBe(1);
+  expect(pending()).toBe(true);
+  // This fixture holds geometry fixed: exercise the existing bounded fit cap.
+  for (let pass = 0; pass < 4; pass += 1) flush();
+  expect(pending()).toBe(false);
+  expect(frames.size).toBe(0);
+});
+
+it('does not let a cancelled inactive callback reveal pending Home', () => {
+  render(false);
+  const stale = [...frames.values()][0];
+  render(true);
+  act(() => stale());
+  expect(pending()).toBe(true);
+  render(false); flush();
+  expect(pending()).toBe(false);
+});
+
+it('waits for the material-selection commit before revealing initial Home', () => {
+  props.studyMaterials = [{ status: 'active', updatedAt: '2026-10-13' } as any];
+  nav.getBoundingClientRect.mockImplementation(() => ({ top: 308, height: 100 }));
+  render(false); flush();
+  expect(materialProbe.getBoundingClientRect).toHaveBeenCalled();
+  expect(pending()).toBe(true);
+  expect(frames.size).toBe(1);
+  flush();
+  expect(pending()).toBe(false);
+});
+
+it('waits for an emergency material-removal commit instead of revealing a stale structure', () => {
+  props.studyMaterials = [{ status: 'active', updatedAt: '2026-10-13' } as any];
+  nav.getBoundingClientRect.mockImplementation(() => ({ top: 308, height: 100 }));
+  render(false); flush(); // Select a material, still pending.
+  expect(pending()).toBe(true);
+  nav.getBoundingClientRect.mockImplementation(() => ({ top: 150, height: 100 }));
+  flush(); // Remove material candidate, still pending.
+  expect(pending()).toBe(true);
+  flush(); // The committed no-material structure reaches emergency terminal.
+  expect(pending()).toBe(false);
+  expect(dashboard.values.get('--home-dynamic-schedule-max')).toBe('50px');
 });

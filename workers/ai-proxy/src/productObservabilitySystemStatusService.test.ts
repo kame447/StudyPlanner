@@ -83,6 +83,32 @@ describe('Phase 8 system observability projection', () => {
     expect(model.trace.retainedSessionObserved).toBeNull();
   });
 
+  it.each([
+    ['zero', 0, 0],
+    ['safe integer', Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+    ['negative', -1, null],
+    ['fraction', 1.5, null],
+    ['numeric string', '3', null],
+    ['null', null, null],
+    ['missing', undefined, null],
+    ['NaN', NaN, null],
+    ['infinity', Infinity, null],
+    ['unsafe integer', Number.MAX_SAFE_INTEGER + 1, null],
+  ])('preserves checkpoint count admission for %s', async (_label, count, expected) => {
+    const firestore = {
+      async getDocument() {
+        return count === undefined ? {} : { processedEventCount: count };
+      },
+      async queryDocumentsAfter() { return []; },
+    };
+    const service = new ProductObservabilitySystemStatusService({} as never, firestore);
+
+    const model = await service.getSystemStatus('production');
+
+    expect(model.aggregation.processedEventCount).toBe(expected);
+    expect(model.aggregation.dirtySourceCount).toBe(expected === null ? null : 0);
+  });
+
   it('uses a bounded index-safe telemetry probe and scopes dirty sources to the selected environment', async () => {
     const queryCalls: Array<{
       collection: string;

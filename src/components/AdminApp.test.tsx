@@ -9,6 +9,7 @@ import { AdminRoutes } from './AdminViews';
 vi.mock('../services/authSession', () => ({ createAuthSessionService: vi.fn() }));
 vi.mock('../services/adminService', () => ({ subscribeAdminStatus: vi.fn() }));
 vi.mock('./AdminViews', () => ({ AdminRoutes: () => null }));
+vi.mock('../hooks/useDialogFocus', () => ({ useDialogFocus: () => ({ dialogRef: { current: null } }) }));
 
 const user = { id: 'admin-user', requiresEmailVerification: false };
 let renderer: ReactTestRenderer;
@@ -127,5 +128,52 @@ describe('AdminApp auth session', () => {
     expect(fake.session.signOut).not.toHaveBeenCalled();
     act(() => renderer.root.findByProps({ className: 'admin-console-return-link' }).props.onClick({ button: 0, ctrlKey: true, preventDefault }));
     expect(onReturn).toHaveBeenCalledTimes(3);
+  });
+});
+
+
+describe('AdminApp mobile navigation', () => {
+  let changeViewport: () => void;
+  let query: { matches: boolean; addEventListener: ReturnType<typeof vi.fn>; removeEventListener: ReturnType<typeof vi.fn> };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    query = { matches: true, addEventListener: vi.fn((_, listener) => { changeViewport = listener; }), removeEventListener: vi.fn() };
+    vi.stubGlobal('window', { location: { pathname: '/admin' }, innerWidth: 390,
+      matchMedia: () => query, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      history: { pushState: vi.fn(), replaceState: vi.fn() } });
+    vi.stubGlobal('document', { body: { style: { overflow: '' } } });
+    fake = createFakeAuthSession();
+    vi.mocked(subscribeAdminStatus).mockImplementation((_, listener) => { emitAdmin = listener; return unsubscribeAdmin; });
+    mount(); act(() => fake.emit(user)); act(() => emitAdmin(true));
+  });
+  afterEach(() => { act(() => renderer.unmount()); vi.unstubAllGlobals(); });
+  it('reuses one navigation, opens a modal drawer, closes on navigation and releases scrolling', () => {
+    expect(renderer.root.findAllByType('nav')).toHaveLength(1);
+    expect(renderer.root.findAllByType('select')).toHaveLength(0);
+    act(() => renderer.root.findByProps({ 'aria-label': '管理メニューを開く' }).props.onClick());
+    expect(renderer.root.findByType('aside').props.role).toBe('dialog');
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(renderer.root.findByProps({ className: 'admin-console-main' }).props.inert).toBe('');
+    const users = renderer.root.findAllByType('button').find(button => button.findAllByType('span').some(span => span.children.includes('Users')))!;
+    act(() => users.props.onClick());
+    expect(window.history.pushState).toHaveBeenCalledWith({}, '', '/admin/users');
+    expect(renderer.root.findByType(AdminRoutes).props.path).toBe('/admin/users');
+    expect(renderer.root.findByType('aside').props.role).toBeUndefined();
+    expect(document.body.style.overflow).toBe('');
+  });
+  it('closes and restores desktop navigation when the viewport grows', () => {
+    act(() => renderer.root.findByProps({ 'aria-label': '管理メニューを開く' }).props.onClick());
+    act(() => { query.matches = false; changeViewport(); });
+    expect(renderer.root.findByType('aside').props.inert).toBeUndefined();
+    expect(renderer.root.findByType('aside').props.role).toBeUndefined();
+    expect(document.body.style.overflow).toBe('');
+  });
+  it('does not retain the drawer after access is revoked', () => {
+    act(() => renderer.root.findByProps({ 'aria-label': '管理メニューを開く' }).props.onClick());
+    act(() => emitAdmin(false));
+    expect(renderer.root.findAllByType('aside')).toHaveLength(0);
+    expect(renderer.root.findAllByType(AdminRoutes)).toHaveLength(0);
+    expect(document.body.style.overflow).toBe('');
+    expect(hasText('アクセス権限がありません')).toBe(true);
   });
 });

@@ -124,3 +124,5 @@ Client-first does not imply client-authoritative shared state. Authentication, o
 - [Material record preparation](work/material-record-preparation-handoff.md) — merged in PR #813; pure record construction separated from admitted persistence.
 - [Material preferences boundary](work/material-preferences-boundary-handoff.md) — merged in PR #812; behavior-preserving separation of material domain rules from browser persistence.
 - [Mobile WebKit paint investigation and retry recording](work/mobile-retry-recording-handoff.md): PR #836 retry recording and PR #845 Month functional budget are merged; the broader rendering-performance investigation is not resolved by those merges.
+
+- [Authentication entry and user-facing errors](work/auth-entry-user-error-handoff.md): anchored authentication branding, form-only motion and explicit Japanese error boundaries; local candidate, existing PR #902 overlap and native acceptance pending.

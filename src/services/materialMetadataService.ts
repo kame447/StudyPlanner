@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import {
   isMaterialMetadataCandidate,
   normalizeMaterialCatalogTitle,
@@ -54,26 +55,30 @@ function normalizeDetailsResponse(value: WorkerResponse): MaterialMetadataDetail
 async function workerRequest(endpoint: string, query: string) {
   const firebaseAuth = getFirebaseAuth();
   if (!firebaseAuth?.currentUser) {
-    throw new Error('教材検索にはログインが必要です。手入力で登録できます。');
+    throw new UserFacingError('教材検索にはログインが必要です。手入力で登録できます。');
   }
 
-  const owner = firebaseAuth.currentUser;
-  const idToken = await owner.getIdToken();
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
-    },
-    body: JSON.stringify({ query }),
-  });
-  const payload = (await response.json()) as WorkerResponse;
-  if (!response.ok) {
-    throw new Error(
-      payload.error || '教材情報を一時的に利用できません。手入力で登録できます。',
-    );
+  try {
+    const owner = firebaseAuth.currentUser;
+    const idToken = await owner.getIdToken();
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ query }),
+    });
+    const payload = (await response.json()) as WorkerResponse;
+    if (!response.ok || !payload || typeof payload !== 'object') {
+      throw new UserFacingError(
+        '教材情報を一時的に利用できません。手入力で登録できます。',
+      );
+    }
+    return { payload, owner };
+  } catch (error) {
+    throw error instanceof UserFacingError ? error : new UserFacingError('教材検索に接続できませんでした。時間をおくか、手入力で登録してください。');
   }
-  return { payload, owner };
 }
 
 interface ResolvedMaterialDetails {
@@ -203,13 +208,13 @@ export async function searchMaterialMetadata(
 
   const proxyUrl = getCloudflareAiProxyUrl();
   if (!proxyUrl) {
-    throw new Error('教材検索の接続先が設定されていません。手入力で登録できます。');
+    throw new UserFacingError('教材検索を現在利用できません。手入力で登録できます。');
   }
 
   const { payload } = await workerRequest(buildMaterialMetadataEndpoint(proxyUrl), query);
   const normalized = normalizeWorkerResponse(payload);
   if (!normalized) {
-    throw new Error('教材検索の結果を読み取れませんでした。手入力で登録できます。');
+    throw new UserFacingError('教材検索の結果を読み取れませんでした。手入力で登録できます。');
   }
   return normalized;
 }

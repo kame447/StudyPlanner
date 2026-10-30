@@ -182,3 +182,72 @@ describe('AdminUsersPage', () => {
     expect(text).not.toContain('undefined日');
   });
 });
+
+describe('daily user chart', () => {
+  async function renderTrend(daily: Array<{ localDate: string; activeActorCount: number }>) {
+    fetchMock.mockResolvedValueOnce(response({
+      ok: true, users: [], nextCursor: null, enrichmentReady: true,
+      trend: { daily, activeUsers: null },
+    }));
+    return renderPage();
+  }
+
+  it('shows integer count ticks and distinguishes a missing day from zero across months', async () => {
+    const renderer = await renderTrend([
+      { localDate: '2030-01-30', activeActorCount: 0 },
+      { localDate: '2030-02-01', activeActorCount: 7 },
+    ]);
+    const ticks = renderer.root.findByProps({ className: 'admin-users-trend-count-axis' });
+    expect(ticks.findAllByType('span').map((node) => node.children.join('')))
+      .toEqual(['0人', '2人', '4人', '6人', '8人']);
+    const bars = renderer.root.findByProps({ className: 'admin-users-trend-bars' }).findAllByType('span');
+    expect(bars.map((node) => node.props.style.height)).toEqual(['0%', '0%', '87.5%']);
+    expect(bars.map((node) => node.props.title)).toEqual(['1/30: 0人', '1/31: データなし', '2/1: 7人']);
+    expect(bars[1].props['data-missing']).toBe('true');
+    expect(bars[0].props['data-missing']).toBeUndefined();
+    const rows = renderer.root.findByType('tbody').findAllByType('tr');
+    expect(rows.map((row) => [row.findByType('th').children.join(''), row.findByType('td').children.join('')]))
+      .toEqual([['2030-01-30', '0人'], ['2030-01-31', 'データなし'], ['2030-02-01', '7人']]);
+    expect(renderer.root.findByType('summary').children.join('')).toBe('日別の人数を表示');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    act(() => renderer.unmount());
+  });
+
+  it.each([0, 1, 127])('uses a finite integer axis without painting zero as positive (maximum %i)', async (count) => {
+    const renderer = await renderTrend([
+      { localDate: '2030-02-01', activeActorCount: 0 },
+      { localDate: '2030-02-02', activeActorCount: count },
+    ]);
+    const ticks = renderer.root.findByProps({ className: 'admin-users-trend-count-axis' })
+      .findAllByType('span').map((node) => Number(node.children.join('').replace('人', '')));
+    expect(ticks[0]).toBe(0);
+    expect(ticks.length).toBeLessThanOrEqual(5);
+    expect(ticks[ticks.length - 1]).toBeGreaterThanOrEqual(Math.max(1, count));
+    expect(ticks.every((tick, index) => Number.isInteger(tick) && (index === 0 || tick > ticks[index - 1]))).toBe(true);
+    const bars = renderer.root.findByProps({ className: 'admin-users-trend-bars' }).findAllByType('span');
+    expect(bars[0].props.style.height).toBe('0%');
+    expect(bars[1].props.style.height).toBe(`${count / ticks[ticks.length - 1] * 100}%`);
+    act(() => renderer.unmount());
+  });
+
+  it('keeps an empty series empty instead of inventing thirty zero days', async () => {
+    const renderer = await renderTrend([]);
+    expect(JSON.stringify(renderer.toJSON())).toContain('直近30日の利用データはまだありません。');
+    expect(renderer.root.findAllByType('details')).toHaveLength(0);
+    act(() => renderer.unmount());
+  });
+
+  it('exposes every exact count in a thirty-day synthetic series', async () => {
+    const daily = Array.from({ length: 30 }, (_, index) => ({
+      localDate: `2030-04-${String(index + 1).padStart(2, '0')}`,
+      activeActorCount: index % 9,
+    }));
+    const renderer = await renderTrend(daily);
+    const rows = renderer.root.findByType('tbody').findAllByType('tr');
+    expect(rows).toHaveLength(30);
+    expect(rows.map((row) => row.findByType('td').children.join('')))
+      .toEqual(daily.map((day) => `${day.activeActorCount}人`));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    act(() => renderer.unmount());
+  });
+});

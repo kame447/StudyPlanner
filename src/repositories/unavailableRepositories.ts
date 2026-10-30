@@ -1,10 +1,11 @@
+import { UserFacingError } from '../lib/userFacingError';
 import type { PlannerRepository, AuthRepository } from './repositoryContracts';
 
 const PRODUCTION_CONFIGURATION_MESSAGE =
   '本番設定が不完全です。管理者に連絡してください。';
 
 function createConfigurationError(): Error {
-  return new Error(PRODUCTION_CONFIGURATION_MESSAGE);
+  return new UserFacingError(PRODUCTION_CONFIGURATION_MESSAGE);
 }
 
 export function createUnavailableAuthRepository(): AuthRepository {

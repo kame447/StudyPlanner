@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { collection, doc, getDocFromServer, getDocsFromServer, query, runTransaction, where, type Firestore } from 'firebase/firestore';
 import { isCurrentScheduleEventMigration, scheduleEventToMonthEvent, scheduleEventToPlan, type ScheduleEvent } from '../domain/scheduleEvent';
 import { todayIsoDate } from '../lib/date';
@@ -11,7 +12,7 @@ import {
 
 const REST_COLLECTION = 'study_rest_days';
 function assertServerConfirmed(metadata: { fromCache?: boolean; hasPendingWrites?: boolean } | undefined) {
-  if (metadata?.fromCache !== false || metadata.hasPendingWrites !== false) throw new Error('最新の学習履歴を確認できませんでした。');
+  if (metadata?.fromCache !== false || metadata.hasPendingWrites !== false) throw new UserFacingError('最新の学習履歴を確認できませんでした。');
 }
 
 export function createFirebaseStudyStreakRepository(db: Firestore, receipt?: ConfirmedStudyHistory): StudyStreakRepository {
@@ -24,7 +25,7 @@ export function createFirebaseStudyStreakRepository(db: Firestore, receipt?: Con
   let pendingRead: { userId: string; day: string; generation: number | undefined; hint: string | null;
     sequence: number; promise: Promise<StudyStreakHistory> } | null = null;
   const issued = new WeakMap<StudyStreakHistory, { generation: number | undefined; epoch: number }>();
-  const changedHistory = () => new Error('学習記録が変更されました。確認し直してください。');
+  const changedHistory = () => new UserFacingError('学習記録が変更されました。確認し直してください。');
   function assertGeneration(generation: number | undefined) {
     if (receipt && (receipt.writing || generation !== receipt.generation)) throw changedHistory();
   }
@@ -43,14 +44,14 @@ export function createFirebaseStudyStreakRepository(db: Firestore, receipt?: Con
     ]);
     for (const snapshot of [marker, actuals, events]) assertServerConfirmed(snapshot.metadata);
     if (!marker.exists() || !isCurrentScheduleEventMigration(marker.data())) {
-      throw new Error('予定の読み込みが完了してから、もう一度開いてください。');
+      throw new UserFacingError('予定の読み込みが完了してから、もう一度開いてください。');
     }
     const scheduleEvents = events.docs.map(row => ({ ...row.data(), id: row.id } as ScheduleEvent));
     const plans = scheduleEvents.map(scheduleEventToPlan)
       .filter((plan): plan is Plan => plan !== null);
     const monthEvents = scheduleEvents.map(scheduleEventToMonthEvent).filter((event): event is MonthEvent => event !== null);
     const actualRows = dedupeLinkedActualRecords(actuals.docs.map(row => normalizeActualRecord({ ...row.data(), id: row.id } as Actual)));
-    if ([...scheduleEvents, ...actualRows].some(row => row.userId !== userId)) throw new Error('学習履歴の利用者が一致しません。');
+    if ([...scheduleEvents, ...actualRows].some(row => row.userId !== userId)) throw new UserFacingError('学習履歴の利用者が一致しません。');
     return { userId, plans, monthEvents, actuals: actualRows, historyComplete: true };
   }
   return {
@@ -102,7 +103,7 @@ export function createFirebaseStudyStreakRepository(db: Firestore, receipt?: Con
       assertStudyStreakOwner(history.userId);
       const sequence = ++requestSequence;
       function current() {
-        if (options?.signal?.aborted) throw new Error('学習履歴の確認が中断されました。');
+        if (options?.signal?.aborted) throw new UserFacingError('学習履歴の確認が中断されました。');
         const proof = issued.get(history);
         if (!proof || proof.epoch !== historyEpoch || failedGeneration === proof.generation) throw changedHistory();
         assertGeneration(proof.generation);

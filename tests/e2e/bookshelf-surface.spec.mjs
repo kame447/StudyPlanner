@@ -9,8 +9,8 @@ if (process.env.CI && process.env.UI_RETRY_CAPTURE === '1') {
 
 test.afterEach(async ({}, testInfo) => { await attachMaterialObservation(testInfo); });
 
-async function seedBookshelf(page, longTextFixture = null) {
-  await page.addInitScript(longTextFixture => {
+async function seedBookshelf(page, longTextFixture = null, materialCount = 2) {
+  await page.addInitScript(({ longTextFixture, materialCount }) => {
     if (localStorage.getItem('bookshelf-surface-seeded')) return;
     localStorage.setItem('bookshelf-surface-seeded', 'true');
     const today = new Date().toLocaleDateString('sv-SE');
@@ -114,7 +114,15 @@ async function seedBookshelf(page, longTextFixture = null) {
     localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify([subject]));
     localStorage.setItem(
       'studyplanner.studyMaterials.v1',
-      JSON.stringify([material, secondMaterial]),
+      JSON.stringify([
+        material,
+        secondMaterial,
+        ...Array.from({ length: materialCount - 2 }, (_, index) => ({
+          ...material,
+          id: `bookshelf-e2e-material-${index + 3}`,
+          name: `参考書 ${index + 3}`,
+        })),
+      ]),
     );
     localStorage.setItem(
       `studyplanner:material-detail:v1:${user.id}:${material.id}`,
@@ -152,7 +160,7 @@ async function seedBookshelf(page, longTextFixture = null) {
       localStorage.setItem('study-planner-appearance', 'pixel');
       localStorage.setItem('study-planner-theme-mode', 'light');
     }
-  }, longTextFixture);
+  }, { longTextFixture, materialCount });
 }
 
 async function openBookshelf(page) {
@@ -164,6 +172,53 @@ async function openBookshelf(page) {
     .click();
   await expect(page.locator('.bookshelf-view')).toBeVisible();
 }
+
+test('locks document scrolling while a bookshelf action sheet is open', async ({ page, browserName }, info) => {
+  test.skip(browserName === 'webkit' && info.project.use.isMobile === true,
+    'Playwright mobile WebKit does not support mouse.wheel; real iOS touch scrolling remains unverified.');
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Enough rows that the bookshelf document scrolls behind the sheet.
+  await seedBookshelf(page, null, 24);
+  await openBookshelf(page);
+
+  const rowMenuButton = page.locator('.bookshelf-row-menu-button').nth(8);
+  await rowMenuButton.evaluate((button) => button.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  await rowMenuButton.click();
+  const overlay = page.locator('.bookshelf-sheet-overlay');
+  await expect(overlay).toBeVisible();
+  const lockedScrollY = await page.evaluate(() => window.scrollY);
+  expect(lockedScrollY).toBeGreaterThan(0);
+  await page.evaluate(() => {
+    window.__wheelCount = 0;
+    window.addEventListener('wheel', () => { window.__wheelCount += 1; }, { capture: true, passive: true });
+  });
+  // mouse.wheel does not wait for scrolling: confirm delivery, then watch every frame for a while.
+  async function expectWheelIgnored(count) {
+    await page.mouse.wheel(0, 300);
+    await expect.poll(() => page.evaluate(() => window.__wheelCount)).toBe(count);
+    const positions = await page.evaluate(() => new Promise(resolve => {
+      const seen = [];
+      const sample = () => { seen.push(window.scrollY); seen.length < 30 ? requestAnimationFrame(sample) : resolve(seen); };
+      requestAnimationFrame(sample);
+    }));
+    expect(new Set(positions)).toEqual(new Set([lockedScrollY]));
+  }
+
+  await page.mouse.move(10, 10);
+  await expectWheelIgnored(1);
+  await page.locator('.bookshelf-action-sheet').hover();
+  await expectWheelIgnored(2);
+
+  await overlay.click({ position: { x: 10, y: 10 } });
+  await expect(overlay).toBeHidden();
+  const closedScrollY = await page.evaluate(() => window.scrollY);
+  expect(Math.abs(closedScrollY - lockedScrollY)).toBeLessThanOrEqual(1);
+  await page.mouse.move(10, 10);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(closedScrollY);
+});
 
 test('opens the redesigned bookshelf and material detail from the main navigation', async ({ page }) => {
   await seedBookshelf(page);
@@ -570,7 +625,10 @@ test('leaving a pending bookshelf entry prevents late failure from replacing Hom
     const persisted = await persistedShelfInputs(page);
     await deliveryNav(page, '教材').click();
     await expect.poll(() => attempts).toBe(1);
-    await expect(page.locator('.bookshelf-view')).toHaveCount(0);
+    const pendingShelf = page.locator('.route-skeleton--bookshelf');
+    await expect(pendingShelf).toBeVisible();
+    await expect(pendingShelf).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('.bookshelf-view:not(.route-skeleton--bookshelf .bookshelf-view)')).toHaveCount(0);
     await deliveryNav(page, 'ホーム').click();
     release(); await rejected;
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));

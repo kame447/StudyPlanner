@@ -134,6 +134,18 @@ describe('aggregateOverviewPeriod', () => {
     expect(aggregate.productActivity.eventCount).toBe(0);
     expect(aggregate.ai.requestCount).toBe(0);
     expect(aggregate.ai.latency.sampleCount).toBe(0);
-    expect(aggregate.planning.outcomeCounts).toEqual({});
+    expect(aggregate.planning).toEqual({
+      outcomeCounts: {},
+      previewCountSum: 0,
+      previewCountUnknownCount: 0,
+      unscheduledCountSum: 0,
+      unscheduledCountUnknownCount: 0,
+    });
+
+    aggregate.planning.outcomeCounts.session_started = 1;
+    const next = aggregateOverviewPeriod([]);
+    expect(next.planning).not.toBe(aggregate.planning);
+    expect(next.planning.outcomeCounts).not.toBe(aggregate.planning.outcomeCounts);
+    expect(next.planning.outcomeCounts).toEqual({});
   });
 });

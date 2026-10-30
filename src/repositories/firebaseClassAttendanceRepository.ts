@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { collection, doc, getDocsFromServer, runTransaction, type Firestore } from 'firebase/firestore';
 import { assertAttendanceDraft, assertAttendanceScope, readClassAttendance, type ClassAttendance } from '../domain/classAttendance';
 import type { ClassAttendanceRepository } from './classAttendanceRepository';
@@ -12,7 +13,7 @@ export function createFirebaseClassAttendanceRepository(db: Firestore): ClassAtt
       const snapshot = await getDocsFromServer(records(userId, templateId));
       return snapshot.docs.map(row => {
         const record = readClassAttendance(row.data(), userId, templateId);
-        if (record.date !== row.id) throw new Error('出欠記録の日付が一致しません。');
+        if (record.date !== row.id) throw new UserFacingError('出欠記録の日付が一致しません。');
         return record;
       }).sort((a, b) => b.date.localeCompare(a.date));
     },
@@ -22,7 +23,7 @@ export function createFirebaseClassAttendanceRepository(db: Firestore): ClassAtt
       return runTransaction(db, async transaction => {
         const template = await transaction.get(doc(db, 'schedule_templates', draft.templateId));
         if (!template.exists() || template.data().userId !== draft.userId) {
-          throw new Error('この授業は削除されたか、利用できなくなりました。');
+          throw new UserFacingError('この授業は削除されたか、利用できなくなりました。');
         }
         const snapshot = await transaction.get(reference);
         const previous = snapshot.exists() ? readClassAttendance(snapshot.data(), draft.userId, draft.templateId) : null;

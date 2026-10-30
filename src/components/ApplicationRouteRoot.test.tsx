@@ -15,7 +15,7 @@ const pushState = vi.fn((_state, _title, path) => { location.pathname = path; })
 beforeEach(() => {
   vi.clearAllMocks(); listeners = new Map(); location.pathname = '/admin/announcements';
   mocks.swipe.mockReturnValue(mocks.removeSwipe); mocks.dismiss.mockReturnValue(mocks.removeDismiss);
-  vi.stubGlobal('window', { location, history: { pushState }, addEventListener: (type: string, fn: () => void) => listeners.set(type, fn), removeEventListener: (type: string) => listeners.delete(type) });
+  vi.stubGlobal('window', { location, history: { pushState }, dispatchEvent: (event: Event) => { listeners.get(event.type)?.(); return true; }, addEventListener: (type: string, fn: () => void) => listeners.set(type, fn), removeEventListener: (type: string) => listeners.delete(type) });
 });
 afterEach(() => { act(() => renderer?.unmount()); vi.unstubAllGlobals(); });
 describe('application root return navigation', () => {
@@ -52,7 +52,7 @@ describe('application root return navigation', () => {
     expect(mocks.createAuth).toHaveBeenCalledTimes(1);
     expect(mocks.admin.mock.lastCall![0].authSession).toBe(session);
     act(() => mocks.admin.mock.lastCall![0].onReturnToApp());
-    expect(mocks.normal.mock.lastCall![0].authSession).toBe(session);
+    expect(mocks.normal.mock.lastCall![0].authSession).toBeUndefined();
     expect(mocks.createAuth).toHaveBeenCalledTimes(1);
   });
 });

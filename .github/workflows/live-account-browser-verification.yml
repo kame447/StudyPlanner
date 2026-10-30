@@ -5,6 +5,15 @@ env:
 
 on:
   workflow_dispatch:
+    inputs:
+      spec:
+        description: 'One live spec under tests/e2e to run (empty runs every *.live.mjs)'
+        required: false
+        default: ''
+      trace_session_id:
+        description: 'Synthetic weekly-trace session for the admin Logs/Debug Bundle/archive check (empty skips it)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -23,6 +32,8 @@ jobs:
       STUDYPLANNER_LIVE_EMAIL: ${{ secrets.STUDYPLANNER_LIVE_EMAIL }}
       STUDYPLANNER_LIVE_PASSWORD: ${{ secrets.STUDYPLANNER_LIVE_PASSWORD }}
       STUDYPLANNER_LIVE_ACCESS_KEY: ${{ secrets.STUDYPLANNER_LIVE_ACCESS_KEY }}
+      STUDYPLANNER_TRACE_E2E_EMAIL: ${{ secrets.STUDYPLANNER_TRACE_E2E_EMAIL }}
+      STUDYPLANNER_TRACE_E2E_PASSWORD: ${{ secrets.STUDYPLANNER_TRACE_E2E_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -52,4 +63,17 @@ jobs:
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
 
       - name: Run isolated production account verification
-        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.live.config.mjs
+        shell: bash
+        env:
+          LIVE_SPEC: ${{ inputs.spec }}
+          STUDYPLANNER_TRACE_ADMIN_SESSION_ID: ${{ inputs.trace_session_id }}
+        run: |
+          if [ -n "$STUDYPLANNER_TRACE_ADMIN_SESSION_ID" ] && ! [[ "$STUDYPLANNER_TRACE_ADMIN_SESSION_ID" =~ ^weekly-trace-[0-9a-f-]{36}$ ]]; then
+            echo "::error::trace_session_id must be a weekly-trace-<uuid> session ID"
+            exit 1
+          fi
+          if [ -n "$LIVE_SPEC" ] && ! [[ "$LIVE_SPEC" =~ ^tests/e2e/[A-Za-z0-9._-]+\.live\.mjs$ ]]; then
+            echo "::error::spec must be a tests/e2e/*.live.mjs path"
+            exit 1
+          fi
+          ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.live.config.mjs ${LIVE_SPEC:+"$LIVE_SPEC"}
