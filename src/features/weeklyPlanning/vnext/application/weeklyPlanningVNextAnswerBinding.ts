@@ -148,10 +148,30 @@ function restatedAskedEstimates(question: VNextQuestion, delta: VNextTurnDelta, 
 }
 
 /**
+ * Reading items that state a bound option's change again. The option is the turn's statement
+ * of that change; the same reading patching or removing a fact the option changes, or relating
+ * the option's pair, would change one fact twice. Decided by lineage identity only.
+ */
+function restatedOptionChange(option: VNextTurnDelta, delta: VNextTurnDelta, graph: WeeklyPlanningVNextGraph): VNextTurnError[] {
+  const { lineageOf } = createVNextLineageResolver(graph);
+  const changed = new Set([...option.patch, ...option.remove].map((item) => lineageOf(item.targetFactId)));
+  const pair = (relation: VNextTurnDelta['relate'][number]) => ('factId' in relation.a && 'factId' in relation.b
+    ? [lineageOf(relation.a.factId), lineageOf(relation.b.factId)].sort().join('|') : null);
+  const pairs = new Set(option.relate.map(pair));
+  return [
+    ...delta.patch.map((item, index) => ({ item, path: `patch[${index}]`, localId: item.localId, factId: item.targetFactId })),
+    ...delta.remove.map((item, index) => ({ item, path: `remove[${index}]`, localId: null, factId: item.targetFactId })),
+  ].filter(({ factId }) => changed.has(lineageOf(factId)))
+    .map(({ path, localId, factId }): VNextTurnError => ({ code: 'invalid_value', path, localId, factId }))
+    .concat(delta.relate.flatMap((relation, index) => (pairs.has(pair(relation))
+      ? [{ code: 'invalid_value' as const, path: `relate[${index}]`, localId: null, factId: null }] : [])));
+}
+
+/**
  * What one interpreted turn applies: the reading's delta, plus the bound answer
  * to the presented question when the words answer it. An answer that no longer
- * binds re-presents the current question and applies nothing; an estimate answer
- * restated as a fact in the same reading is a conflict, never two commits. The
+ * binds re-presents the current question and applies nothing; an answer restated
+ * as a fact in the same reading is a conflict, never two commits. The
  * session, the provider's validation and every evaluation harness use this one function.
  */
 export function resolveWeeklyPlanningVNextTurnDelta(params: {
@@ -169,7 +189,9 @@ export function resolveWeeklyPlanningVNextTurnDelta(params: {
   if (binding.status !== 'bound') {
     return { status: 'represent', question: binding.status === 'represent' ? binding.question : params.projection.questions[0] ?? null };
   }
-  const restated = answer.kind === 'estimate_minutes' ? restatedAskedEstimates(binding.question, params.interpreted.delta, params.graph) : [];
+  const restated = answer.kind === 'estimate_minutes'
+    ? restatedAskedEstimates(binding.question, params.interpreted.delta, params.graph)
+    : restatedOptionChange(binding.delta, params.interpreted.delta, params.graph);
   if (restated.length) return { status: 'conflict', errors: restated };
   return { status: 'delta', delta: mergeDeltas(binding.delta, params.interpreted.delta) };
 }

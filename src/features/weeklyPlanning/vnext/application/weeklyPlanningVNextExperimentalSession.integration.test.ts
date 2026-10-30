@@ -170,6 +170,38 @@ describe('VNext experimental session end to end (offline)', () => {
     expect(work).toEqual([expect.objectContaining({ amount: 2, minutes: 40, estimateBasis: 'rate' })]);
   });
 
+  it('an option answer restated in the same reading is one statement, never two commits', async () => {
+    const task = { kind: 'task' as const, localId: 'slides', category: 'study' as const, title: 'ゼミ資料' };
+    const work = (localId: string, quantityRole: 'scope_total' | 'completed' | 'remaining', amount: number, unitCode: 'page' | 'minute' = 'page'): VNextAddFact => ({
+      kind: 'workload', localId, taskRef: { localId: 'slides' }, componentRef: null, quantityRole, amount, unitCode,
+      unitLabel: unitCode === 'page' ? '枚' : '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null });
+    // Jev comparison holdout, Luna-only arm: the option plus the same change again as a patch (hold-remaining-completed r1)
+    // or as a removal (hold-two-keep-pages r2/r3). Each would change one fact twice.
+    const replays = [
+      { seed: [task, work('total', 'scope_total', 20), work('done', 'completed', 12), work('left', 'remaining', 7)],
+        optionId: () => 'completed_follows_remaining', path: 'patch[0]',
+        restate: (input: WeeklyPlanningVNextInterpretationInput): Partial<VNextTurnDelta> => ({ patch: [{ kind: 'workload', localId: 'completed_follows_remaining',
+          targetFactId: input.state.graph.workloads.find((w) => w.quantityRole === 'completed')!.id, amountDelta: null,
+          changes: { amount: 13, unitCode: null, unitLabel: null, quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] }) },
+      { seed: [task, work('p', 'remaining', 10), work('m', 'remaining', 45, 'minute')],
+        optionId: (input: WeeklyPlanningVNextInterpretationInput) => input.presentedQuestion!.options.find((o) => o.optionId.startsWith('keep:') && o.value === 10)!.optionId,
+        path: 'remove[0]',
+        restate: (input: WeeklyPlanningVNextInterpretationInput): Partial<VNextTurnDelta> => ({ remove: [{ targetFactId: input.state.graph.workloads.find((w) => w.unitCode === 'minute')!.id }] }) },
+    ];
+    for (const replay of replays) {
+      const both = harness([interpreted({ add: replay.seed }),
+        (input) => interpreted(replay.restate(input), { kind: 'option', optionId: replay.optionId(input) })]);
+      await turn(both.ports, 't1', 'seed');
+      const before = both.slots.get('vnext');
+      expect(await turn(both.ports, 't2', 'answer')).toMatchObject({ outcome: 'rejected', errors: [expect.objectContaining({ path: replay.path })] });
+      expect(JSON.parse(both.slots.get('vnext')!).vnext.state).toEqual(JSON.parse(before!).vnext.state);
+      // Control: the option alone commits its change once.
+      const once = harness([interpreted({ add: replay.seed }), (input) => interpreted({}, { kind: 'option', optionId: replay.optionId(input) })]);
+      await turn(once.ports, 't1', 'seed');
+      expect(await turn(once.ports, 't2', 'answer')).toMatchObject({ outcome: 'applied', errors: [] });
+    }
+  });
+
   it('a correction before approval replaces the shown preview, so the old preview cannot be saved', async () => {
     const h = harness([
       interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),
