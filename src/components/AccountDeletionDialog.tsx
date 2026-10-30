@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { accountDeletionProvider, deleteAccount } from '../services/accountDeletionService';
 import { clearAccountLocalData } from '../services/accountDeletionLocalData';
 
@@ -18,12 +19,12 @@ export function AccountDeletionDialog({ uid, retry = false, onClose, onCompleted
   const [locked, setLocked] = useState(retry);
   const busy = useRef(false);
   const cloudCompleted = useRef(false);
-  const dialogRef = useRef<HTMLElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
+  const { dialogRef } = useDialogFocus<HTMLElement>(true, () => {
+    if (!locked && !busy.current) onClose();
+  });
   useEffect(() => {
     let current = true;
     void accountDeletionProvider().then(value => { if (current) setProvider(value); }).catch(() => { if (current) setProvider('unavailable'); });
-    dialogRef.current?.focus();
     return () => { current = false; };
   }, []);
 
@@ -54,17 +55,7 @@ export function AccountDeletionDialog({ uid, retry = false, onClose, onCompleted
 
   return <div className="overlay modal-overlay" style={{ zIndex: 10000 }}>
     <section ref={dialogRef} tabIndex={-1} className="modal-card" role="dialog" aria-modal="true" aria-labelledby="account-deletion-title"
-      style={{ width: 'min(100%, 28rem)', maxHeight: '90dvh', overflowY: 'auto' }}
-      onKeyDown={event => {
-        if (event.key === 'Escape' && !locked && !busy.current) onClose();
-        if (event.key === 'Tab') {
-          const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)'));
-          if (!controls.length) { event.preventDefault(); return; }
-          const first = controls[0], last = controls[controls.length - 1];
-          if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last.focus(); }
-          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-        }
-      }}>
+      style={{ width: 'min(100%, 28rem)', maxHeight: '90dvh', overflowY: 'auto' }}>
       <form className="section-stack" onSubmit={event => { event.preventDefault(); void confirm(); }}>
         <h2 id="account-deletion-title">退会する</h2>
         <p>アカウントと学習データを削除します。この操作は取り消せません。</p>
@@ -77,7 +68,7 @@ export function AccountDeletionDialog({ uid, retry = false, onClose, onCompleted
         {provider === 'unavailable' ? <p role="alert">本人確認を利用できません。ログインし直してください。</p> : null}
         <div className="inline-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
           {locked && onSignOut ? <button className="ghost-button" type="button" disabled={phase === 'busy'} onClick={() => { void onSignOut(); }}>ログアウト</button> : null}
-          {!locked ? <button ref={cancelRef} className="ghost-button" type="button" disabled={phase === 'busy'} onClick={onClose}>キャンセル</button> : null}
+          {!locked ? <button className="ghost-button" type="button" disabled={phase === 'busy'} onClick={onClose}>キャンセル</button> : null}
           <button className="ghost-button danger" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', minHeight: 44 }} type="submit" disabled={phase === 'busy' || phase === 'completed' || !provider || provider === 'unavailable'}>
             {phase === 'retry' ? 'もう一度試す' : provider === 'google' ? 'Googleで本人確認して退会する' : '退会する'}
           </button>
