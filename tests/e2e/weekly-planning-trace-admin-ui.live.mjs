@@ -107,6 +107,10 @@ function isWhitelisted(request) {
   return false;
 }
 
+function countMarkers(text) {
+  return SYNTHETIC_MARKERS.filter((marker) => text.includes(marker)).length;
+}
+
 function report(step, result) {
   console.log(`[trace-admin-live] ${JSON.stringify({ step, ...result })}`);
 }
@@ -144,8 +148,9 @@ test('weekly-planning trace: admin Logs, Debug Bundle and archive for one whitel
   report('log_entries', { status: entries.status() });
   expect(entries.status()).toBe(200);
   await expect(sessionRows.first().locator('section[aria-label="本文の取得状態"]')).toBeVisible();
+  // Assert on counts only, so a failure never prints the page or Bundle text.
   const shownText = await sessionRows.first().innerText();
-  for (const marker of SYNTHETIC_MARKERS) expect(shownText).not.toContain(marker);
+  expect(countMarkers(shownText), 'raw synthetic values shown in Logs').toBe(0);
 
   const bundleResponse = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/observability/admin/debug-bundle');
@@ -159,8 +164,8 @@ test('weekly-planning trace: admin Logs, Debug Bundle and archive for one whitel
   await download.delete();
   report('debug_bundle', { status: bundle.status(), bytes: bundleText.length });
   expect(bundle.status()).toBe(200);
-  expect(bundleText).toContain(sessionId);
-  for (const marker of SYNTHETIC_MARKERS) expect(bundleText).not.toContain(marker);
+  expect(bundleText.includes(sessionId), 'Debug Bundle names the session').toBe(true);
+  expect(countMarkers(bundleText), 'raw synthetic values in the Debug Bundle').toBe(0);
 
   // Runs in the page so the ID token never leaves the browser context or the logs.
   const archived = await page.evaluate(async ({ url, contract, targetSessionId }) => {
