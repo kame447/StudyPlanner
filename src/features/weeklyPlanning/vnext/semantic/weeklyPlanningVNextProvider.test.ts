@@ -121,6 +121,78 @@ describe('VNext native provider', () => {
     expect(describeVNextProviderField('unrecognized.path', wire)).toBeNull();
   });
 
+  it('distinguishes an intended remainder from a target without weakening the native-add-rate oracle', async () => {
+    const scenario = VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === 'native-add-rate')!;
+    // Controlled readings test the typed contract/oracle, not the model's language interpretation.
+    for (const role of ['remaining', 'target'] as const) {
+      const wire = output([task(), { ...workload(), quantityRole: role }, { kind: 'effort_estimate', localId: 'rate',
+        taskRef: { localId: 'task' }, targetRef: { localId: 'work' }, effortKind: 'duration_per_unit', minutes: 5,
+        unitCode: 'custom', unitLabel: '枚', precision: 'exact' }]);
+      const params = input([JSON.stringify(wire)]);
+      params.userText = scenario.turns[0].text;
+      const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+      if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+      const prompt = vi.mocked(params.client.createChatCompletion).mock.calls[0][0].messages[0].content;
+      const requirement = describeVNextProviderField('add[1].quantityRole', wire)!;
+      expect(prompt).toContain(requirement);
+      expect(requirement).toContain('remaining = an amount stated as what is left of a bounded whole, even when the user also intends to do it in this planning period');
+      expect(requirement).toContain('target = an amount intended for this planning period that is not stated as a remainder');
+      const applied = applyWeeklyPlanningVNextTurn(params.state, result.delta, { expectedRevision: 0,
+        acceptedDate: params.clock.currentDate, turnKey: role, conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText });
+      if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
+      const failures = checkVNextProviderScenario(scenario.turns[0].expected, params.state, applied.state, result);
+      if (role === 'remaining') expect(failures).toEqual([]);
+      else expect(failures).not.toEqual([]);
+    }
+  });
+
+  it('binds a time answer for presented percentage work without creating another workload, and keeps unasked time-only work', async () => {
+    const params = input([JSON.stringify(output([], { kind: 'estimate_minutes', optionId: null, minutes: 90, per: 'whole_work' }))]);
+    const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [
+      { kind: 'task', localId: 't', category: 'study', title: 'Slides' },
+      { kind: 'workload', localId: 'w', taskRef: { localId: 't' }, componentRef: null,
+        quantityRole: 'remaining', amount: 50, unitCode: 'custom', unitLabel: '%', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null },
+    ] }, { expectedRevision: 0, acceptedDate: params.clock.currentDate, turnKey: 'percentage',
+      conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
+    if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
+    params.state = seed.state;
+    params.projection = projectWeeklyPlanningVNext(params.state);
+    params.presentedQuestion = params.projection.questions[0];
+    expect(params.presentedQuestion).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 50, unitLabel: '%' } });
+    params.userText = '残りは1時間半くらいです';
+    const interpreted = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    if (interpreted.status !== 'interpreted') throw new Error(JSON.stringify(interpreted));
+    const prompt = vi.mocked(params.client.createChatCompletion).mock.calls[0][0].messages[0].content;
+    expect(prompt).toContain('When a presented question asks for a value and the utterance supplies exactly that value for the asked work, use answer rather than creating a new workload');
+    expect(prompt).toContain('When no presented question asks for that value and the only quantity stated for a work is time');
+    expect(describeVNextProviderField('answer.per', output([], { kind: 'estimate_minutes', minutes: 90, optionId: null, per: 'whole_work' })))
+      .toBe(VNEXT_ESTIMATE_ANSWER_REQUIREMENT);
+    const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
+      presented: { questionKey: params.presentedQuestion.key, graphRevision: params.projection.graphRevision },
+      projection: params.projection, graph: params.state.graph, interpreted });
+    if (resolved.status !== 'delta') throw new Error(JSON.stringify(resolved));
+    const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, { expectedRevision: params.state.graph.revision,
+      acceptedDate: params.clock.currentDate, turnKey: 'answer', conversationId: 'synthetic', turnId: 'answer', sourceText: params.userText });
+    if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
+    expect(applied.state.graph.workloads).toEqual(params.state.graph.workloads);
+    const projection = projectWeeklyPlanningVNext(applied.state);
+    expect(projection.questions).toEqual([]);
+    expect(projection.owners[0].work).toEqual([expect.objectContaining({ amount: 50, minutes: 90 })]);
+
+    const unasked = input([JSON.stringify(output([task(), { ...workload('work', 45), quantityRole: 'target', unitCode: 'minute', unitLabel: '分' }]))]);
+    unasked.userText = '英語の音読を45分やりたいです';
+    expect(unasked.presentedQuestion).toBeNull();
+    const timeWork = await createWeeklyPlanningVNextProviderInterpreter()(unasked);
+    if (timeWork.status !== 'interpreted') throw new Error(JSON.stringify(timeWork));
+    const created = applyWeeklyPlanningVNextTurn(unasked.state, timeWork.delta, { expectedRevision: 0,
+      acceptedDate: unasked.clock.currentDate, turnKey: 'unasked', conversationId: 'synthetic', turnId: 'unasked', sourceText: unasked.userText });
+    if (created.status !== 'applied') throw new Error(JSON.stringify(created));
+    expect(timeWork.answer).toBeNull();
+    expect(created.state.graph.workloads).toEqual([expect.objectContaining({ quantityRole: 'target', amount: 45, unitCode: 'minute' })]);
+    expect(projectWeeklyPlanningVNext(created.state).owners[0].work[0].minutes).toBe(45);
+  });
+
   it.each([null, ''])('repairs invalid workload unitLabel %j with its schema requirement and retains target/time', async unitLabel => {
     const first = { ...workload('work', 45), quantityRole: 'target', unitCode: 'minute', unitLabel };
     const repaired = { ...first, amount: 999, quantityRole: 'declared', unitLabel: '分' };
