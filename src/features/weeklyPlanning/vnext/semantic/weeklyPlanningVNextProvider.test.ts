@@ -1,0 +1,143 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { WeeklyPlanningVNextInterpretationInput } from '../weeklyPlanningVNextInterpretationContract';
+import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
+import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
+import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
+import { decodeVNextProviderOutput, VNEXT_PROVIDER_RESPONSE_FORMAT } from './weeklyPlanningVNextProviderSchema';
+import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
+
+const emptyDelta = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
+const task = (localId = 'task', title = 'Math') => ({ kind: 'task', localId, category: 'study', title });
+const workload = (localId = 'work', amount: unknown = 7) => ({ kind: 'workload', localId,
+  taskRef: { localId: 'task' }, componentRef: null, quantityRole: 'remaining', amount,
+  unitCode: 'custom', unitLabel: '枚', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null });
+const output = (add: unknown[] = [], answer: unknown = null) => ({ delta: { ...emptyDelta(), add }, answer });
+function input(responses: (string | Error)[]): WeeklyPlanningVNextInterpretationInput {
+  const state = createEmptyWeeklyPlanningVNextState();
+  return { client: { createChatCompletion: vi.fn(async () => {
+    const response = responses.shift();
+    if (response instanceof Error) throw response;
+    if (response === undefined) throw new Error('Unexpected extra model call');
+    return response;
+  }) }, state, projection: projectWeeklyPlanningVNext(state), presentedQuestion: null, userText: '数学は残り7枚です',
+  clock: { currentDate: '2026-10-30', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } };
+}
+
+describe('VNext native provider', () => {
+  it('uses an object root, required properties and closed objects in every strict-schema branch', () => {
+    type Schema = { type?: string; properties?: Record<string, Schema>; required?: string[]; additionalProperties?: boolean;
+      anyOf?: Schema[]; items?: Schema };
+    const root = VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.schema as Schema;
+    expect(root.type).toBe('object');
+    expect(root.anyOf).toBeUndefined();
+    const inspect = (schema: Schema) => {
+      if (schema.type === 'object') {
+        expect(schema.additionalProperties).toBe(false);
+        expect(schema.required!.sort()).toEqual(Object.keys(schema.properties!).sort());
+        Object.values(schema.properties!).forEach(inspect);
+      }
+      schema.anyOf?.forEach(inspect);
+      if (schema.items) inspect(schema.items);
+    };
+    inspect(root);
+  });
+
+  it('decodes every native add kind and all three reference namespaces', () => {
+    const decoded = decodeVNextProviderOutput(output([task(), workload(),
+      { kind: 'component', localId: 'component', taskRef: { factId: 'saved' }, parentComponentRef: null, role: 'material', label: 'Book' },
+      { kind: 'effort_estimate', localId: 'effort', taskRef: { factId: 'saved' }, targetRef: { workLineageId: 'work' },
+        effortKind: 'total_duration', minutes: 45, unitCode: null, unitLabel: null, precision: 'exact' },
+      { kind: 'temporal_constraint', localId: 'date', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+        constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-11-02', namedTimePeriod: null,
+        startTime: null, endTime: null, precision: 'exact' },
+    ]));
+    expect(decoded.status).toBe('decoded');
+  });
+
+  it('calls the provider once, validates a native delta and never mutates accepted state', async () => {
+    const params = input([JSON.stringify(output([task(), workload()]))]);
+    const before = structuredClone(params.state);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result.status).toBe('interpreted');
+    expect(result.metrics).toMatchObject({ calls: 1, repairs: 0 });
+    expect(params.state).toEqual(before);
+    expect(params.client.createChatCompletion).toHaveBeenCalledWith(expect.objectContaining({ responseFormat: VNEXT_PROVIDER_RESPONSE_FORMAT }));
+  });
+
+  it('splices the erroneous field by local ID even if the repair reorders facts or changes unrelated content', async () => {
+    const first = output([task(), workload('work', '7'), task('independent', 'English')]);
+    const repaired = output([task('independent', 'silently changed'), workload('work', 7), task('task', 'silently changed too')]);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify(first), JSON.stringify(repaired)]));
+    expect(result.status).toBe('interpreted');
+    expect(result.metrics).toMatchObject({ calls: 2, repairs: 1 });
+    if (result.status === 'interpreted') {
+      expect(result.delta.add[0]).toMatchObject({ title: 'Math' });
+      expect(result.delta.add[1]).toMatchObject({ amount: 7 });
+      expect(result.delta.add[2]).toMatchObject({ title: 'English' });
+    }
+  });
+
+  it('repairs a transaction rejection once using the same field address', async () => {
+    const params = input([JSON.stringify(output([task(), workload('work', -1)])), JSON.stringify(output([task(), workload('work', 7)]))]);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result.status).toBe('interpreted');
+    expect(result.metrics.repairs).toBe(1);
+  });
+
+  it('stops after the single unsuccessful formal repair and retains the original state', async () => {
+    const bad = JSON.stringify(output([task(), workload('work', -1)]));
+    const params = input([bad, bad, JSON.stringify(output([task(), workload()]))]);
+    const before = structuredClone(params.state);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result.status).toBe('failed');
+    expect(result.metrics).toMatchObject({ calls: 2, repairs: 1 });
+    expect(params.state).toEqual(before);
+  });
+
+  it('fails closed if the repair drops the addressed local ID', async () => {
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(input([
+      JSON.stringify(output([task(), workload('work', -1)])), JSON.stringify(output([task()])),
+    ]));
+    expect(result.status).toBe('failed');
+  });
+
+  it.each([['not JSON', 'unparseable'], [new Error('network failure'), 'provider_error']] as const)(
+    'does not retry %s', async (response, reason) => {
+      const result = await createWeeklyPlanningVNextProviderInterpreter()(input([response]));
+      expect(result).toMatchObject({ status: 'failed', reason, metrics: { calls: 1, repairs: 0 } });
+    });
+
+  it('fails unaddressable whole-clause errors without a semantic reread', async () => {
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify({ delta: null, answer: null })]));
+    expect(result).toMatchObject({ status: 'failed', metrics: { calls: 1, repairs: 0 } });
+  });
+
+  it.each([
+    [{ kind: 'option', optionId: 'unverified-option', minutes: null }, { kind: 'option', optionId: 'unverified-option' }],
+    [{ kind: 'estimate_minutes', optionId: null, minutes: 45 }, { kind: 'estimate_minutes', minutes: 45 }],
+  ])('decodes answers without selecting or binding them (%j)', async (wire, answer) => {
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify(output([], wire))]));
+    expect(result).toMatchObject({ status: 'interpreted', answer });
+  });
+
+  it('accepts a no-contribution turn without sending an empty delta to the transaction', async () => {
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify(output())]));
+    expect(result.status).toBe('interpreted');
+  });
+
+  it('prompt includes clock, active IDs, open/presented questions and omits historical inactive facts', () => {
+    const params = input([]);
+    const added = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [{ kind: 'task', localId: 't', category: 'study', title: 'Original' }] },
+      { expectedRevision: 0, turnKey: 'setup', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
+    if (added.status !== 'applied') throw new Error('setup');
+    const changed = applyWeeklyPlanningVNextTurn(added.state, { ...emptyDelta(), patch: [{ kind: 'task', localId: 'p',
+      targetFactId: added.state.graph.tasks[0].id, changes: { title: 'Changed', category: null } }] },
+    { expectedRevision: 1, turnKey: 'change', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
+    if (changed.status !== 'applied') throw new Error('setup');
+    params.state = changed.state;
+    const message = JSON.parse(buildWeeklyPlanningVNextProviderMessages(params)[1].content);
+    expect(message.clock).toEqual(params.clock);
+    expect(message.activeFacts.tasks).toHaveLength(1);
+    expect(message.activeFacts.tasks[0].title).toBe('Changed');
+  });
+});
