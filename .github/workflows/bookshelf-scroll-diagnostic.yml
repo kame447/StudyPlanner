@@ -1,0 +1,83 @@
+name: Bookshelf scroll current-main diagnostic
+
+on:
+  push:
+    branches:
+      - diagnose/issue903-current-main-bookshelf
+    paths:
+      - src/styles/base.css
+      - tests/e2e/bookshelf-surface.spec.mjs
+      - tests/fixtures/bookshelfLongText.test.ts
+      - .github/workflows/bookshelf-scroll-diagnostic.yml
+
+permissions:
+  contents: read
+
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+
+concurrency:
+  group: bookshelf-scroll-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bookshelf:
+    name: bookshelf (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --user 1001
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium-desktop, webkit-mobile]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Snapshot application manifests
+        run: sha256sum package.json package-lock.json > /tmp/bookshelf-scroll-manifests.sha256
+      - name: Install pinned isolated test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+      - name: Verify unchanged application manifests
+        run: sha256sum -c /tmp/bookshelf-scroll-manifests.sha256
+      - name: Build production bundle
+        run: npm run build
+      - name: Run only bookshelf regression, no retries
+        shell: bash
+        env:
+          DIAGNOSTIC_PROJECT: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          cat > tests/e2e/bookshelf-scroll.diagnostic.config.mjs <<'CONFIG'
+          import base from './playwright.cross-browser.config.mjs';
+          const project = base.projects.find(project => project.name === process.env.DIAGNOSTIC_PROJECT);
+          if (!project) throw new Error('Unknown diagnostic project');
+          export default {
+            ...base,
+            testMatch: '**/bookshelf-surface.spec.mjs',
+            testIgnore: [],
+            retries: 0,
+            workers: 1,
+            projects: [{ ...project, testMatch: '**/bookshelf-surface.spec.mjs' }],
+          };
+          CONFIG
+          ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/bookshelf-scroll.diagnostic.config.mjs --retries=0
+      - name: Upload bounded diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bookshelf-scroll-${{ matrix.project }}-${{ github.sha }}
+          path: |
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-results.json
+          retention-days: 7
+          if-no-files-found: warn
