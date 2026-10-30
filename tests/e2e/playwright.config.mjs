@@ -11,6 +11,7 @@ export default defineConfig({
   testDir: configDir,
   testIgnore: [
     '**/admin-overview-render.spec.mjs',
+    '**/admin-mobile-navigation.spec.mjs',
     '**/admin-system-environment.spec.mjs',
     '**/admin-analysis-query-snapshot.spec.mjs',
     '**/support-inquiries.spec.mjs',

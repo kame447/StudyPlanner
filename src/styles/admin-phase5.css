@@ -13,28 +13,99 @@
   min-width: 0;
 }
 
+.admin-users-trend-chart {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 14px 8px;
+  padding-top: 8px;
+  min-width: 0;
+}
+
+.admin-users-trend-count-axis {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  text-align: right;
+}
+
+.admin-users-trend-count-axis span {
+  line-height: 0;
+}
+
+.admin-users-trend-plot {
+  position: relative;
+  min-width: 0;
+}
+
+.admin-users-trend-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.admin-users-trend-grid i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--border);
+}
+
 .admin-users-trend-bars {
+  position: relative;
   height: 150px;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(2px, 1fr);
+  grid-auto-columns: minmax(0, 1fr);
   align-items: end;
   gap: 3px;
-  padding-top: 12px;
 }
 
 .admin-users-trend-bars span {
-  min-height: 4px;
   border-radius: 3px 3px 0 0;
   background: var(--accent);
 }
 
 .admin-users-trend-axis {
+  grid-column: 2;
   display: flex;
   justify-content: space-between;
   gap: 10px;
   color: var(--text-muted);
   font-size: 0.7rem;
+}
+
+.admin-users-trend-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.admin-users-trend-details summary {
+  cursor: pointer;
+  padding: 10px 0;
+}
+
+.admin-users-trend-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-users-trend-details table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.admin-users-trend-details :is(th, td) {
+  padding: 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-users-trend-details caption {
+  text-align: left;
+  color: var(--text-muted);
 }
 
 .admin-identity-search {
@@ -147,6 +218,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.admin-ai-shell .admin-overview-metric-copy strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .admin-observability-timeline {
   display: grid;
   margin: 2px 0 16px;
@@ -171,6 +247,7 @@
   min-width: 0;
   display: grid;
   gap: 4px;
+  overflow-wrap: anywhere;
 }
 
 .admin-observability-timeline-item p,

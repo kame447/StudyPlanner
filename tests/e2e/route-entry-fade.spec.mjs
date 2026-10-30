@@ -15,7 +15,8 @@ const nav = (page, name) => page.getByRole('navigation', { name: '主要ナビ�
 
 for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280, level: 'standard' },
   { width: 390, level: 'reduced' }, { width: 390, level: 'off' }]) {
-  test(`primary body fade ${width}px ${level}: entry, retained state and immediate navigation`, async ({ page }, testInfo) => {
+  for (const scenario of ['route entries and retained state', 'rapid navigation and overlays']) {
+  test(`primary body fade ${width}px ${level}: ${scenario}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     await page.emulateMedia({ reducedMotion: level === 'reduced' ? 'reduce' : 'no-preference' });
     await page.addInitScript(({ today, level, roots }) => {
@@ -122,6 +123,7 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
       await page.goto('/');
       await expect(page.locator('html')).toHaveAttribute('data-motion', level);
       await settled('home', 'initial');
+      if (scenario === 'route entries and retained state') {
       const routeRounds = level === 'standard' ? ['cold', 'warm'] : ['preference'];
       let aiNode;
       for (const round of routeRounds) {
@@ -138,6 +140,7 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
         await settled('report', `${round}-report`, () => page.locator('.home-progress-panel').getByRole('button', { name: '詳細を見る', exact: true }).click());
         await settled('home', `${round}-report-home`, () => nav(page, 'ホーム').click());
       }
+      } else {
       // Do not wait for either route's fade before the next real tap.
       await page.evaluate(() => window.__entryFade.arm('rapid'));
       await nav(page, '時間割').click();
@@ -165,10 +168,12 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
       const closed = await page.evaluate(() => ({ frames: window.__entryFade.samples.filter(s => s.phase === 'ai-overlay-close' && s.route === 'ai' && !s.overlayOpen), entries: window.__entryFade.entries.filter(e => e.phase === 'ai-overlay-close') }));
       expect(closed.entries).toEqual([]);
       expect(closed.frames.every(frame => frame.opacity === 1)).toBe(true);
+      }
       expect(await page.evaluate(() => window.__entryFade.samples.length), 'Recorder cap means incomplete evidence').toBeLessThan(6000);
     } finally {
       const evidence = await page.evaluate(() => { window.__entryFade.stop(); return { samples: window.__entryFade.samples, entries: window.__entryFade.entries }; }).catch(() => null);
-      await testInfo.attach('route-entry-fade-frames.json', { body: Buffer.from(JSON.stringify({ width, level, evidence })), contentType: 'application/json' });
+      await testInfo.attach('route-entry-fade-frames.json', { body: Buffer.from(JSON.stringify({ width, level, scenario, evidence })), contentType: 'application/json' });
     }
   });
+}
 }

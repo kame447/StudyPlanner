@@ -32,6 +32,7 @@ test('normal entry, return, Back and Forward preserve the document and session',
   await info.attach('admin-entry', { body: await page.screenshot(), contentType: 'image/png' });
   await page.getByRole('link', { name: '通常画面へ戻る', exact: true }).click();
   await expect(page.getByRole('button', { name: 'マイページを開く', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /連続学習.*学習記録を開く/ })).toBeFocused();
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible();
   await page.goForward();
