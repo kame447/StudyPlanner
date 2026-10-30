@@ -70,7 +70,8 @@ function validState(value: unknown, conversationId: string): value is WeeklyPlan
   const graph = value.graph as unknown as WeeklyPlanningVNextState['graph'];
   if (!validateWeeklyPlanningFactGraphValueV5(graph).graph) return false;
   if (!Array.isArray(graph.effortEstimates) || !graph.effortEstimates.every(validEffortExtension)) return false;
-  const sources = [graph.tasks, graph.components, graph.workloads, graph.effortEstimates, graph.temporalConstraints]
+  const sources = [graph.tasks, graph.components, graph.workloads, graph.effortEstimates, graph.temporalConstraints,
+    graph.planningWindows, graph.recurrences, graph.taskDateRules, graph.availabilityDeclarations, graph.relations]
     .flat().map((fact) => fact.source.conversationId);
   if (sources.some((id) => id !== conversationId)) return false;
   const relationsOk = value.workRelations.every((relation) => isRecord(relation)
