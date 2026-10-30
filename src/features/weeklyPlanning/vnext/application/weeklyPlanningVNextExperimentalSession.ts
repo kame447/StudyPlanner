@@ -405,7 +405,9 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       fallbackText: '',
       previewCount: 0,
       recovery: { planningDetailsNotApplied: true, acceptedStateUnchanged: true,
-        retainedPreviewUnchanged: read.checkpoint.preview !== null && read.checkpoint.preview.graphRevision === state.graph.revision },
+        // Said from the preview this turn keeps, the one decision above (the calendar can change a
+        // projection without a revision change, so the shown revision alone does not say it stays).
+        retainedPreviewUnchanged: preview !== null && preview === shown },
       ...(evidence ? { recoveryQuestionEvidence: evidence } : {}),
     });
     if (rendered?.status === 'rendered' && rendered.recoveryVerified === true && canDispatchRecovery()) {

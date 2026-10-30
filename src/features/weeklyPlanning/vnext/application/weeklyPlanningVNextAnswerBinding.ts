@@ -61,6 +61,8 @@ export function bindWeeklyPlanningVNextAnswer(params: {
   /** Lineage of a fact id, from the current state. */
   lineageOf: (factId: string) => string;
   answer: WeeklyPlanningVNextAnswer;
+  /** Corrections the same reading states; the turn applies them with the answer. */
+  sameTurnPatches?: VNextTurnDelta['patch'];
 }): WeeklyPlanningVNextAnswerBinding {
   const current = params.projection.questions[0] ?? null;
   if (!params.presentationFresh || !params.presented
@@ -80,6 +82,13 @@ export function bindWeeklyPlanningVNextAnswer(params: {
       || !Number.isFinite(answer.minutes) || answer.minutes <= 0) {
       return { status: 'represent', question };
     }
+    // A per-unit answer is in the asked work's unit as this turn leaves it: when the same reading corrects
+    // that unit, the rate is per the corrected unit, which is what the transaction measures it against
+    // (structure audit SA03). Fields the correction leaves null keep their value, as a patch does.
+    const forWork = question.forWork;
+    const correction = params.sameTurnPatches?.find((patch) => patch.kind === 'workload'
+      && params.lineageOf(patch.targetFactId) === params.lineageOf(forWork.definingFactId));
+    const unitChanges = correction?.kind === 'workload' ? correction.changes : null;
     return {
       status: 'bound',
       question,
@@ -90,10 +99,10 @@ export function bindWeeklyPlanningVNextAnswer(params: {
           localId: 'answer_estimate',
           taskRef: { factId: question.taskId },
           ...(answer.per === 'whole_work'
-            ? { targetRef: { workLineageId: question.forWork.workLineageId }, effortKind: 'total_duration' as const,
+            ? { targetRef: { workLineageId: forWork.workLineageId }, effortKind: 'total_duration' as const,
                 unitCode: null, unitLabel: null }
-            : { targetRef: { factId: question.forWork.definingFactId }, effortKind: 'duration_per_unit' as const,
-                unitCode: question.forWork.unitCode, unitLabel: question.forWork.unitLabel }),
+            : { targetRef: { factId: forWork.definingFactId }, effortKind: 'duration_per_unit' as const,
+                unitCode: unitChanges?.unitCode ?? forWork.unitCode, unitLabel: unitChanges?.unitLabel ?? forWork.unitLabel }),
           minutes: answer.minutes,
           precision: 'exact',
         }],
@@ -188,7 +197,8 @@ export function resolveWeeklyPlanningVNextTurnDelta(params: {
   | { status: 'conflict'; errors: VNextTurnError[] } {
   const answer = params.interpreted.answer;
   if (!answer) return { status: 'delta', delta: params.interpreted.delta };
-  const binding = bindWeeklyPlanningVNextAnswer({ ...params, lineageOf: createVNextLineageResolver(params.graph).lineageOf, answer });
+  const binding = bindWeeklyPlanningVNextAnswer({ ...params, lineageOf: createVNextLineageResolver(params.graph).lineageOf, answer,
+    sameTurnPatches: params.interpreted.delta.patch });
   if (binding.status !== 'bound') {
     return { status: 'represent', question: binding.status === 'represent' ? binding.question : params.projection.questions[0] ?? null };
   }
