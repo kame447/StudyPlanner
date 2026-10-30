@@ -80,10 +80,10 @@ function harness(script: Array<WeeklyPlanningVNextInterpretation | ((input: Week
       },
     },
     calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
-    renderer: { async render(input) {
+    createRenderer: () => ({ async render(input) {
       rendered.push(input);
       return { status: 'rendered', text: `（説明 ${input.actionKind}）`, rawResponse: '' };
-    } },
+    } }),
     now: () => '2026-11-02T09:00:00.000Z',
   };
   return { ports, slots, saved, inputs, rendered, saveCalls: () => saveCalls };
@@ -254,7 +254,7 @@ describe('VNext experimental session end to end (offline)', () => {
     // A failed render: V5's notice, and the question counts as not shown, so the next words are not bound to it.
     const failed = harness([interpreted({ add: [task, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),
       (input) => { expect(input.presentedQuestion).toBeNull(); return interpreted({}, { kind: 'estimate_minutes', minutes: 120, per: 'whole_work' }); }]);
-    failed.ports.renderer = { render: async () => ({ status: 'fallback', reason: 'provider_error', rawResponse: null }) };
+    failed.ports.createRenderer = () => ({ render: async () => ({ status: 'fallback', reason: 'provider_error', rawResponse: null }) });
     const unseen = await turn(failed.ports, 't1', 'ゼミ資料は20枚で12枚できた');
     expect(unseen).toMatchObject({ reply: RENDERER_TECHNICAL_STOP, replySource: 'renderer_fallback', question: { code: 'missing_effort_estimate' } });
     expect(JSON.parse(failed.slots.get('vnext')!).vnext.presentedQuestion).toBeNull();
@@ -265,7 +265,7 @@ describe('VNext experimental session end to end (offline)', () => {
     const previewed = harness([interpreted({ add: [task, minutes] }), interpreted({})]);
     await turn(previewed.ports, 't1', 'ゼミ資料を60分');
     expect(previewed.rendered[0]).toMatchObject({ actionKind: 'preview_ready', previewCount: 1, previewPromotionControlLabel: WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL });
-    previewed.ports.renderer = { render: async (input) => { previewed.rendered.push(input); return { status: 'fallback', reason: 'invalid_json', rawResponse: '' }; } };
+    previewed.ports.createRenderer = () => ({ render: async (input) => { previewed.rendered.push(input); return { status: 'fallback', reason: 'invalid_json', rawResponse: '' }; } });
     const kept = await turn(previewed.ports, 't2', 'うーん');
     expect(kept).toMatchObject({ reply: RENDERER_PREVIEW_CONTINGENCY, replySource: 'renderer_fallback' });
     expect(JSON.parse(previewed.slots.get('vnext')!).vnext.preview.previewId).toBe(kept.preview!.previewId);
@@ -292,6 +292,53 @@ describe('VNext experimental session end to end (offline)', () => {
       expect(JSON.parse(h.slots.get('vnext')!).vnext.presentedQuestion).toEqual(shown);
       expect(await turn(h.ports, 't3', '2時間')).toMatchObject({ outcome: 'applied' });
     }
+  });
+
+  it('a failed turn is recovered as Stable V5 does: a verified reply re-asks the question still shown, otherwise a notice', async () => {
+    const seed = interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] });
+    const failedReading: WeeklyPlanningVNextInterpretation = { status: 'failed', reason: 'provider_error', errors: [], metrics };
+    const recovering = (verified: boolean) => (h: ReturnType<typeof harness>) => {
+      h.ports.createRenderer = ({ canDispatchRecovery }) => ({ async render(input) {
+        h.rendered.push(input);
+        if (!input.recovery) return { status: 'rendered', text: `（説明 ${input.actionKind}）`, rawResponse: '' };
+        expect(canDispatchRecovery()).toBe(true);
+        return verified ? { status: 'rendered', text: '（回復して問い直す）', rawResponse: '', recoveryVerified: true }
+          : { status: 'fallback', reason: 'recovery_verification_failed', rawResponse: '' };
+      } });
+    };
+    // Verified: the reply says nothing was applied and asks the shown question again; that reply is now what binds.
+    const ok = harness([seed, failedReading, interpreted({}, { kind: 'estimate_minutes', minutes: 120, per: 'whole_work' })]);
+    recovering(true)(ok);
+    const asked = await turn(ok.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+    const before = JSON.parse(ok.slots.get('vnext')!).vnext;
+    const recovered = await turn(ok.ports, 't2', '…');
+    expect(ok.rendered[1]).toMatchObject({ actionKind: 'question', questionCode: 'missing_effort_estimate', fallbackText: '', previewCount: 0,
+      currentTurnGrounding: { mode: 'none', acceptedFacts: [] },
+      recovery: { planningDetailsNotApplied: true, acceptedStateUnchanged: true, retainedPreviewUnchanged: false },
+      recoveryQuestionEvidence: expect.objectContaining({ labels: expect.arrayContaining(['ゼミ資料']) }) });
+    expect(recovered).toMatchObject({ outcome: 'interpretation_failed', replySource: 'renderer_recovery', reply: '（回復して問い直す）',
+      graphRevision: asked.graphRevision });
+    const after = JSON.parse(ok.slots.get('vnext')!).vnext;
+    expect(after.state).toEqual(before.state);
+    expect(after.presentedQuestion).toEqual({ ...before.presentedQuestion, shownText: '（回復して問い直す）' });
+    expect(await turn(ok.ports, 't3', '2時間')).toMatchObject({ outcome: 'applied' });
+    // Unverified: the fixed notice, and the earlier shown question stays bound.
+    const notVerified = harness([seed, failedReading]);
+    recovering(false)(notVerified);
+    await turn(notVerified.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+    const shown = JSON.parse(notVerified.slots.get('vnext')!).vnext.presentedQuestion;
+    expect(await turn(notVerified.ports, 't2', '…')).toMatchObject({ replySource: 'system' });
+    expect(JSON.parse(notVerified.slots.get('vnext')!).vnext.presentedQuestion).toEqual(shown);
+    // Another tab saves while the recovery reply is being made: nothing of this turn is written.
+    const raced = harness([seed, failedReading]);
+    await turn(raced.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+    raced.ports.createRenderer = ({ canDispatchRecovery }) => ({ async render() {
+      raced.slots.set('vnext', 'bytes another tab saved');
+      expect(canDispatchRecovery()).toBe(false);
+      return { status: 'rendered', text: 'x', rawResponse: '', recoveryVerified: true };
+    } });
+    expect(await turn(raced.ports, 't2', '…')).toMatchObject({ outcome: 'stale' });
+    expect(raced.slots.get('vnext')).toBe('bytes another tab saved');
   });
 
   it('a correction before approval replaces the shown preview, so the old preview cannot be saved', async () => {

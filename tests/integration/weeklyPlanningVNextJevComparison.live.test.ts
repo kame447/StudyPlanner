@@ -168,7 +168,7 @@ function makeHarness(testCase: VNextJevComparisonCase, repetition: number, clien
     },
     calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
     // This comparison measures interpretation; the reply text is not compared.
-    renderer: { render: async () => ({ status: 'rendered' as const, text: '（説明）', rawResponse: '' }) },
+    createRenderer: () => ({ render: async () => ({ status: 'rendered' as const, text: '（説明）', rawResponse: '' }) }),
     now: () => '2026-11-02T09:00:00.000Z',
   };
   return { ports, saved, slots, saveCalls: () => saveCalls };

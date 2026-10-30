@@ -69,7 +69,7 @@ function createPorts(options: { legacyV5?: string; failSaveAttempt?: number } = 
       },
     },
     calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
-    renderer: createWeeklyPlanningStableV5DialogueRendererCore(client),
+    createRenderer: (options) => createWeeklyPlanningStableV5DialogueRendererCore(client, options),
     now: () => new Date().toISOString(),
   };
   return { ports, slots, saved, saveAttempts: () => saveAttempts, takeRawOutputs: () => rawOutputs.splice(0) };

@@ -672,7 +672,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
     },
     calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
     // This comparison measures interpretation; the reply text is not compared.
-    renderer: { render: async () => ({ status: 'rendered' as const, text: '（説明）', rawResponse: '' }) },
+    createRenderer: () => ({ render: async () => ({ status: 'rendered' as const, text: '（説明）', rawResponse: '' }) }),
     now: () => `${clock.currentDate}T09:00:00.000Z`,
   };
   const turns: VNextTurnObservation[] = [];

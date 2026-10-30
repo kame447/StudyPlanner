@@ -3,7 +3,8 @@
 // session envelope its checkpoint extends (read-only for migration), the deterministic preview
 // scheduler it hands projected work to, and the dialogue renderer that explains a
 // turn's result (its typed input, the context helpers that build it, and V5's
-// contingency texts; the renderer core is created without V5's prompt trace).
+// contingency texts, and the recovery evidence for a failed turn; the renderer
+// core is created without V5's prompt trace).
 // Read-only; VNext never writes V5 state, preview, trace or storage, and no
 // production module imports VNext.
 export {
@@ -24,6 +25,7 @@ export { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/we
 export {
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
+  recoveryQuestionEvidenceForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
   WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL,
 } from '../dialogue/weeklyPlanningStableV5DialogueContext';

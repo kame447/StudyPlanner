@@ -50,6 +50,7 @@ import {
   scheduleWeeklyPlanningStableV5Preview,
   RENDERER_PREVIEW_CONTINGENCY,
   RENDERER_TECHNICAL_STOP,
+  recoveryQuestionEvidenceForStableV5Dialogue,
   type WeeklyPlanningStableV5DialogueRenderer,
 } from '../weeklyPlanningVNextV5Boundary';
 import { resolveWeeklyPlanningVNextTurnDelta } from './weeklyPlanningVNextAnswerBinding';
@@ -100,8 +101,11 @@ export interface WeeklyPlanningVNextExperimentalPorts {
     saveBlock(block: WeeklyPlanDraftBlock, approvalOperationId: string): Promise<{ planId: string }>;
   };
   calendar(): WeeklyPlanningVNextCalendar;
-  /** The Stable V5 dialogue renderer: explains the turn's result, never changes state. */
-  renderer: WeeklyPlanningStableV5DialogueRenderer;
+  /**
+   * The Stable V5 dialogue renderer: explains the turn's result, never changes state. Made per turn,
+   * as V5 does, so a failed turn's recovery reply can check it is still current before each call.
+   */
+  createRenderer(options: { canDispatchRecovery: () => boolean }): WeeklyPlanningStableV5DialogueRenderer;
   now(): string;
 }
 
@@ -133,8 +137,11 @@ export interface WeeklyPlanningVNextExperimentalTurn {
   /** Scheduler issue or status codes when nothing is asked yet no preview could be made; never silent. */
   previewBlockedBy: string[];
   reply: string;
-  /** renderer: the V5 renderer's text; renderer_fallback: V5's contingency text (the question counts as not shown); system: a failure or stop notice. */
-  replySource: 'renderer' | 'renderer_fallback' | 'system';
+  /**
+   * renderer: the V5 renderer's text; renderer_recovery: its verified reply to a failed turn (nothing was
+   * applied); renderer_fallback: V5's contingency text (the question counts as not shown); system: a notice.
+   */
+  replySource: 'renderer' | 'renderer_recovery' | 'renderer_fallback' | 'system';
   interpretation: WeeklyPlanningVNextInterpretation | null;
   appliedDelta: VNextTurnDelta | null;
   errors: VNextTurnError[];
@@ -337,38 +344,72 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision
     ? { preview: shown, unplacedOwnerKeys: made.unplacedOwnerKeys, previewBlockedBy: [] }
     : made;
-  // Failures and stops are notices; everything the user is told about the plan comes from the renderer.
+  // Everything the user is told about the plan comes from the renderer; only a blocked preview and a
+  // failed turn the renderer could not verify are notices. What the reply shows decides, once, which
+  // question the user's next words answer (it is not the question the state still asks): a question it
+  // shows, with this text; 'none' when it shows no question; 'unchanged' when it adds nothing new, so an
+  // earlier shown question stays bound while it is still asked at the same revision (user audit S01).
+  const previous = read.checkpoint.presentedQuestion;
+  const stillShown = previous !== null && previous.graphRevision === projection.graphRevision
+    ? projection.questions.find((asked) => asked.key === previous.questionKey) ?? null : null;
+  const renderBase = (shownQuestion: VNextQuestion | null, shownPreview: WeeklyPlanningVNextShownPreview | null) =>
+    createWeeklyPlanningVNextRenderInput({
+      state, question: shownQuestion, preview: shownPreview, actionId: `${scope.conversationId}:${params.turnId}`,
+      turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
+      recentConversation: read.checkpoint.messages,
+    });
+  // The renderer is a model call: it may run only while this turn is still current.
+  const canDispatchRecovery = () => ports.checkpoint.read() === rawBefore;
   let reply: string;
   let replySource: WeeklyPlanningVNextExperimentalTurn['replySource'];
-  if (outcome === 'interpretation_failed' || outcome === 'rejected' || previewBlockedBy.length) {
+  let shows: { question: VNextQuestion } | 'none' | 'unchanged';
+  if (outcome === 'interpretation_failed' || outcome === 'rejected') {
+    // As Stable V5 recovers a failed turn: nothing was applied; the renderer says so and asks again the
+    // question still shown (only with its reconstructible evidence), and a second call verifies the reply.
+    // Unverified, unavailable or no longer current → the fixed notice.
+    const base = renderBase(stillShown, null);
+    const evidence = stillShown ? recoveryQuestionEvidenceForStableV5Dialogue(base) : undefined;
+    const rendered = stillShown && !evidence ? null : await ports.createRenderer({ canDispatchRecovery }).render({
+      ...base,
+      currentTurnGrounding: { mode: 'none', acceptedFacts: [] },
+      fallbackText: '',
+      previewCount: 0,
+      recovery: { planningDetailsNotApplied: true, acceptedStateUnchanged: true,
+        retainedPreviewUnchanged: read.checkpoint.preview !== null && read.checkpoint.preview.graphRevision === state.graph.revision },
+      ...(evidence ? { recoveryQuestionEvidence: evidence } : {}),
+    });
+    if (rendered?.status === 'rendered' && rendered.recoveryVerified === true && canDispatchRecovery()) {
+      reply = rendered.text;
+      replySource = 'renderer_recovery';
+      shows = stillShown ? { question: stillShown } : 'unchanged';
+    } else {
+      reply = systemReply(outcome, []);
+      replySource = 'system';
+      shows = 'unchanged';
+    }
+    if (!canDispatchRecovery()) return staleTurn();
+  } else if (previewBlockedBy.length) {
     reply = systemReply(outcome, previewBlockedBy);
     replySource = 'system';
+    shows = 'unchanged';
   } else {
-    const rendered = await ports.renderer.render(createWeeklyPlanningVNextRenderInput({
-      state, question, preview, actionId: `${scope.conversationId}:${params.turnId}`, turnId: params.turnId,
-      previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
-      recentConversation: read.checkpoint.messages,
-    }));
+    const rendered = await ports.createRenderer({ canDispatchRecovery }).render(renderBase(question, preview));
     if (rendered.status === 'rendered') {
       reply = rendered.text;
       replySource = 'renderer';
+      shows = question ? { question } : 'none';
     } else {
       // As in Stable V5: the preview stays (unsaved) and is said so; a question that was not shown is not presented.
       reply = preview ? RENDERER_PREVIEW_CONTINGENCY : RENDERER_TECHNICAL_STOP;
       replySource = 'renderer_fallback';
+      shows = 'none';
     }
-    // The renderer is a model call: if another turn saved meanwhile, nothing of this turn is written.
-    if (ports.checkpoint.read() !== rawBefore) return staleTurn();
+    // If another turn saved meanwhile, nothing of this turn is written.
+    if (!canDispatchRecovery()) return staleTurn();
   }
-  // What the user now sees decides, once, which question their next words answer. The question the
-  // state still asks is not the same thing: a rendered reply shows it with this text; a failed render
-  // shows none; a notice shows no new question, so an earlier shown question stays bound only while
-  // it is still asked at the same revision (it is still on screen above the notice).
-  const previous = read.checkpoint.presentedQuestion;
-  const presentedQuestionRecord = replySource === 'renderer'
-    ? (question ? { questionKey: question.key, graphRevision: projection.graphRevision, shownText: reply } : null)
-    : replySource === 'system' && previous !== null && previous.graphRevision === projection.graphRevision
-      && projection.questions.some((asked) => asked.key === previous.questionKey) ? previous : null;
+  const presentedQuestionRecord = typeof shows === 'object'
+    ? { questionKey: shows.question.key, graphRevision: projection.graphRevision, shownText: reply }
+    : shows === 'unchanged' && stillShown ? previous : null;
   const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
     ownerId: scope.ownerId,
     weekStartDate: scope.weekStartDate,

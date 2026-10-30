@@ -72,7 +72,7 @@ function harness(script: ScriptStep[], sessionScope: WeeklyPlanningVNextExperime
       },
     },
     calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
-    renderer: { async render(input) { return { status: 'rendered', text: `rendered:${input.actionKind}`, rawResponse: '' }; } },
+    createRenderer: () => ({ async render(input) { return { status: 'rendered', text: `rendered:${input.actionKind}`, rawResponse: '' }; } }),
     now: () => '2026-11-02T08:00:00.000Z',
   };
   return {
