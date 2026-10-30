@@ -7,22 +7,49 @@
 }
 .admin-app-shell:has(.admin-return-header) .admin-console-sidebar { top: calc(60px + env(safe-area-inset-top, 0px)); height: calc(100dvh - 60px - env(safe-area-inset-top, 0px)); }
 .admin-return-header .admin-console-return-link { min-height: 44px; font-size: 14px; }
-.admin-mobile-navigation { display: none; }
+.admin-menu-toggle, .admin-menu-close { display: none; }
 .admin-app-shell-state .admin-return-header { margin-bottom: 20px; }
 @media (max-width: 820px) {
+  .admin-app-shell { --admin-drawer-width: min(280px, 80vw); }
   .admin-app-shell-state { padding: 0 12px 24px; }
-  .admin-return-header { padding-inline: 12px; font-size: 13px; }
-  .admin-console-sidebar { display: block; position: static; padding: 10px 12px; }
-  .admin-app-shell:has(.admin-return-header) .admin-console-sidebar { height: auto; }
-  .admin-console-sidebar:has(.admin-mobile-navigation) .admin-console-brand,
-  .admin-console-sidebar:has(.admin-mobile-navigation) .admin-console-nav { display: none; }
-  .admin-mobile-navigation { display: grid; gap: 6px; font-size: 13px; color: var(--text-muted); }
-  .admin-mobile-navigation select { width: 100%; }
-  .admin-app-shell :is(input, select, textarea) { font-size: max(1rem, 16px); min-width: 0; max-width: 100%; }
+  .admin-return-header { padding-inline: 12px; font-size: 13px; gap: 8px; flex-wrap: nowrap; }
+  .admin-return-header > span { margin-left: auto; white-space: nowrap; }
+  .admin-return-header .admin-console-return-link { font-size: 13px; }
+  .admin-menu-toggle, .admin-menu-close { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; min-height: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-strong); color: var(--text-primary); }
+  .admin-menu-close { align-self: flex-end; }
+  .admin-app-shell:has(.admin-return-header) .admin-console-sidebar {
+    position: fixed; top: 0; left: 0; box-sizing: border-box; width: var(--admin-drawer-width); height: 100dvh;
+    padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(16px, env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; gap: 16px; overflow-y: auto;
+    z-index: calc(var(--z-sticky-nav) + 3); background: var(--surface-strong);
+    visibility: hidden; transform: translateX(-100%);
+    transition: transform var(--motion-duration-base) var(--motion-ease-standard), visibility var(--motion-duration-base);
+  }
+  .admin-app-shell:has(.admin-return-header) .admin-console-nav { display: grid; overflow: visible; }
+  .admin-app-shell:has(.admin-return-header) .admin-console-brand { display: flex; }
+  .admin-app-shell:has(.admin-return-header) .admin-console-nav-item { width: 100%; display: grid; }
+  .admin-app-shell:has(.admin-return-header) .admin-console-main,
+  .admin-app-shell > .admin-return-header { transition: transform var(--motion-duration-base) var(--motion-ease-standard); }
+  /* Clip only the intentionally translated canvas while the drawer is open. */
+  .admin-app-shell.admin-menu-open { overflow-x: clip; }
+  /* Visibility must be immediate so the shared layout-effect focus can land. */
+  .admin-app-shell.admin-menu-open .admin-console-sidebar { visibility: visible; transform: translateX(0); transition: transform var(--motion-duration-base) var(--motion-ease-standard); }
+  .admin-menu-open > .admin-return-header,
+  .admin-menu-open .admin-console-main { transform: translateX(var(--admin-drawer-width)); }
+  .admin-menu-backdrop { position: fixed; inset: 0 0 0 var(--admin-drawer-width); z-index: calc(var(--z-sticky-nav) + 2); border: 0; padding: 0; border-radius: 0; background: rgb(0 0 0 / 20%); }
+  :root[data-motion='reduced'] .admin-app-shell .admin-console-sidebar,
+  :root[data-motion='reduced'] .admin-app-shell .admin-console-main,
+  :root[data-motion='reduced'] .admin-app-shell > .admin-return-header { transition: none; }
+  .admin-app-shell :is(input, select, textarea) { font-size: max(1rem, 16px); min-width: 0; max-width: 100%; box-sizing: border-box; }
   .admin-app-shell :is(button, select, input:not([type="checkbox"]):not([type="radio"])) { min-height: 44px; }
   .admin-app-shell .admin-page-header { flex-wrap: wrap; gap: 12px; }
   .admin-app-shell .admin-page-header > div { min-width: 0; }
   .admin-app-shell :is(h1, h2, h3) { overflow-wrap: anywhere; }
+  .admin-app-shell .admin-overview-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+  .admin-app-shell .admin-overview-controls > label { min-width: 0; }
+  .admin-app-shell .admin-overview-controls > label:first-child { grid-column: 1 / -1; }
+  .admin-app-shell .admin-overview-controls :is(input, select) { width: 100%; min-inline-size: 0; max-inline-size: 100%; }
+  .admin-app-shell .admin-overview-controls input[type='date']::-webkit-date-and-time-value { text-align: left; min-width: 0; }
   .admin-announcements-page .announcement-admin-actions { display: grid; grid-template-columns: 1fr; }
   .admin-announcements-page .announcement-editor { padding: 16px; }
   .admin-announcements-page .announcement-editor textarea { min-height: 220px; resize: vertical; }

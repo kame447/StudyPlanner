@@ -13,8 +13,8 @@ let renderer: ReactTestRenderer;
 let handlers: ReturnType<typeof useSwipeNavigation>;
 const previous = vi.fn();
 const next = vi.fn();
-function Harness({ disabled = false }) {
-  handlers = useSwipeNavigation({ onPrevious: previous, onNext: next, disabled });
+function Harness({ disabled = false, allowDialogSwipe = false }) {
+  handlers = useSwipeNavigation({ onPrevious: previous, onNext: next, disabled, allowDialogSwipe });
   return null;
 }
 function touch(x: number, y = 0, target = new Target(), count = 1) {
@@ -42,6 +42,13 @@ describe('shared calendar swipe navigation', () => {
     '[role="dialog"]', '[data-schedule-occurrence-id]', '.schedule-week-plan-button',
     '[data-swipe-ignore="true"]', '.month-event-chip-list'])('leaves %s interactions alone', selector => {
     swipe(-100, 0, new Target(selector)); expect(next).not.toHaveBeenCalled();
+  });
+  it('only opts the drawer into dialog swipes while still ignoring inputs', () => {
+    act(() => renderer.update(<Harness allowDialogSwipe />));
+    swipe(-100, 0, new Target('[role="dialog"]'));
+    expect(next).toHaveBeenCalledTimes(1);
+    for (const selector of ['input', 'textarea', 'select', '[data-swipe-ignore="true"]']) swipe(-100, 0, new Target(selector));
+    expect(next).toHaveBeenCalledTimes(1);
   });
   it('preserves real horizontal overflow while allowing a fitting weekly grid', () => {
     swipe(-100, 0, new Target('.schedule-week-preview-scroll', 620, 320));

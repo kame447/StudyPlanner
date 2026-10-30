@@ -40,3 +40,41 @@ Next: focused regression red/green, exact fresh verify, browser-free native disc
 - Bundle checking remains failed on the same six acknowledged capacity metrics: JS total raw/gzip 2420.7/658.9 KiB; CSS total raw/gzip 506.8/87.7 KiB and largest raw/gzip 423.8/69.2 KiB. Per-JS-chunk and appearance checks pass. Thresholds are untouched; this is not a claim that every quality gate is green.
 
 Evidence: `/workspace/shared/laplans-admin-mobile-verification/final/`, with earlier red/green and initial proof in its parent directory. Final acceptance still requires separate publication approval and actual native results. Document reload is avoided, but ordinary app bootstrap/data reads may occur on return. Real signed-in production accounts and physical iPhone remain unverified. No new production permissions, dependency or workflow is introduced.
+
+## 2026-10-29 follow-up — mobile drawer, stable return and readable metrics
+
+The October 14 native-select/root-rebootstrap checkpoint above is historical; it is not the current design contract. New work starts from main `efbdb29eca9f171a2f1e4f48e08141e0706a879d` on `fix/admin-mobile-navigation-layout`.
+
+- Audit the user-provided narrow-screen screenshots first. Replace the mobile select with the existing shared navigation in a left drawer and shift the content/header right. Reuse focus trapping and threshold swipe handling; reserve OS edge gestures and leave inputs, other dialogs, and horizontal data scrolling alone. Desktop sidebar stays unchanged; reduced/off modes do not animate the slide.
+- Keep the return action outside the auth/access guards. Retain a previously started ordinary planner on Admin entry, including its existing auth prop identity, owner boundaries, scroll and focus restoration. Direct Admin entry must not bootstrap a hidden planner. This supersedes the old allowance for return bootstrap/data reads; it does not weaken administrator checks.
+- Constrain the shared Overview/AI/Planning date controls at their labels/input boundaries rather than clipping all content. Tables remain locally scrollable. Audit all Admin routes at 320, 390 and desktop widths.
+- Users trend adds an integer count axis/grid and an exact daily table. Missing dates inside the observed range remain unknown, never fabricated zeroes; actual zero values have zero bar height. No API/read-model change.
+- Consumer announcement lazy-load failure gets an explicit page reload action, alongside return. The original intermittent failure cause is not established; this is a recovery path, not proof that its cause is fixed.
+
+Local focused suites and full verification are recorded in the task receipts. New native browser cases cover both Chromium and WebKit, but test discovery alone is not rendered acceptance. Physical iPhone, actual OS edge navigation, and production data remain outside synthetic fixture proof. No upstream publication or merge is implied by this local checkpoint.
+
+
+## 2026-10-30 native verification checkpoint — PR #929
+
+The first published head `101989c7443f8890129949d418b9896a77214243` preserves local tree `f48fe4bc5b2a2cc6e4dd6b7a5ae1c5cd4367950d`. Native merge checkout `00512c5d39db1e6bf3ad0c97dcc208f520b99338` passed fresh types, 12,129 unit tests and build, but Admin render was **71 passed / 12 failed**; this is not acceptance.
+
+The full failure inventory was audited before correction:
+
+- Standard-motion drawer focus fails in both engines while reduced/off focus passes. The existing layout-effect focus runs while CSS visibility is transitioning from hidden. Opening now changes visibility immediately, keeping the transform animation; the shared focus hook is unchanged. Native confirmation remains required.
+- The synthetic swipe test immediately clicked without a new touchstart, inside the shared 700 ms ghost-click suppression interval. Keep that production guard; represent the next deliberate touch before clicking, and assert reopening before selecting a page.
+- Graph fixtures read the harness query after awaiting the legacy service, by which time the real Users page had normalized the URL. Capture the fixture selection at module entry instead. Keep the independent expected 3 / 0 / missing / 7 counts and four bars.
+- The older announcement return test still selected a native menu. Exercise the actual drawer buttons instead; keep session/document/publication assertions.
+- Three document-overflow failures lack route/DOM evidence in the first dedicated artifact. Do not hide overflow or relax the 1 px threshold. Collect all nine routes with failing soft assertions, route-labelled geometry and finally-written evidence; retain browser failure traces/screenshots under the uploaded artifact directory.
+- The Admin-entry harness omitted authentication subscriptions. Correct its owner lifecycle without remounting on same-owner notification. The separate real-root audit reproduced stale state with tracing disabled (the production default when unconfigured). Key the fallback App by its existing authentication epoch; same-owner notifications/ordinary Admin returns remain retained, while external sign-out or owner change retires prior state. Formal regression: two failures before correction, then 157 related tests passed. The actual deployed feature flag value is unverified.
+
+- The general browser source-reader also flagged the new Admin-return focus. Register only its exact non-text header button/link statement, with negative input/generic/unscrolled-focus cases. The same source-reader test reproduced red before correction and passed afterward; an actual Admin-return header-focus assertion remains for native execution.
+
+Draft #929 remains unmerged. Acceptance requires corrected exact-source gates, both native engines including failed routes/focus and external sign-out, independently checked geometry artifacts, and native confirmation of the trace-disabled real-root correction. Do not count collection or synthetic touch dispatch as physical iPhone validation.
+
+### Second native result and scoped overflow correction
+
+Head `961ea1af3a8cd71b101d2e870c939b47f034940e`, native merge checkout `c9f3ac87d3ae1830b4a85046653611e260bfa851`: Admin render **80 passed / 3 failed**. Drawer focus/gestures, the exact graph fixture and the previous selector failures passed. The remaining failures are text layout, not date controls: WebKit at 320 px overflows 21 px on the user Timeline; the AI metrics at 1280 px overflow 38 px in WebKit and 3 px in Chromium. Saved route geometry, trace DOM and the narrow failure screenshot identify long Timeline identifiers and the rightmost cost metric's unbroken value as the responsible min-content constraints.
+
+Allow natural wrapping in the Timeline text container and AI metric value, without clipping, reducing font size or hiding content. Keep all nine route checks and add child/container and text scroll-width bounds. This correction still requires native confirmation.
+
+Separately, a 1280 px WebKit route-fade scenario reached its overlay-close step around 29 seconds into a 30-second test. Split the independent cold/warm route checks and rapid/overlay flow into separate tests; keep the 30-second budget and all geometric/focus/motion assertions. B retains the existing 150 ms production contract; A's separate 300 ms feature is not copied into this branch.

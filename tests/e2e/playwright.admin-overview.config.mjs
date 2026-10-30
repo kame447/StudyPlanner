@@ -2,7 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: ['admin-overview-render.spec.mjs', 'admin-system-environment.spec.mjs', 'admin-analysis-query-snapshot.spec.mjs', 'support-inquiries.spec.mjs', 'announcements.spec.mjs'],
+  outputDir: '../../artifacts/admin-overview/test-results',
+  testMatch: ['admin-overview-render.spec.mjs', 'admin-mobile-navigation.spec.mjs', 'admin-system-environment.spec.mjs', 'admin-analysis-query-snapshot.spec.mjs', 'support-inquiries.spec.mjs', 'announcements.spec.mjs'],
   fullyParallel: false,
   reporter: [['list']],
   use: {
@@ -18,6 +19,7 @@ export default defineConfig({
     timeout: 120000,
   },
   projects: [
+    { name: 'webkit-mobile-admin', testMatch: ['admin-mobile-navigation.spec.mjs'], use: { browserName: 'webkit', isMobile: true, hasTouch: true } },
     {
       name: 'chromium',
       use: { browserName: 'chromium' },
