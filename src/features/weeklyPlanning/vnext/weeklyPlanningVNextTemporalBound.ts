@@ -4,7 +4,9 @@
 // bounds when it compiles (#881 run 40999309402: a stated "締切は明日の13時" was
 // accepted as deadline startTime=13:00 and only then failed as an invalid
 // interval). VNext applies it when a bound is stated, so the transaction rejects
-// the bound where the provider's field-local repair can correct it.
+// the bound where the provider's field-local repair can correct it. A constraint
+// that states no date, period or clock bounds nothing: it would silently drop what
+// was said (a reread that emptied "今週"), so it is rejected the same way.
 import {
   CANONICAL_RELATIVE_DATE_EXPRESSIONS,
   CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
@@ -12,15 +14,18 @@ import {
 } from '../semantic/weeklyPlanningCalendarResolver';
 import type { TemporalConstraintFactV5 } from './weeklyPlanningVNextV5Boundary';
 
-type Bound = Pick<TemporalConstraintFactV5, 'kind' | 'namedTimePeriod' | 'startTime' | 'endTime'>;
-type ClockField = 'startTime' | 'endTime';
+type Bound = Pick<TemporalConstraintFactV5, 'kind' | 'dateExpression' | 'namedTimePeriod' | 'startTime' | 'endTime'>;
+type BoundField = 'dateExpression' | 'namedTimePeriod' | 'startTime' | 'endTime';
 
 /**
- * The clock fields a correction of this bound must address, or [] when it is
- * well formed. A time in the wrong field names both fields, because moving it
+ * The fields a correction of this bound must address, or [] when it is well
+ * formed. A time in the wrong field names both clock fields, because moving it
  * changes both (naming only the source would let a repair drop the stated time).
+ * An empty bound names every field, so a repair can restore whichever was stated.
  */
-export function vnextTemporalBoundRepairFields(bound: Bound): ClockField[] {
+export function vnextTemporalBoundRepairFields(bound: Bound): BoundField[] {
+  const fields = ['dateExpression', 'namedTimePeriod', 'startTime', 'endTime'] as const;
+  if (fields.every((field) => bound[field] === null)) return [...fields];
   if (bound.kind !== 'earliest_start' && bound.kind !== 'latest_end' && bound.kind !== 'deadline') return [];
   if (bound.namedTimePeriod !== null) {
     return (['startTime', 'endTime'] as const).filter((field) => bound[field] !== null);

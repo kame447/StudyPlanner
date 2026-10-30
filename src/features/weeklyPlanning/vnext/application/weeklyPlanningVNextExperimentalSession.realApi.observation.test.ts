@@ -42,8 +42,15 @@ function createPorts(options: { legacyV5?: string; failSaveAttempt?: number } = 
   const slot = (key: string) => ({ read: () => slots.get(key) ?? null, write: (raw: string) => void slots.set(key, raw) });
   const saved = new Map<string, WeeklyPlanDraftBlock>();
   let saveAttempts = 0;
+  // Raw provider responses of the current turn, so a failed reading can be replayed without the model.
+  const rawOutputs: string[] = [];
+  const base = createOpenAiCompatibleClient(getAiConfig());
   const ports: WeeklyPlanningVNextExperimentalPorts = {
-    client: createOpenAiCompatibleClient(getAiConfig()),
+    client: { ...base, async createChatCompletion(request) {
+      const raw = await base.createChatCompletion(request);
+      rawOutputs.push(raw);
+      return raw;
+    } },
     interpret: createWeeklyPlanningVNextProviderInterpreter(),
     checkpoint: slot('vnext'),
     legacyV5Checkpoint: { read: slot('v5').read },
@@ -59,7 +66,7 @@ function createPorts(options: { legacyV5?: string; failSaveAttempt?: number } = 
     },
     now: () => new Date().toISOString(),
   };
-  return { ports, slots, saved, saveAttempts: () => saveAttempts };
+  return { ports, slots, saved, saveAttempts: () => saveAttempts, takeRawOutputs: () => rawOutputs.splice(0) };
 }
 
 /** Typed snapshot after a turn: what the oracle compares, never the reply prose. */
@@ -106,12 +113,12 @@ run('#926 VNext native session real API end to end', () => {
     const record: Record<string, unknown> = { scope, steps: [] };
     const steps = record.steps as unknown[];
     // The first save fails whatever the block count, so the receipt and its resume are always exercised.
-    const { ports, slots, saved, saveAttempts } = createPorts({ failSaveAttempt: 1 });
+    const { ports, slots, saved, saveAttempts, takeRawOutputs } = createPorts({ failSaveAttempt: 1 });
     let shownRevision: number | null = null;
     const say = async (turnId: string, text: string) => {
       const turn = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId, userText: text, shownRevision });
       shownRevision = turn.graphRevision;
-      steps.push({ turnId, user: text, ...snapshot(turn), work: scheduledWork(ports) });
+      steps.push({ turnId, user: text, ...snapshot(turn), work: scheduledWork(ports), rawProviderOutputs: takeRawOutputs() });
       return turn;
     };
     try {
@@ -174,11 +181,11 @@ run('#926 VNext native session real API end to end', () => {
       ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId, graph,
       planningState: prepared.planningState, savedAt: '2026-11-02T08:00:00.000Z', messageCount: 0,
     })!;
-    const { ports, slots } = createPorts({ legacyV5: v5Raw });
+    const { ports, slots, takeRawOutputs } = createPorts({ legacyV5: v5Raw });
     const record: Record<string, unknown> = {};
     try {
       const turn = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'm1', userText: '英単語は毎日じゃなくていいので、今週合計で90分やります', shownRevision: null });
-      record.turn = { ...snapshot(turn), work: scheduledWork(ports) };
+      record.turn = { ...snapshot(turn), work: scheduledWork(ports), rawProviderOutputs: takeRawOutputs() };
       expect(turn.outcome).toBe('applied');
       expect(scheduledWork(ports)).toEqual([expect.objectContaining({ minutes: 90 })]);
       expect(slots.get('v5')).toBe(v5Raw);

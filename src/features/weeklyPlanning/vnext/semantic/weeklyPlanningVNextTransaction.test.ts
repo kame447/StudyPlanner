@@ -202,6 +202,21 @@ describe('experimental VNext typed transaction', () => {
     ] });
   });
 
+  it('rejects a temporal constraint that bounds nothing, naming every field so a reread can restore what was stated', () => {
+    // Repro 4b2dc9c1 run 3: the reread of "今週は…" kept a preferred_window with no date, period or clock.
+    const window = (dateExpression: string | null, namedTimePeriod: 'evening' | null) => ({ kind: 'temporal_constraint' as const, localId: 'w',
+      taskRef: { localId: 't' }, targetRef: { localId: 't' }, constraintKind: 'preferred_window' as const, constraintLevel: 'soft' as const,
+      dateExpression, namedTimePeriod, startTime: null, endTime: null, precision: 'unspecified' as const });
+    expect(turn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, window(null, null)] }))).toMatchObject({ status: 'rejected', errors: [
+      expect.objectContaining({ path: 'add[1].dateExpression', localId: 'w' }),
+      expect.objectContaining({ path: 'add[1].namedTimePeriod', localId: 'w' }),
+      expect.objectContaining({ path: 'add[1].startTime', localId: 'w' }),
+      expect.objectContaining({ path: 'add[1].endTime', localId: 'w' }),
+    ] });
+    expect(applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, window('this_week', null)] })).graph.temporalConstraints).toHaveLength(1);
+    expect(applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, window(null, 'evening')] })).graph.temporalConstraints).toHaveLength(1);
+  });
+
   it('fixes a relative date to the accepting turn, so it does not move on a later day (#918)', () => {
     const due = (dateExpression: string) => ({ kind: 'temporal_constraint' as const, localId: 'due', taskRef: { localId: 't' },
       targetRef: { localId: 't' }, constraintKind: 'deadline' as const, constraintLevel: 'hard' as const, dateExpression,
