@@ -8,11 +8,11 @@ import { createAuthSessionService } from '../services/authSession';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
 import type { StartupSessionCapability } from '../lib/startupSessionScope';
 
-const evidence = vi.hoisted(() => ({ boot: vi.fn(), dispose: vi.fn(), adminMount: vi.fn(), adminDispose: vi.fn(), scopes: [] as StartupSessionCapability[] }));
+const evidence = vi.hoisted(() => ({ boot: vi.fn(), dispose: vi.fn(), adminMount: vi.fn(), adminDispose: vi.fn(), scopes: [] as StartupSessionCapability[], traceEnabled: true }));
 vi.mock('../services/authSession', () => ({ createAuthSessionService: vi.fn() }));
 vi.mock('../hooks/useAppearancePreference', () => ({ useAppearancePreference: () => ({ appearance: 'standard' }) }));
 vi.mock('../hooks/useThemePreference', () => ({ useThemePreference: () => ({}) }));
-vi.mock('../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository', () => ({ isWeeklyPlanningTraceFeatureEnabled: () => true }));
+vi.mock('../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository', () => ({ isWeeklyPlanningTraceFeatureEnabled: () => evidence.traceEnabled }));
 vi.mock('../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy', () => ({ useWeeklyPlanningTracePolicy: () => ({ status: 'accepted' }) }));
 vi.mock('../features/weeklyPlanning/personalization/useWeeklyPlanningPersonalizationProfile', () => ({
   useWeeklyPlanningPersonalizationProfile: () => ({ loading: false, error: '', profile: { weekStartsOn: { value: 'monday' } } }),
@@ -53,7 +53,7 @@ const focus = vi.fn();
 const scrollTo = vi.fn();
 const user = { id: 'owner', requiresEmailVerification: false };
 beforeEach(() => {
-  vi.clearAllMocks(); evidence.scopes = [];
+  vi.clearAllMocks(); evidence.scopes = []; evidence.traceEnabled = true;
   fake = createFakeAuthSession({ currentUser: user });
   vi.mocked(createAuthSessionService).mockReturnValue(fake.session);
   const location = { pathname: '/' };
@@ -118,4 +118,52 @@ it('does not initialize the planner on direct Admin entry, and starts it once on
   await navigate('/');
   expect(evidence.boot).toHaveBeenCalledOnce();
   expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(1);
+});
+
+it.each([true, false])('clears a retained planner on external sign-out with trace %s', async (traceEnabled) => {
+  evidence.traceEnabled = traceEnabled;
+  await mount();
+  if (traceEnabled) act(() => renderer.root.findByType(SplashScreen).props.onVideoComplete('completed'));
+  act(() => draft().props.onClick());
+  await navigate('/admin');
+  act(() => fake.emit(null));
+  await navigate('/');
+  expect(draft().children).toEqual(['initial']);
+  expect(fake.session.signOut).not.toHaveBeenCalled();
+});
+
+it.each([true, false])('clears the previous owner draft on external owner change with trace %s', async (traceEnabled) => {
+  evidence.traceEnabled = traceEnabled;
+  await mount();
+  if (traceEnabled) act(() => renderer.root.findByType(SplashScreen).props.onVideoComplete('completed'));
+  act(() => draft().props.onClick());
+  await navigate('/admin');
+  act(() => fake.emit({ ...user, id: 'other-owner' }));
+  await navigate('/');
+  expect(draft().children).toEqual(['initial']);
+});
+
+it.each([true, false])('preserves a retained draft across same-owner notifications and repeated returns with trace %s', async (traceEnabled) => {
+  evidence.traceEnabled = traceEnabled;
+  await mount();
+  if (traceEnabled) act(() => renderer.root.findByType(SplashScreen).props.onVideoComplete('completed'));
+  act(() => draft().props.onClick());
+  for (let visit = 0; visit < 2; visit++) {
+    await navigate('/admin');
+    act(() => fake.emit({ ...user }));
+    await navigate('/');
+    expect(draft().children).toEqual(['edited']);
+    expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
+  }
+});
+
+
+it('clears a fallback draft after a batched sign-out and same-owner sign-in', async () => {
+  evidence.traceEnabled = false;
+  await mount();
+  act(() => draft().props.onClick());
+  await navigate('/admin');
+  act(() => { fake.emit(null); fake.emit({ ...user }); });
+  await navigate('/');
+  expect(draft().children).toEqual(['initial']);
 });

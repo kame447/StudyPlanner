@@ -32,7 +32,8 @@
   .admin-app-shell > .admin-return-header { transition: transform var(--motion-duration-base) var(--motion-ease-standard); }
   /* Clip only the intentionally translated canvas while the drawer is open. */
   .admin-app-shell.admin-menu-open { overflow-x: clip; }
-  .admin-app-shell.admin-menu-open .admin-console-sidebar { visibility: visible; transform: translateX(0); }
+  /* Visibility must be immediate so the shared layout-effect focus can land. */
+  .admin-app-shell.admin-menu-open .admin-console-sidebar { visibility: visible; transform: translateX(0); transition: transform var(--motion-duration-base) var(--motion-ease-standard); }
   .admin-menu-open > .admin-return-header,
   .admin-menu-open .admin-console-main { transform: translateX(var(--admin-drawer-width)); }
   .admin-menu-backdrop { position: fixed; inset: 0 0 0 var(--admin-drawer-width); z-index: calc(var(--z-sticky-nav) + 2); border: 0; padding: 0; border-radius: 0; background: rgb(0 0 0 / 20%); }

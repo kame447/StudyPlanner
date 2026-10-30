@@ -52,3 +52,21 @@ The October 14 native-select/root-rebootstrap checkpoint above is historical; it
 - Consumer announcement lazy-load failure gets an explicit page reload action, alongside return. The original intermittent failure cause is not established; this is a recovery path, not proof that its cause is fixed.
 
 Local focused suites and full verification are recorded in the task receipts. New native browser cases cover both Chromium and WebKit, but test discovery alone is not rendered acceptance. Physical iPhone, actual OS edge navigation, and production data remain outside synthetic fixture proof. No upstream publication or merge is implied by this local checkpoint.
+
+
+## 2026-10-30 native verification checkpoint — PR #929
+
+The first published head `101989c7443f8890129949d418b9896a77214243` preserves local tree `f48fe4bc5b2a2cc6e4dd6b7a5ae1c5cd4367950d`. Native merge checkout `00512c5d39db1e6bf3ad0c97dcc208f520b99338` passed fresh types, 12,129 unit tests and build, but Admin render was **71 passed / 12 failed**; this is not acceptance.
+
+The full failure inventory was audited before correction:
+
+- Standard-motion drawer focus fails in both engines while reduced/off focus passes. The existing layout-effect focus runs while CSS visibility is transitioning from hidden. Opening now changes visibility immediately, keeping the transform animation; the shared focus hook is unchanged. Native confirmation remains required.
+- The synthetic swipe test immediately clicked without a new touchstart, inside the shared 700 ms ghost-click suppression interval. Keep that production guard; represent the next deliberate touch before clicking, and assert reopening before selecting a page.
+- Graph fixtures read the harness query after awaiting the legacy service, by which time the real Users page had normalized the URL. Capture the fixture selection at module entry instead. Keep the independent expected 3 / 0 / missing / 7 counts and four bars.
+- The older announcement return test still selected a native menu. Exercise the actual drawer buttons instead; keep session/document/publication assertions.
+- Three document-overflow failures lack route/DOM evidence in the first dedicated artifact. Do not hide overflow or relax the 1 px threshold. Collect all nine routes with failing soft assertions, route-labelled geometry and finally-written evidence; retain browser failure traces/screenshots under the uploaded artifact directory.
+- The Admin-entry harness omitted authentication subscriptions. Correct its owner lifecycle without remounting on same-owner notification. The separate real-root audit reproduced stale state with tracing disabled (the production default when unconfigured). Key the fallback App by its existing authentication epoch; same-owner notifications/ordinary Admin returns remain retained, while external sign-out or owner change retires prior state. Formal regression: two failures before correction, then 157 related tests passed. The actual deployed feature flag value is unverified.
+
+- The general browser source-reader also flagged the new Admin-return focus. Register only its exact non-text header button/link statement, with negative input/generic/unscrolled-focus cases. The same source-reader test reproduced red before correction and passed afterward; an actual Admin-return header-focus assertion remains for native execution.
+
+Draft #929 remains unmerged. Acceptance requires corrected exact-source gates, both native engines including failed routes/focus and external sign-out, independently checked geometry artifacts, and native confirmation of the trace-disabled real-root correction. Do not count collection or synthetic touch dispatch as physical iPhone validation.

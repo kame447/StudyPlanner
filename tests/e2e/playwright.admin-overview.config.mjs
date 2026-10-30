@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
+  outputDir: '../../artifacts/admin-overview/test-results',
   testMatch: ['admin-overview-render.spec.mjs', 'admin-mobile-navigation.spec.mjs', 'admin-system-environment.spec.mjs', 'admin-analysis-query-snapshot.spec.mjs', 'support-inquiries.spec.mjs', 'announcements.spec.mjs'],
   fullyParallel: false,
   reporter: [['list']],

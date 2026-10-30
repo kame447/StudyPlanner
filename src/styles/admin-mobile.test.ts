@@ -20,4 +20,10 @@ describe('admin mobile affordances', () => {
     expect(css).toContain('min-inline-size: 0');
     expect(css).toContain(":root[data-motion='reduced']");
   });
+  it('makes the opening drawer visible before shared layout-effect focus runs', () => {
+    const opening = css.match(/\.admin-app-shell\.admin-menu-open \.admin-console-sidebar\s*\{([^}]+)\}/)?.[1];
+    expect(opening).toContain('visibility: visible');
+    expect(opening).toContain('transition: transform');
+    expect(opening).not.toMatch(/transition:[^;]*visibility/);
+  });
 });

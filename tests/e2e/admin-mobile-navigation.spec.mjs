@@ -23,33 +23,52 @@ async function swipe(page, selector, from, to) {
   }, { from, to });
 }
 for (const width of [320, 390, 1280]) test(`admin all pages fit at ${width}px; dates stay inside their labels`, async ({ page }, info) => {
+  test.setTimeout(90000); // Nine routes must all report geometry even when soft assertions fail.
   const evidence = [];
-  for (const route of pages) {
-    await open(page, route, width);
-    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
-    const vertical = await page.evaluate(() => ({ header: document.querySelector('.admin-return-header').getBoundingClientRect().bottom, main: document.querySelector('.admin-console-main').getBoundingClientRect().top }));
-    expect(vertical.main).toBeGreaterThanOrEqual(vertical.header - 1);
-    const dates = await page.locator('input[type=date]').evaluateAll(inputs => inputs.map(input => {
-      const r = input.getBoundingClientRect(); const label = input.closest('label').getBoundingClientRect();
-      return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, labelX: label.x, labelRight: label.right, width: r.width };
-    }));
-    if (['/admin', '/admin/ai', '/admin/planning'].includes(route)) expect(dates).toHaveLength(2);
-    for (const date of dates) { expect(date.x).toBeGreaterThanOrEqual(date.labelX - 1); expect(date.right).toBeLessThanOrEqual(date.labelRight + 1); expect(date.width).toBeGreaterThan(0); }
-    if (dates.length === 2) expect(dates[0].right <= dates[1].x + 1 || dates[0].bottom <= dates[1].y + 1).toBe(true);
-    if (width < 821) {
-      await expect(page.getByRole('navigation', { name: '管理者画面ナビゲーション' })).toBeHidden();
-      await expect(page.getByRole('button', { name: '管理メニューを開く', exact: true })).toBeVisible();
-    } else await expect(page.getByRole('navigation', { name: '管理者画面ナビゲーション' })).toBeVisible();
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await expect(page.getByRole('link', { name: '通常画面へ戻る', exact: true })).toBeVisible();
-    evidence.push({ route, dates });
-    if (width === 390) {
-      const dir = path.resolve('artifacts/admin-overview'); fs.mkdirSync(dir, { recursive: true });
-      await page.screenshot({ path: path.join(dir, `mobile-${info.project.name}-${route.replaceAll('/', '-')}.png`), fullPage: true });
-    }
-  }
+  const check = expect.configure({ soft: true });
   const dir = path.resolve('artifacts/admin-overview'); fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, `mobile-layout-${info.project.name}-${width}.json`), JSON.stringify(evidence, null, 2));
+  try {
+    for (const route of pages) {
+      await open(page, route, width);
+      // Keep every route's geometry, including the first failing one.
+      const layout = await page.evaluate(() => {
+        const viewport = document.documentElement.clientWidth;
+        return {
+          viewport, scrollWidth: document.documentElement.scrollWidth,
+          overflow: [...document.querySelectorAll('body *')].flatMap(element => {
+            const rect = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            if (!rect.width || style.visibility === 'hidden' || (rect.right <= viewport + 1 && rect.left >= -1)) return [];
+            return [{ tag: element.tagName, className: element.getAttribute('class'), x: rect.x, right: rect.right, width: rect.width, scrollWidth: element.scrollWidth, overflowX: style.overflowX }];
+          }),
+        };
+      });
+      const record = { route, layout }; evidence.push(record);
+      await check.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), { message: `${route} at ${width}px must not overflow` }).toBeLessThanOrEqual(1);
+      const vertical = await page.evaluate(() => ({ header: document.querySelector('.admin-return-header').getBoundingClientRect().bottom, main: document.querySelector('.admin-console-main').getBoundingClientRect().top }));
+      check(vertical.main).toBeGreaterThanOrEqual(vertical.header - 1);
+      const dates = await page.locator('input[type=date]').evaluateAll(inputs => inputs.map(input => {
+        const r = input.getBoundingClientRect(); const label = input.closest('label').getBoundingClientRect();
+        return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, labelX: label.x, labelRight: label.right, width: r.width };
+      }));
+      if (['/admin', '/admin/ai', '/admin/planning'].includes(route)) check(dates).toHaveLength(2);
+      for (const date of dates) { check(date.x).toBeGreaterThanOrEqual(date.labelX - 1); check(date.right).toBeLessThanOrEqual(date.labelRight + 1); check(date.width).toBeGreaterThan(0); }
+      if (dates.length === 2) check(dates[0].right <= dates[1].x + 1 || dates[0].bottom <= dates[1].y + 1).toBe(true);
+      if (width < 821) {
+        await check(page.getByRole('navigation', { name: '管理者画面ナビゲーション' })).toBeHidden();
+        await check(page.getByRole('button', { name: '管理メニューを開く', exact: true })).toBeVisible();
+      } else await check(page.getByRole('navigation', { name: '管理者画面ナビゲーション' })).toBeVisible();
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await check(page.getByRole('link', { name: '通常画面へ戻る', exact: true })).toBeVisible();
+      record.dates = dates;
+      if (width === 390) {
+        const dir = path.resolve('artifacts/admin-overview'); fs.mkdirSync(dir, { recursive: true });
+        await page.screenshot({ path: path.join(dir, `mobile-${info.project.name}-${route.replaceAll('/', '-')}.png`), fullPage: true });
+      }
+    }
+  } finally {
+    fs.writeFileSync(path.join(dir, `mobile-layout-${info.project.name}-${width}.json`), JSON.stringify(evidence, null, 2));
+  }
 });
 
 for (const motion of ['standard', 'reduced', 'off']) test(`drawer button/swipe/focus and stable return: ${motion}`, async ({ page }, info) => {
@@ -101,7 +120,17 @@ for (const motion of ['standard', 'reduced', 'off']) test(`drawer button/swipe/f
   await expect(nav).toBeVisible();
   await swipe(page, '#admin-navigation', 200, 90);
   await expect(nav).toBeHidden();
+  // A new intentional touch resets ghost-click suppression; an immediate mouse
+  // click after synthetic touchend is not a separate mobile tap.
+  await toggle.evaluate(element => {
+    for (const type of ['touchstart', 'touchend']) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'touches', { value: type === 'touchend' ? [] : [{ clientX: 50, clientY: 30 }] });
+      element.dispatchEvent(event);
+    }
+  });
   await toggle.click();
+  await expect(nav).toBeVisible();
   await nav.getByRole('button', { name: 'AI・API', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'AI・API', exact: true })).toBeVisible();
   await expect(nav).toBeHidden();
