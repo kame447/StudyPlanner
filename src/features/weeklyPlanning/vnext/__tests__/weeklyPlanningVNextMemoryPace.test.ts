@@ -96,6 +96,43 @@ function calibrationActual(options: {
   };
 }
 
+function customCalibrationPlan(id: string, unitLabel: string, targetAmount: number, plannedSessionMinutes: number): Plan {
+  const plan = calibrationPlan();
+  return {
+    ...plan,
+    id,
+    seriesId: id,
+    weeklyPlanningObservationSource: {
+      ...plan.weeklyPlanningObservationSource!,
+      conversationId: `calibration-${id}`,
+      unitCode: 'custom',
+      unitLabel,
+      targetAmount,
+      plannedSessionMinutes,
+    },
+  };
+}
+
+function customCalibrationActual(id: string, planId: string, unitLabel: string, progressAmount: number,
+  durationMinutes: number): Actual {
+  const endMinute = 9 * 60 + durationMinutes;
+  const actual = calibrationActual({ start: '09:00',
+    end: `${String(Math.floor(endMinute / 60)).padStart(2, '0')}:${String(endMinute % 60).padStart(2, '0')}`,
+    progressAmount, resultUnitCode: 'custom', resultUnitLabel: unitLabel, planId });
+  return { ...actual, id };
+}
+
+function customUnitFacts(unitLabel: string, amount: number, taskId = `custom-${unitLabel}`): VNextAddFact[] {
+  return [
+    { kind: 'task', localId: taskId, category: 'study', title: `暗記 ${unitLabel}` },
+    { kind: 'study_context', localId: `context-${taskId}`, taskRef: { localId: taskId },
+      purpose: 'self_study', contextLabel: `暗記 ${unitLabel}`, activityKind: 'memorization_retrieval' },
+    { kind: 'workload', localId: `work-${taskId}`, taskRef: { localId: taskId }, componentRef: null,
+      quantityRole: 'target', amount, unitCode: 'custom', unitLabel, rangeStart: null, rangeEnd: null,
+      perOccurrence: false, periodExpression: null },
+  ];
+}
+
 type Calendar = { plans: readonly Plan[]; actuals: readonly Actual[] };
 type ScriptStep = VNextTurnDelta | ((input: WeeklyPlanningVNextInterpretationInput) => VNextTurnDelta);
 
@@ -261,6 +298,52 @@ describe('VNext observed memory pace through the session and scheduler', () => {
     expect(estimatedPreviewMinutes(result.preview!.blocks)).toBeCloseTo(45);
   });
 
+  it('prices a custom 首 workload from matching custom 首 calibration', async () => {
+    const plan = customCalibrationPlan('calibration-head', '首', 10, 20);
+    const actual = customCalibrationActual('actual-head', plan.id, '首', 10, 20);
+    const h = harness([{ ...emptyDelta(), add: customUnitFacts('首', 10) }], {
+      calendar: { plans: [plan], actuals: [actual] },
+    });
+    const result = await h.turn('custom-head', '10首を暗記する');
+    const v5Pace = deriveWeeklyPlanningMemoryPaceEstimateV5({ plans: [plan], actuals: [actual], unitCode: 'custom' });
+
+    expect(v5Pace.medianMinutesPerUnit).toBeCloseTo(2);
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'ready', question: null });
+    expect(result.preview).not.toBeNull();
+    expect(estimatedPreviewMinutes(result.preview!.blocks)).toBeCloseTo(10 * v5Pace.medianMinutesPerUnit!);
+  });
+
+  it('does not use custom 首 calibration to price custom 項目 work', async () => {
+    const plan = customCalibrationPlan('calibration-head-only', '首', 10, 20);
+    const actual = customCalibrationActual('actual-head-only', plan.id, '首', 10, 20);
+    const h = harness([{ ...emptyDelta(), add: customUnitFacts('項目', 10) }], {
+      calendar: { plans: [plan], actuals: [actual] },
+    });
+    const result = await h.turn('custom-items', '10項目を暗記する');
+
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'needs_resolution',
+      question: { code: 'missing_effort_estimate' }, preview: null });
+  });
+
+  it('uses only custom 首 observations when 首 and 項目 calibrations are both present', async () => {
+    const headPlan = customCalibrationPlan('calibration-head-mixed', '首', 10, 20);
+    const itemPlan = customCalibrationPlan('calibration-item-mixed', '項目', 10, 40);
+    const plans = [headPlan, itemPlan];
+    const actuals = [
+      customCalibrationActual('actual-head-mixed', headPlan.id, '首', 10, 20),
+      customCalibrationActual('actual-item-mixed', itemPlan.id, '項目', 10, 40),
+    ];
+    const h = harness([{ ...emptyDelta(), add: customUnitFacts('首', 10) }], { calendar: { plans, actuals } });
+    const result = await h.turn('mixed-custom-units', '10首を暗記する');
+    // Hand-filter the V5 oracle to the calibration plan that has the same custom unit identity.
+    const expectedPace = deriveWeeklyPlanningMemoryPaceEstimateV5({ plans: [headPlan], actuals, unitCode: 'custom' });
+
+    expect(expectedPace.medianMinutesPerUnit).toBeCloseTo(2);
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'ready', question: null });
+    expect(result.preview).not.toBeNull();
+    expect(estimatedPreviewMinutes(result.preview!.blocks)).toBeCloseTo(10 * expectedPace.medianMinutesPerUnit!);
+  });
+
   it('recomputes after a quantity correction from observed pace without storing a derived estimate', async () => {
     const h = harness([memoryDelta(), (input) => ({ ...emptyDelta(), patch: [{ kind: 'workload', localId: 'quantity-correction',
       targetFactId: input.state.graph.workloads[0].id, amountDelta: null,
@@ -303,5 +386,117 @@ describe('VNext observed memory pace through the session and scheduler', () => {
     const after = readWeeklyPlanningVNextExperimentalSession(h.scope, h.ports);
     expect(after.status).toBe('ready');
     if (after.status === 'ready') expect(after.checkpoint.state.graph.effortEstimates).toEqual([]);
+  });
+
+  it('reads a V1 checkpoint with an omitted activity as unknown but rejects an invalid activity value', async () => {
+    const calendar = { plans: [calibrationPlan()], actuals: [calibrationActual()] };
+    const missing = harness([memoryDelta(), emptyDelta()], { calendar });
+    expect((await missing.turn('initial', '英単語35語を覚える')).readiness).toBe('ready');
+    const oldEnvelope = JSON.parse(missing.storage.get('vnext')!) as {
+      vnext: { state: { graph: { studyContexts: Array<Record<string, unknown>> } } };
+    };
+    delete oldEnvelope.vnext.state.graph.studyContexts[0].activityKind;
+    missing.storage.set('vnext', JSON.stringify(oldEnvelope));
+
+    const oldRead = readWeeklyPlanningVNextExperimentalSession(missing.scope, missing.ports);
+    expect(oldRead).toMatchObject({ status: 'ready', source: 'vnext' });
+    if (oldRead.status !== 'ready') throw new Error('V1 checkpoint with absent activity was not migrated');
+    expect(oldRead.checkpoint.state.graph.studyContexts[0].activityKind).toBe('unknown');
+    const resumed = await missing.turn('legacy-resume', '続けます');
+    expect(resumed).toMatchObject({ outcome: 'noop', readiness: 'needs_resolution',
+      question: { code: 'missing_effort_estimate' }, preview: null });
+
+    const invalid = harness([memoryDelta()], { calendar });
+    expect((await invalid.turn('initial', '英単語35語を覚える')).readiness).toBe('ready');
+    const invalidEnvelope = JSON.parse(invalid.storage.get('vnext')!) as {
+      vnext: { state: { graph: { studyContexts: Array<Record<string, unknown>> } } };
+    };
+    invalidEnvelope.vnext.state.graph.studyContexts[0].activityKind = 'bogus';
+    invalid.storage.set('vnext', JSON.stringify(invalidEnvelope));
+    expect(readWeeklyPlanningVNextExperimentalSession(invalid.scope, invalid.ports)).toEqual({ status: 'unreadable' });
+  });
+
+  it.each([true, false])('recovery reports whether a calibration-backed preview is retained when evidence changes=%s', async (removeCalibrationActual) => {
+    const calendar: Calendar = { plans: [calibrationPlan()], actuals: [calibrationActual()] };
+    const h = harness([memoryDelta()], { calendar });
+    const shown = await h.turn('calibration-preview', '英単語35語を覚える');
+    expect(shown.preview).not.toBeNull();
+
+    if (removeCalibrationActual) calendar.actuals = [];
+    h.ports.interpret = async () => ({ status: 'failed', reason: 'provider_error', errors: [],
+      metrics: { calls: 1, repairs: 0, latencyMs: 1 } });
+    const recoveryInputs: Array<{ recovery?: { retainedPreviewUnchanged: boolean } }> = [];
+    h.ports.createRenderer = () => ({ async render(input) {
+      recoveryInputs.push(input);
+      return { status: 'rendered', text: '変更できませんでした。', rawResponse: '', recoveryVerified: true };
+    } });
+
+    const failed = await h.turn('provider-failure', '訂正します');
+    const retainedPreviewUnchanged = recoveryInputs[0]?.recovery?.retainedPreviewUnchanged;
+    const saved = readWeeklyPlanningVNextExperimentalSession(h.scope, h.ports);
+    expect(saved.status).toBe('ready');
+    if (saved.status !== 'ready') throw new Error('Recovery checkpoint did not reload');
+
+    if (removeCalibrationActual) {
+      expect(retainedPreviewUnchanged).toBe(false);
+      expect(failed.preview).toBeNull();
+      expect(saved.checkpoint.preview).toBeNull();
+    } else {
+      expect(retainedPreviewUnchanged).toBe(true);
+      expect(failed.preview).toEqual(shown.preview);
+      expect(saved.checkpoint.preview).toEqual(shown.preview);
+    }
+  });
+
+  it.each(['answer', 'explicit_delta'] as const)('applies a unit correction and per-unit estimate from the same final basis via %s', async (form) => {
+    const h = harness([memoryDelta('unknown')]);
+    const first = await h.turn('asked-estimate', '35語を勉強する');
+    expect(first.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 35, unitCode: 'word' } });
+
+    h.ports.interpret = async (input) => {
+      const workload = input.state.graph.workloads[0];
+      const delta: VNextTurnDelta = { ...emptyDelta(), patch: [{ kind: 'workload', localId: 'correct-unit',
+        targetFactId: workload.id, amountDelta: null, changes: { amount: null, unitCode: 'problem', unitLabel: '問',
+          quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] };
+      if (form === 'explicit_delta') delta.add.push({ kind: 'effort_estimate', localId: 'corrected-estimate',
+        taskRef: { factId: workload.taskId }, targetRef: { factId: workload.id }, effortKind: 'duration_per_unit',
+        minutes: 2, unitCode: 'problem', unitLabel: '問', precision: 'exact' });
+      return { status: 'interpreted', delta,
+        answer: form === 'answer' ? { kind: 'estimate_minutes', minutes: 2, per: 'unit' } : null,
+        metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
+    };
+    const result = await h.turn('correct-and-answer', '語ではなく35問です。1問あたり2分です。');
+    expect(result.outcome).toBe('applied');
+    expect(result.preview).not.toBeNull();
+    expect(estimatedPreviewMinutes(result.preview!.blocks)).toBeCloseTo(70);
+    const read = readWeeklyPlanningVNextExperimentalSession(h.scope, h.ports);
+    expect(read.status).toBe('ready');
+    if (read.status === 'ready') {
+      const activeFactIds = new Set(read.checkpoint.state.graph.factLifecycles
+        .filter((entry) => entry.status === 'active').map((entry) => entry.factId));
+      expect(read.checkpoint.state.graph.workloads.find((workload) => activeFactIds.has(workload.id)
+        && workload.quantityRole === 'target'))
+        .toMatchObject({ amount: 35, unitCode: 'problem', unitLabel: '問' });
+      expect(read.checkpoint.state.graph.effortEstimates).toHaveLength(1);
+    }
+  });
+
+  it('keeps a per-unit answer in the asked unit when the user does not correct that unit', async () => {
+    const h = harness([memoryDelta('unknown')]);
+    const asked = await h.turn('asked-estimate', '35語を勉強する');
+    expect(asked.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 35, unitCode: 'word' } });
+
+    h.ports.interpret = async () => ({ status: 'interpreted', delta: emptyDelta(),
+      answer: { kind: 'estimate_minutes', minutes: 2, per: 'unit' }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } });
+    const result = await h.turn('answer-only', '1語あたり2分です');
+    expect(result.outcome).toBe('applied');
+    expect(result.preview).not.toBeNull();
+    expect(estimatedPreviewMinutes(result.preview!.blocks)).toBeCloseTo(70);
+    const read = readWeeklyPlanningVNextExperimentalSession(h.scope, h.ports);
+    expect(read.status).toBe('ready');
+    if (read.status === 'ready') {
+      expect(read.checkpoint.state.graph.workloads[0]).toMatchObject({ amount: 35, unitCode: 'word', unitLabel: '語' });
+      expect(read.checkpoint.state.graph.effortEstimates[0]).toMatchObject({ kind: 'duration_per_unit', unitCode: 'word' });
+    }
   });
 });
