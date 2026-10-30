@@ -218,6 +218,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.admin-ai-shell .admin-overview-metric-copy strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .admin-observability-timeline {
   display: grid;
   margin: 2px 0 16px;
@@ -242,6 +247,7 @@
   min-width: 0;
   display: grid;
   gap: 4px;
+  overflow-wrap: anywhere;
 }
 
 .admin-observability-timeline-item p,

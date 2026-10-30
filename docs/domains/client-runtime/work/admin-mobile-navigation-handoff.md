@@ -70,3 +70,11 @@ The full failure inventory was audited before correction:
 - The general browser source-reader also flagged the new Admin-return focus. Register only its exact non-text header button/link statement, with negative input/generic/unscrolled-focus cases. The same source-reader test reproduced red before correction and passed afterward; an actual Admin-return header-focus assertion remains for native execution.
 
 Draft #929 remains unmerged. Acceptance requires corrected exact-source gates, both native engines including failed routes/focus and external sign-out, independently checked geometry artifacts, and native confirmation of the trace-disabled real-root correction. Do not count collection or synthetic touch dispatch as physical iPhone validation.
+
+### Second native result and scoped overflow correction
+
+Head `961ea1af3a8cd71b101d2e870c939b47f034940e`, native merge checkout `c9f3ac87d3ae1830b4a85046653611e260bfa851`: Admin render **80 passed / 3 failed**. Drawer focus/gestures, the exact graph fixture and the previous selector failures passed. The remaining failures are text layout, not date controls: WebKit at 320 px overflows 21 px on the user Timeline; the AI metrics at 1280 px overflow 38 px in WebKit and 3 px in Chromium. Saved route geometry, trace DOM and the narrow failure screenshot identify long Timeline identifiers and the rightmost cost metric's unbroken value as the responsible min-content constraints.
+
+Allow natural wrapping in the Timeline text container and AI metric value, without clipping, reducing font size or hiding content. Keep all nine route checks and add child/container and text scroll-width bounds. This correction still requires native confirmation.
+
+Separately, a 1280 px WebKit route-fade scenario reached its overlay-close step around 29 seconds into a 30-second test. Split the independent cold/warm route checks and rapid/overlay flow into separate tests; keep the 30-second budget and all geometric/focus/motion assertions. B retains the existing 150 ms production contract; A's separate 300 ms feature is not copied into this branch.

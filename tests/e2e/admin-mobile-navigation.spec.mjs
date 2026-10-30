@@ -44,6 +44,26 @@ for (const width of [320, 390, 1280]) test(`admin all pages fit at ${width}px; d
         };
       });
       const record = { route, layout }; evidence.push(record);
+      if (route === '/admin/ai' || route.includes('/admin/users/')) {
+        const textBoxes = await page.locator('.admin-ai-shell .admin-overview-metric-copy, .admin-observability-timeline-item > div').evaluateAll(containers => containers.map(container => {
+          const box = container.getBoundingClientRect();
+          return {
+            x: box.x, right: box.right,
+            children: [...container.querySelectorAll(':scope > strong, :scope > p, :scope > small, :scope > span')].map(child => {
+              const rect = child.getBoundingClientRect();
+              return { text: child.textContent, x: rect.x, right: rect.right, width: rect.width, scrollWidth: child.scrollWidth, clientWidth: child.clientWidth };
+            }),
+          };
+        }));
+        record.textBoxes = textBoxes;
+        check(textBoxes.length, `${route} text containers`).toBeGreaterThan(0);
+        for (const box of textBoxes) for (const child of box.children) {
+          check(child.width, `${route}: ${child.text}`).toBeGreaterThan(0);
+          check(child.x, `${route}: ${child.text}`).toBeGreaterThanOrEqual(box.x - 1);
+          check(child.right, `${route}: ${child.text}`).toBeLessThanOrEqual(box.right + 1);
+          check(child.scrollWidth, `${route}: ${child.text}`).toBeLessThanOrEqual(child.clientWidth + 1);
+        }
+      }
       await check.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), { message: `${route} at ${width}px must not overflow` }).toBeLessThanOrEqual(1);
       const vertical = await page.evaluate(() => ({ header: document.querySelector('.admin-return-header').getBoundingClientRect().bottom, main: document.querySelector('.admin-console-main').getBoundingClientRect().top }));
       check(vertical.main).toBeGreaterThanOrEqual(vertical.header - 1);

@@ -26,4 +26,13 @@ describe('admin mobile affordances', () => {
     expect(opening).toContain('transition: transform');
     expect(opening).not.toMatch(/transition:[^;]*visibility/);
   });
+  it('wraps long timeline identifiers and AI cost values without clipping their content', () => {
+    const phase5 = readFileSync(new URL('./admin-phase5.css', import.meta.url), 'utf8');
+    const timeline = phase5.match(/\.admin-observability-timeline-item > div\s*\{([^}]+)\}/)?.[1];
+    const metric = phase5.match(/\.admin-ai-shell \.admin-overview-metric-copy strong\s*\{([^}]+)\}/)?.[1];
+    expect(timeline).toContain('overflow-wrap: anywhere');
+    expect(metric).toContain('white-space: normal');
+    expect(metric).toContain('overflow-wrap: anywhere');
+    expect(`${timeline}${metric}`).not.toMatch(/overflow:\s*hidden|font-size|text-overflow/);
+  });
 });
