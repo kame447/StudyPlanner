@@ -292,9 +292,13 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   }, [isScheduleSurface, pendingMonthCreate, viewMode]);
 
   const plannerReady = Boolean(user && isPlannerDataReadyForOwner(plannerDataAvailability, user.id));
+  // The timetable loader generates a single full-year term for every new account.
+  // That empty scaffold is not user-entered content and must not suppress the tour.
+  const hasConfiguredTimetable = scheduleTemplates.length > 0 || timetablePeriods.length > 0
+    || timetableTerms.length > 1 || timetableTerms.some(term => term.kind !== 'fullYear');
   const hasSavedContent = plans.length > 0 || actuals.length > 0 || monthEvents.length > 0
     || todos.length > 0 || studyMaterials.length > 0 || studySubjects.length > 0
-    || scheduleTemplates.length > 0 || timetableTerms.length > 0 || timetablePeriods.length > 0;
+    || hasConfiguredTimetable;
   const tutorialCompleted = Boolean(user && (tutorialCompletedOwner === user.id || hasCompletedFirstRunTour(user.id)));
   useEffect(() => {
     if (!user || !plannerReady || !hasSavedContent || tutorialCompleted) return;

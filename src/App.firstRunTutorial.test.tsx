@@ -74,8 +74,14 @@ it('does not interrupt existing users, even if they later clear their data', asy
   expect(tour()).toHaveLength(0);
 });
 
-it('treats previously configured timetable data as an existing account', async () => {
-  state = { ...state, timetableTerms: [{ id: 'existing-term' }] as PlannerAppSnapshot['timetableTerms'] };
+it('shows the tour even when the loader has generated an empty default timetable term', async () => {
+  state = { ...state, timetableTerms: [{ id: 'default-term', kind: 'fullYear' }] as PlannerAppSnapshot['timetableTerms'] };
+  await render();
+  expect(tour()).toHaveLength(1);
+});
+
+it('treats user-configured timetable data as an existing account', async () => {
+  state = { ...state, timetableTerms: [{ id: 'custom-term', kind: 'custom' }] as PlannerAppSnapshot['timetableTerms'] };
   await render();
   expect(tour()).toHaveLength(0);
   state = { ...state, timetableTerms: [] };

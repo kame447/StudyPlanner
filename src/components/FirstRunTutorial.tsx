@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, Check, CirclePlay, MessageCircle, TrendingUp } from 'lucide-react';
 import '../styles/first-run-tutorial.css';
 
@@ -94,12 +94,9 @@ export function FirstRunTutorial({ onFinish, onOpenAiPlanning }: {
   onOpenAiPlanning: () => void;
 }) {
   const [index, setIndex] = useState(0);
-  const heading = useRef<HTMLHeadingElement>(null);
   const touchStartX = useRef<number | null>(null);
   const slide = SLIDES[index];
   const last = index === SLIDES.length - 1;
-
-  useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [index]);
 
   function goTo(next: number) {
     setIndex(Math.min(SLIDES.length - 1, Math.max(0, next)));
@@ -128,7 +125,7 @@ export function FirstRunTutorial({ onFinish, onOpenAiPlanning }: {
           </div>
           <div className="first-run-tour-copy" aria-live="polite" aria-atomic="true">
             <span className="first-run-tour-eyebrow">{slide.eyebrow}</span>
-            <h1 tabIndex={-1} ref={heading}>{slide.title}</h1>
+            <h1>{slide.title}</h1>
             <p>{slide.description}</p>
           </div>
         </div>
