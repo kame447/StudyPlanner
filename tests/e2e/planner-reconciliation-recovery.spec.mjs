@@ -1750,13 +1750,15 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     await editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true }).fill('保存を再試行する名前');
     await page.evaluate(() => window.__plannerRecoveryRepository.failNextProfileWrite());
     await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
-    await expect(editor.getByRole('status')).toHaveText('プロフィールの保存に失敗しました（検証用）。');
+    await expect(editor.getByRole('status')).toHaveText('プロフィールの更新結果を確認できませんでした。再読み込みして内容を確認してください。');
+    await expect(editor).not.toContainText('プロフィールの保存に失敗しました（検証用）。');
     await expect(editor).not.toContainText('保存しました。');
     await expect(editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true })).toHaveValue('保存を再試行する名前');
     expect(await readProfile()).toEqual(before);
     await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
     await expect.poll(async () => (await readProfile()).username).toBe('保存を再試行する名前');
     await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toBeVisible();
+    await expect(editor).not.toContainText('プロフィールの更新結果を確認できませんでした。');
     await expect(editor).not.toContainText('プロフィールの保存に失敗しました（検証用）。');
   });
 }
