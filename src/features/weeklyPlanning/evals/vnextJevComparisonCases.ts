@@ -18,7 +18,7 @@ export interface VNextJevWorkOracle {
 export interface VNextJevFinalStateOracle {
   activeWork: VNextJevWorkOracle[];
   relations: Array<{ kind: 'same' | 'distinct'; leftTaskTitle: string; rightTaskTitle: string }>;
-  hardDeadlines: Array<{ taskTitle: string; date: string }>;
+  hardDeadlines: Array<{ taskTitle: string; date: string; constraintKind: 'deadline' }>;
   openQuestionCodes: VNextQuestionCode[];
   deferredQuestionCodes: VNextQuestionCode[];
   /** Equivalent question outcomes when the user's words allow either preserving an open question or deferring it. */
@@ -203,7 +203,7 @@ for (const split of ['dev', 'holdout'] as const) {
       holdoutText: '残り8枚を選びます。明日が期限です',
       purpose: '回答と締切の二つの意味を両方full readingに渡して保持する', state: baseOracle({
         activeWork: remainingOracle(8, 12).activeWork,
-        hardDeadlines: [{ taskTitle: '数学プリント', date: '2026-11-03' }],
+        hardDeadlines: [{ taskTitle: '数学プリント', date: '2026-11-03', constraintKind: 'deadline' }],
         openQuestionCodes: ['missing_effort_estimate'],
       }) },
     { id: `${suffix}-mixed-task`, split, shape: 'one_target_same_or_distinct',

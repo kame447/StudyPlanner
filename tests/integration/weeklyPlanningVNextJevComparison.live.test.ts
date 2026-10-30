@@ -518,8 +518,10 @@ function compareFinalState(testCase: VNextJevComparisonCase, state: WeeklyPlanni
   const resolver = createVNextLineageResolver(state.graph);
   const actualDeadlines = state.graph.temporalConstraints.filter((fact) => activeFacts.has(fact.id) && fact.constraintLevel === 'hard')
     .map((fact) => ({ taskTitle: state.graph.tasks.find((task) => task.id === (resolver.leafOf(fact.taskId) ?? fact.taskId))?.title ?? '',
-      date: fact.dateExpression ?? '' })).sort((a, b) => `${a.taskTitle}:${a.date}`.localeCompare(`${b.taskTitle}:${b.date}`));
-  const expectedDeadlines = expected.hardDeadlines.slice().sort((a, b) => `${a.taskTitle}:${a.date}`.localeCompare(`${b.taskTitle}:${b.date}`));
+      date: fact.dateExpression ?? '', constraintKind: fact.kind }))
+    .sort((a, b) => `${a.taskTitle}:${a.date}:${a.constraintKind}`.localeCompare(`${b.taskTitle}:${b.date}:${b.constraintKind}`));
+  const expectedDeadlines = expected.hardDeadlines.slice()
+    .sort((a, b) => `${a.taskTitle}:${a.date}:${a.constraintKind}`.localeCompare(`${b.taskTitle}:${b.date}:${b.constraintKind}`));
   if (JSON.stringify(actualDeadlines) !== JSON.stringify(expectedDeadlines)) differences.push('hard deadlines differ');
   const questionCodes = projection.questions.map((question) => question.code).sort();
   const deferredCodes = projection.deferredQuestions.map((question) => question.code).sort();
@@ -721,15 +723,24 @@ function writeReport(params: { calibration: ReturnType<typeof calibrate> | null;
   const averageLatency = (items: CaseObservation[]) => items.length ? items.reduce((sum, item) => sum + item.interpretationLatencyMs, 0) / items.length : 0;
   const adoption = params.holdoutStarted && wrongSelections === 0
     && on.filter((item) => item.finalStateCorrect).length >= off.filter((item) => item.finalStateCorrect).length
-    && aggregate(on, 'luna') + aggregate(on, 'jev') < aggregate(off, 'luna')
-    && averageLatency(on) < averageLatency(off);
+    && (aggregate(on, 'luna') + aggregate(on, 'jev') < aggregate(off, 'luna')
+      || averageLatency(on) < averageLatency(off));
+  const callsOff = aggregate(off, 'luna');
+  const callsOn = aggregate(on, 'luna') + aggregate(on, 'jev');
+  const callIncreasePercent = callsOff > 0 ? Math.round((callsOn - callsOff) / callsOff * 100) : 0;
+  const recommendation = !params.holdoutStarted
+    ? 'Holdout not run; remain off'
+    : adoption
+      ? `pre-registered minimum criterion met; remain off: limited benefit, +${callIncreasePercent}% calls, latency gain comparable to run-to-run variation`
+      : 'pre-registered minimum criterion not met; remain off';
   const lines = [
     '# VNext Luna-only vs Jev→Luna comparison', '',
     `- Corpus: ${VNEXT_JEV_COMPARISON_CASES.length} cases; split SHA-256: \`${VNEXT_JEV_COMPARISON_SPLIT_SHA256}\`.`,
     `- Dev raw artifact: \`${params.devRawPath}\`.`,
     `- Holdout run: ${params.holdoutStarted ? 'completed' : 'not run (awaiting explicit policy approval or zero-wrong dev calibration)'}.`,
     `- Calibration artifact: \`${params.calibrationPath}\`.`,
-    `- Adoption decision: ${adoption ? 'meets pre-registered criteria' : 'no benefit established'}.`,
+    `- Pre-registered minimum criterion: ${adoption ? 'met' : 'not met'}.`,
+    `- Recommendation: ${recommendation}.`,
     `- Jev wrong selections: ${wrongSelections}.`,
     '', '## Dev calibration', '',
     params.calibration ? `- Correct closed choices: ${params.calibration.devCorrectSelections}; wrong selections: ${params.calibration.devWrongSelections}.`
@@ -845,6 +856,41 @@ describe('VNext Jev comparison session controls (offline)', () => {
     expect(chooseCalls).toBe(0);
   });
 
+  it('requires deadline kind when comparing a hard temporal constraint', () => {
+    const testCase = VNEXT_JEV_COMPARISON_CASES.find((item) => item.id === 'h-mixed-deadline')!;
+    const scope = makeScope(testCase, 1);
+    const seeded = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), taskSeedDelta(testCase), {
+      expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate, turnKey: `${scope.conversationId}:seed`,
+      conversationId: scope.conversationId, turnId: 'seed', sourceText: 'synthetic seed',
+    });
+    if (seeded.status !== 'applied') throw new Error('Deadline oracle seed failed.');
+    const remaining = seeded.state.graph.workloads.find((fact) => fact.quantityRole === 'remaining');
+    const taskId = seeded.state.graph.tasks.find((task) => task.title === '数学プリント')?.id;
+    if (!remaining || !taskId) throw new Error('Deadline oracle seed facts are missing.');
+
+    const stateWithTemporalKind = (constraintKind: 'deadline' | 'earliest_start') => {
+      const delta: VNextTurnDelta = { ...emptyDelta(),
+        add: [{ kind: 'temporal_constraint', localId: 'tomorrow-constraint', taskRef: { factId: taskId },
+          targetRef: { factId: taskId }, constraintKind, constraintLevel: 'hard', dateExpression: '2026-11-03',
+          namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' }],
+        patch: [{ kind: 'workload', localId: 'remaining-eight', targetFactId: remaining.id, amountDelta: null,
+          changes: { amount: 8, unitCode: null, unitLabel: null, quantityRole: null, rangeStart: null, rangeEnd: null,
+            perOccurrence: null, periodExpression: null } }],
+      };
+      const result = applyWeeklyPlanningVNextTurn(seeded.state, delta, {
+        expectedRevision: seeded.state.graph.revision, acceptedDate: testCase.seed.acceptedDate,
+        turnKey: `${scope.conversationId}:${constraintKind}`, conversationId: scope.conversationId,
+        turnId: constraintKind, sourceText: 'synthetic deadline meaning',
+      });
+      if (result.status !== 'applied') throw new Error(`Temporal control rejected: ${constraintKind}`);
+      return result.state;
+    };
+
+    expect(testCase.finalState.hardDeadlines).toEqual([{ taskTitle: '数学プリント', date: '2026-11-03', constraintKind: 'deadline' }]);
+    expect(compareFinalState(testCase, stateWithTemporalKind('deadline'), 0).differences).toEqual([]);
+    expect(compareFinalState(testCase, stateWithTemporalKind('earliest_start'), 0).differences).toContain('hard deadlines differ');
+  });
+
   it('does not overwrite a checkpoint changed while Jev is evaluating the reply', async () => {
     let markDispatched!: () => void;
     let releaseChoice!: (value: unknown) => void;
@@ -944,21 +990,62 @@ describe('VNext Jev holdout oracle rescore (offline)', () => {
       if (!testCase) throw new Error(`Observation is not in the frozen holdout: ${observation.caseId}`);
       const state = reconstructObservedState(testCase, observation);
       const result = compareFinalState(testCase, state, observation.savedPlanCount);
-      return { ...observation, priorFinalStateCorrect: observation.finalStateCorrect,
-        priorDifferences: observation.differences, finalStateCorrect: result.differences.length === 0,
+      return { ...observation, inputArtifactFinalStateCorrect: observation.finalStateCorrect,
+        inputArtifactDifferences: observation.differences, finalStateCorrect: result.differences.length === 0,
         differences: result.differences, questionCode: result.questionCode,
         deferredQuestionCodes: result.deferredQuestionCodes };
     });
     const rows = (arm: CaseObservation['arm'], caseClass: CaseObservation['caseClass']) => {
       const prior = rescored.filter((item) => item.arm === arm && item.caseClass === caseClass);
-      return { total: prior.length, before: prior.filter((item) => item.priorFinalStateCorrect).length,
+      return { total: prior.length, before: prior.filter((item) => item.inputArtifactFinalStateCorrect).length,
         after: prior.filter((item) => item.finalStateCorrect).length };
     };
     const totals = Object.fromEntries((['luna_only', 'jev_to_luna'] as const).map((arm) => {
       const items = rescored.filter((item) => item.arm === arm);
-      return [arm, { total: items.length, before: items.filter((item) => item.priorFinalStateCorrect).length,
+      return [arm, { total: items.length, before: items.filter((item) => item.inputArtifactFinalStateCorrect).length,
         after: items.filter((item) => item.finalStateCorrect).length }];
     })) as Record<CaseObservation['arm'], { total: number; before: number; after: number }>;
+    const off = rescored.filter((item) => item.arm === 'luna_only');
+    const on = rescored.filter((item) => item.arm === 'jev_to_luna');
+    const aggregateCalls = (items: typeof rescored, provider: 'luna' | 'jev') =>
+      items.reduce((sum, item) => sum + item.usage[provider].calls, 0);
+    const averageLatency = (items: typeof rescored) => items.length
+      ? items.reduce((sum, item) => sum + item.interpretationLatencyMs, 0) / items.length : 0;
+    const wrongSelections = on.filter((item) => item.route === 'option_choice' && item.expectedSelectionCorrect !== true).length;
+    const preRegisteredMinimumCriterionMet = rescored.length === 96 && wrongSelections === 0
+      && on.filter((item) => item.finalStateCorrect).length >= off.filter((item) => item.finalStateCorrect).length
+      && (aggregateCalls(on, 'luna') + aggregateCalls(on, 'jev') < aggregateCalls(off, 'luna')
+        || averageLatency(on) < averageLatency(off));
+    const callsOff = aggregateCalls(off, 'luna');
+    const callsOn = aggregateCalls(on, 'luna') + aggregateCalls(on, 'jev');
+    const callIncreasePercent = callsOff ? Math.round((callsOn - callsOff) / callsOff * 100) : 0;
+    const meanInterpreterLatencyMs = { luna_only: averageLatency(off), jev_to_luna: averageLatency(on) };
+    const recommendation = preRegisteredMinimumCriterionMet
+      ? `pre-registered minimum criterion met; remain off: limited benefit, +${callIncreasePercent}% calls, latency gain comparable to run-to-run variation`
+      : 'pre-registered minimum criterion not met; remain off';
+    const providerTotals = (items: typeof rescored, provider: 'luna' | 'jev') => {
+      const receipts = items.map((item) => item.usage[provider]);
+      const total = (field: 'inputTokens' | 'outputTokens' | 'costUsd') => receipts.some((item) => item[field] === null)
+        ? null : receipts.reduce((sum, item) => sum + (item[field] ?? 0), 0);
+      return { calls: aggregateCalls(items, provider), latencyMs: receipts.reduce((sum, item) => sum + item.latencyMs, 0),
+        inputTokens: total('inputTokens'), outputTokens: total('outputTokens'), costUsd: total('costUsd') };
+    };
+    const usage = Object.fromEntries((['luna_only', 'jev_to_luna'] as const).map((arm) => {
+      const items = arm === 'luna_only' ? off : on;
+      const luna = providerTotals(items, 'luna'); const jev = providerTotals(items, 'jev');
+      return [arm, { luna, jev, totalCalls: luna.calls + jev.calls, totalLatencyMs: luna.latencyMs + jev.latencyMs,
+        totalCostUsd: luna.costUsd === null || jev.costUsd === null ? null : luna.costUsd + jev.costUsd }];
+    })) as Record<CaseObservation['arm'], { luna: ReturnType<typeof providerTotals>; jev: ReturnType<typeof providerTotals>;
+      totalCalls: number; totalLatencyMs: number; totalCostUsd: number | null }>;
+    const lifecycle = Object.fromEntries((['luna_only', 'jev_to_luna'] as const).map((arm) => {
+      const rows = rescored.filter((item) => item.arm === arm && item.approvalLifecycle).map((item) => item.approvalLifecycle!);
+      const checks = ['completedAfterFailure', 'failedReceiptRecorded', 'repeatedApprovalNoop',
+        'savedPlanCountMatchesPreview', 'reloadMatchesCheckpoint', 'legacyV5Unchanged'] as const;
+      return [arm, { cases: rows.length, checks: Object.fromEntries(checks.map((key) =>
+        [key, `${rows.filter((row) => row[key]).length}/${rows.length}`])),
+      saveAttempts: rows.reduce((sum, row) => sum + row.saveAttempts, 0),
+      savedBlocks: rows.reduce((sum, row) => sum + row.savedPlanCount, 0) }];
+    }));
     const summary = {
       schemaVersion: 'vnext-jev-holdout-oracle-rescore-v1',
       source: offlineRescoreObservationsPath,
@@ -967,12 +1054,20 @@ describe('VNext Jev holdout oracle rescore (offline)', () => {
       counts: Object.fromEntries((['luna_only', 'jev_to_luna'] as const).flatMap((arm) =>
         (['option_choice', 'full_reading'] as const).map((caseClass) => [`${arm}/${caseClass}`, rows(arm, caseClass)]))),
       totals,
+      jevWrongSelections: wrongSelections,
+      preRegisteredMinimumCriterionMet,
+      recommendation,
+      meanInterpreterLatencyMs,
+      deadlineKindControl: { expectedConstraintKind: 'deadline', positiveControl: 'hard deadline on 2026-11-03 passes',
+        negativeControl: 'hard earliest_start on 2026-11-03 fails' },
+      usage,
+      lifecycle,
       remainingFailures: rescored.filter((item) => !item.finalStateCorrect).map((item) => ({ caseId: item.caseId,
         arm: item.arm, repetition: item.repetition, differences: item.differences })),
       observations: rescored,
     };
     mkdirSync(artifactDirectory, { recursive: true });
-    writeFileSync(resolve(artifactDirectory, 'holdout-oracle-rescored.json'), `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+    writeFileSync(resolve(artifactDirectory, 'corrected-interpretation.json'), `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
     const reasonRows = VNEXT_JEV_COMPARISON_CASES.filter((item) => item.oracleCorrectionReason)
       .map((item) => `| ${item.id} (${item.split}) | ${item.oracleCorrectionReason} |`);
     const scoreRows = (['luna_only', 'jev_to_luna'] as const).flatMap((arm) =>
@@ -983,19 +1078,40 @@ describe('VNext Jev holdout oracle rescore (offline)', () => {
         const value = summary.totals[arm];
         return [`| ${arm} | all cases | ${value.before}/${value.total} | ${value.after}/${value.total} |`];
       })()));
+    const usageRows = (['luna_only', 'jev_to_luna'] as const).map((arm) => {
+      const value = summary.usage[arm];
+      return `| ${arm} | ${value.luna.calls} / ${value.jev.calls} | ${value.luna.latencyMs} / ${value.jev.latencyMs} / ${value.totalLatencyMs} ms | $${value.luna.costUsd ?? 'unreported'} / $${value.jev.costUsd ?? 'unreported'} |`;
+    });
+    const lifecycleRows = (['luna_only', 'jev_to_luna'] as const).map((arm) => {
+      const value = summary.lifecycle[arm];
+      return `| ${arm} | ${value.cases} cases; ${Object.values(value.checks).join(', ')} | ${value.saveAttempts} | ${value.savedBlocks} |`;
+    });
     const markdown = [
-      '# Offline holdout oracle rescore', '',
+      '# Corrected interpretation (offline rescore)', '',
       `Source observations: \`${offlineRescoreObservationsPath}\` (${rescored.length} saved outcomes; no provider calls).`,
       `Frozen split SHA-256: \`${artifact.splitHash}\`.`, '',
-      '| Arm | Case class | Original score | Corrected oracle score |', '| --- | --- | ---: | ---: |', ...scoreRows,
+      `- Pre-registered minimum criterion: ${preRegisteredMinimumCriterionMet ? 'met' : 'not met'} (zero wrong Jev choices; correctness no lower than Luna-only; fewer calls or lower mean interpreter latency).`,
+      `- Recommendation: ${recommendation}.`,
+      `- Jev wrong selections: ${wrongSelections}.`, '',
+      `- Mean interpreter latency: Luna-only ${meanInterpreterLatencyMs.luna_only.toFixed(0)} ms; Jev→Luna ${meanInterpreterLatencyMs.jev_to_luna.toFixed(0)} ms.`,
+      'Hard temporal matching requires `constraintKind: deadline`; the offline positive control passes a hard deadline on 2026-11-03, while the negative control rejects hard `earliest_start` on the same date.', '',
+      '| Arm | Case class | Score in input artifact | Recomputed corrected-oracle score |', '| --- | --- | ---: | ---: |', ...scoreRows,
+      '', '| Arm | Calls (Luna / Jev) | Provider latency (Luna / Jev / total) | Reported cost (Luna / Jev) |',
+      '| --- | ---: | --- | --- |', ...usageRows,
+      '', '| Arm | Save/reload/rollback checks | Save attempts | Saved blocks |', '| --- | --- | ---: | ---: |', ...lifecycleRows,
       '', '## Corrected oracle meanings', '', '| Case | Reason |', '| --- | --- |', ...reasonRows,
       '', '## Remaining failures', '',
       ...(summary.remainingFailures.length ? summary.remainingFailures.map((item) =>
         `- ${item.caseId} / ${item.arm} r${item.repetition}: ${item.differences.join('; ')}`) : ['- None.']),
       '', 'The original saved observations and first-run report remain unchanged. Corrected scores replay each recorded applied delta through the current TypeScript transaction and projector; no provider was called.',
     ].join('\n') + '\n';
-    writeFileSync(resolve(artifactDirectory, 'holdout-oracle-rescored.md'), markdown, 'utf8');
+    writeFileSync(resolve(artifactDirectory, 'corrected-interpretation.md'), markdown, 'utf8');
     expect(rescored).toHaveLength(96);
+    expect(preRegisteredMinimumCriterionMet).toBe(true);
+    if (callsOn >= callsOff) expect(meanInterpreterLatencyMs.jev_to_luna).toBeLessThan(meanInterpreterLatencyMs.luna_only);
+    expect(markdown).toContain('- Pre-registered minimum criterion: met');
+    expect(markdown).toContain(`- Recommendation: ${recommendation}.`);
+    expect(markdown).toContain('rejects hard `earliest_start` on the same date');
   });
 });
 

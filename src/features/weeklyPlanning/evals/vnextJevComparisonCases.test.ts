@@ -125,6 +125,7 @@ describe('VNext Jev → Luna comparison corpus', () => {
         .toEqual(testCase.finalState.scheduledWorkMinutes.slice().sort((a, b) => a - b));
       expect(finalState.graph.temporalConstraints.filter((fact) => finalState.graph.factLifecycles
         .some((entry) => entry.factId === fact.id && entry.status === 'active'))).toHaveLength(testCase.finalState.hardDeadlines.length);
+      expect(testCase.finalState.hardDeadlines.every((fact) => fact.constraintKind === 'deadline'), testCase.id).toBe(true);
       expect(finalState.workRelations.map((relation) => relation.kind).sort(), testCase.id)
         .toEqual(testCase.finalState.relations.map((relation) => relation.kind).sort());
     }
@@ -144,6 +145,8 @@ describe('VNext Jev → Luna comparison corpus', () => {
       expect(seededQuestion?.code).toBe(testCase.menuShape === 'remaining_conflict'
         ? 'remaining_inconsistent' : 'same_or_distinct_work');
     }
+    expect(VNEXT_JEV_COMPARISON_CASES.find((entry) => entry.id === 'h-mixed-deadline')?.finalState.hardDeadlines)
+      .toEqual([{ taskTitle: '数学プリント', date: '2026-11-03', constraintKind: 'deadline' }]);
   });
 
   it('documents every oracle correction in one line without changing the frozen utterances', () => {
