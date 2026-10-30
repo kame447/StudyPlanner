@@ -17,6 +17,7 @@ const TABS = [
 interface AppSettingsDialogProps extends AppSettingsGeneralProps {
   open: boolean;
   onClose: () => void;
+  onShowTutorial?: () => void;
 }
 
 function memoryOriginLabel(record: UserPlanningContextRecordV1): string {
@@ -27,7 +28,7 @@ function memoryOriginLabel(record: UserPlanningContextRecordV1): string {
 }
 
 // The entry point is retained; settings is now a standalone page, not a modal.
-export function AppSettingsDialog({ open, onClose, ...generalProps }: AppSettingsDialogProps) {
+export function AppSettingsDialog({ open, onClose, onShowTutorial, ...generalProps }: AppSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<AppSettingsTab>('settings');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
@@ -220,7 +221,7 @@ export function AppSettingsDialog({ open, onClose, ...generalProps }: AppSetting
                 </section>
               )}
             </div>
-          ) : <AppSettingsSupportPanel />}
+          ) : <AppSettingsSupportPanel onShowTutorial={onShowTutorial} />}
       </div>
     </div>
   </main>;

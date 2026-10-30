@@ -1,0 +1,117 @@
+.first-run-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: linear-gradient(155deg, #f1f8f5 0%, #f8f8f4 54%, #e8f1ec 100%);
+  color: #19332f;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 24px calc(14px + env(safe-area-inset-bottom, 0px));
+}
+.first-run-tour-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(100%, 490px);
+  min-height: min(760px, 100%);
+  margin: auto;
+}
+.first-run-tour button { font: inherit; cursor: pointer; }
+.first-run-tour button:focus-visible { outline: 3px solid #2b8577; outline-offset: 3px; }
+.first-run-tour-header { display: flex; justify-content: space-between; align-items: center; min-height: 44px; }
+.first-run-tour-brand { font-size: 1.15rem; font-weight: 800; letter-spacing: -.045em; }
+.first-run-tour-skip { min-height: 44px; padding: 9px 13px; border: 0; background: transparent; color: #54706b; font-size: .9rem; }
+.first-run-tour-main { display: flex; flex-direction: column; justify-content: center; min-width: 0; gap: 34px; touch-action: pan-y; }
+.first-run-tour-illustration {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: clamp(214px, 34vh, 304px);
+  overflow: hidden;
+  animation: motion-rise-in var(--motion-duration-base) var(--motion-ease-emphasized) both;
+  border: 1px solid #d4e5de;
+  border-radius: 28px;
+  background: linear-gradient(145deg, #e2f3ec, #f6faf7);
+}
+.first-run-tour-illustration[data-scene='study'] { background: linear-gradient(155deg, #ecf1fa, #f4f8fb); border-color: #dce5f1; }
+.first-run-tour-illustration[data-scene='review'] { background: linear-gradient(155deg, #f4efe2, #faf8f0); border-color: #e8e2d4; }
+.first-run-tour-illustration[data-scene='welcome'] { background: linear-gradient(155deg, #e0f2ed, #f5faf7); }
+.first-run-tour-example { position: absolute; top: 16px; right: 18px; font-size: .65rem; color: #6f8780; letter-spacing: .05em; }
+.first-run-tour-copy { text-align: center; padding: 0 7px; }
+.first-run-tour-eyebrow { display: block; margin-bottom: 13px; color: #176d66; font-size: .82rem; font-weight: 750; letter-spacing: .06em; }
+.first-run-tour-copy h1 { margin: 0; font-size: clamp(1.45rem, 6.2vw, 1.95rem); line-height: 1.38; letter-spacing: -.04em; font-weight: 800; outline: none; }
+.first-run-tour-copy p { max-width: 390px; margin: 16px auto 0; color: #526763; font-size: .96rem; line-height: 1.85; }
+.first-run-tour-footer { padding-top: 26px; }
+.first-run-tour-dots { display: flex; justify-content: center; gap: 7px; margin-bottom: 23px; }
+.first-run-tour-dots span { width: 8px; height: 8px; border-radius: 99px; background: #bed5cb; transition: width var(--motion-duration-base), background var(--motion-duration-base); }
+.first-run-tour-dots span.active { width: 25px; background: #176d66; }
+.first-run-tour-controls { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.first-run-tour-back { display: inline-flex; align-items: center; gap: 7px; min-height: 50px; border: 0; background: transparent; color: #46625b; }
+.first-run-tour-next { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-width: 154px; min-height: 54px; padding: 12px 22px; border: 0; border-radius: 16px; background: #176d66; color: white; font-weight: 700 !important; box-shadow: 0 9px 20px rgba(23, 109, 102, .18); }
+.first-run-tour-plan-link { display: block; width: fit-content; min-height: 42px; padding: 10px; margin: 12px auto 0; border: 0; background: transparent; color: #176d66; font-weight: 700 !important; }
+.first-run-tour button:active { opacity: .82; }
+
+.tour-cycle { display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; width: 90%; padding-bottom: 28px; }
+.tour-cycle-step { display: grid; justify-items: center; align-content: center; gap: 12px; width: 90px; height: 105px; background: white; border: 1px solid #d3e3db; border-radius: 20px; color: #176d66; box-shadow: 0 7px 18px #2a655012; font-weight: 700; font-size: .86rem; }
+.tour-cycle-step svg { width: 31px; height: 31px; stroke-width: 1.85; }
+.tour-cycle-arrow { flex: none; width: 15px; color: #82a99b; }
+.tour-cycle-loop { position: absolute; bottom: -9px; width: 100%; text-align: center; color: #668379; font-size: .78rem; }
+.tour-plan { display: grid; gap: 19px; width: 82%; }
+.tour-plan-chat { display: flex; align-items: center; gap: 9px; justify-self: end; padding: 11px 13px; border-radius: 16px 16px 4px 16px; background: #196e66; color: white; font-size: .76rem; box-shadow: 0 7px 16px #0c695b18; }
+.tour-plan-week { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px; border-radius: 16px; background: white; box-shadow: 0 7px 18px #28635512; }
+.tour-plan-week > div { display: grid; gap: 7px; align-content: start; min-width: 0; }
+.tour-plan-week small { color: #58746b; font-weight: 700; text-align: center; }
+.tour-plan-week span { display: grid; place-items: center; padding: 8px 2px; min-height: 36px; border-radius: 9px; font-size: .7rem; }
+.tour-plan-busy { background: #f1f2f3; color: #58616c; }
+.tour-plan-study { background: #d8efe6; color: #175c53; font-weight: 700; }
+.tour-study { width: 80%; padding: 20px 19px; border-radius: 20px; background: #fff; box-shadow: 0 10px 25px #26477212; }
+.tour-study-heading { display: flex; gap: 9px; align-items: center; padding-bottom: 16px; margin-bottom: 17px; border-bottom: 1px solid #ebeff3; font-weight: 750; }
+.tour-study-heading svg:first-child { color: #54749f; }
+.tour-study-heading svg:last-child { margin-left: auto; color: #176d66; }
+.tour-study-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 43px; gap: 9px; align-items: center; margin: 11px 0; font-size: .75rem; color: #596875; }
+.tour-study-row strong { text-align: right; color: #233849; font-size: .78rem; }
+.tour-study-bar { display: block; height: 10px; border-radius: 9px; background: #edf0f3; overflow: hidden; }
+.tour-study-bar i { display: block; height: 100%; background: #9eb4cf; border-radius: inherit; }
+.tour-study-row:nth-of-type(3) .tour-study-bar i { background: #287f74; }
+.tour-study-caption { margin-top: 17px; color: #176d66; font-size: .74rem; text-align: center; }
+.tour-review { display: grid; justify-items: center; width: 70%; min-width: 215px; padding: 15px 15px 14px; background: #fff; border-radius: 20px; box-shadow: 0 10px 23px #5e513215; }
+.tour-review-heading { color: #47564f; font-size: .84rem; font-weight: 700; }
+.tour-review-bars { display: flex; align-items: end; justify-content: center; gap: 30px; height: 116px; padding-top: 12px; }
+.tour-review-bars > div { display: grid; justify-items: center; align-items: end; gap: 6px; font-size: .72rem; color: #616d66; }
+.tour-review-bar { display: block; width: 46px; border-radius: 10px 10px 3px 3px; }
+.tour-review-bar.planned { height: 84px; background: #c2d1cc; }
+.tour-review-bar.recorded { height: 57px; background: #2c8276; }
+.tour-review-message { display: flex; align-items: center; gap: 7px; width: 100%; margin-top: 13px; padding: 10px 5px 2px; border-top: 1px solid #e9ede8; color: #42665c; font-size: .68rem; justify-content: center; }
+.tour-welcome { display: grid; gap: 11px; width: 76%; }
+.tour-welcome-card { display: flex; align-items: center; gap: 15px; padding: 13px 17px; border: 1px solid #d2e3dd; border-radius: 16px; background: white; box-shadow: 0 4px 15px #204a3c10; color: #1b5e56; font-size: .85rem; font-weight: 700; }
+@media (max-height: 690px) {
+  .first-run-tour-shell { min-height: 100%; }
+  .first-run-tour-main { gap: 17px; }
+  .first-run-tour-illustration { height: 175px; border-radius: 20px; }
+  .first-run-tour-copy p { margin-top: 9px; line-height: 1.5; font-size: .87rem; }
+  .first-run-tour-footer { padding-top: 12px; }
+  .first-run-tour-dots { margin-bottom: 12px; }
+}
+:root[data-theme='dark'] .first-run-tour { background: linear-gradient(150deg, #182824, #101919); color: #edf8f4; }
+:root[data-theme='dark'] .first-run-tour-illustration { filter: brightness(.82); }
+:root[data-theme='dark'] .first-run-tour-copy p { color: #acbfb8; }
+:root[data-theme='dark'] .first-run-tour-skip,
+:root[data-theme='dark'] .first-run-tour-back { color: #b5c9c1; }
+:root[data-theme='dark'] .first-run-tour-eyebrow,
+:root[data-theme='dark'] .first-run-tour-plan-link { color: #8dd4c5; }
+@media (prefers-reduced-motion: reduce) {
+  .first-run-tour-dots span { transition: none; }
+}
+.app-settings-page .support-tour-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--settings-border);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}

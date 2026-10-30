@@ -219,3 +219,12 @@ it('waits for an emergency material-removal commit instead of revealing a stale 
   expect(pending()).toBe(false);
   expect(dashboard.values.get('--home-dynamic-schedule-max')).toBe('50px');
 });
+
+it('does not mistake an existing fixed calendar event for an unused account', () => {
+  props.monthEvents = [{ id: 'appointment' } as any];
+  render(false, 0);
+  expect(renderer!.root.findAllByProps({ className: 'home-dashboard home-dashboard-default' })).toHaveLength(1);
+  props.monthEvents = [];
+  render(false, 0);
+  expect(renderer!.root.findAllByProps({ className: 'home-dashboard home-dashboard-setup' })).toHaveLength(1);
+});

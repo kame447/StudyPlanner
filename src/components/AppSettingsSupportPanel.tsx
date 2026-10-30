@@ -3,18 +3,23 @@ import {
   ChevronRight,
   FileText,
   Info,
+  Presentation,
   MessageSquare,
   ShieldCheck,
 } from 'lucide-react';
 import { FaqView } from './FaqView';
 
-export function AppSettingsSupportPanel() {
+export function AppSettingsSupportPanel({ onShowTutorial }: { onShowTutorial?: () => void } = {}) {
   return (
     <div className="section-stack">
       <FaqView />
 
       <section className="assistant-settings-card support-section">
         <strong>ヘルプ</strong>
+        {onShowTutorial ? <button type="button" className="support-link-row support-tour-link" onClick={onShowTutorial}>
+          <span className="support-link-main"><Presentation aria-hidden="true" size={20} strokeWidth={1.9} /><span>使い方を見る</span></span>
+          <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
+        </button> : null}
         <PublicPageLink className="support-link-row" href="/contact">
           <span className="support-link-main">
             <MessageSquare aria-hidden="true" size={20} strokeWidth={1.9} />

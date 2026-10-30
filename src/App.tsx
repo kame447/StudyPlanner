@@ -18,6 +18,7 @@ import { StudySessionProvider } from './components/StudySessionView';
 import { PublicPageBoundary } from './components/PublicPageBoundary';
 import { usePublicPageNavigation } from './components/PublicPageLink';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
+import { FirstRunTutorial } from './components/FirstRunTutorial';
 import { AppViewSwitcher } from './components/AppViewSwitcher';
 import type { BookshelfInitialAction } from './components/BookshelfView';
 import { DeferredBookshelfView as BookshelfView } from './components/DeferredBookshelfView';
@@ -43,6 +44,7 @@ import { useTimetableDisplayPreference } from './hooks/useTimetableDisplayPrefer
 import { useThemePreference } from './hooks/useThemePreference';
 import { AppearanceProvider, useAppAppearance } from './components/AppearanceProvider';
 import { scheduleAppViewPreload } from './lib/preloadAppViews';
+import { hasCompletedFirstRunTour, markFirstRunTourComplete } from './lib/firstRunTour';
 import { isPlannerDataReadyForOwner } from './domain/plannerDataReadAuthority';
 import { resolveActiveTimetableTerm } from './domain/timetableTerm';
 import type { ViewMode } from './types/domain';
@@ -98,6 +100,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   useEffect(() => { if (!state.booting) markRootStartupReady?.(); }, [state.booting, markRootStartupReady]);
   useEffect(() => { if (!state.booting && startupVisible) onReady?.(); }, [state.booting, startupVisible, onReady]);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
+  const [tutorialCompletedOwner, setTutorialCompletedOwner] = useState<string | null>(null);
+  const [tutorialReplayOwner, setTutorialReplayOwner] = useState<string | null>(null);
   const settingsNavigation = useSettingsNavigation();
   const streakNavigation = useStudyStreakNavigation(state.user?.id, !state.booting);
   const [quickEntry, setQuickEntry] = useState<{ ownerId: string; id: number; materialId?: string } | null>(null);
@@ -287,6 +291,20 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     setPendingMonthCreate(false);
   }, [isScheduleSurface, pendingMonthCreate, viewMode]);
 
+  const plannerReady = Boolean(user && isPlannerDataReadyForOwner(plannerDataAvailability, user.id));
+  const hasSavedContent = plans.length > 0 || actuals.length > 0 || monthEvents.length > 0
+    || todos.length > 0 || studyMaterials.length > 0 || studySubjects.length > 0
+    || scheduleTemplates.length > 0 || timetableTerms.length > 0 || timetablePeriods.length > 0;
+  const tutorialCompleted = Boolean(user && (tutorialCompletedOwner === user.id || hasCompletedFirstRunTour(user.id)));
+  useEffect(() => {
+    if (!user || !plannerReady || !hasSavedContent || tutorialCompleted) return;
+    // Existing users with saved content must never be treated as new users after they clear their data.
+    markFirstRunTourComplete(user.id);
+    setTutorialCompletedOwner(user.id);
+  }, [user?.id, plannerReady, hasSavedContent, tutorialCompleted]);
+  const showTutorial = Boolean(user && plannerReady && !publicPageOpen && !hasPlannerDataRecovery
+    && (tutorialReplayOwner === user.id || (!hasSavedContent && !tutorialCompleted)));
+
   // Readiness hooks above keep running behind the intro, but layout/scene
   // descendants must first mount with visible geometry and a fresh lifetime.
   if (!startupVisible || (publicPageOpen && presentedOwner !== (user?.id ?? null))) return null;
@@ -350,6 +368,13 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     setViewMode('timetable');
   }
 
+  function completeTutorial() {
+    if (!user) return;
+    markFirstRunTourComplete(user.id);
+    setTutorialCompletedOwner(user.id);
+    setTutorialReplayOwner(null);
+  }
+
   const primaryNavigation = {
     onOpenAiPlanning: openAiPlanningSurface,
     onOpenSchedule: openScheduleSurface,
@@ -357,6 +382,11 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     onOpenBookshelf: openBookshelfSurface,
     onOpenTimetable: openTimetableSurface,
   };
+
+  if (showTutorial) return <FirstRunTutorial
+    onFinish={completeTutorial}
+    onOpenAiPlanning={() => { completeTutorial(); openAiPlanningSurface(); }}
+  />;
 
   return (
     <HomeDisplayClockProvider>
@@ -753,6 +783,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
     </div>
       <AppSettingsDialog
+        onShowTutorial={() => { settingsNavigation.close(); setTutorialReplayOwner(user.id); }}
         homeScenePreferences={homeScenePreference.preferences}
         onChangeHomeSceneStyle={homeScenePreference.setStyle}
         onChangeHomeSceneMotion={homeScenePreference.setAnimated}
