@@ -5,6 +5,11 @@ env:
 
 on:
   workflow_dispatch:
+    inputs:
+      spec:
+        description: 'One live spec under tests/e2e to run (empty runs every *.live.mjs)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -52,4 +57,12 @@ jobs:
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
 
       - name: Run isolated production account verification
-        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.live.config.mjs
+        shell: bash
+        env:
+          LIVE_SPEC: ${{ inputs.spec }}
+        run: |
+          if [ -n "$LIVE_SPEC" ] && ! [[ "$LIVE_SPEC" =~ ^tests/e2e/[A-Za-z0-9._-]+\.live\.mjs$ ]]; then
+            echo "::error::spec must be a tests/e2e/*.live.mjs path"
+            exit 1
+          fi
+          ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.live.config.mjs ${LIVE_SPEC:+"$LIVE_SPEC"}
