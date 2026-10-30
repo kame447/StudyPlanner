@@ -137,7 +137,7 @@ describe('#926 no-cost integration gates', () => {
     const presentedQuestion = { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision };
     const vnextRaw = serializeWeeklyPlanningVNextSessionCheckpoint({
       ownerId: OWNER, weekStartDate: WEEK, conversationId: CONVERSATION,
-      vnext: { state, presentedQuestion }, savedAt: '2026-11-02T08:05:00.000Z',
+      vnext: { state, presentedQuestion, preview: null }, savedAt: '2026-11-02T08:05:00.000Z',
     })!;
     const reloaded = parseWeeklyPlanningVNextSessionCheckpoint({ raw: vnextRaw, ownerId: OWNER, weekStartDate: WEEK })!;
     expect(reloaded.vnext.state).toEqual(state);
@@ -150,9 +150,9 @@ describe('#926 no-cost integration gates', () => {
       graphRevision: reloaded.vnext.state.graph.revision,
     });
     expect(bindWeeklyPlanningVNextAnswer({
-      freshness: fresh, presented: reloaded.vnext.presentedQuestion, projection: reloadedProjection,
+      presentationFresh: fresh.status === 'fresh', presented: reloaded.vnext.presentedQuestion, projection: reloadedProjection,
       lineageOf: createVNextLineageResolver(reloaded.vnext.state.graph).lineageOf,
-      answer: { kind: 'estimate_minutes', minutes: 60, taskFactId: 'task-1' },
+      answer: { kind: 'estimate_minutes', minutes: 60 },
     }).status).toBe('bound');
     // A presentation made against the V5 revision is stale after migration.
     const staleFromV5 = resolveWeeklyPlanningQuestionPresentationFreshness({
@@ -181,14 +181,14 @@ describe('#926 no-cost integration gates', () => {
     expect(compileWeeklyPlanningVNextSchedulerInput({ state, projection: asked, context })).toEqual({ status: 'not_ready' });
 
     const binding = bindWeeklyPlanningVNextAnswer({
-      freshness: resolveWeeklyPlanningQuestionPresentationFreshness({
+      presentationFresh: resolveWeeklyPlanningQuestionPresentationFreshness({
         previousState: presentedIntake(state.graph.revision), inputStateRevision: 9,
         messages: [message('a2', 'assistant', '残り8枚は何分かかりそうですか？')], graphRevision: state.graph.revision,
-      }),
+      }).status === 'fresh',
       presented: { questionKey: asked.questions[0].key, graphRevision: asked.graphRevision },
       projection: asked,
       lineageOf: createVNextLineageResolver(state.graph).lineageOf,
-      answer: { kind: 'estimate_minutes', minutes: 60, taskFactId: 'task-1' },
+      answer: { kind: 'estimate_minutes', minutes: 60 },
     });
     if (binding.status !== 'bound') throw new Error(binding.status);
     state = applyTurn(state, binding.delta, 'answer', '60分');

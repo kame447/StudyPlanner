@@ -12,10 +12,18 @@ import {
   type VNextEffortEstimateFact,
   type WeeklyPlanningVNextState,
 } from '../weeklyPlanningVNextTypes';
+import type { WeeklyPlanDraftBlock } from '../../types';
 import type { WeeklyPlanningVNextPresentedQuestion } from './weeklyPlanningVNextAnswerBinding';
 
 export const WEEKLY_PLANNING_VNEXT_SESSION_CAPABILITY = 'vnext-conversation-core-v1' as const;
 const MAX_CHECKPOINT_BYTES = 2 * 1024 * 1024;
+
+/** The preview shown with the latest reply; approval saves exactly these blocks. */
+export interface WeeklyPlanningVNextShownPreview {
+  previewId: string;
+  graphRevision: number;
+  blocks: WeeklyPlanDraftBlock[];
+}
 
 export interface WeeklyPlanningVNextSessionCheckpoint {
   version: typeof WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION;
@@ -26,6 +34,7 @@ export interface WeeklyPlanningVNextSessionCheckpoint {
   vnext: {
     state: WeeklyPlanningVNextState;
     presentedQuestion: WeeklyPlanningVNextPresentedQuestion | null;
+    preview: WeeklyPlanningVNextShownPreview | null;
   };
   savedAt: string;
 }
@@ -71,6 +80,18 @@ function validState(value: unknown, conversationId: string): value is WeeklyPlan
   return relationsOk && deferralsOk;
 }
 
+function validPreview(value: unknown): boolean {
+  if (value === null) return true;
+  if (!isRecord(value) || !hasExactKeys(value, ['previewId', 'graphRevision', 'blocks'])
+    || typeof value.previewId !== 'string' || !Number.isInteger(value.graphRevision)
+    || !Array.isArray(value.blocks) || value.blocks.length === 0) return false;
+  return value.blocks.every((block) => {
+    if (!isRecord(block) || typeof block.id !== 'string' || !isRecord(block.behaviorMetadata)) return false;
+    const metadata = block.behaviorMetadata.previewMetadata;
+    return isRecord(metadata) && metadata.previewId === value.previewId && metadata.stateRevision === value.graphRevision;
+  });
+}
+
 export function serializeWeeklyPlanningVNextSessionCheckpoint(
   checkpoint: Omit<WeeklyPlanningVNextSessionCheckpoint, 'version' | 'requiredCapabilities'>,
 ): string | null {
@@ -99,8 +120,8 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
       || value.ownerId !== params.ownerId || value.weekStartDate !== params.weekStartDate
       || typeof value.conversationId !== 'string' || !value.conversationId.trim()
       || typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))
-      || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion'])
-      || !validState(value.vnext.state, value.conversationId)) return null;
+      || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion', 'preview'])
+      || !validState(value.vnext.state, value.conversationId) || !validPreview(value.vnext.preview)) return null;
     const presented = value.vnext.presentedQuestion;
     if (presented !== null && !(isRecord(presented) && hasExactKeys(presented, ['questionKey', 'graphRevision'])
       && typeof presented.questionKey === 'string' && Number.isInteger(presented.graphRevision))) return null;

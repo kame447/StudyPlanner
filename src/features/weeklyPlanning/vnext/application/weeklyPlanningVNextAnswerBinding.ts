@@ -1,9 +1,9 @@
-// Binds an answer to the question the user is actually looking at. The existing
-// presentation binding (planning-state revision, latest assistant message, graph
-// revision) stays the outer freshness check; inside it, the presented VNext
+// Binds an answer to the question the user is actually looking at. Whether the
+// presentation is still the one shown with the latest assistant message is the
+// caller's check (the existing presentation binding, or the session that stores
+// the presented question with its reply); inside it, the presented VNext
 // question must still be one the current projection asks. Answers become ordinary
 // typed deltas; the caller applies them as a turn and re-projects.
-import type { WeeklyPlanningQuestionPresentationFreshness } from '../../intake/weeklyPlanningQuestionPresentation';
 import type {
   VNextQuestion,
   VNextTurnDelta,
@@ -19,8 +19,8 @@ export interface WeeklyPlanningVNextPresentedQuestion {
 export type WeeklyPlanningVNextAnswer =
   /** A typed UI choice or a focused short answer resolved to one presented option. */
   | { kind: 'option'; optionId: string }
-  /** A total in minutes for the asked work; the binder names the work by identity, not the AI. */
-  | { kind: 'estimate_minutes'; minutes: number; taskFactId: string }
+  /** A total in minutes for the asked work; the binder names the task and work from the question, not the AI. */
+  | { kind: 'estimate_minutes'; minutes: number }
   /** A semantic reading of a longer answer, already a typed delta. */
   | { kind: 'delta'; delta: VNextTurnDelta };
 
@@ -46,7 +46,8 @@ function addressedLineages(delta: VNextTurnDelta, lineageOf: (factId: string) =>
 }
 
 export function bindWeeklyPlanningVNextAnswer(params: {
-  freshness: WeeklyPlanningQuestionPresentationFreshness;
+  /** The presented question is the one shown with the latest assistant message. */
+  presentationFresh: boolean;
   presented: WeeklyPlanningVNextPresentedQuestion | null;
   projection: WeeklyPlanningVNextProjection;
   /** Lineage of a fact id, from the current state. */
@@ -54,7 +55,7 @@ export function bindWeeklyPlanningVNextAnswer(params: {
   answer: WeeklyPlanningVNextAnswer;
 }): WeeklyPlanningVNextAnswerBinding {
   const current = params.projection.questions[0] ?? null;
-  if (params.freshness.status !== 'fresh' || !params.presented
+  if (!params.presentationFresh || !params.presented
     || params.presented.graphRevision !== params.projection.graphRevision) {
     return { status: 'represent', question: current };
   }
@@ -79,7 +80,7 @@ export function bindWeeklyPlanningVNextAnswer(params: {
         add: [{
           kind: 'effort_estimate',
           localId: 'answer_estimate',
-          taskRef: { factId: answer.taskFactId },
+          taskRef: { factId: question.taskId },
           targetRef: { workLineageId: question.forWork.workLineageId },
           effortKind: 'total_duration',
           minutes: answer.minutes,

@@ -93,8 +93,8 @@ describe('VNext session: migration, answer binding inside presentation freshness
     });
     expect(freshness.status).toBe('fresh');
     const binding = bindWeeklyPlanningVNextAnswer({
-      freshness, presented, projection, lineageOf: createVNextLineageResolver(state.graph).lineageOf,
-      answer: { kind: 'estimate_minutes', minutes: 60, taskFactId: 'task-1' },
+      presentationFresh: freshness.status === 'fresh', presented, projection, lineageOf: createVNextLineageResolver(state.graph).lineageOf,
+      answer: { kind: 'estimate_minutes', minutes: 60 },
     });
     expect(binding.status).toBe('bound');
     if (binding.status !== 'bound') return;
@@ -119,10 +119,10 @@ describe('VNext session: migration, answer binding inside presentation freshness
       graphRevision: state.graph.revision,
     });
     const binding = bindWeeklyPlanningVNextAnswer({
-      freshness,
+      presentationFresh: freshness.status === 'fresh',
       presented: { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision },
       projection, lineageOf: createVNextLineageResolver(state.graph).lineageOf,
-      answer: { kind: 'estimate_minutes', minutes: 60, taskFactId: 'task-1' },
+      answer: { kind: 'estimate_minutes', minutes: 60 },
     });
     expect(binding).toEqual({ status: 'represent', question: projection.questions[0] });
   });
@@ -132,7 +132,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
     const projection = projectWeeklyPlanningVNext(state);
     const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
       ownerId: 'owner-1', weekStartDate: '2026-11-02', conversationId,
-      vnext: { state, presentedQuestion: { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision } },
+      vnext: { state, presentedQuestion: { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision }, preview: null },
       savedAt: '2026-10-30T00:00:00.000Z',
     })!;
     const parsed = parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: 'owner-1', weekStartDate: '2026-11-02' });
@@ -191,7 +191,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
       patch: [], remove: [], relate: [], defer: [],
     };
     expect(bindWeeklyPlanningVNextAnswer({
-      freshness, presented: { questionKey: question.key, graphRevision: projection.graphRevision }, projection,
+      presentationFresh: freshness.status === 'fresh', presented: { questionKey: question.key, graphRevision: projection.graphRevision }, projection,
       lineageOf: createVNextLineageResolver(state.graph).lineageOf, answer: { kind: 'delta', delta },
     })).toMatchObject({ status: 'bound', delta });
   });

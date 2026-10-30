@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       profile:
-        description: 'checkpoint = focused stochastic checks; merge-gate = full repeated audit'
+        description: 'checkpoint = focused stochastic checks; merge-gate = full repeated audit; vnext = #926 native VNext provider and V5/VNext comparison'
         required: true
         default: checkpoint
         type: choice
@@ -15,6 +15,7 @@ on:
           - checkpoint
           - merge-gate
           - smoke
+          - vnext
       repetitions:
         description: 'Run 1-10 independent repetitions in parallel'
         required: true
@@ -60,7 +61,7 @@ jobs:
             fi
           fi
           case "$profile" in
-            checkpoint|merge-gate|smoke) ;;
+            checkpoint|merge-gate|smoke|vnext) ;;
             *) echo "unsupported profile: $profile" >&2; exit 1 ;;
           esac
           case "$repetitions" in
@@ -83,7 +84,7 @@ jobs:
       matrix:
         iteration: ${{ fromJSON(needs.prepare.outputs.iterations) }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ needs.prepare.outputs.profile == 'vnext' && 120 || 30 }}
     env:
       TZ: Asia/Tokyo
       REAL_API_PROFILE: ${{ needs.prepare.outputs.profile }}
@@ -195,6 +196,20 @@ jobs:
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156TimeboxOveraskingRealApi.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156TypedRendererMatrix.observation.test.ts \
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+
+      # #926: the experimental VNext provider (unwired) and the same synthetic
+      # conversations through Stable V5 and VNext. No user records are used.
+      - name: Run VNext native real API comparison
+        if: ${{ env.REAL_API_PROFILE == 'vnext' }}
+        shell: bash
+        env:
+          VITE_AI_MAX_PROCESS_REQUESTS: '600'
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProvider.realApi.observation.test.ts \
+            src/features/weeklyPlanning/evals/vnextRealApiComparison.observation.test.ts \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Upload observations
