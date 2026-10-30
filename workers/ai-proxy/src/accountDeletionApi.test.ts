@@ -31,6 +31,10 @@ class FakeFirestore {
   private version = 0;
   private versions = new Map<string, string>();
   deleteAuthError: string | null = null;
+  // Opt-in: model Auth removal and a lost completion write after it.
+  modelAuthDeletion = false;
+  authDeleted = false;
+  failJobWriteAfterAuth = false;
   emailVerified = true;
   origin?: string;
   writeDocument(path: string, value: Record<string, unknown>) {
@@ -46,8 +50,12 @@ class FakeFirestore {
     const body = JSON.parse(String(init?.body ?? '{}'));
     if (url.hostname === 'identitytoolkit.googleapis.com') {
       const claims = JSON.parse(atob(body.idToken.split('.')[1]));
-      if (url.pathname.endsWith('accounts:lookup')) return response({ users: [{ localId: claims.sub, emailVerified: this.emailVerified }] });
+      if (url.pathname.endsWith('accounts:lookup')) {
+        if (this.authDeleted) return response({ error: { message: 'USER_NOT_FOUND' } }, 400);
+        return response({ users: [{ localId: claims.sub, emailVerified: this.emailVerified }] });
+      }
       this.events.push('auth');
+      if (this.modelAuthDeletion && !this.deleteAuthError) this.authDeleted = true;
       return this.deleteAuthError ? response({ error: { message: this.deleteAuthError } }, 400) : response({});
     }
     expect(url.hostname).toBe('firestore.googleapis.com');
@@ -107,6 +115,7 @@ class FakeFirestore {
       return response(this.document(documentPath));
     }
     if (init?.method === 'PATCH') {
+      if (this.failJobWriteAfterAuth && this.authDeleted && path.startsWith('account_deletions/')) return response({}, 503);
       this.events.push(`write:${path}`);
       this.writeDocument(path, decodeFirestoreFields(body.fields));
       return response(this.document(path));
@@ -435,6 +444,23 @@ describe('account deletion API', () => {
     expect(fake.documents.get('account_deletions/owner')).not.toHaveProperty('leaseUntil');
   });
 
+  it('keeps an unfinished, non-expiring tombstone with the Auth marker when completion is lost after Auth deletion', async () => {
+    const { fake, env, complete, call } = setup();
+    fake.modelAuthDeletion = true;
+    fake.failJobWriteAfterAuth = true;
+    const { result } = await complete();
+    expect(result.status).toBe(503);
+    const record = fake.documents.get('account_deletions/owner');
+    expect(record).toMatchObject({ status: 'deleting' });
+    expect(record).toHaveProperty('authDeletionStartedAt');
+    expect(record).not.toHaveProperty('expiresAt');
+    expect(record?.completedSteps).not.toContain('auth');
+    // The owner can no longer verify; the runbook closes this state.
+    expect((await call()).status).toBe(401);
+    expect(await sweepExpiredAccountDeletions(new FirestoreServiceAccountClient(env, tokenProvider), new Date(NOW + 400 * 86_400_000))).toBe(0);
+    expect(fake.documents.has('account_deletions/owner')).toBe(true);
+  });
+
   it('maps Identity Toolkit recent-login failures to reauthentication and keeps the tombstone', async () => {
     const { fake, complete } = setup();
     fake.deleteAuthError = 'CREDENTIAL_TOO_OLD_LOGIN_AGAIN';
@@ -472,17 +498,18 @@ describe('account deletion API', () => {
     expect(preflight.headers.get('Access-Control-Allow-Methods')).toBe('POST, OPTIONS');
   });
 
-  it('sweeps expired completed and unfinished tombstones and retains unexpired records', async () => {
+  it('sweeps only expired completed records; unfinished tombstones never expire', async () => {
     const { fake, env } = setup();
     const expired = new Date(NOW - 1).toISOString();
     fake.documents.set('account_deletions/old-completed', { status: 'completed', expiresAt: expired });
-    fake.documents.set('account_deletions/old-deleting', { status: 'deleting', expiresAt: expired });
+    fake.documents.set('account_deletions/unfinished', { status: 'deleting' });
+    fake.documents.set('account_deletions/unfinished-with-expiry', { status: 'deleting', expiresAt: expired });
     fake.documents.set('account_deletions/keep', { status: 'completed', expiresAt: new Date(NOW + 1).toISOString() });
-    expect(await sweepExpiredAccountDeletions(new FirestoreServiceAccountClient(env, tokenProvider))).toBe(2);
-    expect([...fake.documents.keys()]).toEqual(['account_deletions/keep']);
+    expect(await sweepExpiredAccountDeletions(new FirestoreServiceAccountClient(env, tokenProvider))).toBe(1);
+    expect([...fake.documents.keys()].sort()).toEqual([
+      'account_deletions/keep', 'account_deletions/unfinished', 'account_deletions/unfinished-with-expiry']);
     expect(fake.commits).toEqual([
       { delete: `${BASE}/account_deletions/old-completed`, currentDocument: { updateTime: '2026-10-30T00:00:00Z' } },
-      { delete: `${BASE}/account_deletions/old-deleting`, currentDocument: { updateTime: '2026-10-30T00:00:00Z' } },
     ]);
   });
 });

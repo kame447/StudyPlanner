@@ -39,7 +39,10 @@ export interface AccountDeletionRecord extends Record<string, unknown> {
   // entry is removed first so later events cannot be attached to this account.
   observabilityActorSubjectId?: string | null;
   workerRevision: string;
-  expiresAt: string;
+  // Only a completed record expires. An unfinished one may belong to an Auth
+  // account that still exists, so it keeps blocking that account's writes.
+  expiresAt?: string;
+  authDeletionStartedAt?: string;
   leaseUntil?: string;
 }
 
@@ -92,7 +95,6 @@ export async function runAccountDeletionJob(
     : {
       schemaVersion: 1, uid, status: 'deleting', requestedAt, updatedAt: requestedAt,
       attempts: 1, completedSteps: [], deletedCounts: {}, workerRevision: ports.workerRevision,
-      expiresAt: new Date(now().getTime() + RETENTION_MS).toISOString(),
     };
   delete job.id;
   const save = async () => {
@@ -239,7 +241,14 @@ export async function runAccountDeletionJob(
       }
       return 0;
     } },
-    { name: 'auth', async run() { await ports.deleteAuth(); return 1; } },
+    { name: 'auth', async run() {
+      // Marks the only window where Auth may be gone while the record still
+      // says deleting (runbook: verify Auth absence, then mark completed).
+      job.authDeletionStartedAt = now().toISOString();
+      await save();
+      await ports.deleteAuth();
+      return 1;
+    } },
   ];
 
   try {
@@ -282,7 +291,7 @@ export async function sweepExpiredAccountDeletions(
     collection: ACCOUNT_DELETION_COLLECTION, orderByField: 'expiresAt', limit: 100,
     endAtString: now.toISOString(),
   });
-  const expired = rows.filter((row) => typeof row.expiresAt === 'string'
+  const expired = rows.filter((row) => row.status === 'completed' && typeof row.expiresAt === 'string'
     && Number.isFinite(Date.parse(row.expiresAt)) && Date.parse(row.expiresAt) <= now.getTime());
   await firestore.commitWrites(expired.map((row) => ({
     collection: ACCOUNT_DELETION_COLLECTION, id: row.id, delete: true as const,

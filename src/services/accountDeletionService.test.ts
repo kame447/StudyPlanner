@@ -11,7 +11,8 @@ afterEach(() => { resumeAccountClientWrites('A'); });
 function fixture() {
   const user = { uid: 'A', getIdToken: vi.fn().mockResolvedValue('recent-token') };
   const deps = { getSession: vi.fn(() => user as typeof user | null), reauthenticate: vi.fn().mockResolvedValue(undefined),
-    endpoint: () => 'https://worker.test/account/delete', request: vi.fn<typeof fetch>() };
+    endpoint: () => 'https://worker.test/account/delete', request: vi.fn<typeof fetch>(),
+    authAccountGone: vi.fn().mockResolvedValue(false) };
   return { user, deps, run: createAccountDeletionService(deps) };
 }
 const response = (status: number, body: object) => new Response(JSON.stringify(body), { status });
@@ -50,6 +51,15 @@ describe('account deletion client', () => {
     deps.reauthenticate.mockImplementationOnce(async () => { deps.getSession.mockReturnValue(null); });
     expect(await run('A')).toEqual({ status: 'failed', reason: 'session_changed' });
     expect(deps.request).not.toHaveBeenCalled();
+  });
+  it('never reports success from Auth absence without a completion record', async () => {
+    const { deps, run } = fixture();
+    deps.request.mockResolvedValueOnce(response(401, { errorCode: 'account_deletion_auth_required' }));
+    deps.authAccountGone.mockResolvedValueOnce(true);
+    expect(await run('A')).toEqual({ status: 'failed', reason: 'unconfirmed' });
+    deps.reauthenticate.mockRejectedValueOnce(new Error('user not found'));
+    deps.authAccountGone.mockResolvedValueOnce(true);
+    expect(await run('A')).toEqual({ status: 'failed', reason: 'unconfirmed' });
   });
   it('treats a lost completion response as retryable uncertainty', async () => {
     const { deps, run } = fixture(); deps.request.mockRejectedValue(new TypeError('network'));

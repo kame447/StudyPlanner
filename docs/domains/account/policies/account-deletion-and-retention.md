@@ -123,7 +123,7 @@ Owner: Issue #917
 
 | 保持するもの | 理由 | 期限・消去の境界 |
 | --- | --- | --- |
-| `account_deletions/{uid}` | 古い端末からの再出現防止、進捗復旧、削除の監査 | 作成時は受付から180日、完了時に完了から180日へ更新する。定期処理で期限切れを削除。失敗中にAuthだけ削除済みでも作成時期限が残る |
+| `account_deletions/{uid}` | 古い端末からの再出現防止、進捗復旧、削除の監査 | 完了時に完了から180日の期限を付け、定期処理は完了済みの期限切れだけを削除する。未完了の記録は期限を持たず、Authが残っていても書込み防止を続ける |
 | traceアクセス監査 | 閲覧・調査・削除操作の説明可能性 | [#45のtrace契約](../../weekly-planning/architecture/weekly-planning-conversation-trace.md)と[privacy / lifecycle記録](../../weekly-planning/work/20260731-trace-privacy-and-lifecycle.md)に従う。#917では変更しない |
 | AI_TURNSの入力・provider応答・結果 | 非同期処理の復帰 | 受付から最大24時間。期限でalarm / 読取処理が本文等を除去 |
 | AI_TURNSの期限切れwatermark | 同じ古いリクエストの重複実行防止 | 本文・IP・provider応答なし。UID、会話ID、request ID、revision、digest、status、日時は会話単位で残る。自動削除期限なし。UIDとの対応を保持するため匿名とは扱わない |
@@ -147,12 +147,17 @@ AI_TURNSの根拠は[処理レコード](../../../../workers/ai-proxy/src/durabl
 2. 権限のあるFirestore管理画面で `account_deletions/{uid}` を個別取得します。`status`, `updatedAt`, `attempts`, `completedSteps`, `deletedCounts`, `lastErrorCode`, `workerRevision` を確認します。利用者へ内部コードや秘密情報を貼る必要はありません。
 3. `status == deleting` の場合、最後に完了した段階と `lastErrorCode` を起点に、該当Worker revisionと失敗した依存先の応答を照合します。通信断だけで失敗とも完了とも決め付けません。`lastErrorCode` がなくても未完了は未完了です。
 4. 利用者には同じ設定の退会ダイアログで再試行してもらいます。未完了ジョブを検出したログインでは同じ再試行画面を出し、通常の編集へ戻しません。再認証が必要ならパスワード入力またはGoogle再認証をやり直します。`in_progress` はクライアントが続きの呼出しを行います。
-5. `completed` はサーバーが完了を書き込んだ証拠です。完了応答を確認した端末のローカル消去とサインアウトは別途確認します。Authがすでに消え、完了記録や応答だけが確認できない場合は、利用者へ再認証を繰り返させず、管理経路でAuth不在と各削除段階を照合してエスカレーションします。
-6. 復旧のために必要な修正・再実行は、同じジョブとコードの責任境界で行い、Issueにrevision、段階、分類した原因、検証結果を残します。実データをIssueやログへ転載しません。
+5. `completed` はサーバーが完了を書き込んだ証拠です。完了応答を確認した端末のローカル消去とサインアウトは別途確認します。
+6. Authが消えていて `status == deleting` の場合、利用者は再認証できず、アプリは「退会処理の状況を確認できませんでした。お問い合わせください。」と表示します（成功とは表示しません）。運用者が次の順で閉じます。
+   1. Firebase AuthenticationでUIDが存在しないことを確認します。
+   2. `authDeletionStartedAt` があれば、ジョブがAuth削除段階まで進んだ後に完了記録を書けなかった状態です（Auth削除はすべてのデータ段階の後にだけ実行されます）。ない場合は、ジョブ外でAuthが削除された可能性があり、データが残っている前提で扱います。
+   3. どちらの場合も、上の棚卸し表の各保存先で、そのUID（UIDキー・`userId`・trace旧形式）とactorの残存がないことを管理画面で確認し、残存があれば当該文書だけを削除して件数をIssueへ記録します。
+   4. 残存なしを確認した後にだけ、`account_deletions/{uid}` を `status: completed`、`completedAt`、`expiresAt`（完了から180日）、`completedSteps` に `auth` を加えた形へ更新し、確認内容をIssueへ残します。
+7. 復旧のために必要な修正・再実行は、同じジョブとコードの責任境界で行い、Issueにrevision、段階、分類した原因、検証結果を残します。実データをIssueやログへ転載しません。
 
 禁止事項:
 
-- ジョブや `completedSteps` を手で消す、完了へ書き換える、再出現防止を外す。
+- ジョブや `completedSteps` を手で消す、手順6の確認なしに完了へ書き換える、未完了の記録に期限を付ける、再出現防止を外す。
 - 残りの削除が終わる前にAuthアカウントを手動削除する。
 - 別利用者の文書、共有集計、共有IP bucketを一括削除して復旧する。
 - 認証トークンや鍵をブラウザ保存領域から抜き出してセッションを再構築する。
