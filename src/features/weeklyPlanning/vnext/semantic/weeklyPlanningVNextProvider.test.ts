@@ -30,15 +30,15 @@ function input(responses: (string | Error)[]): WeeklyPlanningVNextInterpretation
     if (response instanceof Error) throw response;
     if (response === undefined) throw new Error('Unexpected extra model call');
     return response;
-  }) }, state, projection: projectWeeklyPlanningVNext(state), presentedQuestion: null, userText: '数学は残り7枚です',
-  clock: { currentDate: '2026-10-30', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } };
+  }) }, state, projection: projectWeeklyPlanningVNext(state), presentedQuestion: null, presentedText: null, userText: '数学は残り7枚です',
+  clock: { weekStartsOn: 'monday', currentDate: '2026-10-30', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } };
 }
 
 function changedUnitInput(): WeeklyPlanningVNextInterpretationInput {
   const params = input([]);
   const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add:
     VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === 'custom-unit-change')!.seed }, {
-    expectedRevision: 0, acceptedDate: params.clock.currentDate, turnKey: 'unit-seed',
+    expectedRevision: 0, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'unit-seed',
     conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic',
   });
   if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
@@ -46,19 +46,64 @@ function changedUnitInput(): WeeklyPlanningVNextInterpretationInput {
     localId: 'unit', targetFactId: seed.state.graph.workloads[0].id, amountDelta: null,
     changes: { amount: 2, unitCode: null, unitLabel: 'セット', quantityRole: null, rangeStart: null, rangeEnd: null,
       perOccurrence: null, periodExpression: null } }] }, {
-    expectedRevision: seed.state.graph.revision, acceptedDate: params.clock.currentDate, turnKey: 'unit-change',
+    expectedRevision: seed.state.graph.revision, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'unit-change',
     conversationId: 'synthetic', turnId: 'change', sourceText: '残り2セット',
   });
   if (changed.status !== 'applied') throw new Error(JSON.stringify(changed));
   params.state = changed.state;
   params.projection = projectWeeklyPlanningVNext(changed.state);
   params.presentedQuestion = params.projection.questions[0];
+  params.presentedText = params.presentedQuestion ? 'Synthetic displayed question' : null;
   params.userText = '1セットあたり20分です。';
   expect(params.presentedQuestion).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 2, unitLabel: 'セット' } });
   return params;
 }
 
 describe('VNext native provider', () => {
+  it('sends the actual displayed option order and decodes its typed option alias (VP05)', async () => {
+    const params = input([]);
+    const scenario = VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === '882-iter4-explicit-r8')!;
+    const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: scenario.seed }, {
+      expectedRevision: 0, acceptedDate: params.clock.currentDate, weekStartsOn: params.clock.weekStartsOn,
+      planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate },
+      turnKey: 'display-seed', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic',
+    });
+    if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
+    params.state = seed.state;
+    params.projection = projectWeeklyPlanningVNext(seed.state);
+    params.presentedQuestion = params.projection.questions[0];
+    const shown = '数学について、終わった量を13枚にする、または残りを8枚にする、どちらにしますか？';
+    params.presentedText = shown;
+    params.userText = '前者でお願いします';
+    params.client.createChatCompletion = vi.fn(async request => {
+      const context = JSON.parse(request.messages[1].content as string);
+      expect(context.presentedText).toBe(shown);
+      expect(context.presentedQuestion.code).toBe('remaining_inconsistent');
+      const firstShown = context.presentedQuestion.options.find((option: { value: number }) => option.value === 13);
+      expect(firstShown).toBeDefined();
+      return JSON.stringify(output([], { kind: 'option', optionId: firstShown.optionId, minutes: null, per: null }));
+    });
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', answer: { kind: 'option', optionId: 'completed_follows_remaining' }, metrics: { calls: 1, repairs: 0 } });
+  });
+
+  it('uses the supplied horizon in its dry-run and final transaction for a field-only weekday repair', async () => {
+    const due = { kind: 'temporal_constraint', localId: 'due', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+      constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: 'weekday:friday', namedTimePeriod: null,
+      startTime: null, endTime: '13:00', precision: 'exact' };
+    const params = input([JSON.stringify(output([task(), due])), JSON.stringify(output([task(), { ...due, dateExpression: 'weekday:wednesday' }]))]);
+    params.clock = { currentDate: '2026-11-02', weekStartsOn: 'sunday', planningStartDate: '2026-11-02', planningEndDate: '2026-11-04', timeZone: 'Asia/Tokyo' };
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    const request = vi.mocked(params.client.createChatCompletion).mock.calls[1][0];
+    expect(JSON.parse(request.messages[3].content as string).errors).toEqual([{ path: 'add[1].dateExpression', localId: 'due' }]);
+    if (result.status !== 'interpreted') throw new Error('expected interpretation');
+    const final = applyWeeklyPlanningVNextTurn(params.state, result.delta, { expectedRevision: 0, acceptedDate: params.clock.currentDate,
+      weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate },
+      turnKey: 'date-repair', conversationId: 'synthetic', turnId: 'date-repair', sourceText: params.userText });
+    expect(final.status === 'applied' && final.state.graph.temporalConstraints[0].dateExpression).toBe('2026-11-04');
+  });
+
   it('reuses the five ported V5 vocabularies in its strict schema and shared prompt', () => {
     type Schema = { properties?: Record<string, Schema>; enum?: readonly string[]; items?: Schema; anyOf?: Schema[] };
     const root = VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.schema as Schema;
@@ -91,7 +136,7 @@ describe('VNext native provider', () => {
     expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 1, repairs: 0 } });
     expect(params.state).toEqual(before);
     if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
-    const applied = applyWeeklyPlanningVNextTurn(params.state, result.delta, { expectedRevision: 0, acceptedDate: params.clock.currentDate,
+    const applied = applyWeeklyPlanningVNextTurn(params.state, result.delta, { expectedRevision: 0, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate,
       turnKey: 'ported', conversationId: 'synthetic', turnId: 'turn', sourceText: 'synthetic typed port' });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     expect(applied.state.graph.planningWindows[0]).toMatchObject({ kind: 'absolute', start: '2026-11-02', end: '2026-11-08' });
@@ -124,7 +169,7 @@ describe('VNext native provider', () => {
       let state = createEmptyWeeklyPlanningVNextState();
       if (scenario.seed.length) {
         const seeded = applyWeeklyPlanningVNextTurn(state, { ...emptyDelta(), add: scenario.seed }, {
-          expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: `seed:${scenario.id}`, conversationId: 'synthetic', turnId: 'seed', sourceText: 'Synthetic evidence',
+          expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: `seed:${scenario.id}`, conversationId: 'synthetic', turnId: 'seed', sourceText: 'Synthetic evidence',
         });
         expect(seeded.status, `${scenario.id}: ${JSON.stringify(seeded)}`).toBe('applied');
         if (seeded.status === 'applied') state = seeded.state;
@@ -137,7 +182,7 @@ describe('VNext native provider', () => {
     const scenario = VNEXT_PROVIDER_SCENARIOS.find(item => item.id === 'deadline-tomorrow-1300')!;
     expect(scenario.clock?.currentDate).toBe('2026-08-26');
     const seed = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), { ...emptyDelta(), add: scenario.seed },
-      { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'seed-bound', conversationId: 'synthetic', turnId: 'seed', sourceText: 'seed' });
+      { expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'seed-bound', conversationId: 'synthetic', turnId: 'seed', sourceText: 'seed' });
     if (seed.status !== 'applied') throw new Error('setup');
     const reading = { status: 'interpreted' as const, delta: emptyDelta(), answer: null,
       metrics: { calls: 1, repairs: 0, latencyMs: 0 } };
@@ -202,7 +247,7 @@ describe('VNext native provider', () => {
       expect(requirement).toContain('remaining = an amount stated as what is left of a bounded whole, even when the user also intends to do it in this planning period');
       expect(requirement).toContain('target = an amount intended for this planning period that is not stated as a remainder');
       const applied = applyWeeklyPlanningVNextTurn(params.state, result.delta, { expectedRevision: 0,
-        acceptedDate: params.clock.currentDate, turnKey: role, conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText });
+        weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: role, conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText });
       if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
       const failures = checkVNextProviderScenario(scenario.turns[0].expected, params.state, applied.state, result);
       if (role === 'remaining') expect(failures).toEqual([]);
@@ -217,12 +262,13 @@ describe('VNext native provider', () => {
       { kind: 'workload', localId: 'w', taskRef: { localId: 't' }, componentRef: null,
         quantityRole: 'remaining', amount: 50, unitCode: 'custom', unitLabel: '%', rangeStart: null, rangeEnd: null,
         perOccurrence: false, periodExpression: null },
-    ] }, { expectedRevision: 0, acceptedDate: params.clock.currentDate, turnKey: 'percentage',
+    ] }, { expectedRevision: 0, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'percentage',
       conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
     if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
     params.state = seed.state;
     params.projection = projectWeeklyPlanningVNext(params.state);
     params.presentedQuestion = params.projection.questions[0];
+    params.presentedText = params.presentedQuestion ? 'Synthetic displayed question' : null;
     expect(params.presentedQuestion).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 50, unitLabel: '%' } });
     params.userText = '残りは1時間半くらいです';
     const interpreted = await createWeeklyPlanningVNextProviderInterpreter()(params);
@@ -237,7 +283,7 @@ describe('VNext native provider', () => {
       projection: params.projection, graph: params.state.graph, interpreted });
     if (resolved.status !== 'delta') throw new Error(JSON.stringify(resolved));
     const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, { expectedRevision: params.state.graph.revision,
-      acceptedDate: params.clock.currentDate, turnKey: 'answer', conversationId: 'synthetic', turnId: 'answer', sourceText: params.userText });
+      weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'answer', conversationId: 'synthetic', turnId: 'answer', sourceText: params.userText });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     expect(applied.state.graph.workloads).toEqual(params.state.graph.workloads);
     const projection = projectWeeklyPlanningVNext(applied.state);
@@ -250,7 +296,7 @@ describe('VNext native provider', () => {
     const timeWork = await createWeeklyPlanningVNextProviderInterpreter()(unasked);
     if (timeWork.status !== 'interpreted') throw new Error(JSON.stringify(timeWork));
     const created = applyWeeklyPlanningVNextTurn(unasked.state, timeWork.delta, { expectedRevision: 0,
-      acceptedDate: unasked.clock.currentDate, turnKey: 'unasked', conversationId: 'synthetic', turnId: 'unasked', sourceText: unasked.userText });
+      weekStartsOn: unasked.clock.weekStartsOn, planningHorizon: { startDate: unasked.clock.planningStartDate, endDate: unasked.clock.planningEndDate }, acceptedDate: unasked.clock.currentDate, turnKey: 'unasked', conversationId: 'synthetic', turnId: 'unasked', sourceText: unasked.userText });
     if (created.status !== 'applied') throw new Error(JSON.stringify(created));
     expect(timeWork.answer).toBeNull();
     expect(created.state.graph.workloads).toEqual([expect.objectContaining({ quantityRole: 'target', amount: 45, unitCode: 'minute' })]);
@@ -269,7 +315,7 @@ describe('VNext native provider', () => {
     if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
     expect(result.delta.add[1]).toMatchObject({ amount: 45, quantityRole: 'target', unitCode: 'minute', unitLabel: '分' });
     const applied = applyWeeklyPlanningVNextTurn(params.state, result.delta, {
-      expectedRevision: 0, acceptedDate: params.clock.currentDate, turnKey: 'valid-time-work', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText,
+      expectedRevision: 0, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'valid-time-work', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText,
     });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     const projection = projectWeeklyPlanningVNext(applied.state);
@@ -357,12 +403,13 @@ describe('VNext native provider', () => {
       { ...workload('slide-work'), kind: 'workload', quantityRole: 'remaining', amount: 10, taskRef: { localId: 'slides' }, unitCode: 'page' },
       { kind: 'task', localId: 'files', category: 'study', title: 'Files' },
       { ...workload('file-work'), kind: 'workload', quantityRole: 'remaining', amount: 30, taskRef: { localId: 'files' }, unitCode: 'minute', unitLabel: '分' },
-    ] }, { expectedRevision: 0, acceptedDate: params.clock.currentDate, turnKey: 'separate-seed',
+    ] }, { expectedRevision: 0, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'separate-seed',
       conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
     if (seeded.status !== 'applied') throw new Error(JSON.stringify(seeded));
     params.state = seeded.state;
     params.projection = projectWeeklyPlanningVNext(params.state);
     params.presentedQuestion = params.projection.questions[0];
+    params.presentedText = params.presentedQuestion ? 'Synthetic displayed question' : null;
     params.userText = 'それは別の仕事です。スライドは残り8枚に訂正し、1枚6分です。';
     const before = structuredClone(params.state);
     params.client = { createChatCompletion: vi.fn(async request => {
@@ -398,7 +445,7 @@ describe('VNext native provider', () => {
         projection: params.projection, graph: params.state.graph, interpreted: result });
       if (resolved.status !== 'delta') throw new Error(JSON.stringify(resolved));
       const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, { expectedRevision: params.state.graph.revision,
-        acceptedDate: params.clock.currentDate, turnKey: 'corrected', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText });
+        weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'corrected', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText });
       if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
       const projection = projectWeeklyPlanningVNext(applied.state);
       for (const [title, amount, minutes] of [['Slides', 8, 48], ['Files', 30, 30]] as const) {
@@ -478,7 +525,7 @@ describe('VNext native provider', () => {
       projection: params.projection, graph: params.state.graph, interpreted: result });
     if (resolved.status !== 'delta') throw new Error(JSON.stringify(resolved));
     const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, { expectedRevision: params.state.graph.revision,
-      acceptedDate: params.clock.currentDate, turnKey: 'repaired', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText });
+      weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'repaired', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     expect(projectWeeklyPlanningVNext(applied.state).owners.flatMap(owner => owner.work)).toContainEqual(
       expect.objectContaining({ amount: 2, minutes: 40, estimateBasis: 'rate' }));
@@ -496,11 +543,12 @@ describe('VNext native provider', () => {
           quantityRole: 'remaining', amount: 45, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
           perOccurrence: false, periodExpression: null }];
     const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: facts }, { expectedRevision: 0,
-      acceptedDate: params.clock.currentDate, turnKey: 'option-seed', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
+      weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'option-seed', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
     if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
     params.state = seed.state;
     params.projection = projectWeeklyPlanningVNext(params.state);
     params.presentedQuestion = params.projection.questions[0];
+    params.presentedText = params.presentedQuestion ? 'Synthetic displayed question' : null;
     const question = params.presentedQuestion;
     const optionIndex = question.options.findIndex(option => collection === 'patch'
       ? option.optionId === 'completed_follows_remaining' : option.optionId.startsWith('keep:') && option.value === 10);
@@ -536,7 +584,7 @@ describe('VNext native provider', () => {
     if (resolved.status !== 'delta') throw new Error(JSON.stringify(resolved));
     expect(resolved.delta[collection]).toHaveLength(1);
     const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, { expectedRevision: params.state.graph.revision,
-      acceptedDate: params.clock.currentDate, turnKey: 'option-turn', conversationId: 'synthetic', turnId: 'turn', sourceText: 'synthetic option answer' });
+      weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: 'option-turn', conversationId: 'synthetic', turnId: 'turn', sourceText: 'synthetic option answer' });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     const active = new Set(applied.state.graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
     const activeWork = applied.state.graph.workloads.filter(work => active.has(work.id));
@@ -578,12 +626,13 @@ describe('VNext native provider', () => {
     const scenario = VNEXT_PROVIDER_SCENARIOS.find(candidate => candidate.id === id)!;
     const params = input([]);
     const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: scenario.seed }, {
-      expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: id, conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic',
+      expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: id, conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic',
     });
     if (seeded.status !== 'applied') throw new Error('setup');
     params.state = seeded.state;
     params.projection = projectWeeklyPlanningVNext(params.state);
     params.presentedQuestion = params.projection.questions[0] ?? null;
+    params.presentedText = params.presentedQuestion ? 'Synthetic displayed question' : null;
     params.client = { createChatCompletion: vi.fn(async request => {
       const context = JSON.parse(request.messages[1].content);
       return id === '882-iter4-explicit-r8'
@@ -599,7 +648,7 @@ describe('VNext native provider', () => {
       projection: params.projection, graph: params.state.graph, interpreted });
     if (resolved.status !== 'delta') throw new Error('answer not bound');
     const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, {
-      expectedRevision: params.state.graph.revision, acceptedDate: params.clock.currentDate, turnKey: `${id}:turn`, conversationId: 'synthetic', turnId: 'turn', sourceText: scenario.turns[0].text,
+      expectedRevision: params.state.graph.revision, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate, turnKey: `${id}:turn`, conversationId: 'synthetic', turnId: 'turn', sourceText: scenario.turns[0].text,
     });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     expect(checkVNextProviderScenario(scenario.turns[0].expected, params.state, applied.state, interpreted)).toEqual([]);
@@ -614,6 +663,7 @@ describe('VNext native provider', () => {
     params.presentedQuestion = { code: 'remaining_inconsistent', key: 'raw-question["id"]', ownerKey: 'owner',
       taskId: 'stored-task', componentId: null, subjectLineageIds: [], forWork: null,
       options: [{ optionId: 'unverified-option', value: 8, delta: emptyDelta() }] };
+    params.presentedText = 'Synthetic displayed question';
     const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
     expect(result).toMatchObject({ status: 'interpreted', answer });
   });
@@ -626,11 +676,12 @@ describe('VNext native provider', () => {
     const params = input([JSON.stringify(output([], { kind: 'estimate_minutes', optionId: null, minutes: 8, per }))]);
     const seedFacts = VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === 'estimate-answer')!.seed;
     const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: seedFacts }, { expectedRevision: 0,
-      turnKey: 'answer-seed', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic', acceptedDate: params.clock.currentDate });
+      turnKey: 'answer-seed', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic', weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate });
     if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
     params.state = seed.state;
     params.projection = projectWeeklyPlanningVNext(seed.state);
     params.presentedQuestion = params.projection.questions[0];
+    params.presentedText = params.presentedQuestion ? 'Synthetic displayed question' : null;
     const interpreted = await createWeeklyPlanningVNextProviderInterpreter()(params);
     if (interpreted.status !== 'interpreted') throw new Error(JSON.stringify(interpreted));
     const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true, projection: params.projection,
@@ -638,7 +689,7 @@ describe('VNext native provider', () => {
       graph: seed.state.graph, interpreted });
     if (resolved.status !== 'delta') throw new Error('answer did not bind');
     const applied = applyWeeklyPlanningVNextTurn(seed.state, resolved.delta, { expectedRevision: seed.state.graph.revision,
-      turnKey: 'answer-turn', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText, acceptedDate: params.clock.currentDate });
+      turnKey: 'answer-turn', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     expect(interpreted.answer).toEqual({ kind: 'estimate_minutes', minutes: 8, per });
     expect(projectWeeklyPlanningVNext(applied.state).owners[0].work[0].minutes).toBe(per === 'unit' ? 64 : 8);
@@ -651,7 +702,7 @@ describe('VNext native provider', () => {
       { kind: 'workload', localId: 'work', taskRef: { localId: 't' }, componentRef: null, quantityRole: 'remaining', amount: 8,
         unitCode: 'custom', unitLabel: '枚', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
     ] }, { expectedRevision: 0, turnKey: 'temporal-seed', conversationId: 'synthetic', turnId: 'seed',
-      sourceText: 'synthetic', acceptedDate: params.clock.currentDate });
+      sourceText: 'synthetic', weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, acceptedDate: params.clock.currentDate });
     if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
     params.state = seed.state;
     params.projection = projectWeeklyPlanningVNext(params.state);
@@ -742,7 +793,7 @@ describe('VNext native provider', () => {
       { kind: 'workload', localId: 'work', taskRef: { localId: 'task' }, componentRef: null,
         quantityRole: 'remaining', amount: 7, unitCode: 'custom', unitLabel: '枚', rangeStart: null,
         rangeEnd: null, perOccurrence: false, periodExpression: 'this_week' },
-    ] }, { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'seed', conversationId: 'c', turnId: 'seed', sourceText: 'evidence' });
+    ] }, { expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'seed', conversationId: 'c', turnId: 'seed', sourceText: 'evidence' });
     if (seeded.status !== 'applied') throw new Error('setup');
     params.state = seeded.state;
     params.projection = projectWeeklyPlanningVNext(params.state);
@@ -762,7 +813,7 @@ describe('VNext native provider', () => {
     const params = input([]);
     const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [
       { kind: 'task', localId: 'existing', title: 'Existing', category: 'study' },
-    ] }, { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'seed-alias', conversationId: 'c', turnId: 'seed', sourceText: 'seed' });
+    ] }, { expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'seed-alias', conversationId: 'c', turnId: 'seed', sourceText: 'seed' });
     if (seeded.status !== 'applied') throw new Error('setup');
     params.state = seeded.state;
     params.projection = projectWeeklyPlanningVNext(params.state);
@@ -801,11 +852,11 @@ describe('VNext native provider', () => {
   it('prompt includes clock, active IDs, open/presented questions and omits historical inactive facts', () => {
     const params = input([]);
     const added = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [{ kind: 'task', localId: 't', category: 'study', title: 'Original' }] },
-      { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'setup', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
+      { expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'setup', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
     if (added.status !== 'applied') throw new Error('setup');
     const changed = applyWeeklyPlanningVNextTurn(added.state, { ...emptyDelta(), patch: [{ kind: 'task', localId: 'p',
       targetFactId: added.state.graph.tasks[0].id, changes: { title: 'Changed', category: null } }] },
-    { expectedRevision: 1, acceptedDate: '2026-11-02', turnKey: 'change', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
+    { expectedRevision: 1, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'change', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
     if (changed.status !== 'applied') throw new Error('setup');
     params.state = changed.state;
     const message = JSON.parse(buildWeeklyPlanningVNextProviderMessages(params)[1].content);

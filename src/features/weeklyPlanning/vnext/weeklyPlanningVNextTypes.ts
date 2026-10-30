@@ -14,6 +14,7 @@ import type {
   SemanticTaskCategoryV5,
   SemanticWorkloadUnitCodeV5,
 } from '../semantic/weeklyPlanningSemanticTypesV5';
+import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 
 export const WEEKLY_PLANNING_VNEXT_STATE_VERSION = 'weekly-planning-vnext-state-v1' as const;
 
@@ -278,6 +279,9 @@ export interface VNextTurnContext {
   turnKey: string;
   /** Local date (YYYY-MM-DD) the turn is accepted on; relative dates in it are fixed against this (#918). */
   acceptedDate: string;
+  weekStartsOn: WeeklyPlanningWeekStartsOn;
+  /** The planning window in force when this turn was stated. */
+  planningHorizon: { startDate: string; endDate: string };
   expectedRevision: number;
   conversationId: string;
   turnId: string;

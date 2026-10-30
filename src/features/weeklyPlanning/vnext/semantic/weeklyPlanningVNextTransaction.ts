@@ -92,30 +92,6 @@ export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState 
 }
 
 /** Pure atomic application. This function consumes semantic meaning, never raw-language heuristics. */
-/** Every date the delta states, fixed to the turn's accepted date before anything reads it. */
-function fixDeltaDates(delta: VNextTurnDelta, acceptedDate: string,
-  error: (code: VNextTurnError['code'], path: string, factId: string | null, localId: string | null) => void): VNextTurnDelta {
-  const fix = <T extends string | null>(expression: T, path: string, localId: string): T => {
-    if (expression === null) return expression;
-    const fixed = fixVNextDateExpression(expression, acceptedDate);
-    if (fixed === null) error('invalid_value', path, null, localId);
-    return (fixed ?? expression) as T;
-  };
-  return {
-    ...delta,
-    add: delta.add.map((fact, index) => {
-      const next = structuredClone(fact);
-      if ('dateExpression' in next) next.dateExpression = fix(next.dateExpression, `add[${index}].dateExpression`, next.localId);
-      return next;
-    }),
-    patch: delta.patch.map((patch, index) => {
-      const next = structuredClone(patch);
-      if ('dateExpression' in next.changes) next.changes.dateExpression = fix(next.changes.dateExpression, `patch[${index}].changes.dateExpression`, next.localId);
-      return next;
-    }),
-  };
-}
-
 export function applyWeeklyPlanningVNextTurn(
   state: WeeklyPlanningVNextState,
   statedDelta: VNextTurnDelta,
@@ -126,12 +102,15 @@ export function applyWeeklyPlanningVNextTurn(
     localId: string | null = null) => errors.push({ code, path, factId, localId });
   const reject = (): VNextTurnResult => ({ status: 'rejected', state, errors });
   if (!context.turnKey.trim() || !context.conversationId.trim() || !context.turnId.trim() || !context.sourceText.trim()
-    || !isValidCalendarDate(context.acceptedDate)) {
+    || !isValidCalendarDate(context.acceptedDate)
+    || !['monday', 'sunday'].includes(context.weekStartsOn)
+    || !context.planningHorizon || !isValidCalendarDate(context.planningHorizon.startDate)
+    || !isValidCalendarDate(context.planningHorizon.endDate)
+    || context.planningHorizon.startDate > context.planningHorizon.endDate) {
     error('invalid_value', 'context');
     return reject();
   }
-  const delta = fixDeltaDates(statedDelta, context.acceptedDate, error);
-  if (errors.length) return reject();
+  const delta = structuredClone(statedDelta);
   if (state.graph.appliedTurnKeys.includes(context.turnKey)) return { status: 'duplicate', state };
   if (context.expectedRevision !== state.graph.revision) {
     error('stale_revision', 'context.expectedRevision');
@@ -191,13 +170,24 @@ export function applyWeeklyPlanningVNextTurn(
     if (!unit) error('unknown_ref', path, value.workLineageId);
     return unit ? stateResolver.lineageOf(unit.definingFactId) : '';
   };
+  let planningHorizon = context.planningHorizon;
+  const dateMeaning = (kind: VNextAddFact['kind'], recurrenceKind: unknown = null) =>
+    kind === 'task_date_rule' || (kind === 'availability_declaration' && recurrenceKind !== null)
+      ? 'repeated_filter' as const : 'one_occurrence' as const;
+  const fixDate = (expression: string | null, meaning: 'repeated_filter' | 'one_occurrence', path: string, localId: string) => {
+    if (expression === null) return null;
+    const fixed = fixVNextDateExpression(expression, { ...context, planningHorizon }, meaning);
+    if (fixed === null) error('invalid_value', path, null, localId);
+    return fixed ?? expression;
+  };
   // A planning window defines the horizon itself. Freeze its effective payload,
   // including a relative correction of an already absolute stored window.
   const freezeWindow = (payload: Record<string, unknown>, path: string, localId: string, valueStated = false): Record<string, unknown> => {
     if (!['absolute', 'relative_day', 'relative_week', 'named_period'].includes(String(payload.kind))) return payload;
     const range = (expression: unknown, field: string) => {
-      const fixed = typeof expression === 'string' ? fixVNextDateExpression(expression, context.acceptedDate) : null;
-      const resolved = fixed === null ? null : resolveCanonicalDateExpression({ expression: fixed, currentDate: context.acceptedDate });
+      const fixed = typeof expression === 'string' ? fixVNextDateExpression(expression, context, 'planning_window') : null;
+      const resolved = fixed === null ? null : resolveCanonicalDateExpression({ expression: fixed,
+        currentDate: context.acceptedDate, weekStartsOn: context.weekStartsOn });
       if (resolved?.status === 'resolved') return resolved.range;
       error('invalid_value', `${path}.${field}`, null, localId);
       return null;
@@ -232,14 +222,15 @@ export function applyWeeklyPlanningVNextTurn(
         minutes: fact.minutes, unitCode: fact.unitCode, unitLabel: fact.unitLabel, precision: fact.precision, workBinding: null };
       case 'temporal_constraint': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
         targetFactId: ref(fact.targetRef, `${path}.targetRef`), kind: fact.constraintKind,
-        constraintLevel: fact.constraintLevel, dateExpression: fact.dateExpression, namedTimePeriod: fact.namedTimePeriod,
+        constraintLevel: fact.constraintLevel, dateExpression: fixDate(fact.dateExpression, dateMeaning(fact.kind), `${path}.dateExpression`, fact.localId), namedTimePeriod: fact.namedTimePeriod,
         startTime: fact.startTime, endTime: fact.endTime, precision: fact.precision };
       case 'planning_window': return freezeWindow({ kind: fact.windowKind, value: fact.value, start: fact.start, end: fact.end }, path, fact.localId);
       case 'recurrence': return { taskId: ref(fact.taskRef, `${path}.taskRef`), targetFactId: ref(fact.targetRef, `${path}.targetRef`),
         kind: fact.recurrenceKind, count: fact.count, days: fact.days };
       case 'task_date_rule': return { taskId: ref(fact.taskRef, `${path}.taskRef`), targetFactId: ref(fact.targetRef, `${path}.targetRef`),
-        kind: fact.ruleKind, dateExpression: fact.dateExpression, constraintLevel: fact.constraintLevel };
-      case 'availability_declaration': return { kind: fact.availabilityKind, dateExpression: fact.dateExpression,
+        kind: fact.ruleKind, dateExpression: fixDate(fact.dateExpression, dateMeaning(fact.kind), `${path}.dateExpression`, fact.localId), constraintLevel: fact.constraintLevel };
+      case 'availability_declaration': return { kind: fact.availabilityKind,
+        dateExpression: fixDate(fact.dateExpression, dateMeaning(fact.kind, fact.recurrenceKind), `${path}.dateExpression`, fact.localId),
         namedTimePeriod: fact.namedTimePeriod, startTime: fact.startTime, endTime: fact.endTime, recurrenceKind: fact.recurrenceKind,
         days: fact.days, capacityMinutes: fact.capacityMinutes, constraintLevel: fact.constraintLevel, resolutionStatus: 'unresolved' };
       case 'relation': return { kind: fact.relationKind, fromTaskId: ref(fact.fromTaskRef, `${path}.fromTaskRef`),
@@ -247,7 +238,7 @@ export function applyWeeklyPlanningVNextTurn(
     }
   };
   const touchedEfforts = new Set<string>();
-  delta.add.forEach((fact, index) => {
+  const addFact = (fact: VNextAddFact, index: number) => {
     const id = localIds.get(fact.localId)!;
     const path = `add[${index}]`;
     appendFact(graph, fact.kind, { ...addPayload(fact, path), id, source: source(fact.localId), createdRevision: graph.revision });
@@ -257,7 +248,7 @@ export function applyWeeklyPlanningVNextTurn(
       touchedEfforts.add(id);
       if ('workLineageId' in fact.targetRef) workRefs.set(id, fact.targetRef.workLineageId);
     }
-  });
+  };
 
   const targetOperations = new Set<string>();
   const retirementPaths = new Map<string, string>();
@@ -268,7 +259,7 @@ export function applyWeeklyPlanningVNextTurn(
     targetOperations.add(id);
     return found && initialActive.has(id) ? found : null;
   };
-  delta.patch.forEach((patch, index) => {
+  const patchFact = (patch: VNextTurnDelta['patch'][number], index: number) => {
     const path = `patch[${index}]`;
     const found = target(patch.targetFactId, `${path}.targetFactId`, patch.localId);
     if (!found) return;
@@ -291,6 +282,8 @@ export function applyWeeklyPlanningVNextTurn(
       ? freezeWindow({ ...found.fact, ...changes }, `${path}.changes`, patch.localId,
         'value' in changes && !('start' in changes) && !('end' in changes))
       : { ...found.fact, ...changes };
+    if ('dateExpression' in changes) payload.dateExpression = fixDate(changes.dateExpression as string,
+      dateMeaning(patch.kind, payload.recurrenceKind), `${path}.changes.dateExpression`, patch.localId);
     const sameValues = Object.entries(payload).every(([key, value]) => JSON.stringify(found.fact[key]) === JSON.stringify(value));
     if (sameValues && patch.kind !== 'effort_estimate') return;
     const id = localIds.get(patch.localId)!;
@@ -301,7 +294,18 @@ export function applyWeeklyPlanningVNextTurn(
     diff.added.push({ kind: patch.kind, id });
     diff.superseded.push({ kind: patch.kind, id: patch.targetFactId });
     if (patch.kind === 'effort_estimate') touchedEfforts.add(id);
-  });
+  };
+  // The horizon is established inside this same transaction before any other
+  // stated date is anchored. Original delta indices still identify every error.
+  delta.add.forEach((fact, index) => { if (fact.kind === 'planning_window') addFact(fact, index); });
+  delta.patch.forEach((patch, index) => { if (patch.kind === 'planning_window') patchFact(patch, index); });
+  const activeWindowIds = activeIds(graph);
+  const windows = graph.planningWindows.filter(window => activeWindowIds.has(window.id));
+  if (windows.length === 1 && windows[0].start && windows[0].end) {
+    planningHorizon = { startDate: windows[0].start, endDate: windows[0].end };
+  }
+  delta.add.forEach((fact, index) => { if (fact.kind !== 'planning_window') addFact(fact, index); });
+  delta.patch.forEach((patch, index) => { if (patch.kind !== 'planning_window') patchFact(patch, index); });
   delta.remove.forEach((removal, index) => {
     const found = target(removal.targetFactId, `remove[${index}].targetFactId`);
     if (!found) return;

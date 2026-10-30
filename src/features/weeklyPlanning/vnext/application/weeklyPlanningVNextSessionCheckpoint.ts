@@ -36,7 +36,8 @@ export interface WeeklyPlanningVNextSessionCheckpoint {
   conversationId: string;
   vnext: {
     state: WeeklyPlanningVNextState;
-    presentedQuestion: WeeklyPlanningVNextPresentedQuestion | null;
+    /** The question shown with the latest reply, and that reply's exact text (what the user saw). */
+    presentedQuestion: (WeeklyPlanningVNextPresentedQuestion & { shownText: string }) | null;
     preview: WeeklyPlanningVNextShownPreview | null;
     /** The latest messages, for the renderer's conversational context only; never read as facts. */
     messages: WeeklyPlanningVNextMessage[];
@@ -136,8 +137,9 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
       || !validState(value.vnext.state, value.conversationId) || !validPreview(value.vnext.preview)
       || !validMessages(value.vnext.messages)) return null;
     const presented = value.vnext.presentedQuestion;
-    if (presented !== null && !(isRecord(presented) && hasExactKeys(presented, ['questionKey', 'graphRevision'])
-      && typeof presented.questionKey === 'string' && Number.isInteger(presented.graphRevision))) return null;
+    if (presented !== null && !(isRecord(presented) && hasExactKeys(presented, ['questionKey', 'graphRevision', 'shownText'])
+      && typeof presented.questionKey === 'string' && Number.isInteger(presented.graphRevision)
+      && typeof presented.shownText === 'string')) return null;
     return value as unknown as WeeklyPlanningVNextSessionCheckpoint;
   } catch {
     return null;

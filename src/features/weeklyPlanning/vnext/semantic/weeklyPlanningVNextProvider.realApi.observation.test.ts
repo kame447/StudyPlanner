@@ -8,12 +8,13 @@ import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextPro
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
+import { presentWeeklyPlanningVNextQuestion } from '../application/weeklyPlanningVNextQuestionText';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const run = shouldRun ? describe : describe.skip;
 const outputDir = join(process.env.WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR ?? 'artifacts/weekly-planning-real-api', 'vnext-provider');
-const defaultClock = { currentDate: '2026-10-30', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' };
+const defaultClock = { weekStartsOn: 'monday' as const, currentDate: '2026-10-30', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' };
 const empty = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 
 function requiredEnv(name: string): string {
@@ -47,7 +48,7 @@ run('VNext native provider synthetic real API observations', () => {
         } };
         if (scenario.seed.length) {
           const seeded = applyWeeklyPlanningVNextTurn(state, { ...empty(), add: scenario.seed }, {
-            expectedRevision: 0, acceptedDate: clock.currentDate, turnKey: `seed:${scenario.id}`, conversationId: `synthetic:${scenario.id}`,
+            expectedRevision: 0, weekStartsOn: clock.weekStartsOn, planningHorizon: { startDate: clock.planningStartDate, endDate: clock.planningEndDate }, acceptedDate: clock.currentDate, turnKey: `seed:${scenario.id}`, conversationId: `synthetic:${scenario.id}`,
             turnId: 'seed', sourceText: 'Synthetic accepted facts for an isolated semantic test',
           });
           if (seeded.status !== 'applied') throw new Error(`Invalid synthetic seed: ${JSON.stringify(seeded)}`);
@@ -62,7 +63,7 @@ run('VNext native provider synthetic real API observations', () => {
           const projection = projectWeeklyPlanningVNext(state);
           const presentedQuestion = projection.questions[0] ?? null;
           const result = await createWeeklyPlanningVNextProviderInterpreter()({ client, state, projection,
-            presentedQuestion, userText: turn.text, clock });
+            presentedQuestion, presentedText: presentedQuestion ? presentWeeklyPlanningVNextQuestion(state, presentedQuestion).text : null, userText: turn.text, clock });
           observation.result = result;
           let applyStatus = 'empty';
           if (result.status === 'interpreted') {
@@ -78,7 +79,7 @@ run('VNext native provider synthetic real API observations', () => {
               applyStatus = 'conflict';
             } else if (Object.values(resolved.delta).some(items => items.length)) {
               const applied = applyWeeklyPlanningVNextTurn(state, resolved.delta, { expectedRevision: state.graph.revision,
-                acceptedDate: clock.currentDate, turnKey: `${scenario.id}:turn:${index}`, conversationId: `synthetic:${scenario.id}`,
+                weekStartsOn: clock.weekStartsOn, planningHorizon: { startDate: clock.planningStartDate, endDate: clock.planningEndDate }, acceptedDate: clock.currentDate, turnKey: `${scenario.id}:turn:${index}`, conversationId: `synthetic:${scenario.id}`,
                 turnId: String(index), sourceText: turn.text });
               applyStatus = applied.status;
               if (applied.status === 'applied' || applied.status === 'noop') state = applied.state;

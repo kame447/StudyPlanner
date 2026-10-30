@@ -24,7 +24,6 @@ import {
 import type { WeeklyPlanDraftBlock } from '../../types';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import type { MonthEvent, Plan, ScheduleTemplate } from '../../../../types/domain';
-import type { WeeklyPlanningWeekStartsOn } from '../../personalization/weeklyPlanningWeek';
 import type { GenericSchedulerInputContext } from '../../semantic/weeklyPlanningGenericSchedulerInput';
 import {
   compileWeeklyPlanningVNextSchedulerInput,
@@ -74,7 +73,6 @@ export interface WeeklyPlanningVNextExperimentalScope {
   conversationId: string;
   /** clock.planningStartDate/EndDate is the selected week: the horizon until a planning window is stated. */
   clock: WeeklyPlanningVNextInterpretationClock;
-  weekStartsOn: WeeklyPlanningWeekStartsOn;
   /** Earliest placement time on clock.currentDate (HH:MM): the time the turn is planned from. */
   notBeforeTime: string;
 }
@@ -174,7 +172,7 @@ function schedulingContext(scope: WeeklyPlanningVNextExperimentalScope, ports: W
     ownerId: scope.ownerId,
     selectedDate: planningStartDate,
     requestContext: { startedAtIso: ports.now(), timeZone, currentDate, currentTime: scope.notBeforeTime,
-      notBeforeDate: currentDate, notBeforeTime: scope.notBeforeTime, weekStartsOn: scope.weekStartsOn },
+      notBeforeDate: currentDate, notBeforeTime: scope.notBeforeTime, weekStartsOn: scope.clock.weekStartsOn },
   });
 }
 
@@ -255,10 +253,12 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
 
   // The model reads dates against the horizon the state currently has (a stated planning window moves it).
   const horizon = schedulingContext(scope, ports, state);
+  const clock = { ...scope.clock, planningStartDate: horizon.planningStartDate || scope.clock.planningStartDate,
+    planningEndDate: horizon.planningEndDate || scope.clock.planningEndDate };
   const interpretation = await ports.interpret({
-    client: ports.client, state, projection: before, presentedQuestion, userText: params.userText,
-    clock: { ...scope.clock, planningStartDate: horizon.planningStartDate || scope.clock.planningStartDate,
-      planningEndDate: horizon.planningEndDate || scope.clock.planningEndDate },
+    client: ports.client, state, projection: before, presentedQuestion, userText: params.userText, clock,
+    // The reply the question was shown in: what the user's words answer (e.g. an ordinal over its options).
+    presentedText: presentedQuestion ? presented!.shownText : null,
   });
 
   // The turn was read against `rawBefore`; if another turn saved meanwhile, applying
@@ -296,6 +296,9 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       const result = applyWeeklyPlanningVNextTurn(state, delta, {
         turnKey: `${scope.conversationId}:${params.turnId}`,
         acceptedDate: scope.clock.currentDate,
+        // Dates are fixed against the same horizon and week the model read them with.
+        weekStartsOn: clock.weekStartsOn,
+        planningHorizon: { startDate: clock.planningStartDate, endDate: clock.planningEndDate },
         expectedRevision: state.graph.revision,
         conversationId: scope.conversationId,
         turnId: params.turnId,
@@ -349,7 +352,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     conversationId: scope.conversationId,
     vnext: {
       state,
-      presentedQuestion: shownQuestion ? { questionKey: shownQuestion.key, graphRevision: projection.graphRevision } : null,
+      presentedQuestion: shownQuestion ? { questionKey: shownQuestion.key, graphRevision: projection.graphRevision, shownText: reply } : null,
       preview,
       messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
         { role: 'assistant' as const, content: reply }].slice(-VNEXT_RECENT_MESSAGE_LIMIT),

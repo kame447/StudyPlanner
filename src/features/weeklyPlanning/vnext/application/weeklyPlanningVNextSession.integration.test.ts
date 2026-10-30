@@ -99,7 +99,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
     expect(binding.status).toBe('bound');
     if (binding.status !== 'bound') return;
     const applied = applyWeeklyPlanningVNextTurn(state, binding.delta, {
-      acceptedDate: '2026-11-02', turnKey: 'answer-1', expectedRevision: state.graph.revision, conversationId, turnId: 'turn-answer', sourceText: '60分',
+      acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: 'answer-1', expectedRevision: state.graph.revision, conversationId, turnId: 'turn-answer', sourceText: '60分',
     });
     expect(applied.status).toBe('applied');
     if (applied.status !== 'applied') return;
@@ -132,7 +132,8 @@ describe('VNext session: migration, answer binding inside presentation freshness
     const projection = projectWeeklyPlanningVNext(state);
     const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
       ownerId: 'owner-1', weekStartDate: '2026-11-02', conversationId,
-      vnext: { state, presentedQuestion: { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision }, preview: null, messages: [] },
+      vnext: { state, presentedQuestion: { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision, shownText: '（質問）' },
+        preview: null, messages: [] },
       savedAt: '2026-10-30T00:00:00.000Z',
     })!;
     const parsed = parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: 'owner-1', weekStartDate: '2026-11-02' });
@@ -171,7 +172,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
         targetRef: { workLineageId: question.forWork!.workLineageId }, effortKind: 'total_duration',
         minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' }],
       patch: [], remove: [], relate: [], defer: [],
-    }, { acceptedDate: '2026-11-02', turnKey: 'e01', expectedRevision: state.graph.revision, conversationId, turnId: 'e01', sourceText: '60分' });
+    }, { acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: 'e01', expectedRevision: state.graph.revision, conversationId, turnId: 'e01', sourceText: '60分' });
     expect(applied.status).toBe('applied');
     if (applied.status === 'applied') expect(projectWeeklyPlanningVNext(applied.state).owners[0].work[0].minutes).toBe(60);
   });

@@ -34,8 +34,8 @@ import {
 
 const scope: WeeklyPlanningVNextExperimentalScope = {
   ownerId: 'owner-1', weekStartDate: '2026-11-02', conversationId: 'conversation-e2e',
-  clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
-  weekStartsOn: 'monday',
+  clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo',
+    weekStartsOn: 'monday' },
   notBeforeTime: '09:00',
 };
 const metrics = { calls: 1, repairs: 0, latencyMs: 1 };

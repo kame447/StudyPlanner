@@ -11,7 +11,7 @@ export async function runNamedPeriodReproduction(options: { outputPath: string; 
   const temporary = `${options.outputPath}.${process.pid}.partial`;
   const artifact = { codeHead: options.codeHead, syntheticOnly: true,
     userText: '今週はゼミ発表のスライドを仕上げたいです。全部で20枚で、もう12枚できています。',
-    clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
+    clock: { currentDate: '2026-11-02', weekStartsOn: 'monday' as const, planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
     completed: false, physicalCalls: 0, runs: [] as unknown[] };
   const persist = async () => {
     await writeFile(temporary, JSON.stringify(artifact, null, 2) + '\n', { mode: 0o600 });
@@ -36,7 +36,7 @@ export async function runNamedPeriodReproduction(options: { outputPath: string; 
       } };
       const state = createEmptyWeeklyPlanningVNextState();
       const result = await createWeeklyPlanningVNextProviderInterpreter()({ client, state, projection: projectWeeklyPlanningVNext(state),
-        presentedQuestion: null, userText: artifact.userText, clock: artifact.clock });
+        presentedQuestion: null, presentedText: null, userText: artifact.userText, clock: artifact.clock });
       const periods = receipts.map(receipt => {
         try {
           const raw = JSON.parse(receipt.rawResponseText ?? 'null');

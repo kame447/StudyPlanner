@@ -101,11 +101,13 @@ export function createWeeklyPlanningVNextOptionChoiceInterpreter(params: {
       return { ...reading, metrics: { ...reading.metrics, calls: reading.metrics.calls + dispatched,
         latencyMs: Math.max(0, Date.now() - started) } };
     };
-    if (!question || !(VNEXT_OPTION_CHOICE_CODES as readonly string[]).includes(question.code) || question.options.length === 0) {
+    // Jev chooses only against the reply the user actually saw; without it, the full reading reads the words.
+    if (!question || input.presentedText === null || !(VNEXT_OPTION_CHOICE_CODES as readonly string[]).includes(question.code)
+      || question.options.length === 0) {
       return params.fullReading(input);
     }
     const basis = await vnextOptionChoiceBasis({ ...params.scope, graphRevision: input.state.graph.revision, question,
-      presentation: presentWeeklyPlanningVNextQuestion(input.state, question) });
+      presentation: { ...presentWeeklyPlanningVNextQuestion(input.state, question), text: input.presentedText } });
     const manifest = await createCandidateManifest(basis);
     const result = await selectApplicationCandidate({
       manifest,

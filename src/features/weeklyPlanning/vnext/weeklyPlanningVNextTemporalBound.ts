@@ -13,6 +13,8 @@ import {
   resolveCanonicalDateExpression,
 } from '../semantic/weeklyPlanningCalendarResolver';
 import type { TemporalConstraintFactV5 } from './weeklyPlanningVNextV5Boundary';
+import type { VNextTurnContext } from './weeklyPlanningVNextTypes';
+import { resolveWeeklyPlanningDateExpressionsV5 } from '../semantic/weeklyPlanningResolvedDateExpressionsV5';
 
 type Bound = Pick<TemporalConstraintFactV5, 'kind' | 'dateExpression' | 'namedTimePeriod' | 'startTime' | 'endTime'>;
 type BoundField = 'dateExpression' | 'namedTimePeriod' | 'startTime' | 'endTime';
@@ -37,7 +39,8 @@ export function vnextTemporalBoundRepairFields(bound: Bound): BoundField[] {
 /**
  * A date as stored: the model reads "明日" as a symbolic `tomorrow`; code fixes it to
  * the absolute date of the turn that stated it, so it never moves on a later day
- * (#918, design §18). Weekdays remain filters for the fixed planning horizon.
+ * (#918, design §18). A repeated weekday filter stays symbolic; a one-occurrence
+ * weekday is fixed inside the accepting turn's horizon using V5's selection rule.
  * Absolute dates pass through; null when it is not in the canonical vocabulary
  * (no word is interpreted here) or cannot be resolved.
  */
@@ -46,12 +49,20 @@ const ABSOLUTE_DATE_OR_RANGE = /^\d{4}-\d{2}-\d{2}(?:\/\d{4}-\d{2}-\d{2})?$/;
 const isCanonicalVNextDate = (expression: string) => ABSOLUTE_DATE_OR_RANGE.test(expression)
   || ([...CANONICAL_RELATIVE_DATE_EXPRESSIONS, ...CANONICAL_WEEKDAY_DATE_EXPRESSIONS] as readonly string[]).includes(expression);
 
-export function fixVNextDateExpression(expression: string, acceptedDate: string): string | null {
+export function fixVNextDateExpression(expression: string,
+  context: Pick<VNextTurnContext, 'acceptedDate' | 'weekStartsOn' | 'planningHorizon'>,
+  meaning: 'one_occurrence' | 'repeated_filter' | 'planning_window'): string | null {
   if (!isCanonicalVNextDate(expression)) return null;
-  // A weekday is a filter inside the session's fixed horizon, not a date
-  // relative to this turn. V5 resolves hard bounds and date-rule occurrences there.
-  if ((CANONICAL_WEEKDAY_DATE_EXPRESSIONS as readonly string[]).includes(expression)) return expression;
-  const resolved = resolveCanonicalDateExpression({ expression, currentDate: acceptedDate });
+  const weekday = (CANONICAL_WEEKDAY_DATE_EXPRESSIONS as readonly string[]).includes(expression);
+  if (weekday && meaning === 'repeated_filter') return expression;
+  const resolved = weekday && meaning === 'one_occurrence'
+    // This graph view asks the existing resolver for its one-date-in-horizon
+    // operation. It does not create a fact or interpret the source language.
+    ? resolveWeeklyPlanningDateExpressionsV5({ graph: { temporalConstraints: [{ id: 'date',
+      dateExpression: expression, kind: 'deadline', constraintLevel: 'hard' }] },
+      currentDate: context.acceptedDate, weekStartsOn: context.weekStartsOn,
+      planningWindow: context.planningHorizon }).facts[0]
+    : resolveCanonicalDateExpression({ expression, currentDate: context.acceptedDate, weekStartsOn: context.weekStartsOn });
   if (resolved.status !== 'resolved' || !resolved.range) return null;
   return resolved.range.start === resolved.range.end ? resolved.range.start : `${resolved.range.start}/${resolved.range.end}`;
 }

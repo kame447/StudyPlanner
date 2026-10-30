@@ -15,7 +15,7 @@ let counter = 0;
 function turn(state: WeeklyPlanningVNextState, partial: Partial<VNextTurnDelta>): WeeklyPlanningVNextState {
   counter += 1;
   const result = applyWeeklyPlanningVNextTurn(state, { add: [], patch: [], remove: [], relate: [], defer: [], ...partial }, {
-    acceptedDate: '2026-11-02', turnKey: `t${counter}`, expectedRevision: state.graph.revision, conversationId: 'c', turnId: `t${counter}`, sourceText: 'fixture',
+    acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: `t${counter}`, expectedRevision: state.graph.revision, conversationId: 'c', turnId: `t${counter}`, sourceText: 'fixture',
   });
   if (result.status !== 'applied') throw new Error(JSON.stringify('errors' in result ? result.errors : result.status));
   return result.state;

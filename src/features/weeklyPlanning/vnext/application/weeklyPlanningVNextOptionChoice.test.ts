@@ -26,15 +26,18 @@ function stateWith(adds: VNextAddFact[]): WeeklyPlanningVNextState {
   const result = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), { add: [
     { kind: 'task', localId: 't', category: 'study', title: '数学プリント' }, ...adds,
   ], patch: [], remove: [], relate: [], defer: [] }, {
-    acceptedDate: '2026-11-02', turnKey: 'seed', expectedRevision: 0, conversationId: 'c', turnId: 'seed', sourceText: 'seed',
+    acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: 'seed', expectedRevision: 0, conversationId: 'c', turnId: 'seed', sourceText: 'seed',
   });
   if (result.status !== 'applied') throw new Error(JSON.stringify(result));
   return result.state;
 }
 function input(state: WeeklyPlanningVNextState, userText: string): WeeklyPlanningVNextInterpretationInput {
   const projection = projectWeeklyPlanningVNext(state);
-  return { client: {} as OpenAiCompatibleClient, state, projection, presentedQuestion: projection.questions[0] ?? null, userText,
-    clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } };
+  const presentedQuestion = projection.questions[0] ?? null;
+  return { client: {} as OpenAiCompatibleClient, state, projection, presentedQuestion, userText,
+    presentedText: presentedQuestion ? presentWeeklyPlanningVNextQuestion(state, presentedQuestion).text : null,
+    clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo',
+    weekStartsOn: 'monday' } };
 }
 const fullReadingResult: WeeklyPlanningVNextInterpretation = { status: 'interpreted',
   delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
@@ -101,7 +104,7 @@ describe('VNext closed-set option choice before the full reading', () => {
       { kind: 'task', localId: 't', category: 'study', title: '数学' }, pages('a', 'remaining', 20),
       { ...pages('b', 'remaining', 8), unitCode: 'custom', unitLabel: '問' } as VNextAddFact,
     ], patch: [], remove: [], relate: [], defer: [] }, {
-      acceptedDate: '2026-11-02', turnKey: `${long}:t1`, expectedRevision: 0, conversationId: long, turnId: 't1', sourceText: 'seed',
+      acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: `${long}:t1`, expectedRevision: 0, conversationId: long, turnId: 't1', sourceText: 'seed',
     });
     if (result.status !== 'applied') throw new Error(JSON.stringify(result));
     const sent: CandidateChoiceRequest[] = [];
@@ -117,6 +120,16 @@ describe('VNext closed-set option choice before the full reading', () => {
     expect(sent).toHaveLength(1);
     expect(isCandidateChoiceDecisionContext({ purpose: 'candidate_choice', request: sent[0] })).toBe(true);
     expect(reply).toMatchObject({ answer: { kind: 'option', optionId: 'distinct' } });
+  });
+
+  it('never dispatches without the reply the question was shown in', async () => {
+    const choose = vi.fn();
+    const fullReading = vi.fn(async () => fullReadingResult);
+    const interpret = createWeeklyPlanningVNextOptionChoiceInterpreter({ fullReading, choice: { policy: policy(3), choose },
+      scope: { ownerId: 'o', conversationId: 'c' } });
+    await interpret({ ...input(inconsistent(), '前者で'), presentedText: null });
+    expect(choose).not.toHaveBeenCalled();
+    expect(fullReading).toHaveBeenCalledTimes(1);
   });
 
   it('never dispatches for an uncalibrated menu or an open-value question', async () => {
@@ -137,8 +150,9 @@ describe('VNext closed-set option choice before the full reading', () => {
 // The session is the only caller: it decides which question was shown, and its checkpoint is the freshness authority.
 describe('VNext option choice inside the experimental session', () => {
   const scope: WeeklyPlanningVNextExperimentalScope = {
-    ownerId: 'o', weekStartDate: '2026-11-02', conversationId: 'c', weekStartsOn: 'monday', notBeforeTime: '09:00',
-    clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
+    ownerId: 'o', weekStartDate: '2026-11-02', conversationId: 'c', notBeforeTime: '09:00',
+    clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo',
+    weekStartsOn: 'monday' },
   };
   const seed = { ...fullReadingResult, delta: { ...fullReadingResult.delta, add: [
     { kind: 'task', localId: 't', category: 'study', title: '数学プリント' } as VNextAddFact,
@@ -163,10 +177,9 @@ describe('VNext option choice inside the experimental session', () => {
     const shown = await say(tab(slots, async () => seed), 't1', '数学プリントは20枚、12枚終わって、残り7枚', null);
     const read = readWeeklyPlanningVNextExperimentalSession(scope, tab(slots, vi.fn()));
     if (read.status !== 'ready') throw new Error(read.status);
-    // The reply prose comes from the renderer, which must include the option labels; Jev reads the
-    // structured presentation of the same question (its text and those labels).
-    const presentation = presentWeeklyPlanningVNextQuestion(read.checkpoint.state, shown.question!);
-    expect(presentation.text).toContain('（残りを8枚にする / 終わった量を13枚にする）');
+    // Jev reads the reply the user actually saw (the renderer's text, stored with the question), never a
+    // reconstruction whose option order may differ from it (Astra VP05).
+    expect(read.checkpoint.presentedQuestion).toMatchObject({ shownText: shown.reply });
     const fullReading = vi.fn(async () => fullReadingResult);
     let offered: CandidateChoiceRequest | null = null;
     const interpret = createWeeklyPlanningVNextOptionChoiceInterpreter({ fullReading, scope: { ownerId: 'o', conversationId: 'c' },
@@ -176,7 +189,7 @@ describe('VNext option choice inside the experimental session', () => {
         return response(request, 'remaining_follows_progress');
       } } });
     const answered = await say(tab(slots, interpret), 't2', '計算どおり8枚でいいです', shown.graphRevision);
-    expect(offered!.context.presentedQuestion).toBe(presentation.text);
+    expect(offered!.context.presentedQuestion).toBe(shown.reply);
     expect(isCandidateChoiceDecisionContext({ purpose: 'candidate_choice', request: offered })).toBe(true);
     expect(new Set(offered!.menu.options.flatMap((option) => (option.kind === 'leaf' ? [option.candidate.label] : []))))
       .toEqual(new Set(['残りを8枚にする', '終わった量を13枚にする']));

@@ -10,7 +10,8 @@ const workload: VNextAddFact = { kind: 'workload', localId: 'w', taskRef: { loca
   quantityRole: 'remaining', amount: 8, unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null,
   perOccurrence: false, periodExpression: null };
 const context = { expectedRevision: 0, turnKey: 'setup', conversationId: 'synthetic-contract', turnId: 'setup',
-  sourceText: 'Synthetic contract test', acceptedDate: '2026-08-26' };
+  sourceText: 'Synthetic contract test', acceptedDate: '2026-08-26', weekStartsOn: 'monday' as const,
+  planningHorizon: { startDate: '2026-08-24', endDate: '2026-08-30' } };
 
 describe('controlled native-provider contract experiments without a model', () => {
   it('distinguishes 8 minutes for the whole work from 8 minutes per unit at the same question', () => {

@@ -5,6 +5,7 @@
 // facts, lifecycle operations, question priority, placement, approval or saving.
 // Code owns ids, revisions, validity, math and freshness.
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
+import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
   VNextQuestion,
   VNextTurnDelta,
@@ -16,6 +17,7 @@ import type {
 export interface WeeklyPlanningVNextInterpretationClock {
   /** Accepted-at date the turn is read against (YYYY-MM-DD, local to timeZone). */
   currentDate: string;
+  weekStartsOn: WeeklyPlanningWeekStartsOn;
   planningStartDate: string;
   planningEndDate: string;
   timeZone: string;
@@ -27,6 +29,8 @@ export interface WeeklyPlanningVNextInterpretationInput {
   projection: WeeklyPlanningVNextProjection;
   /** The question currently shown to the user, if any (already freshness-checked by the caller). */
   presentedQuestion: VNextQuestion | null;
+  /** The actual assistant message that displayed this question; null iff no question is presented. */
+  presentedText: string | null;
   userText: string;
   clock: WeeklyPlanningVNextInterpretationClock;
 }

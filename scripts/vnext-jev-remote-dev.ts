@@ -7,6 +7,7 @@ import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } fro
 import { projectWeeklyPlanningVNext } from '../src/features/weeklyPlanning/vnext/projection/weeklyPlanningVNextProjection';
 import { createVNextLineageResolver } from '../src/features/weeklyPlanning/vnext/weeklyPlanningVNextWorkIdentity';
 import type { VNextJevRemote, ProviderCallUsage } from './vnext-jev-remote';
+import { resolveCanonicalDateExpression } from '../src/features/weeklyPlanning/semantic/weeklyPlanningCalendarResolver';
 
 export const sha256 = (value: string): string => createHash('sha256').update(value, 'utf8').digest('hex');
 export function devCasesHash(cases: readonly VNextJevComparisonCase[]): string {
@@ -17,10 +18,13 @@ export function devCasesHash(cases: readonly VNextJevComparisonCase[]): string {
 export async function prepareVNextJevDevCase(item: VNextJevComparisonCase) {
   if (item.split !== 'dev') throw new Error('Only development cases are permitted.');
   const conversationId = `vnext-jev-dev:${item.id}`;
+  const week = resolveCanonicalDateExpression({ expression: 'this_week', currentDate: item.seed.acceptedDate, weekStartsOn: 'monday' });
+  if (week.status !== 'resolved') throw new Error('Development seed date rejected.');
   const seeded = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), {
     add: [{ kind: 'task', localId: 'task', category: 'study', title: item.seed.taskTitle }, ...item.seed.facts],
     patch: [], remove: [], relate: [], defer: [],
-  }, { expectedRevision: 0, acceptedDate: item.seed.acceptedDate, turnKey: 'seed',
+  }, { expectedRevision: 0, acceptedDate: item.seed.acceptedDate, weekStartsOn: 'monday',
+    planningHorizon: { startDate: week.range.start, endDate: week.range.end }, turnKey: 'seed',
     conversationId, turnId: 'seed', sourceText: 'Synthetic development seed' });
   if (seeded.status !== 'applied') throw new Error('Development seed rejected.');
   const state = seeded.state;

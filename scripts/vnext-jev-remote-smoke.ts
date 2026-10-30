@@ -14,7 +14,8 @@ export async function remoteSmokeRequest(): Promise<CandidateChoiceRequest> {
         quantityRole, amount, unitCode: 'page' as const, unitLabel: '枚', rangeStart: null, rangeEnd: null,
         perOccurrence: false, periodExpression: null,
       }))], patch: [], remove: [], relate: [], defer: [],
-  }, { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'smoke', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
+  }, { expectedRevision: 0, acceptedDate: '2026-11-02', weekStartsOn: 'monday',
+    planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: 'smoke', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
   if (seed.status !== 'applied') throw new Error('Synthetic remote seed failed.');
   const question = projectWeeklyPlanningVNext(seed.state).questions[0];
   if (question?.code !== 'remaining_inconsistent') throw new Error('Synthetic remote question missing.');

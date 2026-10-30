@@ -103,7 +103,7 @@ function presentedIntake(graphRevision: number): PlanningIntakeState {
 
 function applyTurn(state: WeeklyPlanningVNextState, delta: VNextTurnDelta, turnKey: string, sourceText: string): WeeklyPlanningVNextState {
   const result = applyWeeklyPlanningVNextTurn(state, delta, {
-    turnKey, acceptedDate: '2026-11-02', expectedRevision: state.graph.revision, conversationId: CONVERSATION, turnId: turnKey, sourceText,
+    turnKey, acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, expectedRevision: state.graph.revision, conversationId: CONVERSATION, turnId: turnKey, sourceText,
   });
   if (result.status !== 'applied') throw new Error(`${result.status}: ${'errors' in result ? JSON.stringify(result.errors) : ''}`);
   return result.state;
@@ -134,7 +134,7 @@ describe('#926 no-cost integration gates', () => {
     const { state } = migrateWeeklyPlanningV5GraphToVNextSession(v5Session!.graph);
     expect(state.graph.revision).toBe(5);
     const projection = projectWeeklyPlanningVNext(state);
-    const presentedQuestion = { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision };
+    const presentedQuestion = { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision, shownText: '（質問）' };
     const vnextRaw = serializeWeeklyPlanningVNextSessionCheckpoint({
       ownerId: OWNER, weekStartDate: WEEK, conversationId: CONVERSATION,
       vnext: { state, presentedQuestion, preview: null, messages: [] }, savedAt: '2026-11-02T08:05:00.000Z',
