@@ -27,6 +27,21 @@ const effort = (localId: string, taskId: string, target: { localId: string } | {
 const reading = (delta: VNextTurnDelta) => ({ status: 'interpreted' as const, delta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 0 } });
 
 describe('controlled provider-oracle corruption probes', () => {
+  it('requires the explicit date to be a hard deadline, not just any constraint on that date', () => {
+    const { scenario, state } = seed('explicit-date');
+    const taskId = state.graph.tasks[0].id;
+    for (const [constraintKind, constraintLevel] of [
+      ['deadline', 'hard'], ['deadline', 'soft'], ['deadline', 'unknown'], ['preferred_window', 'soft'],
+    ] as const) {
+      const delta: VNextTurnDelta = { ...empty(), add: [{ kind: 'temporal_constraint', localId: 'bound',
+        taskRef: { factId: taskId }, targetRef: { factId: taskId }, constraintKind, constraintLevel,
+        dateExpression: '2026-11-03', namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' }] };
+      const failures = checkVNextProviderScenario(scenario.turns[0].expected, state, apply(state, delta), reading(delta));
+      if (constraintKind === 'deadline' && constraintLevel === 'hard') expect(failures).toEqual([]);
+      else expect(failures).toContainEqual(expect.stringContaining('missing temporal bound'));
+    }
+  });
+
   it('rejects swapped owner/work associations even when global minute totals agree', () => {
     const { scenario, state } = seed('independent-scope');
     const taskId = state.graph.tasks[0].id;

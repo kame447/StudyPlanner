@@ -137,6 +137,34 @@ describe('VNext experimental session end to end (offline)', () => {
     expect((await turn(whole.ports, 't2', '残りは2時間')).appliedDelta!.add[0]).toMatchObject({ effortKind: 'total_duration', minutes: 120 });
   });
 
+  it('an estimate answer restated as a fact in the same reading is one statement, never two commits (Astra F02)', async () => {
+    const cards = (amount: number, unitLabel: string): VNextAddFact => ({ kind: 'workload', localId: 'w', taskRef: { localId: 'slides' }, componentRef: null,
+      quantityRole: 'remaining', amount, unitCode: 'custom', unitLabel, rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null });
+    const rate: VNextAddFact = { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'slides' }, targetRef: { localId: 'w' },
+      effortKind: 'duration_per_unit', minutes: 8, unitCode: 'custom', unitLabel: '枚', precision: 'exact' };
+    const relabel = (input: WeeklyPlanningVNextInterpretationInput) => ({ kind: 'workload' as const, localId: 'unit', targetFactId: input.state.graph.workloads[0].id,
+      amountDelta: null, changes: { amount: 2, unitCode: null, unitLabel: 'セット', quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } });
+    const setup = [interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'カード' }, cards(10, '枚'), rate] }),
+      (input: WeeklyPlanningVNextInterpretationInput) => interpreted({ patch: [relabel(input)] })];
+    // Run 41016120596 rep 2: the answer per unit plus a patch turning the old rate into 20 min/セット.
+    const both = harness([...setup, (input) => interpreted({ patch: [{ kind: 'effort_estimate', localId: 'again', targetFactId: input.state.graph.effortEstimates[0].id,
+      changes: { minutes: 20, effortKind: null, unitCode: null, unitLabel: 'セット', precision: null } }] }, { kind: 'estimate_minutes', minutes: 20, per: 'unit' })]);
+    await turn(both.ports, 't1', 'カードは残り10枚で、1枚8分です。');
+    const asked = await turn(both.ports, 't2', '単位はセットでした。残り2セットです。');
+    expect(asked.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 2, unitLabel: 'セット' } });
+    const before = both.slots.get('vnext');
+    expect(await turn(both.ports, 't3', '1セットあたり20分です。')).toMatchObject({ outcome: 'rejected', errors: [expect.objectContaining({ path: 'patch[0]', localId: 'again' })] });
+    expect(JSON.parse(both.slots.get('vnext')!).vnext.state).toEqual(JSON.parse(before!).vnext.state);
+    // Control: the answer alone commits one rate in the asked work's unit.
+    const once = harness([...setup, interpreted({}, { kind: 'estimate_minutes', minutes: 20, per: 'unit' })]);
+    await turn(once.ports, 't1', 'カードは残り10枚で、1枚8分です。');
+    await turn(once.ports, 't2', '単位はセットでした。残り2セットです。');
+    expect(await turn(once.ports, 't3', '1セットあたり20分です。')).toMatchObject({ outcome: 'applied', question: null });
+    const read = readWeeklyPlanningVNextExperimentalSession(scope, once.ports);
+    const work = read.status === 'ready' ? projectWeeklyPlanningVNext(read.checkpoint.state).owners.flatMap((owner) => owner.work) : [];
+    expect(work).toEqual([expect.objectContaining({ amount: 2, minutes: 40, estimateBasis: 'rate' })]);
+  });
+
   it('a correction before approval replaces the shown preview, so the old preview cannot be saved', async () => {
     const h = harness([
       interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),

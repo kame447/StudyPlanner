@@ -16,7 +16,6 @@ interface Expected {
   roles: { role: string; amount: number }[];
   taskCount?: number;
   workloadLabels?: { role: string; label: string; changesUnit?: boolean }[];
-  date?: string;
   category?: string;
   title?: string;
   unchanged?: boolean;
@@ -87,7 +86,8 @@ export const VNEXT_PROVIDER_SCENARIOS: VNextProviderScenario[] = [
     unitCode: null, unitLabel: null, precision: 'exact' }], turns: [{ text: '数学プリントの1回の時間を1分から30分に訂正してください。',
     expected: { amounts: [4], minutes: [120], roles: [{ role: 'remaining', amount: 4 }], questions: [], efforts: [{ kind: 'session_duration', minutes: 30, about: 'work' }] } }] },
   { id: 'explicit-date', seed: remainingSeed, turns: [{ text: '数学プリントの締め切りは2026年11月3日です。',
-    expected: { roles: [{ role: 'remaining', amount: 7 }], date: '2026-11-03', minutes: [45], questions: [] } }] },
+    expected: { roles: [{ role: 'remaining', amount: 7 }], minutes: [45], questions: [],
+      temporal: { kind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-11-03', startTime: null, endTime: null } } }] },
   { id: 'deadline-tomorrow-1300', seed: remainingSeed,
     clock: { currentDate: '2026-08-26', planningStartDate: '2026-08-24', planningEndDate: '2026-08-30', timeZone: 'Asia/Tokyo' },
     turns: [{ text: '締切は明日の13時です。', expected: { roles: [{ role: 'remaining', amount: 7 }], minutes: [45], questions: [],
@@ -172,7 +172,6 @@ export function checkVNextProviderScenario(expected: Expected, before: WeeklyPla
       else unmatched.splice(index, 1);
     }
   }
-  if (expected.date && !after.graph.temporalConstraints.some(fact => active.has(fact.id) && fact.dateExpression === expected.date)) failures.push('missing explicit date');
   if (expected.unchanged) check('unchanged', after, before);
   if (expected.answerKind !== undefined) check('answer', result.status === 'interpreted' ? result.answer?.kind ?? null : 'failed', expected.answerKind);
   if (expected.answerMinutes !== undefined) check('answer minutes', result.status === 'interpreted' && result.answer?.kind === 'estimate_minutes' ? result.answer.minutes : null, expected.answerMinutes);

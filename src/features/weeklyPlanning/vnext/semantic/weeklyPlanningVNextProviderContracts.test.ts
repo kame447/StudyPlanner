@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { VNextAddFact, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
-import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from './weeklyPlanningVNextTransaction';
 
 const empty = (): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
@@ -23,7 +22,7 @@ describe('controlled native-provider contract experiments without a model', () =
     for (const per of ['whole_work', 'unit'] as const) {
       const bound = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
         presented: { questionKey: question.key, graphRevision: projection.graphRevision }, projection,
-        lineageOf: createVNextLineageResolver(seed.state.graph).lineageOf,
+        graph: seed.state.graph,
         interpreted: { delta: empty(), answer: { kind: 'estimate_minutes', minutes: 8, per } } });
       if (bound.status !== 'delta') throw new Error('answer did not bind');
       const result = applyWeeklyPlanningVNextTurn(seed.state, bound.delta, { ...context, expectedRevision: seed.state.graph.revision, turnKey: per });

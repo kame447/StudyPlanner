@@ -261,11 +261,14 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       presentationFresh: true,
       presented,
       projection: before,
-      lineageOf: createVNextLineageResolver(state.graph).lineageOf,
+      graph: state.graph,
       interpreted: interpretation,
     });
     delta = resolution.status === 'delta' ? resolution.delta : null;
-    if (delta === null) {
+    if (resolution.status === 'conflict') errors = resolution.errors;
+    if (resolution.status === 'conflict') {
+      outcome = 'rejected';
+    } else if (delta === null) {
       outcome = 'answer_represented';
     } else if (isEmpty(delta)) {
       outcome = 'noop';

@@ -68,11 +68,14 @@ run('VNext native provider synthetic real API observations', () => {
           if (result.status === 'interpreted') {
             const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
               presented: presentedQuestion ? { questionKey: presentedQuestion.key, graphRevision: projection.graphRevision } : null,
-              projection, lineageOf: createVNextLineageResolver(state.graph).lineageOf, interpreted: result });
+              projection, graph: state.graph, interpreted: result });
             observation.resolved = resolved;
             if (resolved.status === 'represent') {
               failures.push(`turn ${index}: answer did not bind to the presented question`);
               applyStatus = 'represent';
+            } else if (resolved.status === 'conflict') {
+              failures.push(`turn ${index}: answer and delta conflict: ${JSON.stringify(resolved.errors)}`);
+              applyStatus = 'conflict';
             } else if (Object.values(resolved.delta).some(items => items.length)) {
               const applied = applyWeeklyPlanningVNextTurn(state, resolved.delta, { expectedRevision: state.graph.revision,
                 acceptedDate: clock.currentDate, turnKey: `${scenario.id}:turn:${index}`, conversationId: `synthetic:${scenario.id}`,

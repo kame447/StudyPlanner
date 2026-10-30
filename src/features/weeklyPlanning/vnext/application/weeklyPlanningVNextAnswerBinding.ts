@@ -5,10 +5,15 @@
 // question must still be one the current projection asks. Answers become ordinary
 // typed deltas; the caller applies them as a turn and re-projects.
 import type {
+  VNextFactRef,
   VNextQuestion,
   VNextTurnDelta,
+  VNextTurnError,
+  VNextWorkRef,
+  WeeklyPlanningVNextGraph,
   WeeklyPlanningVNextProjection,
 } from '../weeklyPlanningVNextTypes';
+import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 
 /** What was shown with the assistant message, stored inside the presentation record. */
 export interface WeeklyPlanningVNextPresentedQuestion {
@@ -116,20 +121,55 @@ function mergeDeltas(left: VNextTurnDelta, right: VNextTurnDelta): VNextTurnDelt
 }
 
 /**
+ * Estimates a reading's delta states about the asked work. An estimate answer is the turn's
+ * statement of that work's estimate; the same reading stating it again as a fact would commit
+ * two copies of one statement (Astra F02). Decided by lineage identity only.
+ */
+function restatedAskedEstimates(question: VNextQuestion, delta: VNextTurnDelta, graph: WeeklyPlanningVNextGraph): VNextTurnError[] {
+  if (!question.forWork) return [];
+  const { lineageOf } = createVNextLineageResolver(graph);
+  const asked = new Set([question.forWork.workLineageId, lineageOf(question.forWork.definingFactId),
+    lineageOf(question.componentId ?? question.taskId)]);
+  const aboutAsked = (ref: VNextFactRef | VNextWorkRef) => ('workLineageId' in ref ? asked.has(ref.workLineageId)
+    : 'factId' in ref && asked.has(lineageOf(ref.factId)));
+  const errors: VNextTurnError[] = [];
+  delta.add.forEach((fact, index) => {
+    if (fact.kind === 'effort_estimate' && aboutAsked(fact.targetRef)) {
+      errors.push({ code: 'invalid_value', path: `add[${index}]`, localId: fact.localId, factId: null });
+    }
+  });
+  delta.patch.forEach((patch, index) => {
+    const effort = patch.kind === 'effort_estimate' ? graph.effortEstimates.find((fact) => fact.id === patch.targetFactId) : undefined;
+    if (effort && aboutAsked({ factId: effort.targetFactId })) {
+      errors.push({ code: 'invalid_value', path: `patch[${index}]`, localId: patch.localId, factId: patch.targetFactId });
+    }
+  });
+  return errors;
+}
+
+/**
  * What one interpreted turn applies: the reading's delta, plus the bound answer
  * to the presented question when the words answer it. An answer that no longer
- * binds re-presents the current question and applies nothing. The session and
- * every evaluation harness use this one function.
+ * binds re-presents the current question and applies nothing; an estimate answer
+ * restated as a fact in the same reading is a conflict, never two commits. The
+ * session, the provider's validation and every evaluation harness use this one function.
  */
 export function resolveWeeklyPlanningVNextTurnDelta(params: {
   presentationFresh: boolean;
   presented: WeeklyPlanningVNextPresentedQuestion | null;
   projection: WeeklyPlanningVNextProjection;
-  lineageOf: (factId: string) => string;
+  graph: WeeklyPlanningVNextGraph;
   interpreted: { delta: VNextTurnDelta; answer: Extract<WeeklyPlanningVNextAnswer, { kind: 'option' | 'estimate_minutes' }> | null };
-}): { status: 'delta'; delta: VNextTurnDelta } | { status: 'represent'; question: VNextQuestion | null } {
-  if (!params.interpreted.answer) return { status: 'delta', delta: params.interpreted.delta };
-  const binding = bindWeeklyPlanningVNextAnswer({ ...params, answer: params.interpreted.answer });
-  if (binding.status === 'bound') return { status: 'delta', delta: mergeDeltas(binding.delta, params.interpreted.delta) };
-  return { status: 'represent', question: binding.status === 'represent' ? binding.question : params.projection.questions[0] ?? null };
+}): { status: 'delta'; delta: VNextTurnDelta }
+  | { status: 'represent'; question: VNextQuestion | null }
+  | { status: 'conflict'; errors: VNextTurnError[] } {
+  const answer = params.interpreted.answer;
+  if (!answer) return { status: 'delta', delta: params.interpreted.delta };
+  const binding = bindWeeklyPlanningVNextAnswer({ ...params, lineageOf: createVNextLineageResolver(params.graph).lineageOf, answer });
+  if (binding.status !== 'bound') {
+    return { status: 'represent', question: binding.status === 'represent' ? binding.question : params.projection.questions[0] ?? null };
+  }
+  const restated = answer.kind === 'estimate_minutes' ? restatedAskedEstimates(binding.question, params.interpreted.delta, params.graph) : [];
+  if (restated.length) return { status: 'conflict', errors: restated };
+  return { status: 'delta', delta: mergeDeltas(binding.delta, params.interpreted.delta) };
 }

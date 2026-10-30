@@ -338,13 +338,53 @@ function matchWorkloads(actual: readonly ObservedWorkload[], expected: readonly 
     pairs.push([wanted, remaining[index]]);
     remaining.splice(index, 1);
   }
-  return { matched: pairs.length === expected.length && remaining.length === 0, pairs };
+  return {
+    matched: pairs.length === expected.length && pairs.every(([, fact]) => fact !== null) && remaining.length === 0,
+    pairs,
+  };
 }
 
 function matchOracleWorkloads(observed: readonly ObservedWorkload[], oracle: RealApiTurnOracle) {
   const candidates = [oracle.workloads, ...(oracle.workloadAlternatives ?? [])];
   const matches = candidates.map((candidate) => matchWorkloads(observed, candidate));
   return matches.find((match) => match.matched) ?? matches[0];
+}
+
+function effortMatchesOracle(
+  fact: ObservedEffort,
+  wanted: RealApiTurnOracle['efforts'][number],
+  boundWork: ObservedWorkload,
+  observed: ObservedFacts,
+  projectedBoundWork: ObservedWorkload | undefined,
+): boolean {
+  if (fact.kind !== wanted.kind || fact.minutes !== wanted.minutes || fact.taskId !== boundWork.taskId) return false;
+  const sameSpecificRole = fact.forRole === wanted.forRole;
+  const sameTaskBinding = fact.forRole === 'task'
+    && observed.workloads.filter((work) => work.taskId === boundWork.taskId
+      && ['remaining', 'target', 'declared'].includes(work.role)).length === 1;
+  const sameProjectedWorkBinding = projectedBoundWork?.taskId === fact.taskId
+    && (fact.forRole === 'scope_total' || fact.bindingKind === 'future_work');
+  if (!sameSpecificRole && !sameTaskBinding && !sameProjectedWorkBinding) return false;
+  if (wanted.kind === 'duration_per_unit') {
+    return effortUnitMatchesWork(fact, boundWork, wanted.task) && sameUnitIdentity(boundWork, wanted, wanted.task);
+  }
+  // V5 stores total/session estimates in minutes; null means “not per workload
+  // unit”, not “the stored unit code must be null”.
+  return fact.unitCode === null || fact.unitCode === 'minute';
+}
+
+function effortIsBoundToWork(
+  fact: ObservedEffort,
+  work: ObservedWorkload,
+  observed: ObservedFacts,
+  projectedBoundWork: ObservedWorkload | undefined,
+): boolean {
+  if (fact.taskId !== work.taskId) return false;
+  return fact.forRole === work.role
+    || (fact.forRole === 'task' && observed.workloads.filter((candidate) => candidate.taskId === work.taskId
+      && ['remaining', 'target', 'declared'].includes(candidate.role)).length === 1)
+    || (projectedBoundWork?.taskId === fact.taskId
+      && (fact.forRole === 'scope_total' || fact.bindingKind === 'future_work'));
 }
 
 function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question: string | null, workMinutes: number | null,
@@ -381,22 +421,23 @@ function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question
       && fact.amount === expectedWork.amount && sameUnitIdentity(fact, expectedWork, wanted.task));
     const boundWork = (expectedWork && workloads.pairs.find(([expected]) => expected.task === wanted.task)?.[1])
       ?? projectedBoundWork;
-    const found = observed.efforts.some((fact) => {
-      if (fact.kind !== wanted.kind || fact.minutes !== wanted.minutes || !boundWork || fact.taskId !== boundWork.taskId) return false;
-      const sameSpecificRole = fact.forRole === wanted.forRole;
-      const sameTaskBinding = fact.forRole === 'task'
-        && observed.workloads.filter((work) => work.taskId === boundWork.taskId && ['remaining', 'target', 'declared'].includes(work.role)).length === 1;
-      const sameProjectedWorkBinding = projectedBoundWork?.taskId === fact.taskId
-        && (fact.forRole === 'scope_total' || fact.bindingKind === 'future_work');
-      if (!sameSpecificRole && !sameTaskBinding && !sameProjectedWorkBinding) return false;
-      if (wanted.kind === 'duration_per_unit') {
-        return effortUnitMatchesWork(fact, boundWork, wanted.task) && sameUnitIdentity(boundWork, wanted, wanted.task);
-      }
-      // V5 stores total/session estimates in minutes; null in this oracle means
-      // “not per workload unit”, not “the stored unit code must be null”.
-      return fact.unitCode === null || fact.unitCode === 'minute';
-    });
-    if (!found) differences.push(`effort missing ${wanted.kind}/${wanted.minutes}/${wanted.forRole}`);
+    if (!boundWork) {
+      differences.push(`effort missing ${wanted.kind}/${wanted.minutes}/${wanted.forRole}`);
+      continue;
+    }
+    const expectedForWork = oracle.efforts.filter((candidate) =>
+      candidate.task === wanted.task && candidate.forRole === wanted.forRole);
+    const matching = observed.efforts.filter((fact) => effortMatchesOracle(
+      fact, wanted, boundWork, observed, projectedBoundWork,
+    ));
+    if (matching.length !== 1) {
+      differences.push(`effort expected exactly one ${wanted.kind}/${wanted.minutes}/${wanted.forRole}; observed=${matching.length}`);
+    }
+    const unexpected = observed.efforts.some((fact) => effortIsBoundToWork(fact, boundWork, observed, projectedBoundWork)
+      && !expectedForWork.some((candidate) => effortMatchesOracle(
+        fact, candidate, boundWork, observed, projectedBoundWork,
+      )));
+    if (unexpected) differences.push(`unexpected active effort for ${wanted.task}/${wanted.forRole}`);
   }
   if (oracle.checkTemporal !== false) {
     if (observed.temporal.length !== oracle.temporal.length) differences.push('temporal fact count differs');
@@ -832,6 +873,49 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     });
   });
 
+  it('requires every expected workload to be present in the actual set', () => {
+    const completed: ObservedWorkload = {
+      factId: 'completed', taskId: 'math-task', role: 'completed', amount: 30,
+      unitCode: 'minute', unitLabel: '分', perOccurrence: false, periodExpression: null,
+    };
+    const remaining: ObservedWorkload = {
+      factId: 'remaining', taskId: 'math-task', role: 'remaining', amount: 5,
+      unitCode: 'page', unitLabel: 'ページ', perOccurrence: false, periodExpression: null,
+    };
+    const completeSet = [completed, remaining];
+    const expectedSet = [
+      { task: 'math', role: 'completed' as const, amount: 30, unitCode: 'minute' as const, unitLabel: '分' },
+      { task: 'math', role: 'remaining' as const, amount: 5, unitCode: 'page' as const, unitLabel: 'ページ' },
+    ];
+    const completedOnlyExpectation = [expectedSet[0]];
+
+    expect(matchWorkloads(completeSet, expectedSet).matched).toBe(true);
+    expect(matchWorkloads([], expectedSet).matched).toBe(false);
+    expect(matchWorkloads([completed], expectedSet).matched).toBe(false);
+    expect(matchWorkloads([], completedOnlyExpectation).matched).toBe(false);
+    expect(matchWorkloads([completed], completedOnlyExpectation).matched).toBe(true);
+  });
+
+  it('requires exactly the expected active estimate meaning for the asked work', () => {
+    const scenario = vnextRealApiConversations.find(({ id }) => id === 'custom-unit-change-invalidates-rate')!;
+    const oracle = scenario.turns[2].oracle;
+    const work: ObservedWorkload = {
+      factId: 'remaining-set', taskId: 'cards-task', role: 'remaining', amount: 2,
+      unitCode: 'custom', unitLabel: 'セット', perOccurrence: false, periodExpression: null,
+    };
+    const statedRate: ObservedEffort = {
+      factId: 'answer-rate', taskId: 'cards-task', kind: 'duration_per_unit', minutes: 20,
+      unitCode: 'custom', unitLabel: 'セット', forRole: 'remaining',
+    };
+    const observed: ObservedFacts = { taskIds: ['cards-task'], workloads: [work], efforts: [statedRate], temporal: [] };
+
+    expect(compareTypedOracle(observed, null, 40, oracle)).toEqual([]);
+    expect(compareTypedOracle({ ...observed, efforts: [statedRate, { ...statedRate, factId: 'patch-rate' }] }, null, 40, oracle))
+      .toContain('effort expected exactly one duration_per_unit/20/remaining; observed=2');
+    expect(compareTypedOracle({ ...observed, efforts: [statedRate, { ...statedRate, factId: 'wrong-rate', minutes: 25 }] }, null, 40, oracle))
+      .toContain('unexpected active effort for cards/remaining');
+  });
+
   it('compares equivalent unit encodings while rejecting a changed custom unit', () => {
     expect(sameUnitIdentity(
       { unitCode: 'word', unitLabel: 'word' },
@@ -892,7 +976,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
     writeFileSync(`${artifactDir}/v5-baseline.json`, `${JSON.stringify({ summary: v5Summary, conversations: observations }, null, 2)}\n`);
     writeFileSync(`${artifactDir}/vnext-native.json`, `${JSON.stringify({ summary: vnextSummary, conversations: vnextObservations }, null, 2)}\n`);
     writeFileSync(`${artifactDir}/comparison.json`, `${JSON.stringify({ v5: v5Summary, vnext: vnextSummary, conversations: comparison }, null, 2)}\n`);
-    writeFileSync(`${artifactDir}/comparison.md`, `# V5 / VNext real-provider comparison\n\nThe same synthetic turns are run independently through both paths. VNext replies are deterministic and do not call a renderer model; provider-call totals cover interpretation.\n\n## Counts\n\n| Metric | V5 | VNext |\n| --- | ---: | ---: |\n| In-scope turns passed | ${v5Summary.passedOracle} | ${vnextSummary.passedOracle} |\n| In-scope turns failed | ${v5Summary.failedOracle} | ${vnextSummary.failedOracle} |\n| Not reached | ${v5Summary.notReached} | ${vnextSummary.notReached} |\n| Out of scope | ${v5Summary.outOfScopeTurns} | ${vnextSummary.outOfScopeTurns} |\n| Wrong acceptance | ${v5Summary.wrongAcceptance} | ${vnextSummary.wrongAcceptance} |\n| Wrong rejection | ${v5Summary.wrongRejection} | ${vnextSummary.wrongRejection} |\n| Semantic provider calls | ${v5Summary.aiCalls} | ${vnextSummary.aiCalls} |\n| Clarification prompts | ${v5Summary.clarificationPrompts} | ${vnextSummary.clarificationPrompts} |\n| Repeated questions | ${v5Summary.repeatedQuestions} | ${vnextSummary.repeatedQuestions} |\n| Total semantic latency (ms) | ${v5Summary.totalLatencyMs} | ${vnextSummary.totalLatencyMs} |\n\nPer-turn typed observations are in comparison.json.\n`);
+    writeFileSync(`${artifactDir}/comparison.md`, `# V5 / VNext real-provider comparison\n\nThe same synthetic turns are run independently through both paths. VNext replies are deterministic and do not call a renderer model; provider-call totals cover interpretation.\n\n## Counts\n\n| Metric | V5 | VNext |\n| --- | ---: | ---: |\n| In-scope turns passed | ${v5Summary.passedOracle} | ${vnextSummary.passedOracle} |\n| In-scope turns failed | ${v5Summary.failedOracle} | ${vnextSummary.failedOracle} |\n| Not reached | ${v5Summary.notReached} | ${vnextSummary.notReached} |\n| Out of scope | ${v5Summary.outOfScopeTurns} | ${vnextSummary.outOfScopeTurns} |\n| Wrong acceptance | ${v5Summary.wrongAcceptance} | ${vnextSummary.wrongAcceptance} |\n| Wrong rejection | ${v5Summary.wrongRejection} | ${vnextSummary.wrongRejection} |\n| Semantic provider calls | ${v5Summary.aiCalls} | ${vnextSummary.aiCalls} |\n| Clarification prompts | ${v5Summary.clarificationPrompts} | ${vnextSummary.clarificationPrompts} |\n| Repeated questions | ${v5Summary.repeatedQuestions} | ${vnextSummary.repeatedQuestions} |\n| Total semantic latency (ms) | ${v5Summary.totalLatencyMs} | ${vnextSummary.totalLatencyMs} |\n\n**Metric scope:** “Wrong acceptance” counts only in-scope turns where the oracle expects a clarification and the observed question is absent. It does not count other typed-oracle mismatches such as missing or duplicated facts, wrong work bindings, or incorrect estimates; inspect passed/failed oracle totals and per-turn differences for those. This comparison does not exercise save or approval lifecycle outcomes.\n\nPer-turn typed observations are in comparison.json.\n`);
   });
 
   it.each(vnextRealApiConversations)('$id', async (conversation) => {

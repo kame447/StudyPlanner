@@ -10,7 +10,6 @@ import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_R
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
-import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 
 const emptyDelta = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const task = (localId = 'task', title = 'Math') => ({ kind: 'task', localId, category: 'study', title });
@@ -27,6 +26,30 @@ function input(responses: (string | Error)[]): WeeklyPlanningVNextInterpretation
     return response;
   }) }, state, projection: projectWeeklyPlanningVNext(state), presentedQuestion: null, userText: '数学は残り7枚です',
   clock: { currentDate: '2026-10-30', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } };
+}
+
+function changedUnitInput(): WeeklyPlanningVNextInterpretationInput {
+  const params = input([]);
+  const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add:
+    VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === 'custom-unit-change')!.seed }, {
+    expectedRevision: 0, acceptedDate: params.clock.currentDate, turnKey: 'unit-seed',
+    conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic',
+  });
+  if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
+  const changed = applyWeeklyPlanningVNextTurn(seed.state, { ...emptyDelta(), patch: [{ kind: 'workload',
+    localId: 'unit', targetFactId: seed.state.graph.workloads[0].id, amountDelta: null,
+    changes: { amount: 2, unitCode: null, unitLabel: 'セット', quantityRole: null, rangeStart: null, rangeEnd: null,
+      perOccurrence: null, periodExpression: null } }] }, {
+    expectedRevision: seed.state.graph.revision, acceptedDate: params.clock.currentDate, turnKey: 'unit-change',
+    conversationId: 'synthetic', turnId: 'change', sourceText: '残り2セット',
+  });
+  if (changed.status !== 'applied') throw new Error(JSON.stringify(changed));
+  params.state = changed.state;
+  params.projection = projectWeeklyPlanningVNext(changed.state);
+  params.presentedQuestion = params.projection.questions[0];
+  params.userText = '1セットあたり20分です。';
+  expect(params.presentedQuestion).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 2, unitLabel: 'セット' } });
+  return params;
 }
 
 describe('VNext native provider', () => {
@@ -211,6 +234,72 @@ describe('VNext native provider', () => {
     expect(params.state).toEqual(original);
   });
 
+  it.each(['add', 'patch'] as const)('rereads an estimate answer duplicated by %s once, preserving independent facts', async collection => {
+    const params = changedUnitInput();
+    const before = structuredClone(params.state);
+    params.client = { createChatCompletion: vi.fn(async request => {
+      const context = JSON.parse(request.messages[1].content);
+      const answer = { kind: 'estimate_minutes', optionId: null, minutes: 20, per: 'unit' };
+      const delta = { ...emptyDelta(), add: [task('other', 'English')] };
+      if (request.messages.length > 2) return JSON.stringify({ delta, answer });
+      const duplicate = collection === 'add'
+        ? { kind: 'effort_estimate', localId: 'again', taskRef: { factId: context.activeFacts.tasks[0].id },
+            targetRef: { factId: context.activeFacts.workloads[0].id }, effortKind: 'duration_per_unit',
+            minutes: 20, unitCode: 'custom', unitLabel: 'セット', precision: 'exact' }
+        : { kind: 'effort_estimate', localId: 'again', targetFactId: context.activeFacts.effortEstimates[0].id,
+            changes: { minutes: 20, effortKind: null, unitCode: null, unitLabel: 'セット', precision: null } };
+      return JSON.stringify({ delta: { ...delta, [collection]: [...delta[collection], duplicate] }, answer });
+    }) };
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    const calls = vi.mocked(params.client.createChatCompletion).mock.calls;
+    const messages = calls[1][0].messages;
+    const repair = JSON.parse(messages[messages.length - 1].content);
+    expect(repair.errors).toEqual([{ path: `${collection}[${collection === 'add' ? 1 : 0}]`, localId: 'again' }]);
+    expect(repair.instruction).toContain('Discard the prior reading');
+    expect(repair.instruction).toContain("State the asked work's estimate once: as the answer, or as a fact, not both.");
+    expect(params.state).toEqual(before);
+    if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+    expect(result.delta.add).toEqual([task('other', 'English')]);
+    expect(result.delta.patch).toEqual([]);
+    const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
+      presented: { questionKey: params.presentedQuestion!.key, graphRevision: params.projection.graphRevision },
+      projection: params.projection, graph: params.state.graph, interpreted: result });
+    if (resolved.status !== 'delta') throw new Error(JSON.stringify(resolved));
+    const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, { expectedRevision: params.state.graph.revision,
+      acceptedDate: params.clock.currentDate, turnKey: 'repaired', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText });
+    if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
+    expect(projectWeeklyPlanningVNext(applied.state).owners.flatMap(owner => owner.work)).toContainEqual(
+      expect.objectContaining({ amount: 2, minutes: 40, estimateBasis: 'rate' }));
+  });
+
+  it('fails after one reread when the answer still duplicates the same work estimate', async () => {
+    const params = changedUnitInput();
+    const before = structuredClone(params.state);
+    params.client = { createChatCompletion: vi.fn(async request => {
+      const context = JSON.parse(request.messages[1].content);
+      return JSON.stringify(output([{ kind: 'effort_estimate', localId: 'again',
+        taskRef: { factId: context.activeFacts.tasks[0].id }, targetRef: { workLineageId: context.presentedQuestion.forWork.workLineageId },
+        effortKind: 'total_duration', minutes: 40, unitCode: null, unitLabel: null, precision: 'exact' }],
+      { kind: 'estimate_minutes', optionId: null, minutes: 20, per: 'unit' }));
+    }) };
+    expect(await createWeeklyPlanningVNextProviderInterpreter()(params)).toMatchObject({ status: 'failed',
+      reason: 'rejected_after_repair', errors: [{ path: 'add[0]', localId: 'again' }], metrics: { calls: 2, repairs: 1 } });
+    expect(params.state).toEqual(before);
+  });
+
+  it('accepts an estimate answer alongside time for a different task without a repair', async () => {
+    const params = changedUnitInput();
+    params.userText += '別の英語は全体で30分です。';
+    params.client = { createChatCompletion: vi.fn(async () => JSON.stringify(output([task('other', 'English'),
+      { kind: 'effort_estimate', localId: 'other-time', taskRef: { localId: 'other' }, targetRef: { localId: 'other' },
+        effortKind: 'total_duration', minutes: 30, unitCode: null, unitLabel: null, precision: 'exact' }],
+    { kind: 'estimate_minutes', optionId: null, minutes: 20, per: 'unit' }))) };
+    expect(await createWeeklyPlanningVNextProviderInterpreter()(params)).toMatchObject({ status: 'interpreted',
+      delta: { add: [expect.objectContaining({ kind: 'task' }), expect.objectContaining({ kind: 'effort_estimate', minutes: 30 })] },
+      metrics: { calls: 1, repairs: 0 } });
+  });
+
   it.each(['882-iter4-explicit-r8', 'custom-unit-change'])('judges %s through the session binder and question-work oracle', async id => {
     const scenario = VNEXT_PROVIDER_SCENARIOS.find(candidate => candidate.id === id)!;
     const params = input([]);
@@ -233,7 +322,7 @@ describe('VNext native provider', () => {
     if (interpreted.status !== 'interpreted') throw new Error(JSON.stringify(interpreted));
     const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
       presented: params.presentedQuestion ? { questionKey: params.presentedQuestion.key, graphRevision: params.projection.graphRevision } : null,
-      projection: params.projection, lineageOf: createVNextLineageResolver(params.state.graph).lineageOf, interpreted });
+      projection: params.projection, graph: params.state.graph, interpreted });
     if (resolved.status !== 'delta') throw new Error('answer not bound');
     const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, {
       expectedRevision: params.state.graph.revision, acceptedDate: params.clock.currentDate, turnKey: `${id}:turn`, conversationId: 'synthetic', turnId: 'turn', sourceText: scenario.turns[0].text,
@@ -272,7 +361,7 @@ describe('VNext native provider', () => {
     if (interpreted.status !== 'interpreted') throw new Error(JSON.stringify(interpreted));
     const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true, projection: params.projection,
       presented: { questionKey: params.presentedQuestion.key, graphRevision: params.projection.graphRevision },
-      lineageOf: createVNextLineageResolver(seed.state.graph).lineageOf, interpreted });
+      graph: seed.state.graph, interpreted });
     if (resolved.status !== 'delta') throw new Error('answer did not bind');
     const applied = applyWeeklyPlanningVNextTurn(seed.state, resolved.delta, { expectedRevision: seed.state.graph.revision,
       turnKey: 'answer-turn', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText, acceptedDate: params.clock.currentDate });
