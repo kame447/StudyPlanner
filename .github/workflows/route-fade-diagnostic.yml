@@ -1,0 +1,78 @@
+name: Route fade observation diagnostic
+
+on:
+  push:
+    branches:
+      - diagnose/route-fade-observation-assertions
+    paths:
+      - tests/e2e/route-entry-fade.spec.mjs
+      - .github/workflows/route-fade-diagnostic.yml
+
+permissions:
+  contents: read
+
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+
+concurrency:
+  group: route-fade-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  route-fade:
+    name: route fade (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --user 1001
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium-desktop, webkit-mobile]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Snapshot application manifests
+        run: sha256sum package.json package-lock.json > /tmp/route-fade-manifests.sha256
+      - name: Install pinned isolated test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+      - name: Verify unchanged application manifests
+        run: sha256sum -c /tmp/route-fade-manifests.sha256
+      - name: Build production bundle
+        run: npm run build
+      - name: Run route-entry spec three times without retries
+        shell: bash
+        env:
+          DIAGNOSTIC_PROJECT: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          cat > tests/e2e/route-fade.diagnostic.config.mjs <<'CONFIG'
+          import base from './playwright.cross-browser.config.mjs';
+          export default {
+            ...base,
+            testMatch: '**/route-entry-fade.spec.mjs',
+            retries: 0,
+            workers: 1,
+            projects: base.projects.filter(project => project.name === process.env.DIAGNOSTIC_PROJECT).map(project => ({ ...project, testMatch: '**/route-entry-fade.spec.mjs' })),
+          };
+          CONFIG
+          ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/route-fade.diagnostic.config.mjs --repeat-each=3 --retries=0
+      - name: Upload bounded diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: route-fade-${{ matrix.project }}-${{ github.sha }}
+          path: |
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-results.json
+          retention-days: 7
+          if-no-files-found: warn
