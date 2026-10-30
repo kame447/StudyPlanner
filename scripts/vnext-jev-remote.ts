@@ -20,8 +20,9 @@ export interface ProviderUsage {
   latencyMs: number;
   servedModels: string[];
   httpStatuses: (number | null)[];
+  lastCall: ProviderCallUsage | null;
 }
-interface Receipt {
+export interface ProviderCallUsage {
   inputTokens: number | null; outputTokens: number | null; costUsd: number | null;
   latencyMs: number; servedModel: string | null; httpStatus: number | null;
 }
@@ -36,8 +37,8 @@ const origin = 'https://vnext-jev-remote.invalid';
 // Serialize the short-lived global fetch scope, including overlapping harness instances.
 let lunaQueue: Promise<unknown> = Promise.resolve();
 const emptyUsage = (): ProviderUsage => ({ calls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0,
-  latencyMs: 0, servedModels: [], httpStatuses: [] });
-function accumulate(total: ProviderUsage, receipt: Receipt) {
+  latencyMs: 0, servedModels: [], httpStatuses: [], lastCall: null });
+function accumulate(total: ProviderUsage, receipt: ProviderCallUsage) {
   total.calls++;
   for (const key of ['inputTokens', 'outputTokens', 'costUsd'] as const) {
     total[key] = total[key] === null || receipt[key] === null ? null : total[key]! + receipt[key]!;
@@ -45,6 +46,7 @@ function accumulate(total: ProviderUsage, receipt: Receipt) {
   total.latencyMs += receipt.latencyMs;
   if (receipt.servedModel && !total.servedModels.includes(receipt.servedModel)) total.servedModels.push(receipt.servedModel);
   total.httpStatuses.push(receipt.httpStatus);
+  total.lastCall = structuredClone(receipt);
 }
 
 export async function startVNextJevRemote(options: { worker: string; ttlMs: number }): Promise<VNextJevRemote> {
@@ -81,14 +83,14 @@ export async function startVNextJevRemote(options: { worker: string; ttlMs: numb
     const call = async (path: '/luna' | '/jev', body: string, signal?: AbortSignal | null) => {
       if (stopping || Date.now() >= expiresAt) throw new Error('VNext remote preview expired.');
       const started = Date.now();
-      let receipt: Receipt = { httpStatus: null, servedModel: null, latencyMs: 0, inputTokens: null, outputTokens: null, costUsd: null };
+      let receipt: ProviderCallUsage = { httpStatus: null, servedModel: null, latencyMs: 0, inputTokens: null, outputTokens: null, costUsd: null };
       try {
         const response = await worker!.fetch(path, { method: 'POST', body,
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           signal: signal ?? AbortSignal.timeout(90_000) });
         receipt.httpStatus = response.status;
         if (!response.ok) throw new Error('VNext preview provider request failed.');
-        const envelope = await response.json() as { result: unknown; usage: Receipt };
+        const envelope = await response.json() as { result: unknown; usage: ProviderCallUsage };
         receipt = envelope.usage;
         return envelope.result;
       } catch { throw new Error('VNext preview provider request failed.'); }
