@@ -496,3 +496,24 @@ it('settles a provider-pending turn after navigation without resubmitting or los
   expect(mocks.execute).toHaveBeenCalledOnce(); expect(mocks.ocr).toHaveBeenCalledOnce();
   expect(sidebar().props.disabled).toBe(false);
 });
+
+it.each([
+  ['network', '通信を確認するか、文字で入力'],
+  ['service-error', '時間をおくか、文字で入力'],
+  ['not-allowed', 'マイク権限を許可'],
+  ['no-speech', 'もう一度話して'],
+])('projects speech %s by code, never arbitrary provider details', async (code, guidance) => {
+  let recognition!: { onerror: null | ((event: { error: string; message: string }) => void) };
+  class SpeechRecognition {
+    onresult = null; onerror = null; onend = null;
+    start() {} abort() {} stop() {}
+    constructor() { recognition = this; }
+  }
+  Object.assign(window, { SpeechRecognition });
+  await mount();
+  await act(async () => { renderer!.root.findByProps({ 'aria-label': '音声入力' }).props.onClick(); });
+  await act(async () => { recognition.onerror!({ error: code, message: 'private upstream Worker key=secret' }); });
+  const rendered = JSON.stringify(renderer!.toJSON());
+  expect(rendered).toContain(guidance);
+  expect(rendered).not.toContain('private upstream');
+});

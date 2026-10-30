@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { createId } from '../lib/id';
 import type { AuthRepository, AuthStorageGateway } from './repositoryContracts';
 import type { User } from '../types/domain';
@@ -15,18 +16,18 @@ export function createAuthRepository(
       const normalizedUsername = username.trim() || normalizedEmail;
 
       if (!normalizedEmail.includes('@')) {
-        throw new Error('メールアドレスの形式を確認してください。');
+        throw new UserFacingError('メールアドレスの形式を確認してください。');
       }
 
       if (password.trim().length < 6) {
-        throw new Error('パスワードは6文字以上にしてください。');
+        throw new UserFacingError('パスワードは6文字以上にしてください。');
       }
 
       const users = await storageGateway.readUsers();
       const currentUser = users.find((item) => item.email === normalizedEmail);
 
       if (currentUser) {
-        throw new Error('このメールアドレスはすでに登録されています。');
+        throw new UserFacingError('このメールアドレスはすでに登録されています。');
       }
 
       const nextUser: User = {
@@ -43,24 +44,24 @@ export function createAuthRepository(
       const normalizedEmail = normalizeEmail(email);
       const passwordUserId = await storageGateway.findPasswordUserId(normalizedEmail, password);
       if (passwordUserId === null) {
-        throw new Error('メールアドレスまたはパスワードが一致しません。');
+        throw new UserFacingError('メールアドレスまたはパスワードが一致しません。');
       }
 
       const users = await storageGateway.readUsers();
       const user = users.find((item) => item.id === passwordUserId);
 
       if (!user) {
-        throw new Error('ユーザー情報が見つかりません。');
+        throw new UserFacingError('ユーザー情報が見つかりません。');
       }
 
       await storageGateway.writeSessionUserId(user.id);
       return user;
     },
     async signInWithGoogle() {
-      throw new Error('Firebase 設定が無いため Google ログインは使えません。');
+      throw new UserFacingError('この環境ではGoogleログインを利用できません。メールアドレスでログインしてください。');
     },
     async sendPasswordReset() {
-      throw new Error('Firebase 設定が無いためパスワード再設定は使えません。');
+      throw new UserFacingError('この環境ではパスワード再設定を利用できません。管理者にお問い合わせください。');
     },
     async getCurrentUser() {
       const sessionUserId = await storageGateway.readSessionUserId();
@@ -77,7 +78,7 @@ export function createAuthRepository(
       const currentUser = users.find((item) => item.id === userId);
 
       if (!currentUser) {
-        throw new Error('ユーザー情報が見つかりません。');
+        throw new UserFacingError('ユーザー情報が見つかりません。');
       }
 
       const nextUser = {

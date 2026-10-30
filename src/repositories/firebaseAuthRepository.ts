@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { observeStartupDocument } from './observeStartupDocument';
 import type { Auth, User as FirebaseAuthUser } from 'firebase/auth';
 import {
@@ -54,12 +55,28 @@ function normalizeUsername(username: string, email: string): string {
   return trimmedUsername || email;
 }
 
-function normalizeErrorMessage(
-  fallbackMessage: string,
-  error: { message?: string | null } | null,
-): string {
-  const message = error?.message?.trim();
-  return message || fallbackMessage;
+function authErrorMessage(fallbackMessage: string, error: unknown): string {
+  if (error instanceof UserFacingError) return error.message;
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'このメールアドレスはすでに登録されています。ログインするか、パスワードを再設定してください。';
+    case 'auth/invalid-email': return 'メールアドレスの形式を確認してください。';
+    case 'auth/weak-password': return 'パスワードは6文字以上にしてください。';
+    case 'auth/invalid-credential':
+    case 'auth/invalid-login-credentials':
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+      return 'メールアドレスまたはパスワードを確認してください。忘れた場合はパスワードを再設定できます。';
+    case 'auth/user-disabled': return 'このアカウントは利用できません。管理者にお問い合わせください。';
+    case 'auth/too-many-requests': return `操作が集中しています。しばらく待ってから操作してください。${fallbackMessage}`;
+    case 'auth/network-request-failed': return `通信できませんでした。通信状況を確認してください。${fallbackMessage}`;
+    case 'auth/popup-blocked': return 'ログイン画面を開けませんでした。ブラウザでポップアップを許可してから、もう一度お試しください。';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request': return 'ログインをキャンセルしました。続ける場合はもう一度Googleログインを選んでください。';
+    case 'auth/requires-recent-login': return '安全のため、ログインし直してからもう一度操作してください。';
+    default: return fallbackMessage;
+  }
 }
 
 function mapProfileDocToUser(profile: ProfileDoc): User {
@@ -117,7 +134,7 @@ async function ensureProfile(
   const email = authUser.email?.trim().toLowerCase() || existingProfile?.email || '';
 
   if (!email) {
-    throw new Error('ユーザーのメールアドレスを取得できませんでした。');
+    throw new UserFacingError('ユーザーのメールアドレスを取得できませんでした。');
   }
 
   const createdAt = existingProfile?.createdAt
@@ -158,20 +175,19 @@ export function createFirebaseAuthRepository(
 ): AuthRepository {
   return {
     async signUpWithPassword(email, password, username) {
-      await ensureLocalAuthPersistence(firebaseAuth);
-
-      const normalizedEmail = normalizeEmail(email);
-      const normalizedUsername = normalizeUsername(username, normalizedEmail);
-
-      if (!normalizedEmail.includes('@')) {
-        throw new Error('メールアドレスの形式を確認してください。');
-      }
-
-      if (password.trim().length < 6) {
-        throw new Error('パスワードは6文字以上にしてください。');
-      }
-
       try {
+        await ensureLocalAuthPersistence(firebaseAuth);
+        const normalizedEmail = normalizeEmail(email);
+        const normalizedUsername = normalizeUsername(username, normalizedEmail);
+
+        if (!normalizedEmail.includes('@')) {
+          throw new UserFacingError('メールアドレスの形式を確認してください。');
+        }
+
+        if (password.trim().length < 6) {
+          throw new UserFacingError('パスワードは6文字以上にしてください。');
+        }
+
         const credential = await createUserWithEmailAndPassword(
           firebaseAuth,
           normalizedEmail,
@@ -185,17 +201,16 @@ export function createFirebaseAuthRepository(
         await sendEmailVerification(credential.user);
         await firebaseSignOut(firebaseAuth);
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage('新規登録に失敗しました。', error as { message?: string | null }),
+        throw new UserFacingError(
+          authErrorMessage('登録の完了を確認できませんでした。確認メールの受信状況やログイン状態を確認してください。', error),
         );
       }
     },
     async signInWithPassword(email, password) {
-      await ensureLocalAuthPersistence(firebaseAuth);
-
       const normalizedEmail = normalizeEmail(email);
 
       try {
+        await ensureLocalAuthPersistence(firebaseAuth);
         const credential = await signInWithEmailAndPassword(
           firebaseAuth,
           normalizedEmail,
@@ -204,61 +219,59 @@ export function createFirebaseAuthRepository(
 
         if (isPasswordLogin(credential.user) && !credential.user.emailVerified) {
           await firebaseSignOut(firebaseAuth);
-          throw new Error(
+          throw new UserFacingError(
             'メール確認がまだ完了していません。受信トレイの確認リンクを開いてからログインしてください。',
           );
         }
 
-        return ensureProfile(
+        return await ensureProfile(
           firestoreDb,
           credential.user,
           credential.user.displayName || normalizedEmail,
         );
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage('ログインに失敗しました。', error as { message?: string | null }),
+        throw new UserFacingError(
+          authErrorMessage('ログインを完了できませんでした。通信状況を確認して、もう一度お試しください。', error),
         );
       }
     },
     async signInWithGoogle() {
-      await ensureLocalAuthPersistence(firebaseAuth);
-
       try {
+        await ensureLocalAuthPersistence(firebaseAuth);
         const credential = await signInWithPopup(
           firebaseAuth,
           createGoogleProvider(),
         );
 
-        return ensureProfile(
+        return await ensureProfile(
           firestoreDb,
           credential.user,
           credential.user.displayName || credential.user.email || '',
         );
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage(
+        throw new UserFacingError(
+          authErrorMessage(
             'Googleログインに失敗しました。',
-            error as { message?: string | null },
+            error,
           ),
         );
       }
     },
     async sendPasswordReset(email) {
-      await ensureLocalAuthPersistence(firebaseAuth);
-
-      const normalizedEmail = normalizeEmail(email);
-
-      if (!normalizedEmail.includes('@')) {
-        throw new Error('メールアドレスの形式を確認してください。');
-      }
-
       try {
+        await ensureLocalAuthPersistence(firebaseAuth);
+        const normalizedEmail = normalizeEmail(email);
+
+        if (!normalizedEmail.includes('@')) {
+          throw new UserFacingError('メールアドレスの形式を確認してください。');
+        }
+
         await sendPasswordResetEmail(firebaseAuth, normalizedEmail);
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage(
+        throw new UserFacingError(
+          authErrorMessage(
             'パスワード再設定メールを送信できませんでした。',
-            error as { message?: string | null }),
+            error),
         );
       }
     },
@@ -273,64 +286,79 @@ export function createFirebaseAuthRepository(
         phase: 'profile-observation', stopPhase: 'profile-observer-stop' });
     },
     async getCurrentUser() {
-      await ensureLocalAuthPersistence(firebaseAuth);
+      try {
+        await ensureLocalAuthPersistence(firebaseAuth);
 
-      const authUser = await waitForAuthUser(firebaseAuth);
+        const authUser = await waitForAuthUser(firebaseAuth);
 
-      if (!authUser) {
-        return null;
+        if (!authUser) {
+          return null;
+        }
+
+        if (isPasswordLogin(authUser) && !authUser.emailVerified) {
+          await firebaseSignOut(firebaseAuth);
+          return null;
+        }
+
+        return await ensureProfile(
+          firestoreDb,
+          authUser,
+          authUser.displayName || authUser.email || '',
+        );
+      } catch (error) {
+        throw new UserFacingError(authErrorMessage(
+          'ログイン状態を確認できませんでした。通信状況を確認して再読み込みしてください。', error));
       }
-
-      if (isPasswordLogin(authUser) && !authUser.emailVerified) {
-        await firebaseSignOut(firebaseAuth);
-        return null;
-      }
-
-      return ensureProfile(
-        firestoreDb,
-        authUser,
-        authUser.displayName || authUser.email || '',
-      );
     },
     async updateUserProfile(userId, draft) {
-      await ensureLocalAuthPersistence(firebaseAuth);
+      try {
+        await ensureLocalAuthPersistence(firebaseAuth);
 
-      const authUser = await waitForAuthUser(firebaseAuth);
+        const authUser = await waitForAuthUser(firebaseAuth);
 
-      if (!authUser || authUser.uid !== userId) {
-        throw new Error('ユーザー情報が見つかりません。');
+        if (!authUser || authUser.uid !== userId) {
+          throw new UserFacingError('ユーザー情報が見つかりません。');
+        }
+
+        const currentProfile = await getProfileById(firestoreDb, userId);
+        const email = authUser.email?.trim().toLowerCase() || currentProfile?.email || '';
+
+        if (!email) {
+          throw new UserFacingError('メールアドレスを取得できませんでした。');
+        }
+
+        const nextUsername = normalizeUsername(draft.username, email);
+
+        await updateProfile(authUser, {
+          displayName: nextUsername,
+        });
+
+        const createdAt = currentProfile?.createdAt
+          || authUser.metadata.creationTime
+          || new Date().toISOString();
+        const nextProfile = await upsertProfile(firestoreDb, {
+          id: userId,
+          email,
+          username: nextUsername,
+          avatar: draft.avatar.trim(),
+          createdAt,
+          ...(!currentProfile ? { registeredAt: serverTimestamp() } : {}),
+        });
+
+        return mapProfileDocToUser(nextProfile);
+      } catch (error) {
+        throw new UserFacingError(authErrorMessage(
+          'プロフィールの更新結果を確認できませんでした。再読み込みして内容を確認してください。', error));
       }
-
-      const currentProfile = await getProfileById(firestoreDb, userId);
-      const email = authUser.email?.trim().toLowerCase() || currentProfile?.email || '';
-
-      if (!email) {
-        throw new Error('メールアドレスを取得できませんでした。');
-      }
-
-      const nextUsername = normalizeUsername(draft.username, email);
-
-      await updateProfile(authUser, {
-        displayName: nextUsername,
-      });
-
-      const createdAt = currentProfile?.createdAt
-        || authUser.metadata.creationTime
-        || new Date().toISOString();
-      const nextProfile = await upsertProfile(firestoreDb, {
-        id: userId,
-        email,
-        username: nextUsername,
-        avatar: draft.avatar.trim(),
-        createdAt,
-        ...(!currentProfile ? { registeredAt: serverTimestamp() } : {}),
-      });
-
-      return mapProfileDocToUser(nextProfile);
     },
     async signOut() {
-      await ensureLocalAuthPersistence(firebaseAuth);
-      await firebaseSignOut(firebaseAuth);
+      try {
+        await ensureLocalAuthPersistence(firebaseAuth);
+        await firebaseSignOut(firebaseAuth);
+      } catch (error) {
+        throw new UserFacingError(authErrorMessage(
+          'ログアウトを完了できませんでした。通信状況を確認して、もう一度お試しください。', error));
+      }
     },
   };
 }

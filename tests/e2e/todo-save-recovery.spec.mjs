@@ -45,7 +45,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     await memo.fill('失敗しても残すメモ');
     await page.evaluate(() => { window.__todoWriteFailures = 1; });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(editor.getByRole('alert')).toHaveText('Fixture Todo storage failure');
+    await expect(editor.getByRole('alert')).toHaveText('Todoを保存できませんでした。');
+    await expect(editor).not.toContainText('Fixture Todo storage failure');
     expect(await page.evaluate(() => window.__todoWriteFailures)).toBe(0);
     await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('再送で保存した課題');
     await expect(memo).toHaveValue('失敗しても残すメモ');
@@ -62,7 +63,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     await editor.getByLabel('自由入力（分）', { exact: true }).fill('75');
     await page.evaluate(() => { window.__todoWriteFailures = 1; });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(editor.getByRole('alert')).toHaveText('Fixture Todo storage failure');
+    await expect(editor.getByRole('alert')).toHaveText('Todoを予定化できませんでした。');
+    await expect(editor).not.toContainText('Fixture Todo storage failure');
     expect(await page.evaluate(() => window.__todoWriteFailures)).toBe(0);
     await expect(editor.getByLabel('開始時刻', { exact: true })).toHaveValue('18:45');
     await expect(editor.getByLabel('自由入力（分）', { exact: true })).toHaveValue('75');

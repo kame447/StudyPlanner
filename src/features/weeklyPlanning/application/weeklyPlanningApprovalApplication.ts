@@ -1,3 +1,4 @@
+import { UserFacingError } from '../../../lib/userFacingError';
 import { isWeeklyPlanningApprovalRecovery } from '../planning/weeklyPlanningApprovalRecovery';
 import type { Plan, PlanDraft } from '../../../types/domain';
 import {
@@ -131,7 +132,7 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
     const recovery = snapshot.approvalRecovery;
     if (recovery && !isWeeklyPlanningApprovalRecovery(recovery, blocks, snapshot.weekStartDate,
       (value) => Boolean(value && typeof value === 'object' && 'id' in value))) {
-      throw new Error('保存途中の仮予定が変更されています。元の状態を復元してください。');
+      throw new UserFacingError('保存途中の仮予定が変更されています。元の状態を復元してください。');
     }
     const originalBlocks = recovery?.blocks ?? blocks;
     const runtimeResolution = resolveWeeklyPlanningApprovalRuntime({
@@ -147,14 +148,14 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
     });
     if (!guard.allowed) {
       const reason = 'reason' in guard.attempt ? guard.attempt.reason : undefined;
-      throw new Error(approvalErrorMessage(guard.attempt.kind, reason));
+      throw new UserFacingError(approvalErrorMessage(guard.attempt.kind, reason));
     }
 
     if (recovery && (recovery.operation.userId !== authenticatedUserId
       || recovery.operation.previewId !== guard.metadata.previewId
       || recovery.operation.previewStateRevision !== guard.metadata.stateRevision
       || recovery.operation.conversationId !== guard.metadata.conversationId)) {
-      throw new Error('保存途中の仮予定と現在の条件が一致しません。');
+      throw new UserFacingError('保存途中の仮予定と現在の条件が一致しません。');
     }
     const existingOperation = recovery?.operation ?? approvalOperations.find((operation) =>
       operation.userId === authenticatedUserId
@@ -245,7 +246,7 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
           previewCount: blocks.length,
         });
       }
-      throw new Error(message);
+      throw new UserFacingError(message);
     }
     if (planningSessionId) {
       services.recordApprovalCompleted({
@@ -268,6 +269,6 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
         });
       }
     }
-    throw error;
+    throw error instanceof UserFacingError ? error : new UserFacingError('予定の保存結果を確認できませんでした。保存済みの予定を確認し、未保存分だけ再試行してください。');
   }
 }
