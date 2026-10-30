@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ChangeEvent,
   type FormEvent,
   type PointerEvent,
@@ -781,7 +782,8 @@ export function TimetableView({
           className="timetable-grid"
           style={{
             gridTemplateColumns: `var(--timetable-period-column-width) repeat(${WEEKDAY_OPTIONS.length}, minmax(0, 1fr))`,
-          }}
+            '--timetable-period-count': displayPeriods.length,
+          } as CSSProperties}
         >
           <div className="timetable-corner-cell" />
           {WEEKDAY_OPTIONS.map((weekday) => (

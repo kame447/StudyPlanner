@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { TimetableTerm } from '../types/domain';
 import { buildTimetableDisplayModel, WEEKDAY_OPTIONS, type TimetableDisplayInput } from '../lib/timetableDisplayModel';
 import { getPeriodTimeStatus } from '../lib/timetableViewModel';
@@ -27,7 +28,7 @@ export function TimetableSkeleton({ userId, activeTerm, timetablePeriods, schedu
       <span>交互週</span><div className="segmented-control"><span className="segment">A週</span><span className="segment">B週</span></div>
     </div>}
     <div className="timetable-grid-shell">
-      <div className="timetable-grid" style={{ gridTemplateColumns: `var(--timetable-period-column-width) repeat(${WEEKDAY_OPTIONS.length}, minmax(0, 1fr))` }}>
+      <div className="timetable-grid" style={{ gridTemplateColumns: `var(--timetable-period-column-width) repeat(${WEEKDAY_OPTIONS.length}, minmax(0, 1fr))`, '--timetable-period-count': displayPeriods.length } as CSSProperties}>
         <div className="timetable-corner-cell" />
         {WEEKDAY_OPTIONS.map(day => <div className="timetable-weekday-cell" key={day.value}>{day.label}</div>)}
         {displayPeriods.map(period => <div className="timetable-row-contents" key={period.periodNumber}>
