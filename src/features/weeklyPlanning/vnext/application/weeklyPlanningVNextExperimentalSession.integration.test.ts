@@ -16,6 +16,7 @@ import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from '../../dialogue/
 import type { WeeklyPlanningStableV5DialogueRenderInput } from '../../dialogue/weeklyPlanningStableV5DialogueContracts';
 import { RENDERER_PREVIEW_CONTINGENCY, RENDERER_TECHNICAL_STOP } from '../../dialogue/weeklyPlanningStableV5TurnDialogueCore';
 import type { WeeklyPlanDraftBlock } from '../../types';
+import { createInitialPlanningIntakeState } from '../../intake/weeklyPlanningIntakeReducer';
 import { createInitialPlanningState } from '../../weeklyPlanningReducer';
 import type {
   WeeklyPlanningVNextInterpretation,
@@ -242,6 +243,14 @@ describe('VNext experimental session end to end (offline)', () => {
     expect(options.rendered[0]).toMatchObject({ questionCode: 'remaining_inconsistent',
       questionIntent: { kind: 'resolution_question', resolutionKind: 'semantic_clarification', ambiguityField: 'remaining_inconsistent' } });
     expect(options.rendered[0].requiredLabels).toEqual(expect.arrayContaining(['残りを8枚にする', '終わった量を13枚にする']));
+    // After the task with that work is renamed, the asked work still reaches its (current) task (Astra VP03).
+    const renamed = harness([interpreted({ add: [{ ...task, title: '数学' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),
+      (input) => interpreted({ patch: [{ kind: 'task', localId: 'rename', targetFactId: input.state.graph.tasks[0].id,
+        changes: { category: null, title: '英語' } }] })]);
+    await turn(renamed.ports, 't1', '数学は20枚で12枚できた');
+    expect((await turn(renamed.ports, 't2', '数学じゃなくて英語でした')).question).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 8 } });
+    expect(renamed.rendered[1].questionIntent).toMatchObject({ kind: 'effort_measurement', amount: 8 });
+    expect(renamed.rendered[1].requiredLabels).toContain('英語');
     // A failed render: V5's notice, and the question counts as not shown, so the next words are not bound to it.
     const failed = harness([interpreted({ add: [task, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),
       (input) => { expect(input.presentedQuestion).toBeNull(); return interpreted({}, { kind: 'estimate_minutes', minutes: 120, per: 'whole_work' }); }]);
@@ -327,6 +336,33 @@ describe('VNext experimental session end to end (offline)', () => {
     expect(h.slots.get('vnext')).toBe(savedAfterFirst);
     const read = readWeeklyPlanningVNextExperimentalSession(scope, h.ports);
     expect(read.status === 'ready' && read.checkpoint.state.graph.tasks.map((task) => task.title)).toEqual(['英語']);
+  });
+
+  it('keeps the range V5 accepted for a relative planning window when the conversation is resumed on a later day (Astra VP04)', async () => {
+    const source = (id: string) => ({ conversationId: scope.conversationId, turnId: 'v5', semanticLocalId: id, sourceText: '来週', origin: 'user' as const });
+    const active = (factId: string) => ({ factId, status: 'active' as const, createdRevision: 1, terminalRevision: null, supersededByFactId: null });
+    const graph: WeeklyPlanningFactGraphV5 = {
+      ...createEmptyWeeklyPlanningFactGraphV5(), revision: 3,
+      planningWindows: [{ id: 'pw', kind: 'relative_week', value: 'next_week', start: null, end: null, createdRevision: 1, source: source('pw') }],
+      tasks: [{ id: 'task-1', category: 'study', title: '英単語', createdRevision: 1, source: source('task-1') }],
+      workloads: [{ id: 'w', taskId: 'task-1', componentId: null, quantityRole: 'remaining', amount: 60, unitCode: 'minute', unitLabel: '分',
+        rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, createdRevision: 1, source: source('w') }],
+      factLifecycles: [active('pw'), active('task-1'), active('w')],
+    };
+    const prepared = prepareWeeklyPlanningStableV5Checkpoint({ ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
+      graph, planningState: { ...createInitialPlanningState(scope.weekStartDate), intakeState: createInitialPlanningIntakeState() } });
+    if (prepared.status !== 'ready' || !prepared.planningState.intakeState) throw new Error(prepared.status);
+    // On Nov 2, V5 accepted "next week" as Nov 9–15.
+    prepared.planningState.intakeState.groundingRecords = [{ id: 'g', targetFactId: 'pw', interpretationKind: 'relative_date_resolution',
+      status: 'continuation_accepted', sourceExpression: 'next_week', startDate: '2026-11-09', endDate: '2026-11-15', proposedAtTurnId: 't0', acceptedAtTurnId: 't1' }];
+    const v5Raw = serializeWeeklyPlanningStableV5CheckpointWithMessageCount({ ownerId: scope.ownerId, weekStartDate: scope.weekStartDate,
+      conversationId: scope.conversationId, graph, planningState: prepared.planningState, savedAt: '2026-11-02T08:00:00.000Z', messageCount: 0 })!;
+    const h = harness([interpreted({})], { legacyV5: v5Raw });
+    const resumed = await submitWeeklyPlanningVNextExperimentalTurn({ scope: { ...scope, clock: { ...scope.clock, currentDate: '2026-11-09' } },
+      ports: h.ports, turnId: 't1', userText: 'お願いします', shownRevision: null });
+    expect(resumed).toMatchObject({ outcome: 'noop' });
+    expect(resumed.preview!.blocks[0].date).toBe('2026-11-09');
+    expect(h.slots.get('v5')).toBe(v5Raw);
   });
 
   it('migrates a saved V5 checkpoint without writing it, and refuses unreadable bytes without overwriting them', async () => {

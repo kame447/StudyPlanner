@@ -160,7 +160,8 @@ export function readWeeklyPlanningVNextExperimentalSession(
   return {
     status: 'ready',
     source: 'migrated_v5',
-    checkpoint: { state: migrateWeeklyPlanningV5GraphToVNextSession(v5.graph).state, presentedQuestion: null, preview: null, messages: [] },
+    checkpoint: { state: migrateWeeklyPlanningV5GraphToVNextSession(v5.graph, v5.planningState.intakeState?.groundingRecords).state,
+      presentedQuestion: null, preview: null, messages: [] },
   };
 }
 

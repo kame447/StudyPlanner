@@ -6,6 +6,8 @@
 import { WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION } from '../weeklyPlanningVNextV5Boundary';
 import type { WeeklyPlanningFactGraphV5 } from '../weeklyPlanningVNextV5Boundary';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPlanningFactGraphValidatorV5';
+import { frozenGroundingRange } from '../../application/weeklyPlanningTemporalContext';
+import type { WeeklyPlanningGroundingRecord } from '../../intake/weeklyPlanningIntakeTypes';
 import { adaptWeeklyPlanningV5GraphToVNext, type WeeklyPlanningVNextAdapterNote } from '../projection/weeklyPlanningVNextV5Adapter';
 import {
   WEEKLY_PLANNING_VNEXT_STATE_VERSION,
@@ -146,14 +148,26 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
  * Converts a saved Stable V5 graph to VNext state without touching the input.
  * The revision moves forward by one, so previews and presented questions made
  * against the V5 graph fail the existing revision checks and are made again.
+ * A relative planning window whose range V5 accepted (its grounding record) is
+ * stored with that range, as VNext stores a window when it is stated, so it does
+ * not move on a later day; without a record it stays as V5 would read it.
  */
-export function migrateWeeklyPlanningV5GraphToVNextSession(v5Graph: WeeklyPlanningFactGraphV5): {
+export function migrateWeeklyPlanningV5GraphToVNextSession(
+  v5Graph: WeeklyPlanningFactGraphV5,
+  groundingRecords: readonly WeeklyPlanningGroundingRecord[] = [],
+): {
   state: WeeklyPlanningVNextState;
   notes: WeeklyPlanningVNextAdapterNote[];
 } {
   const { state, notes } = adaptWeeklyPlanningV5GraphToVNext(v5Graph);
+  const planningWindows = state.graph.planningWindows.map((window) => {
+    const frozen = window.start === null && window.end === null
+      ? frozenGroundingRange({ windowId: window.id, groundingRecords }) : null;
+    return frozen ? { ...window, kind: 'absolute' as const, value: `${frozen.startDate}/${frozen.endDate}`,
+      start: frozen.startDate, end: frozen.endDate } : window;
+  });
   return {
-    state: { ...state, graph: { ...state.graph, revision: v5Graph.revision + 1 } },
+    state: { ...state, graph: { ...state.graph, planningWindows, revision: v5Graph.revision + 1 } },
     notes,
   };
 }
