@@ -152,6 +152,7 @@ describe('VNext option choice inside the experimental session', () => {
     return { client: {} as OpenAiCompatibleClient, interpret, checkpoint: slot('vnext'), legacyV5Checkpoint: { read: () => null },
       approvalLedger: slot('ledger'), now: () => '2026-11-02T09:00:00.000Z',
       calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
+      renderer: { render: async () => ({ status: 'rendered' as const, text: '（説明）', rawResponse: '' }) },
       plans: { findExistingPlanId: async () => undefined, saveBlock: async (block) => ({ planId: block.id }) } };
   }
   const say = (ports: WeeklyPlanningVNextExperimentalPorts, turnId: string, userText: string, shownRevision: number | null) =>
@@ -162,8 +163,10 @@ describe('VNext option choice inside the experimental session', () => {
     const shown = await say(tab(slots, async () => seed), 't1', '数学プリントは20枚、12枚終わって、残り7枚', null);
     const read = readWeeklyPlanningVNextExperimentalSession(scope, tab(slots, vi.fn()));
     if (read.status !== 'ready') throw new Error(read.status);
-    expect(shown.reply).toBe(presentWeeklyPlanningVNextQuestion(read.checkpoint.state, shown.question!).text);
-    expect(shown.reply).toContain('（残りを8枚にする / 終わった量を13枚にする）');
+    // The reply prose comes from the renderer, which must include the option labels; Jev reads the
+    // structured presentation of the same question (its text and those labels).
+    const presentation = presentWeeklyPlanningVNextQuestion(read.checkpoint.state, shown.question!);
+    expect(presentation.text).toContain('（残りを8枚にする / 終わった量を13枚にする）');
     const fullReading = vi.fn(async () => fullReadingResult);
     let offered: CandidateChoiceRequest | null = null;
     const interpret = createWeeklyPlanningVNextOptionChoiceInterpreter({ fullReading, scope: { ownerId: 'o', conversationId: 'c' },
@@ -173,7 +176,7 @@ describe('VNext option choice inside the experimental session', () => {
         return response(request, 'remaining_follows_progress');
       } } });
     const answered = await say(tab(slots, interpret), 't2', '計算どおり8枚でいいです', shown.graphRevision);
-    expect(offered!.context.presentedQuestion).toBe(shown.reply);
+    expect(offered!.context.presentedQuestion).toBe(presentation.text);
     expect(isCandidateChoiceDecisionContext({ purpose: 'candidate_choice', request: offered })).toBe(true);
     expect(new Set(offered!.menu.options.flatMap((option) => (option.kind === 'leaf' ? [option.candidate.label] : []))))
       .toEqual(new Set(['残りを8枚にする', '終わった量を13枚にする']));

@@ -132,7 +132,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
     const projection = projectWeeklyPlanningVNext(state);
     const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
       ownerId: 'owner-1', weekStartDate: '2026-11-02', conversationId,
-      vnext: { state, presentedQuestion: { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision }, preview: null },
+      vnext: { state, presentedQuestion: { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision }, preview: null, messages: [] },
       savedAt: '2026-10-30T00:00:00.000Z',
     })!;
     const parsed = parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: 'owner-1', weekStartDate: '2026-11-02' });

@@ -49,9 +49,12 @@ import type {
 import {
   parseWeeklyPlanningStableV5PersistedSession,
   scheduleWeeklyPlanningStableV5Preview,
+  RENDERER_PREVIEW_CONTINGENCY,
+  RENDERER_TECHNICAL_STOP,
+  type WeeklyPlanningStableV5DialogueRenderer,
 } from '../weeklyPlanningVNextV5Boundary';
 import { resolveWeeklyPlanningVNextTurnDelta } from './weeklyPlanningVNextAnswerBinding';
-import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
+import { createWeeklyPlanningVNextRenderInput, VNEXT_RECENT_MESSAGE_LIMIT } from './weeklyPlanningVNextDialogue';
 import {
   migrateWeeklyPlanningV5GraphToVNextSession,
   parseWeeklyPlanningVNextSessionCheckpoint,
@@ -96,6 +99,8 @@ export interface WeeklyPlanningVNextExperimentalPorts {
     saveBlock(block: WeeklyPlanDraftBlock, approvalOperationId: string): Promise<{ planId: string }>;
   };
   calendar(): WeeklyPlanningVNextCalendar;
+  /** The Stable V5 dialogue renderer: explains the turn's result, never changes state. */
+  renderer: WeeklyPlanningStableV5DialogueRenderer;
   now(): string;
 }
 
@@ -126,8 +131,9 @@ export interface WeeklyPlanningVNextExperimentalTurn {
   unplacedOwnerKeys: string[];
   /** Scheduler issue or status codes when nothing is asked yet no preview could be made; never silent. */
   previewBlockedBy: string[];
-  /** Deterministic reply text; the experiment does not call a renderer model. */
   reply: string;
+  /** renderer: the V5 renderer's text; renderer_fallback: V5's contingency text (the question counts as not shown); system: a failure or stop notice. */
+  replySource: 'renderer' | 'renderer_fallback' | 'system';
   interpretation: WeeklyPlanningVNextInterpretation | null;
   appliedDelta: VNextTurnDelta | null;
   errors: VNextTurnError[];
@@ -146,7 +152,7 @@ export function readWeeklyPlanningVNextExperimentalSession(
   }
   const legacy = ports.legacyV5Checkpoint.read();
   if (legacy === null) {
-    return { status: 'ready', source: 'empty', checkpoint: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null } };
+    return { status: 'ready', source: 'empty', checkpoint: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [] } };
   }
   const v5 = parseWeeklyPlanningStableV5PersistedSession({ raw: legacy, ownerId: scope.ownerId, weekStartDate: scope.weekStartDate });
   if (!v5 || v5.conversationId !== scope.conversationId) return { status: 'unreadable' };
@@ -154,7 +160,7 @@ export function readWeeklyPlanningVNextExperimentalSession(
   return {
     status: 'ready',
     source: 'migrated_v5',
-    checkpoint: { state: migrateWeeklyPlanningV5GraphToVNextSession(v5.graph).state, presentedQuestion: null, preview: null },
+    checkpoint: { state: migrateWeeklyPlanningV5GraphToVNextSession(v5.graph).state, presentedQuestion: null, preview: null, messages: [] },
   };
 }
 
@@ -205,21 +211,13 @@ function shownPreview(
   };
 }
 
-function replyFor(state: WeeklyPlanningVNextState, question: VNextQuestion | null,
-  preview: WeeklyPlanningVNextShownPreview | null, outcome: WeeklyPlanningVNextExperimentalTurnOutcome,
-  previewBlockedBy: string[]): string {
+/** Notices for turns that changed nothing the renderer could explain: a failure, a stale turn, or a blocked preview. */
+function systemReply(outcome: WeeklyPlanningVNextExperimentalTurnOutcome, previewBlockedBy: string[]): string {
   if (outcome === 'stale') return '別の操作で会話が更新されました。最新の内容でもう一度送ってください。';
   if (outcome === 'interpretation_failed' || outcome === 'rejected') {
     return 'うまく反映できませんでした。もう一度、言い方を変えて教えてください。';
   }
-  if (question) return presentWeeklyPlanningVNextQuestion(state, question).text;
-  if (preview) {
-    const clockMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
-    const minutes = preview.blocks.reduce((sum, block) => sum + clockMinutes(block.endTime) - clockMinutes(block.startTime), 0);
-    return `${preview.blocks.length}件、合計${minutes}分の予定案を作りました。保存しますか？`;
-  }
-  if (previewBlockedBy.length) return `予定案を作れませんでした（${previewBlockedBy.join(', ')}）。`;
-  return '予定にする作業を教えてください。';
+  return `予定案を作れませんでした（${previewBlockedBy.join(', ')}）。`;
 }
 
 const isEmpty = (delta: VNextTurnDelta) =>
@@ -243,7 +241,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const read = readWeeklyPlanningVNextExperimentalSession(scope, ports);
   if (read.status !== 'ready') {
     return { outcome: 'checkpoint_unreadable', graphRevision: null, readiness: null, question: null, preview: null,
-      unplacedOwnerKeys: [], previewBlockedBy: [], reply: '保存された会話を読み込めませんでした。', interpretation: null, appliedDelta: null, errors: [] };
+      unplacedOwnerKeys: [], previewBlockedBy: [], reply: '保存された会話を読み込めませんでした。', replySource: 'system',
+      interpretation: null, appliedDelta: null, errors: [] };
   }
   let { state } = read.checkpoint;
   const before = projectWeeklyPlanningVNext(state);
@@ -263,11 +262,10 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
 
   // The turn was read against `rawBefore`; if another turn saved meanwhile, applying
   // this reading would overwrite it. Nothing is written; the user sends it again.
-  if (ports.checkpoint.read() !== rawBefore) {
-    return { outcome: 'stale', graphRevision: state.graph.revision, readiness: before.readiness, question: presentedQuestion,
-      preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [],
-      reply: replyFor(state, null, null, 'stale', []), interpretation, appliedDelta: null, errors: [] };
-  }
+  const staleTurn = (): WeeklyPlanningVNextExperimentalTurn => ({ outcome: 'stale', graphRevision: read.checkpoint.state.graph.revision,
+    readiness: before.readiness, question: presentedQuestion, preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [],
+    reply: systemReply('stale', []), replySource: 'system', interpretation, appliedDelta: null, errors: [] });
+  if (ports.checkpoint.read() !== rawBefore) return staleTurn();
 
   let outcome: WeeklyPlanningVNextExperimentalTurnOutcome;
   let delta: VNextTurnDelta | null = null;
@@ -319,14 +317,41 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision
     ? { preview: shown, unplacedOwnerKeys: made.unplacedOwnerKeys, previewBlockedBy: [] }
     : made;
+  // Failures and stops are notices; everything the user is told about the plan comes from the renderer.
+  let reply: string;
+  let replySource: WeeklyPlanningVNextExperimentalTurn['replySource'];
+  let shownQuestion: VNextQuestion | null = question;
+  if (outcome === 'interpretation_failed' || outcome === 'rejected' || previewBlockedBy.length) {
+    reply = systemReply(outcome, previewBlockedBy);
+    replySource = 'system';
+  } else {
+    const rendered = await ports.renderer.render(createWeeklyPlanningVNextRenderInput({
+      state, question, preview, actionId: `${scope.conversationId}:${params.turnId}`, turnId: params.turnId,
+      previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
+      recentConversation: read.checkpoint.messages,
+    }));
+    if (rendered.status === 'rendered') {
+      reply = rendered.text;
+      replySource = 'renderer';
+    } else {
+      // As in Stable V5: the preview stays (unsaved) and is said so; a question that was not shown is not presented.
+      reply = preview ? RENDERER_PREVIEW_CONTINGENCY : RENDERER_TECHNICAL_STOP;
+      replySource = 'renderer_fallback';
+      shownQuestion = null;
+    }
+    // The renderer is a model call: if another turn saved meanwhile, nothing of this turn is written.
+    if (ports.checkpoint.read() !== rawBefore) return staleTurn();
+  }
   const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
     ownerId: scope.ownerId,
     weekStartDate: scope.weekStartDate,
     conversationId: scope.conversationId,
     vnext: {
       state,
-      presentedQuestion: question ? { questionKey: question.key, graphRevision: projection.graphRevision } : null,
+      presentedQuestion: shownQuestion ? { questionKey: shownQuestion.key, graphRevision: projection.graphRevision } : null,
       preview,
+      messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
+        { role: 'assistant' as const, content: reply }].slice(-VNEXT_RECENT_MESSAGE_LIMIT),
     },
     savedAt: ports.now(),
   });
@@ -340,7 +365,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     preview,
     unplacedOwnerKeys,
     previewBlockedBy,
-    reply: replyFor(state, question, preview, outcome, previewBlockedBy),
+    reply,
+    replySource,
     interpretation,
     appliedDelta: outcome === 'applied' ? delta : null,
     errors,

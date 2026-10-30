@@ -137,7 +137,7 @@ describe('#926 no-cost integration gates', () => {
     const presentedQuestion = { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision };
     const vnextRaw = serializeWeeklyPlanningVNextSessionCheckpoint({
       ownerId: OWNER, weekStartDate: WEEK, conversationId: CONVERSATION,
-      vnext: { state, presentedQuestion, preview: null }, savedAt: '2026-11-02T08:05:00.000Z',
+      vnext: { state, presentedQuestion, preview: null, messages: [] }, savedAt: '2026-11-02T08:05:00.000Z',
     })!;
     const reloaded = parseWeeklyPlanningVNextSessionCheckpoint({ raw: vnextRaw, ownerId: OWNER, weekStartDate: WEEK })!;
     expect(reloaded.vnext.state).toEqual(state);

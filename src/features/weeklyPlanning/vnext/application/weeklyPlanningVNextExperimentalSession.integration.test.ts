@@ -12,6 +12,9 @@ import {
 import { parseWeeklyApprovalLedger } from '../../planning/weeklyPlanningApproval';
 import { createEmptyWeeklyPlanningFactGraphV5, type WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
 import type { Plan } from '../../../../types/domain';
+import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from '../../dialogue/weeklyPlanningStableV5DialogueContext';
+import type { WeeklyPlanningStableV5DialogueRenderInput } from '../../dialogue/weeklyPlanningStableV5DialogueContracts';
+import { RENDERER_PREVIEW_CONTINGENCY, RENDERER_TECHNICAL_STOP } from '../../dialogue/weeklyPlanningStableV5TurnDialogueCore';
 import type { WeeklyPlanDraftBlock } from '../../types';
 import { createInitialPlanningState } from '../../weeklyPlanningReducer';
 import type {
@@ -51,6 +54,7 @@ function harness(script: Array<WeeklyPlanningVNextInterpretation | ((input: Week
   const slot = (key: string) => ({ read: () => slots.get(key) ?? null, write: (raw: string) => void slots.set(key, raw) });
   const saved = new Map<string, WeeklyPlanDraftBlock>();
   const inputs: WeeklyPlanningVNextInterpretationInput[] = [];
+  const rendered: WeeklyPlanningStableV5DialogueRenderInput[] = [];
   let saveCalls = 0;
   const ports: WeeklyPlanningVNextExperimentalPorts = {
     client: {} as OpenAiCompatibleClient,
@@ -75,9 +79,13 @@ function harness(script: Array<WeeklyPlanningVNextInterpretation | ((input: Week
       },
     },
     calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
+    renderer: { async render(input) {
+      rendered.push(input);
+      return { status: 'rendered', text: `（説明 ${input.actionKind}）`, rawResponse: '' };
+    } },
     now: () => '2026-11-02T09:00:00.000Z',
   };
-  return { ports, slots, saved, inputs, saveCalls: () => saveCalls };
+  return { ports, slots, saved, inputs, rendered, saveCalls: () => saveCalls };
 }
 
 /** One user in one tab: each turn answers the reply the previous turn showed. */
@@ -217,6 +225,43 @@ describe('VNext experimental session end to end (offline)', () => {
     const busy = harness([interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: '部屋の掃除' }, minutes] })]);
     busy.ports.calendar = () => ({ plans: [existing], monthEvents: [], scheduleTemplates: [] });
     expect((await turn(busy.ports, 't1', '部屋の掃除を60分')).preview!.blocks[0]).toMatchObject({ date: '2026-11-02', startTime: '10:20', endTime: '11:20' });
+  });
+
+  it('explains each result through the Stable V5 renderer with what VNext decided, and treats a failed render as V5 does', async () => {
+    const task = { kind: 'task' as const, localId: 'slides', category: 'study' as const, title: 'ゼミ資料' };
+    const remaining7 = { ...pages('total', 'scope_total', 20), localId: 'left', quantityRole: 'remaining' as const, amount: 7 } as VNextAddFact;
+    // Estimate question about derived work: the renderer is told 8 pages (20 − 12), not the stated total.
+    const asked = harness([interpreted({ add: [task, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] })]);
+    await turn(asked.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+    expect(asked.rendered[0]).toMatchObject({ actionKind: 'question', questionCode: 'missing_effort_estimate', currentUserMessage: 'ゼミ資料は20枚で12枚できた',
+      questionIntent: { kind: 'effort_measurement', amount: 8, unitLabel: '枚', quantityRole: 'remaining' } });
+    expect(asked.rendered[0].requiredLabels).toContain('ゼミ資料');
+    // A VNext-only option question: clarification, with every option label required in the text.
+    const options = harness([interpreted({ add: [task, pages('total', 'scope_total', 20), pages('done', 'completed', 12), remaining7] })]);
+    await turn(options.ports, 't1', '20枚で12枚できて残り7枚');
+    expect(options.rendered[0]).toMatchObject({ questionCode: 'remaining_inconsistent',
+      questionIntent: { kind: 'resolution_question', resolutionKind: 'semantic_clarification', ambiguityField: 'remaining_inconsistent' } });
+    expect(options.rendered[0].requiredLabels).toEqual(expect.arrayContaining(['残りを8枚にする', '終わった量を13枚にする']));
+    // A failed render: V5's notice, and the question counts as not shown, so the next words are not bound to it.
+    const failed = harness([interpreted({ add: [task, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),
+      (input) => { expect(input.presentedQuestion).toBeNull(); return interpreted({}, { kind: 'estimate_minutes', minutes: 120, per: 'whole_work' }); }]);
+    failed.ports.renderer = { render: async () => ({ status: 'fallback', reason: 'provider_error', rawResponse: null }) };
+    const unseen = await turn(failed.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+    expect(unseen).toMatchObject({ reply: RENDERER_TECHNICAL_STOP, replySource: 'renderer_fallback', question: { code: 'missing_effort_estimate' } });
+    expect(JSON.parse(failed.slots.get('vnext')!).vnext.presentedQuestion).toBeNull();
+    expect(await turn(failed.ports, 't2', '2時間')).toMatchObject({ outcome: 'answer_represented', appliedDelta: null });
+    // A preview: the save control is required; if rendering fails the preview stays and the reply says it is unsaved.
+    const minutes: VNextAddFact = { kind: 'workload', localId: 'w', taskRef: { localId: 'slides' }, componentRef: null, quantityRole: 'remaining',
+      amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null };
+    const previewed = harness([interpreted({ add: [task, minutes] }), interpreted({})]);
+    await turn(previewed.ports, 't1', 'ゼミ資料を60分');
+    expect(previewed.rendered[0]).toMatchObject({ actionKind: 'preview_ready', previewCount: 1, previewPromotionControlLabel: WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL });
+    previewed.ports.renderer = { render: async (input) => { previewed.rendered.push(input); return { status: 'fallback', reason: 'invalid_json', rawResponse: '' }; } };
+    const kept = await turn(previewed.ports, 't2', 'うーん');
+    expect(kept).toMatchObject({ reply: RENDERER_PREVIEW_CONTINGENCY, replySource: 'renderer_fallback' });
+    expect(JSON.parse(previewed.slots.get('vnext')!).vnext.preview.previewId).toBe(kept.preview!.previewId);
+    // The renderer reads the recent conversation the checkpoint keeps.
+    expect(previewed.rendered[1].recentConversation).toEqual([{ role: 'user', content: 'ゼミ資料を60分' }, { role: 'assistant', content: '（説明 preview_ready）' }]);
   });
 
   it('a correction before approval replaces the shown preview, so the old preview cannot be saved', async () => {

@@ -14,6 +14,7 @@ import {
 } from '../weeklyPlanningVNextTypes';
 import type { WeeklyPlanDraftBlock } from '../../types';
 import type { WeeklyPlanningVNextPresentedQuestion } from './weeklyPlanningVNextAnswerBinding';
+import { VNEXT_RECENT_MESSAGE_LIMIT, type WeeklyPlanningVNextMessage } from './weeklyPlanningVNextDialogue';
 
 export const WEEKLY_PLANNING_VNEXT_SESSION_CAPABILITY = 'vnext-conversation-core-v1' as const;
 const MAX_CHECKPOINT_BYTES = 2 * 1024 * 1024;
@@ -35,6 +36,8 @@ export interface WeeklyPlanningVNextSessionCheckpoint {
     state: WeeklyPlanningVNextState;
     presentedQuestion: WeeklyPlanningVNextPresentedQuestion | null;
     preview: WeeklyPlanningVNextShownPreview | null;
+    /** The latest messages, for the renderer's conversational context only; never read as facts. */
+    messages: WeeklyPlanningVNextMessage[];
   };
   savedAt: string;
 }
@@ -92,6 +95,12 @@ function validPreview(value: unknown): boolean {
   });
 }
 
+function validMessages(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= VNEXT_RECENT_MESSAGE_LIMIT && value.every((message) => isRecord(message)
+    && hasExactKeys(message, ['role', 'content']) && (message.role === 'user' || message.role === 'assistant')
+    && typeof message.content === 'string');
+}
+
 export function serializeWeeklyPlanningVNextSessionCheckpoint(
   checkpoint: Omit<WeeklyPlanningVNextSessionCheckpoint, 'version' | 'requiredCapabilities'>,
 ): string | null {
@@ -120,8 +129,9 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
       || value.ownerId !== params.ownerId || value.weekStartDate !== params.weekStartDate
       || typeof value.conversationId !== 'string' || !value.conversationId.trim()
       || typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))
-      || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion', 'preview'])
-      || !validState(value.vnext.state, value.conversationId) || !validPreview(value.vnext.preview)) return null;
+      || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion', 'preview', 'messages'])
+      || !validState(value.vnext.state, value.conversationId) || !validPreview(value.vnext.preview)
+      || !validMessages(value.vnext.messages)) return null;
     const presented = value.vnext.presentedQuestion;
     if (presented !== null && !(isRecord(presented) && hasExactKeys(presented, ['questionKey', 'graphRevision'])
       && typeof presented.questionKey === 'string' && Number.isInteger(presented.graphRevision))) return null;

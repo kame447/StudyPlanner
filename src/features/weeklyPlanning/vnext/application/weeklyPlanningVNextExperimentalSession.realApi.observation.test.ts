@@ -6,6 +6,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { getAiConfig } from '../../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClient';
+import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
+import { createWeeklyPlanningStableV5DialogueRendererCore } from '../weeklyPlanningVNextV5Boundary';
 import {
   parseWeeklyPlanningStableV5PersistedSession,
   prepareWeeklyPlanningStableV5Checkpoint,
@@ -46,12 +48,13 @@ function createPorts(options: { legacyV5?: string; failSaveAttempt?: number } = 
   // Raw provider responses of the current turn, so a failed reading can be replayed without the model.
   const rawOutputs: string[] = [];
   const base = createOpenAiCompatibleClient(getAiConfig());
+  const client: OpenAiCompatibleClient = { ...base, async createChatCompletion(request) {
+    const raw = await base.createChatCompletion(request);
+    rawOutputs.push(raw);
+    return raw;
+  } };
   const ports: WeeklyPlanningVNextExperimentalPorts = {
-    client: { ...base, async createChatCompletion(request) {
-      const raw = await base.createChatCompletion(request);
-      rawOutputs.push(raw);
-      return raw;
-    } },
+    client,
     interpret: createWeeklyPlanningVNextProviderInterpreter(),
     checkpoint: slot('vnext'),
     legacyV5Checkpoint: { read: slot('v5').read },
@@ -66,6 +69,7 @@ function createPorts(options: { legacyV5?: string; failSaveAttempt?: number } = 
       },
     },
     calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
+    renderer: createWeeklyPlanningStableV5DialogueRendererCore(client),
     now: () => new Date().toISOString(),
   };
   return { ports, slots, saved, saveAttempts: () => saveAttempts, takeRawOutputs: () => rawOutputs.splice(0) };
