@@ -6,9 +6,9 @@ import { SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5, SEMANTI
   SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import type { WeeklyPlanningVNextInterpretedAnswer } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnDelta, VNextTurnError } from '../weeklyPlanningVNextTypes';
-import { VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
+import { VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 
-export { VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
+export { VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 
 type Schema = { type?: string; properties?: Record<string, Schema>; required?: string[];
   additionalProperties?: boolean; enum?: readonly unknown[]; anyOf?: Schema[]; items?: Schema; description?: string };
@@ -18,7 +18,7 @@ export const VNEXT_CONSTRAINT_LEVEL_REQUIREMENT = 'hard = a constraint that must
 export const VNEXT_TEMPORAL_TARGET_REQUIREMENT = 'A temporal_constraint targetRef must name its task or a component in that same task, using a supplied fact alias or a new localId. It cannot target a workload, estimate or projected work.';
 export const VNEXT_NAMED_TIME_PERIOD_REQUIREMENT = `namedTimePeriod is null when no named period within a day is stated; otherwise use one of ${SEMANTIC_NAMED_TIME_PERIODS_V5.join(', ')} or custom:<label> with a non-empty label for another named period. Calendar days, weeks and dates belong in dateExpression, never namedTimePeriod.`;
 export const VNEXT_RELATE_REFERENCE_REQUIREMENT = 'relate a/b reference workload facts: an existing workload uses its supplied F alias in factId; a workload added in this delta uses its localId. For derived work use the F alias of its total workload fact (definingFactId). W aliases and workLineageId are not valid relation references; never put a W alias in localId.';
-export const VNEXT_ESTIMATE_ANSWER_REQUIREMENT = 'When a presented question asks for a value and the utterance supplies exactly that value for the asked work, use answer rather than creating a new workload. For an estimate, choose per whole_work or unit according to what was stated. This answer rule takes precedence over the time-only workload rule. An estimate answer concerns the asked work itself: whole_work = minutes for all of that work; unit = minutes for one unit in the unitCode/unitLabel shown in presentedQuestion.forWork. Return the stated minutes without multiplying or computing a total. Time already spent on completed work or time for another task is not an answer to this work question; represent it as an ordinary delta fact. State the asked work\'s estimate once: as the answer, or as a fact, not both. An option answer already carries that option\'s change; do not restate it in delta. For an option answer, per is null.';
+export const VNEXT_ESTIMATE_ANSWER_REQUIREMENT = 'A whole-work or per-unit estimate about the work in a presented missing_effort_estimate question answers that question regardless of its displayed wording, including a question phrased as total time. Use answer for that work, not a new workload or effort_estimate fact. Choose per whole_work or unit from what the user states; the question\'s wording does not require conversion to a total. This answer rule takes precedence over the time-only workload rule. whole_work = minutes for all of the asked work; unit = minutes for one unit in the unitCode/unitLabel shown in presentedQuestion.forWork. Return the stated minutes without multiplying or computing a total. The application binds that answer to the asked work and its quantity basis. Time already spent on completed work or time for another task is not an answer to this work question; represent it as an ordinary delta fact. State the asked work\'s estimate once in answer; do not repeat it in delta. An option answer already carries that option\'s change; do not restate it in delta. For an option answer, per is null.';
 const text: Schema = { type: 'string' }, number: Schema = { type: 'number' };
 const object = (properties: Record<string, Schema>): Schema => ({ type: 'object', properties,
   required: Object.keys(properties), additionalProperties: false });
@@ -36,7 +36,8 @@ const add: Schema = { anyOf: [
   object({ kind: enumeration(['workload']), localId: text, taskRef: ref, componentRef: nullable(ref),
     quantityRole: { ...enumeration(SEMANTIC_QUANTITY_ROLES_V5), description: VNEXT_QUANTITY_ROLE_REQUIREMENT },
     amount: number, unitCode: unit, unitLabel: { ...text, description: VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT },
-    rangeStart: nullable(text), rangeEnd: nullable(text), perOccurrence: { type: 'boolean' }, periodExpression: nullable(text) }),
+    rangeStart: nullable(text), rangeEnd: nullable(text), perOccurrence: { type: 'boolean' },
+    periodExpression: { ...nullable(text), description: VNEXT_WORKLOAD_PERIOD_REQUIREMENT } }),
   object({ kind: enumeration(['effort_estimate']), localId: text, taskRef: ref, targetRef: effortRef,
     effortKind: enumeration(['total_duration', 'duration_per_unit', 'session_duration']), minutes: number,
     unitCode: nullable(unit), unitLabel: nullable(text), precision }),

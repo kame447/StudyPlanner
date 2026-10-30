@@ -1,12 +1,8 @@
-// One rule for where the clock time of a bound belongs: an earliest start is a
-// start time; a latest end or a deadline is an end time; a named period is not
-// also given clock times. The Stable V5 scheduler applies the same rule to hard
-// bounds when it compiles (#881 run 40999309402: a stated "締切は明日の13時" was
-// accepted as deadline startTime=13:00 and only then failed as an invalid
-// interval). VNext applies it when a bound is stated, so the transaction rejects
-// the bound where the provider's field-local repair can correct it. A constraint
-// that states no date, period or clock bounds nothing: it would silently drop what
-// was said (a reread that emptied "今週"), so it is rejected the same way.
+// Acceptance-time temporal rules belong here so transaction and provider repair
+// cannot disagree. An earliest start uses startTime; latest end/deadline uses
+// endTime; a named period has no clocks. Empty bounds must be rejected rather
+// than silently dropping intent. Transaction.test.ts and Provider.test.ts guard
+// empty bounds and addressed repairs that preserve the stated clock.
 import {
   CANONICAL_RELATIVE_DATE_EXPRESSIONS,
   CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
@@ -37,12 +33,12 @@ export function vnextTemporalBoundRepairFields(bound: Bound): BoundField[] {
 }
 
 /**
- * A date as stored: the model reads "明日" as a symbolic `tomorrow`; code fixes it to
- * the absolute date of the turn that stated it, so it never moves on a later day
- * (#918, design §18). A repeated weekday filter stays symbolic; a one-occurrence
- * weekday is fixed inside the accepting turn's horizon using V5's selection rule.
- * Absolute dates pass through; null when it is not in the canonical vocabulary
- * (no word is interpreted here) or cannot be resolved.
+ * The single acceptance rule: freeze today-relative tokens using the accepted
+ * date and weekStartsOn; fix one-occurrence weekdays inside the final horizon,
+ * but retain repeated filters. Add date meanings here using the V5 resolvers;
+ * never infer them from source words or resolve accepted occurrences afresh.
+ * Transaction.test.ts guards day-crossing stability (#918/VP02), Sunday-start
+ * weeks (VP01), repeated exclusions and field errors when no weekday is in range.
  */
 const ABSOLUTE_DATE_OR_RANGE = /^\d{4}-\d{2}-\d{2}(?:\/\d{4}-\d{2}-\d{2})?$/;
 /** The model's date vocabulary: absolute dates or ranges and canonical tokens. Words in any language are the model's to resolve. */

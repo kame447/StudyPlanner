@@ -7,7 +7,7 @@ import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } fro
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT,
   VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_NAMED_TIME_PERIOD_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT,
-  VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
+  VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
@@ -60,6 +60,53 @@ function changedUnitInput(): WeeklyPlanningVNextInterpretationInput {
 }
 
 describe('VNext native provider', () => {
+  it('shares the workload-period meaning between add, patch, prompt and the one addressed repair', async () => {
+    const original = output([task(), { ...workload(), periodExpression: 42 }]);
+    const repaired = output([task(), { ...workload('work', 999), periodExpression: null }]);
+    const params = input([JSON.stringify(original), JSON.stringify(repaired)]);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    expect(describeVNextProviderField('add[1].periodExpression', original)).toBe(VNEXT_WORKLOAD_PERIOD_REQUIREMENT);
+    const patch = { ...output(), delta: { ...emptyDelta(), patch: [{ kind: 'workload', localId: 'fix', targetFactId: 'F2',
+      amountDelta: null, changes: { amount: null, unitCode: null, unitLabel: null, quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: 'weekly' } }] } };
+    expect(describeVNextProviderField('patch[0].changes.periodExpression', patch)).toBe(VNEXT_WORKLOAD_PERIOD_REQUIREMENT);
+    const messages = vi.mocked(params.client.createChatCompletion).mock.calls[1][0].messages;
+    expect(messages[0].content).toContain(VNEXT_WORKLOAD_PERIOD_REQUIREMENT);
+    expect(JSON.parse(messages[messages.length - 1].content as string).errors).toEqual([
+      { path: 'delta.add[1].periodExpression', localId: 'work', requirement: VNEXT_WORKLOAD_PERIOD_REQUIREMENT },
+    ]);
+    if (result.status !== 'interpreted') throw new Error('expected interpretation');
+    expect(result.delta.add[1]).toMatchObject({ amount: 7, periodExpression: null });
+  });
+
+  it.each([null, 'daily', 'weekly', '2026-11-02/2026-11-08'])('preserves a stated workload period %s without lexical normalization', periodExpression => {
+    const wire = output([task(), { ...workload(), perOccurrence: periodExpression === 'daily' || periodExpression === 'weekly', periodExpression }]);
+    expect(decodeVNextProviderOutput(wire)).toEqual({ status: 'decoded', reading: wire });
+  });
+
+  it.each([
+    ['through yesterday', 20, 100], ['昨日まで', 20, 100], [null, 8, 40],
+  ] as const)('replays progress quantity-basis control %s (run41075842656)', async (periodExpression, amount, minutes) => {
+    const params = input([JSON.stringify(output([{ ...workload('completed', 12), taskRef: { factId: 'F1' }, quantityRole: 'completed', periodExpression }]))]);
+    const scenario = VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === 'yesterday-completed')!;
+    const context = { expectedRevision: 0, acceptedDate: params.clock.currentDate, weekStartsOn: params.clock.weekStartsOn,
+      planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, defaultPlanningHorizon: params.clock.defaultPlanningHorizon,
+      turnKey: 'progress-seed', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' };
+    const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: scenario.seed }, context);
+    if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
+    params.state = seed.state;
+    params.projection = projectWeeklyPlanningVNext(seed.state);
+    params.userText = scenario.turns[0].text;
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+    const final = applyWeeklyPlanningVNextTurn(seed.state, result.delta, { ...context, expectedRevision: seed.state.graph.revision, turnKey: 'progress' });
+    if (final.status !== 'applied') throw new Error(JSON.stringify(final));
+    // Non-null captured timing strings demonstrate the bad model reading's
+    // separate basis; code must not silently erase legitimate stated periods.
+    expect(projectWeeklyPlanningVNext(final.state).owners[0].work[0]).toMatchObject({ amount, minutes });
+    expect(final.state.graph.workloads[1]).toMatchObject({ quantityRole: 'completed', amount: 12, periodExpression });
+  });
+
   it('sends the actual displayed option order and decodes its typed option alias (VP05)', async () => {
     const params = input([]);
     const scenario = VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === '882-iter4-explicit-r8')!;
@@ -274,7 +321,7 @@ describe('VNext native provider', () => {
     const interpreted = await createWeeklyPlanningVNextProviderInterpreter()(params);
     if (interpreted.status !== 'interpreted') throw new Error(JSON.stringify(interpreted));
     const prompt = vi.mocked(params.client.createChatCompletion).mock.calls[0][0].messages[0].content;
-    expect(prompt).toContain('When a presented question asks for a value and the utterance supplies exactly that value for the asked work, use answer rather than creating a new workload');
+    expect(prompt).toContain(VNEXT_ESTIMATE_ANSWER_REQUIREMENT);
     expect(prompt).toContain('When no presented question asks for that value and the only quantity stated for a work is time');
     expect(describeVNextProviderField('answer.per', output([], { kind: 'estimate_minutes', minutes: 90, optionId: null, per: 'whole_work' })))
       .toBe(VNEXT_ESTIMATE_ANSWER_REQUIREMENT);
@@ -515,7 +562,8 @@ describe('VNext native provider', () => {
     const repair = JSON.parse(messages[messages.length - 1].content);
     expect(repair.errors).toEqual([{ path: `${collection}[${collection === 'add' ? 1 : 0}]`, localId: 'again' }]);
     expect(repair.instruction).toContain('Keep every clause of the first reading and fix only the reported problems');
-    expect(repair.instruction).toContain("State the asked work's estimate once: as the answer, or as a fact, not both.");
+    expect(repair.instruction).toContain(VNEXT_ESTIMATE_ANSWER_REQUIREMENT);
+    expect(repair.instruction).toContain("State the asked work's estimate once in answer; do not repeat it in delta.");
     expect(params.state).toEqual(before);
     if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
     expect(result.delta.add).toEqual([task('other', 'English')]);
@@ -681,7 +729,8 @@ describe('VNext native provider', () => {
     params.state = seed.state;
     params.projection = projectWeeklyPlanningVNext(seed.state);
     params.presentedQuestion = params.projection.questions[0];
-    params.presentedText = params.presentedQuestion ? 'Synthetic displayed question' : null;
+    params.presentedText = '「数学プリント」の8は、全部で何分くらいかかりそうですか？';
+    params.userText = per === 'unit' ? '1枚あたり8分です。' : '全部で8分です。';
     const interpreted = await createWeeklyPlanningVNextProviderInterpreter()(params);
     if (interpreted.status !== 'interpreted') throw new Error(JSON.stringify(interpreted));
     const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true, projection: params.projection,
@@ -692,6 +741,10 @@ describe('VNext native provider', () => {
       turnKey: 'answer-turn', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, defaultPlanningHorizon: params.clock.defaultPlanningHorizon, acceptedDate: params.clock.currentDate });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     expect(interpreted.answer).toEqual({ kind: 'estimate_minutes', minutes: 8, per });
+    const messages = vi.mocked(params.client.createChatCompletion).mock.calls[0][0].messages;
+    expect(messages[0].content).toContain(VNEXT_ESTIMATE_ANSWER_REQUIREMENT);
+    expect(VNEXT_ESTIMATE_ANSWER_REQUIREMENT).toContain('regardless of its displayed wording');
+    expect(JSON.parse(messages[1].content as string).presentedText).toBe(params.presentedText);
     expect(projectWeeklyPlanningVNext(applied.state).owners[0].work[0].minutes).toBe(per === 'unit' ? 64 : 8);
   });
 

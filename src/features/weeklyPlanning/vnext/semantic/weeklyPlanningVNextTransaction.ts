@@ -91,7 +91,14 @@ export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState 
     workRelations: [], deferrals: [] };
 }
 
-/** Pure atomic application. This function consumes semantic meaning, never raw-language heuristics. */
+/**
+ * The sole fact writer: settle window add/patch/remove, choose one final horizon,
+ * anchor stated dates, bind estimates to final work, then validate and commit once.
+ * Moving anchoring earlier makes equivalent replacements disagree (S02); anchoring
+ * accepted dates again later relaxes deadlines (VP02). Extend the typed payload and
+ * validation mappings here, never add a second update path or interpret source text.
+ * Transaction.test.ts guards replacement equivalence, selected defaults and stable deadlines.
+ */
 export function applyWeeklyPlanningVNextTurn(
   state: WeeklyPlanningVNextState,
   statedDelta: VNextTurnDelta,

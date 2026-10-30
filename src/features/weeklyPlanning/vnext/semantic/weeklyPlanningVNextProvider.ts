@@ -60,6 +60,9 @@ function spliceRepair(original: unknown, repaired: unknown, errors: VNextTurnErr
   return next;
 }
 
+// Dry-run through the session's shared answer resolver and transaction with the
+// same clock/horizons. A second validity rule here would admit readings the session
+// rejects. Provider.test.ts guards answer conflicts and dry-run/final date agreement.
 function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading: VNextProviderReading): VNextTurnError[] {
   if (reading.answer) {
     const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
@@ -81,6 +84,13 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
   return result.status === 'rejected' ? result.errors : [];
 }
 
+/**
+ * Untrusted meaning enters here; lifecycle, binding and persistence remain outside.
+ * Change model requirements in the schema-owned constants: their descriptions feed
+ * both prompt and repair. One repair only: splice addressed fields, or reread the
+ * whole utterance when no safe address exists. Never merge unrelated repair edits
+ * or replace a nonempty reading with silence (Provider.test.ts regressions).
+ */
 export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVNextInterpreter {
   return async input => {
     const started = Date.now();
