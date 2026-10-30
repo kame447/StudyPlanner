@@ -29,6 +29,7 @@ import {
   submitWeeklyPlanningControlledTurn,
 } from '../weeklyPlanningTurnController';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutor';
+import type { WeeklyPlanningTurnFailure } from '../weeklyPlanningTurnExecutionTypes';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
 import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
@@ -48,6 +49,7 @@ import {
   submitWeeklyPlanningVNextExperimentalTurn,
   type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope,
+  type WeeklyPlanningVNextExperimentalTurn,
 } from '../vnext/application/weeklyPlanningVNextExperimentalSession';
 import { projectWeeklyPlanningVNext } from '../vnext/projection/weeklyPlanningVNextProjection';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../vnext/semantic/weeklyPlanningVNextProvider';
@@ -119,6 +121,12 @@ interface V5TurnObservation {
   inVNextScope: boolean;
   accepted: boolean | null;
   error: string | null;
+  failureDetail?: {
+    failure: WeeklyPlanningTurnFailure | null;
+    candidateCommitRejectionReason: WeeklyPlanningTurnExecutionResult['candidateCommitRejectionReason'] | null;
+    responseSource: WeeklyPlanningTurnExecutionResult['responseSource'] | null;
+    debugTraceEvents: unknown[];
+  };
   questionCode: string | null;
   taskIds: string[];
   workloads: ObservedWorkload[];
@@ -140,6 +148,10 @@ interface V5TurnObservation {
 interface VNextTurnObservation extends V5TurnObservation {
   outcome: string;
   repairs: number;
+  interpretation: WeeklyPlanningVNextExperimentalTurn['interpretation'];
+  transactionErrors: WeeklyPlanningVNextExperimentalTurn['errors'];
+  appliedDelta: WeeklyPlanningVNextExperimentalTurn['appliedDelta'];
+  previewBlockedBy: string[];
 }
 
 interface ConversationObservation {
@@ -148,6 +160,10 @@ interface ConversationObservation {
   description: string;
   turns: V5TurnObservation[];
   error: string | null;
+}
+
+interface VNextConversationObservation extends Omit<ConversationObservation, 'turns'> {
+  turns: VNextTurnObservation[];
 }
 
 function createStore(initialState: PlanningState) {
@@ -399,6 +415,7 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     const latencyMs = Math.round(performance.now() - startedAt);
     const requestId = capturedRequestId;
     const debugTrace = requestId ? takeWeeklyPlanningStableV5DebugTrace(requestId) : [];
+    const resultForDiagnostics = capturedResult as WeeklyPlanningTurnExecutionResult | null;
     const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
     const graph = runtime?.graph;
     const facts: ObservedFacts = graph ? observedFacts(graph) : { taskIds: [], workloads: [], efforts: [], temporal: [] };
@@ -414,7 +431,14 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     turns.push({
       turn: index + 1, userText: fixtureTurn.userText, inVNextScope: fixtureTurn.oracle.inVNextScope,
       status: !fixtureTurn.oracle.inVNextScope ? 'out_of_scope' : error || oracleDifferences.length > 0 ? 'fail' : 'pass',
-      accepted, error, questionCode: currentQuestion,
+      accepted, error,
+      failureDetail: {
+        failure: resultForDiagnostics?.failure ?? null,
+        candidateCommitRejectionReason: resultForDiagnostics?.candidateCommitRejectionReason ?? null,
+        responseSource: resultForDiagnostics?.responseSource ?? null,
+        debugTraceEvents: error || resultForDiagnostics?.failure ? debugTrace : [],
+      },
+      questionCode: currentQuestion,
       ...facts, schedulerStatus: preview.status, workMinutes: preview.workMinutes, previewMinutes: preview.minutes,
       aiCalls: debugTrace.filter((event) => event.stage === 'semantic_provider_request').length,
       rendererCalls: debugTrace.filter((event) => event.stage === 'dialogue_renderer_request').length,
@@ -438,7 +462,7 @@ function vnextProjectedWorkMinutes(owners: ReturnType<typeof projectWeeklyPlanni
     ? work.reduce((sum, item) => sum + (item.minutes ?? 0), 0) : null;
 }
 
-async function runVNextConversation(conversation: RealApiConversation): Promise<ConversationObservation> {
+async function runVNextConversation(conversation: RealApiConversation): Promise<VNextConversationObservation> {
   const ownerId = `vnext-real-api-${conversation.id}`;
   const clock = clockFor(conversation);
   const scope: WeeklyPlanningVNextExperimentalScope = {
@@ -475,7 +499,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
     },
     now: () => `${clock.currentDate}T09:00:00.000Z`,
   };
-  const turns: V5TurnObservation[] = [];
+  const turns: VNextTurnObservation[] = [];
   let previousQuestionSignature: string | null = null;
   let clarificationCount = 0;
   let repeatedQuestionCount = 0;
@@ -493,11 +517,19 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
     let readiness: string | null = null;
     let minutes: number | null = null;
     let workMinutes: number | null = null;
+    let interpretation: WeeklyPlanningVNextExperimentalTurn['interpretation'] = null;
+    let transactionErrors: WeeklyPlanningVNextExperimentalTurn['errors'] = [];
+    let appliedDelta: WeeklyPlanningVNextExperimentalTurn['appliedDelta'] = null;
+    let previewBlockedBy: string[] = [];
     try {
       const result = await submitWeeklyPlanningVNextExperimentalTurn({
         scope, ports, turnId: `turn-${index + 1}`, userText: fixtureTurn.userText,
       });
       outcome = result.outcome;
+      interpretation = result.interpretation;
+      transactionErrors = result.errors;
+      appliedDelta = result.appliedDelta;
+      previewBlockedBy = result.previewBlockedBy;
       calls = result.interpretation?.metrics.calls ?? 0;
       repairs = result.interpretation?.metrics.repairs ?? 0;
       latencyMs = result.interpretation?.metrics.latencyMs ?? Math.round(performance.now() - startedAt);
@@ -553,6 +585,10 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         oracleDifferences: differences,
         outcome,
         repairs,
+        interpretation,
+        transactionErrors,
+        appliedDelta,
+        previewBlockedBy,
       } as VNextTurnObservation);
       previousQuestionSignature = signature;
     } catch (cause) {
@@ -580,6 +616,10 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         oracleDifferences: [error],
         outcome,
         repairs,
+        interpretation,
+        transactionErrors,
+        appliedDelta,
+        previewBlockedBy,
       } as VNextTurnObservation);
     }
   }
@@ -672,7 +712,7 @@ describe('VNext real API conversation fixture contract (offline)', () => {
 
 runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
   const observations: ConversationObservation[] = [];
-  const vnextObservations: ConversationObservation[] = [];
+  const vnextObservations: VNextConversationObservation[] = [];
   afterAll(() => {
     mkdirSync(artifactDir, { recursive: true });
     const v5Summary = summarize(observations);
@@ -693,6 +733,15 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
             previewMinutes: { v5: v5Turn?.previewMinutes ?? null, vnext: vnextTurn.previewMinutes },
             wrongAcceptance: { v5: v5Turn?.wrongAcceptance ?? false, vnext: vnextTurn.wrongAcceptance },
             wrongRejection: { v5: v5Turn?.wrongRejection ?? false, vnext: vnextTurn.wrongRejection },
+            diagnostics: {
+              v5: v5Turn?.failureDetail ?? null,
+              vnext: {
+                interpretation: vnextTurn.interpretation,
+                transactionErrors: vnextTurn.transactionErrors,
+                appliedDelta: vnextTurn.appliedDelta,
+                previewBlockedBy: vnextTurn.previewBlockedBy,
+              },
+            },
             oracleDifferences: { v5: v5Turn?.oracleDifferences ?? ['not reached'], vnext: vnextTurn.oracleDifferences },
           };
         }),
@@ -720,6 +769,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           inVNextScope: turn.oracle.inVNextScope,
           accepted: null,
           error,
+          failureDetail: { failure: null, candidateCommitRejectionReason: null, responseSource: null, debugTraceEvents: [] },
           questionCode: null,
           taskIds: [],
           workloads: [],
@@ -755,6 +805,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           inVNextScope: turn.oracle.inVNextScope,
           accepted: null,
           error,
+          failureDetail: undefined,
           questionCode: null,
           taskIds: [],
           workloads: [],
@@ -773,6 +824,10 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           oracleDifferences: ['not reached'],
           outcome: 'not_reached',
           repairs: 0,
+          interpretation: null,
+          transactionErrors: [],
+          appliedDelta: null,
+          previewBlockedBy: [],
         } as VNextTurnObservation)),
         error,
       });
