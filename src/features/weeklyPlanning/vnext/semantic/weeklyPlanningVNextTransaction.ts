@@ -25,7 +25,7 @@ import {
   resolveVNextEffortBinding,
   vnextLineageIdByFactId,
 } from '../weeklyPlanningVNextWorkIdentity';
-import { misplacedVNextTemporalBoundField } from '../weeklyPlanningVNextTemporalBound';
+import { vnextTemporalBoundRepairFields } from '../weeklyPlanningVNextTemporalBound';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -364,8 +364,10 @@ export function applyWeeklyPlanningVNextTurn(
   }
   for (const bound of graph.temporalConstraints) {
     const location = locations.get(bound.id);
-    const field = location ? misplacedVNextTemporalBoundField(bound) : null;
-    if (location && field) error('invalid_value', `${location.path}.${field}`, bound.id, location.localId);
+    if (!location) continue;
+    for (const field of vnextTemporalBoundRepairFields(bound)) {
+      error('invalid_value', `${location.path}.${field}`, bound.id, location.localId);
+    }
   }
   for (const effort of graph.effortEstimates) {
     if (touchedEfforts.has(effort.id) && effort.unitCode === 'custom'

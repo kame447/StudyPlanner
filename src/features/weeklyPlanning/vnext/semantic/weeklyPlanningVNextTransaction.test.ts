@@ -179,18 +179,25 @@ describe('experimental VNext typed transaction', () => {
     expect(vnextLineageIdByFactId(next.graph).get(next.graph.tasks[next.graph.tasks.length - 1].id)).toBe(taskId);
   });
 
-  it('places a deadline time as its end: 13:00 as endTime is kept, as startTime it is rejected at that field (#881 B)', () => {
+  it('places a deadline time as its end: 13:00 as endTime is kept, as startTime it is rejected naming both clock fields (#881 B)', () => {
     const deadline = (startTime: string | null, endTime: string | null) => ({ kind: 'temporal_constraint' as const, localId: 'due',
       taskRef: { localId: 't' }, targetRef: { localId: 't' }, constraintKind: 'deadline' as const, constraintLevel: 'hard' as const,
       dateExpression: '2026-08-27', namedTimePeriod: null, startTime, endTime, precision: 'exact' as const });
     const kept = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, deadline(null, '13:00')] }));
     expect(kept.graph.temporalConstraints[0]).toMatchObject({ kind: 'deadline', startTime: null, endTime: '13:00' });
     const misplaced = turn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, deadline('13:00', null)] }));
-    expect(misplaced).toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ path: 'add[1].startTime', localId: 'due' })] });
+    // Both clock fields are addressed: moving 13:00 changes both, so a repair cannot drop the stated time.
+    expect(misplaced).toMatchObject({ status: 'rejected', errors: [
+      expect.objectContaining({ path: 'add[1].startTime', localId: 'due' }),
+      expect.objectContaining({ path: 'add[1].endTime', localId: 'due' }),
+    ] });
     // A patch that moves an end time into the start of a stated deadline is rejected the same way.
     const moved = turn(kept, delta({ patch: [{ kind: 'temporal_constraint', localId: 'move', targetFactId: kept.graph.temporalConstraints[0].id,
       changes: { constraintKind: null, constraintLevel: null, dateExpression: null, namedTimePeriod: null, startTime: '13:00', endTime: null, precision: null } }] }));
-    expect(moved).toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ path: 'patch[0].changes.startTime', localId: 'move' })] });
+    expect(moved).toMatchObject({ status: 'rejected', errors: [
+      expect.objectContaining({ path: 'patch[0].changes.startTime', localId: 'move' }),
+      expect.objectContaining({ path: 'patch[0].changes.endTime', localId: 'move' }),
+    ] });
   });
 
   it('corrects quantity and deadline independently in the same turn', () => {
