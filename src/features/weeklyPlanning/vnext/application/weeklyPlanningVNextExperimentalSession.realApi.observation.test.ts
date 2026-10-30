@@ -15,6 +15,7 @@ import { createEmptyWeeklyPlanningFactGraphV5, type WeeklyPlanningFactGraphV5 } 
 import type { WeeklyPlanDraftBlock } from '../../types';
 import { createInitialPlanningState } from '../../weeklyPlanningReducer';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
+import { vnextUnitIdentity } from '../weeklyPlanningVNextWorkIdentity';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import {
   approveWeeklyPlanningVNextExperimentalPreview,
@@ -68,6 +69,7 @@ function snapshot(turn: WeeklyPlanningVNextExperimentalTurn) {
     graphRevision: turn.graphRevision,
     readiness: turn.readiness,
     question: turn.question && { code: turn.question.code, forWork: turn.question.forWork, options: turn.question.options.map((option) => option.value) },
+    previewBlockedBy: turn.previewBlockedBy,
     previewMinutes: turn.preview?.blocks.map((block) => block.startTime + '-' + block.endTime) ?? null,
     metrics: turn.interpretation?.metrics ?? null,
     interpretationStatus: turn.interpretation?.status ?? null,
@@ -82,7 +84,21 @@ function scheduledWork(ports: WeeklyPlanningVNextExperimentalPorts) {
   const read = readWeeklyPlanningVNextExperimentalSession(scope, ports);
   if (read.status !== 'ready') return null;
   return projectWeeklyPlanningVNext(read.checkpoint.state).owners.flatMap((owner) =>
-    owner.work.map((work) => ({ amount: work.amount, unitCode: work.unitCode, minutes: work.minutes, basis: work.estimateBasis })));
+    owner.work.map((work) => ({ amount: work.amount, unit: vnextUnitIdentity(work), minutes: work.minutes, basis: work.estimateBasis })));
+}
+
+/**
+ * The unit of the stated total, by unit identity. Whether 「枚」 is stored as
+ * page or as custom 枚 is the model's representation choice; what must hold is
+ * that the scheduled work keeps the unit the user stated, through answers and
+ * corrections. (A real unit change ending an estimate is checked offline: A08.)
+ */
+function statedTotalUnit(ports: WeeklyPlanningVNextExperimentalPorts): string | null {
+  const read = readWeeklyPlanningVNextExperimentalSession(scope, ports);
+  if (read.status !== 'ready') return null;
+  const active = new Set(read.checkpoint.state.graph.factLifecycles.filter((entry) => entry.status === 'active').map((entry) => entry.factId));
+  const totals = read.checkpoint.state.graph.workloads.filter((workload) => active.has(workload.id) && workload.quantityRole === 'scope_total');
+  return totals.length === 1 ? vnextUnitIdentity(totals[0]) : null;
 }
 
 run('#926 VNext native session real API end to end', () => {
@@ -98,12 +114,14 @@ run('#926 VNext native session real API end to end', () => {
     try {
       const t1 = await say('t1', '今週はゼミ発表のスライドを仕上げたいです。全部で20枚で、もう12枚できています。');
       expect(t1.outcome).toBe('applied');
+      const unit = statedTotalUnit(ports);
+      expect(unit).not.toBeNull();
       expect(t1.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 8 } });
 
       const t2 = await say('t2', '残りは2時間くらいだと思います');
       expect(t2.outcome).toBe('applied');
       expect(t2.question).toBeNull();
-      expect(scheduledWork(ports)).toEqual([expect.objectContaining({ amount: 8, unitCode: 'page', minutes: 120 })]);
+      expect(scheduledWork(ports)).toEqual([expect.objectContaining({ amount: 8, unit, minutes: 120 })]);
       expect(t2.preview).not.toBeNull();
 
       const t3 = await say('t3', 'すみません、できているのは14枚でした');
@@ -114,7 +132,8 @@ run('#926 VNext native session real API end to end', () => {
 
       const t4 = await say('t4', 'じゃあ90分で');
       expect(t4.question).toBeNull();
-      expect(scheduledWork(ports)).toEqual([expect.objectContaining({ amount: 6, unitCode: 'page', minutes: 90 })]);
+      expect(statedTotalUnit(ports)).toBe(unit);
+      expect(scheduledWork(ports)).toEqual([expect.objectContaining({ amount: 6, unit, minutes: 90 })]);
       const blocks = t4.preview!.blocks.length;
 
       const partial = await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports });

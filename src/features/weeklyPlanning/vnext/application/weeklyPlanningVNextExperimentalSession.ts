@@ -105,6 +105,8 @@ export interface WeeklyPlanningVNextExperimentalTurn {
   preview: WeeklyPlanningVNextShownPreview | null;
   /** Owners not placed because their question was deferred. */
   unplacedOwnerKeys: string[];
+  /** Scheduler issue or status codes when nothing is asked yet no preview could be made; never silent. */
+  previewBlockedBy: string[];
   /** Deterministic reply text; the experiment does not call a renderer model. */
   reply: string;
   interpretation: WeeklyPlanningVNextInterpretation | null;
@@ -141,7 +143,7 @@ function shownPreview(
   scope: WeeklyPlanningVNextExperimentalScope,
   state: WeeklyPlanningVNextState,
   projection: WeeklyPlanningVNextProjection,
-): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[] } {
+): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[] } {
   const compiled = compileWeeklyPlanningVNextSchedulerInput({
     state,
     projection,
@@ -153,13 +155,21 @@ function shownPreview(
       timeZone: scope.clock.timeZone,
     },
   });
-  if (compiled.status !== 'compiled' || !compiled.compilation.input) return { preview: null, unplacedOwnerKeys: [] };
+  if (compiled.status !== 'compiled') return { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] };
+  if (!compiled.compilation.input) {
+    const codes = compiled.compilation.issues.filter((issue) => issue.blocking).map((issue) => issue.code);
+    return { preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys,
+      previewBlockedBy: compiled.compilation.status === 'empty' ? [] : [...new Set(codes.length ? codes : [compiled.compilation.status])] };
+  }
   const scheduled = scheduleWeeklyPlanningStableV5Preview({
     input: compiled.compilation.input,
     graph: compiled.placementGraph,
     notBefore: { date: scope.clock.currentDate, time: scope.notBeforeTime },
   });
-  if (scheduled.status !== 'ready') return { preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys };
+  if (scheduled.status !== 'ready') {
+    return { preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys,
+      previewBlockedBy: scheduled.status === 'empty' ? [] : [scheduled.status] };
+  }
   // Candidates carry the conversation of their stated facts; the preview id is per conversation and revision.
   const blocks = createWeeklyPlanningPreviewBlocks(scheduled.candidates)
     .map((block) => createWeeklyPlanningPreviewDisplayBlock(block, scope.ownerId));
@@ -167,6 +177,7 @@ function shownPreview(
   return {
     preview: previewId ? { previewId, graphRevision: state.graph.revision, blocks } : null,
     unplacedOwnerKeys: compiled.unplacedOwnerKeys,
+    previewBlockedBy: [],
   };
 }
 
@@ -176,7 +187,8 @@ function taskTitle(state: WeeklyPlanningVNextState, taskId: string): string {
 }
 
 function replyFor(state: WeeklyPlanningVNextState, question: VNextQuestion | null,
-  preview: WeeklyPlanningVNextShownPreview | null, outcome: WeeklyPlanningVNextExperimentalTurnOutcome): string {
+  preview: WeeklyPlanningVNextShownPreview | null, outcome: WeeklyPlanningVNextExperimentalTurnOutcome,
+  previewBlockedBy: string[]): string {
   if (outcome === 'interpretation_failed' || outcome === 'rejected') {
     return 'うまく反映できませんでした。もう一度、言い方を変えて教えてください。';
   }
@@ -193,6 +205,7 @@ function replyFor(state: WeeklyPlanningVNextState, question: VNextQuestion | nul
     const minutes = preview.blocks.reduce((sum, block) => sum + clockMinutes(block.endTime) - clockMinutes(block.startTime), 0);
     return `${preview.blocks.length}件、合計${minutes}分の予定案を作りました。保存しますか？`;
   }
+  if (previewBlockedBy.length) return `予定案を作れませんでした（${previewBlockedBy.join(', ')}）。`;
   return '予定にする作業を教えてください。';
 }
 
@@ -220,7 +233,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const read = readWeeklyPlanningVNextExperimentalSession(scope, ports);
   if (read.status !== 'ready') {
     return { outcome: 'checkpoint_unreadable', graphRevision: null, readiness: null, question: null, preview: null,
-      unplacedOwnerKeys: [], reply: '保存された会話を読み込めませんでした。', interpretation: null, appliedDelta: null, errors: [] };
+      unplacedOwnerKeys: [], previewBlockedBy: [], reply: '保存された会話を読み込めませんでした。', interpretation: null, appliedDelta: null, errors: [] };
   }
   let { state } = read.checkpoint;
   const before = projectWeeklyPlanningVNext(state);
@@ -272,7 +285,9 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
 
   const projection = projectWeeklyPlanningVNext(state);
   const question = projection.questions[0] ?? null;
-  const { preview, unplacedOwnerKeys } = question ? { preview: null, unplacedOwnerKeys: [] } : shownPreview(scope, state, projection);
+  const { preview, unplacedOwnerKeys, previewBlockedBy } = question
+    ? { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] }
+    : shownPreview(scope, state, projection);
   const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
     ownerId: scope.ownerId,
     weekStartDate: scope.weekStartDate,
@@ -293,7 +308,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     question,
     preview,
     unplacedOwnerKeys,
-    reply: replyFor(state, question, preview, outcome),
+    previewBlockedBy,
+    reply: replyFor(state, question, preview, outcome, previewBlockedBy),
     interpretation,
     appliedDelta: outcome === 'applied' ? delta : null,
     errors,

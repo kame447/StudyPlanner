@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import type { WeeklyPlanningVNextInterpretationInput } from '../weeklyPlanningVNextInterpretationContract';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
 import { decodeVNextProviderOutput, VNEXT_PROVIDER_RESPONSE_FORMAT } from './weeklyPlanningVNextProviderSchema';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
+import { VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
 
 const emptyDelta = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const task = (localId = 'task', title = 'Math') => ({ kind: 'task', localId, category: 'study', title });
@@ -24,6 +26,21 @@ function input(responses: (string | Error)[]): WeeklyPlanningVNextInterpretation
 }
 
 describe('VNext native provider', () => {
+  it('every synthetic observation seed is valid and has a projectable typed state before any API call', () => {
+    expect(VNEXT_PROVIDER_SCENARIOS.length).toBe(22);
+    expect(new Set(VNEXT_PROVIDER_SCENARIOS.map(scenario => scenario.id)).size).toBe(22);
+    for (const scenario of VNEXT_PROVIDER_SCENARIOS) {
+      let state = createEmptyWeeklyPlanningVNextState();
+      if (scenario.seed.length) {
+        const seeded = applyWeeklyPlanningVNextTurn(state, { ...emptyDelta(), add: scenario.seed }, {
+          expectedRevision: 0, turnKey: `seed:${scenario.id}`, conversationId: 'synthetic', turnId: 'seed', sourceText: 'Synthetic evidence',
+        });
+        expect(seeded.status, `${scenario.id}: ${JSON.stringify(seeded)}`).toBe('applied');
+        if (seeded.status === 'applied') state = seeded.state;
+      }
+      expect(() => projectWeeklyPlanningVNext(state), scenario.id).not.toThrow();
+    }
+  });
   it('uses an object root, required properties and closed objects in every strict-schema branch', () => {
     type Schema = { type?: string; properties?: Record<string, Schema>; required?: string[]; additionalProperties?: boolean;
       anyOf?: Schema[]; items?: Schema };
@@ -123,6 +140,43 @@ describe('VNext native provider', () => {
   it('accepts a no-contribution turn without sending an empty delta to the transaction', async () => {
     const result = await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify(output())]));
     expect(result.status).toBe('interpreted');
+  });
+
+  it('decodes and dry-runs a value-only patch without refilling unit or scope', async () => {
+    const params = input([]);
+    const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [
+      { kind: 'task', localId: 'task', title: 'Math', category: 'study' },
+      { kind: 'workload', localId: 'work', taskRef: { localId: 'task' }, componentRef: null,
+        quantityRole: 'remaining', amount: 7, unitCode: 'custom', unitLabel: '枚', rangeStart: null,
+        rangeEnd: null, perOccurrence: false, periodExpression: 'this_week' },
+    ] }, { expectedRevision: 0, turnKey: 'seed', conversationId: 'c', turnId: 'seed', sourceText: 'evidence' });
+    if (seeded.status !== 'applied') throw new Error('setup');
+    params.state = seeded.state;
+    params.projection = projectWeeklyPlanningVNext(params.state);
+    const patch = { kind: 'workload', localId: 'p', targetFactId: params.state.graph.workloads[0].id,
+      amountDelta: null, changes: { amount: 8, unitCode: null, unitLabel: null, quantityRole: null,
+        rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } };
+    params.client = input([JSON.stringify({ delta: { ...emptyDelta(), patch: [patch] }, answer: null })]).client;
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', delta: { patch: [patch] } });
+    expect(params.state.graph.workloads[0].amount).toBe(7);
+  });
+
+  it('rejects unknown/inherited-key fields and mixed answer payloads', () => {
+    expect(decodeVNextProviderOutput(JSON.parse('{"delta":{"add":[],"patch":[],"remove":[],"relate":[],"defer":[]},"answer":null,"constructor":{}}')).status).toBe('rejected');
+    expect(decodeVNextProviderOutput(output([], { kind: 'option', optionId: 'x', minutes: 45 })).status).toBe('rejected');
+  });
+
+  it('keeps experimental provider/session requests outside production trace and outbox', () => {
+    // Explicit exclusion contract: synthetic experiment receipts are artifacts, never production trace.
+    const files = ['./weeklyPlanningVNextProvider.ts', './weeklyPlanningVNextProviderPrompt.ts',
+      './weeklyPlanningVNextProviderSchema.ts', '../application/weeklyPlanningVNextExperimentalSession.ts'];
+    for (const file of files) {
+      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      const imports = [...source.matchAll(/(?:from\s*|import\s*\()(['"])([^'"]+)\1/g)].map(match => match[2]);
+      expect(imports.filter(path => /(?:\/trace\/|[Oo]utbox|[Tt]raceRuntime|workers\/)/.test(path)), file).toEqual([]);
+      expect(source, file).not.toMatch(/\b(?:recordWeeklyPlanningStableV5DebugTrace|appendWeeklyPlanningTrace|enqueueWeeklyPlanningTrace)\s*\(/);
+    }
   });
 
   it('prompt includes clock, active IDs, open/presented questions and omits historical inactive facts', () => {

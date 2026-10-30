@@ -45,7 +45,8 @@ function spliceRepair(original: unknown, repaired: unknown, errors: VNextTurnErr
     if (!record(from)) return null;
     const key = address.field[address.field.length - 1];
     // Removing an unknown property is a legal shape repair; null still never means clearing a fact field.
-    if (Object.prototype.hasOwnProperty.call(from, key)) to[key] = structuredClone(from[key]);
+    if (Object.prototype.hasOwnProperty.call(from, key)) Object.defineProperty(to, key,
+      { value: structuredClone(from[key]), enumerable: true, writable: true, configurable: true });
     else delete to[key];
   }
   return next;

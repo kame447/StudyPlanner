@@ -57,7 +57,7 @@ function validate(schema: Schema, value: unknown, path: string, localId: string 
     if (attempts.some(attempt => !attempt.errors.length)) return [];
     // A discriminant or exact reference key identifies the variant; never reinterpret meaning.
     const selected = record(value) ? attempts.find(({ variant }) => variant.properties?.kind?.enum?.includes(value.kind))
-      ?? attempts.find(({ variant }) => variant.properties && Object.keys(value).every(key => key in variant.properties!)) : null;
+      ?? attempts.find(({ variant }) => variant.properties && Object.keys(value).every(key => Object.prototype.hasOwnProperty.call(variant.properties, key))) : null;
     return selected?.errors ?? issue();
   }
   if (schema.enum && !schema.enum.includes(value)) return issue();
@@ -70,7 +70,7 @@ function validate(schema: Schema, value: unknown, path: string, localId: string 
   if (schema.type === 'object') {
     if (!record(value)) return issue();
     const errors: VNextTurnError[] = [];
-    for (const key of Object.keys(value)) if (!(key in schema.properties!)) errors.push(...issue(`${path}.${key}`));
+    for (const key of Object.keys(value)) if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) errors.push(...issue(`${path}.${key}`));
     for (const key of schema.required!) {
       if (!(key in value)) errors.push(...issue(`${path}.${key}`));
       else errors.push(...validate(schema.properties![key], value[key], path ? `${path}.${key}` : key, localId));
