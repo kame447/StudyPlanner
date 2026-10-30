@@ -8,13 +8,14 @@ import {
 } from 'lucide-react';
 import { FaqView } from './FaqView';
 
-export function AppSettingsSupportPanel() {
+export function AppSettingsSupportPanel({ onDeleteAccount }: { onDeleteAccount?: () => void } = {}) {
   return (
     <div className="section-stack">
       <FaqView />
 
       <section className="assistant-settings-card support-section">
         <strong>ヘルプ</strong>
+        {onDeleteAccount ? <button className="support-link-row" type="button" onClick={onDeleteAccount}>退会する</button> : null}
         <PublicPageLink className="support-link-row" href="/contact">
           <span className="support-link-main">
             <MessageSquare aria-hidden="true" size={20} strokeWidth={1.9} />

@@ -1,3 +1,4 @@
+import { accountClientWritesPaused } from '../../../services/accountDeletionClientState';
 import type { WeeklyPlanningStableV5DebugTraceEvent } from './weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningDialogueRendererTrace } from './weeklyPlanningDialogueRendererTrace';
 import {
@@ -256,7 +257,7 @@ async function writeTraceInput(
   params: WeeklyPlanningStableV5TraceInput,
   occurredAt: string,
 ): Promise<void> {
-  if (active.requestIds.has(params.requestId)) return;
+  if (active.requestIds.has(params.requestId) || accountClientWritesPaused(params.userId)) return;
   const working = cloneWorkingSession(active);
   const entry = createTurnDiagnosticEntry(working, params, occurredAt);
   await appendWorkingSession(active, working, [entry]);
@@ -298,6 +299,7 @@ async function flushOutbox(
     conversationId: params.conversationId,
   });
   for (const item of pending) {
+    if (accountClientWritesPaused(params.userId)) return true;
     if (active.requestIds.has(item.input.requestId)) {
       removeWeeklyPlanningTraceOutboxItem(outboxIdentity(item.input));
       continue;
@@ -320,10 +322,11 @@ async function flushOutbox(
 export async function recordWeeklyPlanningStableV5TurnTrace(
   params: WeeklyPlanningStableV5TraceInput,
 ): Promise<void> {
-  if (!isWeeklyPlanningTraceEnabled()) return;
+  if (!isWeeklyPlanningTraceEnabled() || accountClientWritesPaused(params.userId)) return;
   const occurredAt = nowIso();
   const active = ensureSession(params, occurredAt);
   const operation = active.writeQueue.catch(() => undefined).then(async () => {
+    if (accountClientWritesPaused(params.userId)) return;
     const flushed = await flushOutbox(active, params);
     if (!flushed) {
       enqueueFailedInput(params, occurredAt, new Error('older trace outbox item is still pending'));
@@ -337,7 +340,7 @@ export async function recordWeeklyPlanningStableV5TurnTrace(
       await writeTraceInput(active, params, occurredAt);
       removeWeeklyPlanningTraceOutboxItem(outboxIdentity(params));
     } catch (error) {
-      enqueueFailedInput(params, occurredAt, error);
+      if (!accountClientWritesPaused(params.userId)) enqueueFailedInput(params, occurredAt, error);
     }
   });
   active.writeQueue = operation.catch(() => undefined);

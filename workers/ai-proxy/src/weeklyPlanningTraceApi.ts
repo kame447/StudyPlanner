@@ -602,6 +602,8 @@ async function handleDelete(
   return ok(context, { deletedEntries, deletedSessions });
 }
 
+export { handleDelete as deleteWeeklyPlanningTraces };
+
 async function handleAdminSessions(
   context: TraceRequestContext,
   firestore: WeeklyPlanningTraceFirestoreClient,

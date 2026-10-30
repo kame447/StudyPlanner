@@ -774,6 +774,7 @@ export class FirestoreServiceAccountClient {
     limit?: number;
     direction?: 'ASCENDING' | 'DESCENDING';
     endAtTimestamp?: string;
+    endAtString?: string;
   }): Promise<FirestoreOrderedDocument[]> {
     const where = equalityWhere(params.filters ?? []);
     const direction = params.direction ?? 'ASCENDING';
@@ -799,6 +800,9 @@ export class FirestoreServiceAccountClient {
           ...(params.endAtTimestamp ? {
             endAt: { values: [{ timestampValue: params.endAtTimestamp }], before: false },
           } : {}),
+          ...(params.endAtString ? {
+            endAt: { values: [{ stringValue: params.endAtString }], before: false },
+          } : {}),
           limit: boundedQueryLimit(params.limit ?? 100),
         },
       }),
@@ -815,7 +819,7 @@ export class FirestoreServiceAccountClient {
         ...decodeFirestoreFields(document.fields ?? {}),
         id: documentId(document.name),
         documentName: document.name,
-        ...(params.endAtTimestamp && document.updateTime
+        ...((params.endAtTimestamp || params.endAtString) && document.updateTime
           ? { updateTime: document.updateTime }
           : {}),
       }];
@@ -977,6 +981,28 @@ export class FirestoreServiceAccountClient {
       throw new Error(`Firestore delete failed: ${response.status}`);
     }
     await discardResponseBody(response);
+  }
+
+  // showMissing includes absent parent documents that still have descendants
+  // (class_attendance stores records without writing the class document).
+  async listCollectionDocuments(
+    collectionPath: string,
+    limit = 100,
+  ): Promise<Array<{ id: string }>> {
+    const path = collectionPath.split('/').map(encodeURIComponent).join('/');
+    const params = new URLSearchParams({
+      pageSize: String(boundedQueryLimit(limit)),
+      showMissing: 'true',
+    });
+    const response = await this.request(`${this.documentsBase()}/${path}?${params}`);
+    if (!response.ok) {
+      await discardResponseBody(response);
+      throw new Error(`Firestore list collection failed: ${response.status}`);
+    }
+    const payload = await response.json() as { documents?: FirestoreDocument[] };
+    return (payload.documents ?? []).flatMap((document) => document.name
+      ? [{ id: documentId(document.name) }]
+      : []);
   }
 
   async deleteByStringField(

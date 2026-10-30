@@ -2,6 +2,9 @@ import { observeStartupDocument } from './observeStartupDocument';
 import type { Auth, User as FirebaseAuthUser } from 'firebase/auth';
 import {
   browserLocalPersistence,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   sendEmailVerification,
@@ -138,7 +141,7 @@ async function ensureProfile(
   );
   // Restoring an unchanged profile is a read, not a login heartbeat. Avoid a
   // redundant write acknowledgement before the planner can start loading.
-  if (!unchanged) {
+  if (!unchanged && !(await getDoc(doc(firestoreDb, 'account_deletions', authUser.uid))).exists()) {
     await upsertProfile(firestoreDb, {
       ...nextProfile,
       ...(!existingProfile ? { registeredAt: serverTimestamp() } : {}),
@@ -157,6 +160,19 @@ export function createFirebaseAuthRepository(
   firestoreDb: Firestore,
 ): AuthRepository {
   return {
+    async reauthenticate(password) {
+      const user = firebaseAuth.currentUser;
+      if (!user) throw new Error('ログインし直してください。');
+      // The current sign-in provider determines the credential challenge.
+      const token = await user.getIdTokenResult();
+      if (token.signInProvider === 'google.com') {
+        await reauthenticateWithPopup(user, createGoogleProvider());
+      } else if (token.signInProvider === 'password' && user.email && password) {
+        await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password));
+      } else {
+        throw new Error('パスワードを入力してください。');
+      }
+    },
     async signUpWithPassword(email, password, username) {
       await ensureLocalAuthPersistence(firebaseAuth);
 
