@@ -137,7 +137,7 @@ describe('VNext closed-set option choice before the full reading', () => {
 // The session is the only caller: it decides which question was shown, and its checkpoint is the freshness authority.
 describe('VNext option choice inside the experimental session', () => {
   const scope: WeeklyPlanningVNextExperimentalScope = {
-    ownerId: 'o', weekStartDate: '2026-11-02', conversationId: 'c', notBeforeTime: '09:00',
+    ownerId: 'o', weekStartDate: '2026-11-02', conversationId: 'c', weekStartsOn: 'monday', notBeforeTime: '09:00',
     clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
   };
   const seed = { ...fullReadingResult, delta: { ...fullReadingResult.delta, add: [
@@ -151,6 +151,7 @@ describe('VNext option choice inside the experimental session', () => {
     const slot = (key: string) => ({ read: () => slots.get(key) ?? null, write: (raw: string) => void slots.set(key, raw) });
     return { client: {} as OpenAiCompatibleClient, interpret, checkpoint: slot('vnext'), legacyV5Checkpoint: { read: () => null },
       approvalLedger: slot('ledger'), now: () => '2026-11-02T09:00:00.000Z',
+      calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
       plans: { findExistingPlanId: async () => undefined, saveBlock: async (block) => ({ planId: block.id }) } };
   }
   const say = (ports: WeeklyPlanningVNextExperimentalPorts, turnId: string, userText: string, shownRevision: number | null) =>

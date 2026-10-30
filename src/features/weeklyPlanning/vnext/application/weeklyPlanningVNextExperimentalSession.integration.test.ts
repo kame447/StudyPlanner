@@ -11,6 +11,7 @@ import {
 } from '../../application/weeklyPlanningStableV5SessionCodec';
 import { parseWeeklyApprovalLedger } from '../../planning/weeklyPlanningApproval';
 import { createEmptyWeeklyPlanningFactGraphV5, type WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
+import type { Plan } from '../../../../types/domain';
 import type { WeeklyPlanDraftBlock } from '../../types';
 import { createInitialPlanningState } from '../../weeklyPlanningReducer';
 import type {
@@ -30,6 +31,7 @@ import {
 const scope: WeeklyPlanningVNextExperimentalScope = {
   ownerId: 'owner-1', weekStartDate: '2026-11-02', conversationId: 'conversation-e2e',
   clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
+  weekStartsOn: 'monday',
   notBeforeTime: '09:00',
 };
 const metrics = { calls: 1, repairs: 0, latencyMs: 1 };
@@ -72,6 +74,7 @@ function harness(script: Array<WeeklyPlanningVNextInterpretation | ((input: Week
         return { planId: `plan:${block.id}` };
       },
     },
+    calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
     now: () => '2026-11-02T09:00:00.000Z',
   };
   return { ports, slots, saved, inputs, saveCalls: () => saveCalls };
@@ -200,6 +203,20 @@ describe('VNext experimental session end to end (offline)', () => {
       await turn(once.ports, 't1', 'seed');
       expect(await turn(once.ports, 't2', 'answer')).toMatchObject({ outcome: 'applied', errors: [] });
     }
+  });
+
+  it('places work after an existing plan, with the same oracle as the Stable V5 scheduler test', async () => {
+    // semantic/weeklyPlanningStableV5PreviewScheduler.test.ts: a 09:00–10:00 plan → 60 minutes of work from 10:20.
+    const existing: Plan = { id: 'plan-1', seriesId: 'series-1', userId: 'owner-1', title: '既存予定', subject: '', date: '2026-11-02',
+      startTime: '09:00', endTime: '10:00', repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], type: 'other',
+      memo: '', createdAt: '2026-10-28T00:00:00.000Z', updatedAt: '2026-10-28T00:00:00.000Z' };
+    const minutes: VNextAddFact = { kind: 'workload', localId: 'w', taskRef: { localId: 'slides' }, componentRef: null, quantityRole: 'remaining',
+      amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null };
+    const free = harness([interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: '部屋の掃除' }, minutes] })]);
+    expect((await turn(free.ports, 't1', '部屋の掃除を60分')).preview!.blocks[0]).toMatchObject({ date: '2026-11-02', startTime: '09:00' });
+    const busy = harness([interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: '部屋の掃除' }, minutes] })]);
+    busy.ports.calendar = () => ({ plans: [existing], monthEvents: [], scheduleTemplates: [] });
+    expect((await turn(busy.ports, 't1', '部屋の掃除を60分')).preview!.blocks[0]).toMatchObject({ date: '2026-11-02', startTime: '10:20', endTime: '11:20' });
   });
 
   it('a correction before approval replaces the shown preview, so the old preview cannot be saved', async () => {

@@ -644,6 +644,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
       planningEndDate: clock.planningEndDate,
       timeZone: 'Asia/Tokyo',
     },
+    weekStartsOn: 'monday',
     notBeforeTime: '09:00',
   };
   const slots = new Map<string, string>();
@@ -667,6 +668,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         return { planId };
       },
     },
+    calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
     now: () => `${clock.currentDate}T09:00:00.000Z`,
   };
   const turns: VNextTurnObservation[] = [];

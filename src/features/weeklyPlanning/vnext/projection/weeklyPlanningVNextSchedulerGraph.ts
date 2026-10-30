@@ -7,8 +7,19 @@
 //   (asked or deferred) is left out and reported as unplaced, never dropped;
 // - ids that exist only in this scheduling view are mapped back to the facts
 //   they stand for before any provenance leaves this module.
+// - the scheduling context (planning horizon, week start, named periods) is
+//   derived from the state by the same V5 resolvers, so a stated planning
+//   window moves the horizon exactly as in V5.
 // Read-only; nothing here writes state, preview, trace or storage.
+import {
+  createWeeklyPlanningSchedulerContext,
+  resolveWeeklyPlanningAcceptedPlanningWindow,
+  resolveWeeklyPlanningPlanningHorizon,
+  type WeeklyPlanningTurnRequestContext,
+} from '../../application/weeklyPlanningTemporalContext';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import { resolveWeeklyPlanningDateExpressionsV5 } from '../../semantic/weeklyPlanningResolvedDateExpressionsV5';
+import { resolveWeeklyPlanningTemporalConstraintsV5 } from '../../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
 import type { EffortEstimateFactV5, WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
 import {
   compileGenericSchedulerInput,
@@ -31,6 +42,29 @@ export type WeeklyPlanningVNextSchedulerCompilation =
       /** Owners with deferred questions: shown as unplaced, not scheduled, not deleted. */
       unplacedOwnerKeys: string[];
     };
+
+/**
+ * The scheduler context of a state, by V5's resolvers in V5's order: the accepted planning window,
+ * dates resolved within it, temporal constraints, then the horizon (the window, or the selected
+ * week extended by recurring hard bounds). VNext fixes relative dates when they are stated, so the
+ * V5 grounding records that froze them are not needed.
+ */
+export function createWeeklyPlanningVNextSchedulerContext(params: {
+  state: WeeklyPlanningVNextState;
+  ownerId: string;
+  requestContext: WeeklyPlanningTurnRequestContext;
+  /** First day of the selected week: the horizon's start when no planning window is stated. */
+  selectedDate: string;
+}): GenericSchedulerInputContext {
+  const graph = createWeeklyPlanningActiveSchedulerGraphViewV5(params.state.graph);
+  const { requestContext } = params;
+  const { currentDate, weekStartsOn } = requestContext;
+  const planningWindow = resolveWeeklyPlanningAcceptedPlanningWindow({ graph, requestContext });
+  const resolvedTemporalConstraints = resolveWeeklyPlanningTemporalConstraintsV5({ graph, currentDate, weekStartsOn,
+    resolvedDateExpressions: resolveWeeklyPlanningDateExpressionsV5({ graph, currentDate, weekStartsOn, planningWindow }) });
+  const horizon = resolveWeeklyPlanningPlanningHorizon({ graph, selectedDate: params.selectedDate, requestContext, resolvedTemporalConstraints });
+  return createWeeklyPlanningSchedulerContext({ ownerId: params.ownerId, horizon, requestContext });
+}
 
 export function compileWeeklyPlanningVNextSchedulerInput(params: {
   state: WeeklyPlanningVNextState;

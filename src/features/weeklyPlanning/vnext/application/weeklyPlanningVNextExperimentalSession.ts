@@ -23,7 +23,13 @@ import {
 } from '../../preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyPlanDraftBlock } from '../../types';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
-import { compileWeeklyPlanningVNextSchedulerInput } from '../projection/weeklyPlanningVNextSchedulerGraph';
+import type { MonthEvent, Plan, ScheduleTemplate } from '../../../../types/domain';
+import type { WeeklyPlanningWeekStartsOn } from '../../personalization/weeklyPlanningWeek';
+import type { GenericSchedulerInputContext } from '../../semantic/weeklyPlanningGenericSchedulerInput';
+import {
+  compileWeeklyPlanningVNextSchedulerInput,
+  createWeeklyPlanningVNextSchedulerContext,
+} from '../projection/weeklyPlanningVNextSchedulerGraph';
 import {
   applyWeeklyPlanningVNextTurn,
   createEmptyWeeklyPlanningVNextState,
@@ -63,9 +69,19 @@ export interface WeeklyPlanningVNextExperimentalScope {
   ownerId: string;
   weekStartDate: string;
   conversationId: string;
+  /** clock.planningStartDate/EndDate is the selected week: the horizon until a planning window is stated. */
   clock: WeeklyPlanningVNextInterpretationClock;
-  /** Earliest placement time on clock.currentDate (HH:MM). */
+  weekStartsOn: WeeklyPlanningWeekStartsOn;
+  /** Earliest placement time on clock.currentDate (HH:MM): the time the turn is planned from. */
   notBeforeTime: string;
+}
+
+/** The user's existing schedule, read-only: placement avoids it exactly as Stable V5 does. */
+export interface WeeklyPlanningVNextCalendar {
+  plans: readonly Plan[];
+  monthEvents: readonly MonthEvent[];
+  scheduleTemplates: readonly ScheduleTemplate[];
+  timetableTermId?: string;
 }
 
 export interface WeeklyPlanningVNextExperimentalPorts {
@@ -79,6 +95,7 @@ export interface WeeklyPlanningVNextExperimentalPorts {
     findExistingPlanId(sourceDraftBlockId: string): Promise<string | undefined>;
     saveBlock(block: WeeklyPlanDraftBlock, approvalOperationId: string): Promise<{ planId: string }>;
   };
+  calendar(): WeeklyPlanningVNextCalendar;
   now(): string;
 }
 
@@ -141,22 +158,26 @@ export function readWeeklyPlanningVNextExperimentalSession(
   };
 }
 
+/** The scheduling context of a state: horizon from its planning window (or the selected week), by V5's resolvers. */
+function schedulingContext(scope: WeeklyPlanningVNextExperimentalScope, ports: WeeklyPlanningVNextExperimentalPorts,
+  state: WeeklyPlanningVNextState): GenericSchedulerInputContext {
+  const { currentDate, timeZone, planningStartDate } = scope.clock;
+  return createWeeklyPlanningVNextSchedulerContext({
+    state,
+    ownerId: scope.ownerId,
+    selectedDate: planningStartDate,
+    requestContext: { startedAtIso: ports.now(), timeZone, currentDate, currentTime: scope.notBeforeTime,
+      notBeforeDate: currentDate, notBeforeTime: scope.notBeforeTime, weekStartsOn: scope.weekStartsOn },
+  });
+}
+
 function shownPreview(
   scope: WeeklyPlanningVNextExperimentalScope,
+  ports: WeeklyPlanningVNextExperimentalPorts,
   state: WeeklyPlanningVNextState,
   projection: WeeklyPlanningVNextProjection,
 ): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[] } {
-  const compiled = compileWeeklyPlanningVNextSchedulerInput({
-    state,
-    projection,
-    context: {
-      ownerId: scope.ownerId,
-      currentDate: scope.clock.currentDate,
-      planningStartDate: scope.clock.planningStartDate,
-      planningEndDate: scope.clock.planningEndDate,
-      timeZone: scope.clock.timeZone,
-    },
-  });
+  const compiled = compileWeeklyPlanningVNextSchedulerInput({ state, projection, context: schedulingContext(scope, ports, state) });
   if (compiled.status !== 'compiled') return { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] };
   if (!compiled.compilation.input) {
     const codes = compiled.compilation.issues.filter((issue) => issue.blocking).map((issue) => issue.code);
@@ -166,6 +187,7 @@ function shownPreview(
   const scheduled = scheduleWeeklyPlanningStableV5Preview({
     input: compiled.compilation.input,
     graph: compiled.placementGraph,
+    ...ports.calendar(),
     notBefore: { date: scope.clock.currentDate, time: scope.notBeforeTime },
   });
   if (scheduled.status !== 'ready') {
@@ -231,8 +253,12 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     ? before.questions.find((question) => question.key === presented.questionKey) ?? null
     : null;
 
+  // The model reads dates against the horizon the state currently has (a stated planning window moves it).
+  const horizon = schedulingContext(scope, ports, state);
   const interpretation = await ports.interpret({
-    client: ports.client, state, projection: before, presentedQuestion, userText: params.userText, clock: scope.clock,
+    client: ports.client, state, projection: before, presentedQuestion, userText: params.userText,
+    clock: { ...scope.clock, planningStartDate: horizon.planningStartDate || scope.clock.planningStartDate,
+      planningEndDate: horizon.planningEndDate || scope.clock.planningEndDate },
   });
 
   // The turn was read against `rawBefore`; if another turn saved meanwhile, applying
@@ -289,7 +315,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const shown = read.checkpoint.preview;
   const made = question
     ? { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] }
-    : shownPreview(scope, state, projection);
+    : shownPreview(scope, ports, state, projection);
   const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision
     ? { preview: shown, unplacedOwnerKeys: made.unplacedOwnerKeys, previewBlockedBy: [] }
     : made;

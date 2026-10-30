@@ -7,7 +7,8 @@ import {
 } from '../semantic/weeklyPlanningVNextTransaction';
 import type { VNextAddFact, VNextAddWorkload, VNextTurnDelta, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import { projectWeeklyPlanningVNext } from './weeklyPlanningVNextProjection';
-import { compileWeeklyPlanningVNextSchedulerInput } from './weeklyPlanningVNextSchedulerGraph';
+import { WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5 } from '../../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
+import { compileWeeklyPlanningVNextSchedulerInput, createWeeklyPlanningVNextSchedulerContext } from './weeklyPlanningVNextSchedulerGraph';
 
 const context = { ownerId: 'owner', currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' };
 let counter = 0;
@@ -77,5 +78,24 @@ describe('VNext → Stable V5 scheduler bridge', () => {
     state = turn(state, { patch: [{ kind: 'task', localId: 'rename', targetFactId: state.graph.tasks[0].id, changes: { category: null, title: '数学II' } }] });
     const [item] = compile(state).compilation.input!.movableWorkItems;
     expect(item).toMatchObject({ taskId: state.graph.tasks[1].id, baseEstimatedMinutes: 45 });
+  });
+
+  it('derives the scheduling context from the state by V5 resolvers: a stated planning window is the horizon, else the selected week', () => {
+    const requestContext = { startedAtIso: '2026-11-02T00:00:00.000Z', timeZone: 'Asia/Tokyo', currentDate: '2026-11-02', currentTime: '09:00',
+      notBeforeDate: '2026-11-02', notBeforeTime: '09:00', weekStartsOn: 'monday' as const };
+    const state = turn(createEmptyWeeklyPlanningVNextState(), { add: [task('t', '数学'), minutesWork('w', 't', 60)] });
+    const week = createWeeklyPlanningVNextSchedulerContext({ state, ownerId: 'owner', selectedDate: '2026-11-02', requestContext });
+    expect(week).toMatchObject({ planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', weekStartsOn: 'monday',
+      namedTimePeriods: WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5 });
+    // A planning window as VNext stores it (absolute at acceptance), placed directly until the typed delta can state it.
+    const window = { id: 'pw', kind: 'absolute' as const, value: '2026-11-09/2026-11-15', start: '2026-11-09', end: '2026-11-15',
+      source: state.graph.tasks[0].source, createdRevision: state.graph.revision };
+    const windowed: WeeklyPlanningVNextState = { ...state, graph: { ...state.graph, planningWindows: [window],
+      factLifecycles: [...state.graph.factLifecycles, { factId: 'pw', status: 'active', createdRevision: state.graph.revision,
+        terminalRevision: null, supersededByFactId: null }] } };
+    const next = createWeeklyPlanningVNextSchedulerContext({ state: windowed, ownerId: 'owner', selectedDate: '2026-11-02', requestContext });
+    expect(next).toMatchObject({ planningStartDate: '2026-11-09', planningEndDate: '2026-11-15' });
+    const compiled = compileWeeklyPlanningVNextSchedulerInput({ state: windowed, projection: projectWeeklyPlanningVNext(windowed), context: next });
+    expect(compiled.status === 'compiled' && compiled.compilation.input?.horizon).toMatchObject({ startDate: '2026-11-09', endDate: '2026-11-15' });
   });
 });

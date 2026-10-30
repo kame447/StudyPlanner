@@ -33,6 +33,7 @@ const run = shouldRun ? describe : describe.skip;
 const scope: WeeklyPlanningVNextExperimentalScope = {
   ownerId: 'vnext-e2e-owner', weekStartDate: '2026-11-02', conversationId: 'vnext-e2e',
   clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
+  weekStartsOn: 'monday',
   notBeforeTime: '09:00',
 };
 
@@ -64,6 +65,7 @@ function createPorts(options: { legacyV5?: string; failSaveAttempt?: number } = 
         return { planId: `plan:${block.id}` };
       },
     },
+    calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
     now: () => new Date().toISOString(),
   };
   return { ports, slots, saved, saveAttempts: () => saveAttempts, takeRawOutputs: () => rawOutputs.splice(0) };

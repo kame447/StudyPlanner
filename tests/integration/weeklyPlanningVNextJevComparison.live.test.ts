@@ -138,6 +138,7 @@ function makeScope(testCase: VNextJevComparisonCase, repetition: number): Weekly
     conversationId: `jev-comparison:${testCase.id}:r${repetition}`,
     clock: { currentDate: testCase.seed.acceptedDate, planningStartDate: testCase.seed.acceptedDate,
       planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
+    weekStartsOn: 'monday',
     notBeforeTime: '09:00',
   };
 }
@@ -166,6 +167,7 @@ function makeHarness(testCase: VNextJevComparisonCase, repetition: number, clien
         return { planId: `plan:${block.id}` };
       },
     },
+    calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
     now: () => '2026-11-02T09:00:00.000Z',
   };
   return { ports, saved, slots, saveCalls: () => saveCalls };
