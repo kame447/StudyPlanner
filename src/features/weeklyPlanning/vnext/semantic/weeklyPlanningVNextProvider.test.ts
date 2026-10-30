@@ -56,7 +56,8 @@ describe('VNext native provider', () => {
     for (const misplaced of [false, true]) {
       const candidate = structuredClone(seed.state);
       candidate.graph.temporalConstraints.push({ id: 'bound', taskId: candidate.graph.tasks[0].id,
-        targetFactId: candidate.graph.tasks[0].id, kind: 'deadline', constraintLevel: 'hard', dateExpression: 'tomorrow',
+        // Stored form: dates are fixed to the accepting turn (2026-08-26 + 1) by the transaction.
+        targetFactId: candidate.graph.tasks[0].id, kind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-08-27',
         namedTimePeriod: null, startTime: misplaced ? '13:00' : null, endTime: misplaced ? null : '13:00', precision: 'exact',
         source: candidate.graph.tasks[0].source, createdRevision: 1 });
       candidate.graph.factLifecycles.push({ factId: 'bound', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null });
