@@ -78,6 +78,10 @@ export function normalizeAiQuotaRuleLimit(rule: AiQuotaWindowRule): number {
 }
 
 export class AiQuotaDurableObject extends DurableObject<Record<string, unknown>> {
+  async clearForAccountDeletion(): Promise<void> {
+    await this.ctx.storage.deleteAll();
+  }
+
   async checkAndConsume(request: AiQuotaCheckRequest): Promise<AiQuotaCheckResult> {
     const rules = Array.isArray(request.rules)
       ? request.rules

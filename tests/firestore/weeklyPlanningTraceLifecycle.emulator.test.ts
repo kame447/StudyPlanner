@@ -231,6 +231,10 @@ describe.skipIf(!enabled)('weekly planning trace lifecycle on the Firestore emul
     // The owner's delete removes every epoch, including one outside the
     // retention derivation window, and the legacy raw-userId schema, while
     // leaving another user's traces intact.
+    // Other emulator suites (account deletion, #917) also write delete audits;
+    // count only the audit this delete adds.
+    const priorDeleteAuditIds = new Set((await listAll('weekly_planning_trace_access_audit'))
+      .filter((document) => document.action === 'delete_own_traces').map((document) => JSON.stringify(document)));
     const deleted = await call(OWNER_UID, '/weekly-planning-trace/delete', {});
     expect(deleted.status).toBe(200);
     expect(deleted.body).toMatchObject({ deletedSessions: 3, deletedEntries: 4 });
@@ -245,7 +249,7 @@ describe.skipIf(!enabled)('weekly planning trace lifecycle on the Firestore emul
     expect(sessions.map((document) => document.id)).toContain(other.sessionId);
     expect(remainingEntries.some((document) => document.sessionId === other.sessionId)).toBe(true);
     const deleteAudits = (await listAll('weekly_planning_trace_access_audit'))
-      .filter((document) => document.action === 'delete_own_traces');
+      .filter((document) => document.action === 'delete_own_traces' && !priorDeleteAuditIds.has(JSON.stringify(document)));
     expect(deleteAudits).toHaveLength(1);
     expect(deleteAudits[0].actorToken).toMatch(/^wpt_/);
     expect(deleteAudits[0].expireAt).toBeTruthy();

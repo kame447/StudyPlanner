@@ -1,6 +1,8 @@
 import { handleDurableTurnApi, isDurableTurnPath, type DurableTurnApiEnv } from './durableTurns/durableTurnApi';
 export { WeeklyPlanningTurnDurableObject } from './durableTurns/weeklyPlanningTurnDurableObject';
 import { handleInquiryAttachmentApi, isInquiryAttachmentPath, type InquiryAttachmentEnv } from './inquiryAttachmentApi';
+import { handleAccountDeletionApi, type AccountDeletionEnv } from './accountDeletionApi';
+import { sweepExpiredAccountDeletions } from './accountDeletionJob';
 import {
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
   WEEKLY_PLANNING_TRACE_HEADERS,
@@ -229,6 +231,7 @@ async function runScheduledObservabilityMaintenance(
       return;
     case 'retention':
       await runScheduledObservabilityRetention(env, firestore);
+      await sweepExpiredAccountDeletions(firestore);
       return;
     case 'trace_retention':
       await runScheduledObservabilityRetention(
@@ -248,6 +251,7 @@ export default {
     executionContext?: ExecutionContext,
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    if (pathname === '/account/delete') return handleAccountDeletionApi(request, env as unknown as AccountDeletionEnv);
     if (isDurableTurnPath(pathname)) return handleDurableTurnApi(request, env as unknown as DurableTurnApiEnv);
     if (isInquiryAttachmentPath(pathname)) {
       return handleInquiryAttachmentApi(request, env as unknown as InquiryAttachmentEnv);
