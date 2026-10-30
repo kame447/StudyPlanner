@@ -57,6 +57,7 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
   if (!Object.values(reading.delta).some(items => items.length)) return [];
   const result = applyWeeklyPlanningVNextTurn(input.state, reading.delta, {
     expectedRevision: input.state.graph.revision,
+    acceptedDate: input.clock.currentDate,
     turnKey: `native-dry-run:${input.state.graph.revision}`,
     conversationId: 'native-provider-dry-run', turnId: 'native-provider-dry-run', sourceText: input.userText,
   });

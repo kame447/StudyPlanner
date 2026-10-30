@@ -5,6 +5,7 @@
 // accepted as deadline startTime=13:00 and only then failed as an invalid
 // interval). VNext applies it when a bound is stated, so the transaction rejects
 // the bound where the provider's field-local repair can correct it.
+import { resolveCanonicalDateExpression } from '../semantic/weeklyPlanningCalendarResolver';
 import type { TemporalConstraintFactV5 } from './weeklyPlanningVNextV5Boundary';
 
 type Bound = Pick<TemporalConstraintFactV5, 'kind' | 'namedTimePeriod' | 'startTime' | 'endTime'>;
@@ -22,4 +23,15 @@ export function vnextTemporalBoundRepairFields(bound: Bound): ClockField[] {
   }
   const misplaced = bound.kind === 'earliest_start' ? bound.endTime : bound.startTime;
   return misplaced === null ? [] : ['startTime', 'endTime'];
+}
+
+/**
+ * A date as stored: the model reads "明日" as a symbolic `tomorrow`; code fixes it to
+ * the absolute date of the turn that stated it, so it never moves on a later day
+ * (#918, design §18). Absolute dates pass through; null when it cannot be resolved.
+ */
+export function fixVNextDateExpression(expression: string, acceptedDate: string): string | null {
+  const resolved = resolveCanonicalDateExpression({ expression, currentDate: acceptedDate });
+  if (resolved.status !== 'resolved' || !resolved.range) return null;
+  return resolved.range.start === resolved.range.end ? resolved.range.start : `${resolved.range.start}/${resolved.range.end}`;
 }

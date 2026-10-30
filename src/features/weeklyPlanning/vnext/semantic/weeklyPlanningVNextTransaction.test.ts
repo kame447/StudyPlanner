@@ -17,7 +17,7 @@ const workloadChanges = (amount: number | null) => ({ amount, unitCode: null, un
   quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null });
 function turn(state: WeeklyPlanningVNextState, changes: VNextTurnDelta, key = `turn-${state.graph.revision}`) {
   return applyWeeklyPlanningVNextTurn(state, changes, { expectedRevision: state.graph.revision,
-    turnKey: key, conversationId: 'c', turnId: key, sourceText: 'user evidence' });
+    acceptedDate: '2026-11-02', turnKey: key, conversationId: 'c', turnId: key, sourceText: 'user evidence' });
 }
 function applied(state: WeeklyPlanningVNextState, changes: VNextTurnDelta): WeeklyPlanningVNextState {
   const result = turn(state, changes);
@@ -117,7 +117,7 @@ describe('experimental VNext typed transaction', () => {
   it('rejects stale revision, terminal target and unknown target', () => {
     const state = setup(false);
     const changes = delta({ patch: [amountPatch(state, 8)] });
-    const stale = applyWeeklyPlanningVNextTurn(state, changes, { expectedRevision: 0, turnKey: 'stale', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
+    const stale = applyWeeklyPlanningVNextTurn(state, changes, { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'stale', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
     expect(stale.status).toBe('rejected');
     const next = applied(state, changes);
     expect(turn(next, changes).status).toBe('rejected');
@@ -130,7 +130,7 @@ describe('experimental VNext typed transaction', () => {
     const result = turn(state, changes, 'replay');
     expect(result.status).toBe('applied');
     const replay = applyWeeklyPlanningVNextTurn(result.state, changes, { expectedRevision: state.graph.revision,
-      turnKey: 'replay', conversationId: 'c', turnId: 'replay', sourceText: 'evidence' });
+      acceptedDate: '2026-11-02', turnKey: 'replay', conversationId: 'c', turnId: 'replay', sourceText: 'evidence' });
     expect(replay.status).toBe('duplicate');
     expect(replay.state).toBe(result.state);
   });
@@ -198,6 +198,34 @@ describe('experimental VNext typed transaction', () => {
       expect.objectContaining({ path: 'patch[0].changes.startTime', localId: 'move' }),
       expect.objectContaining({ path: 'patch[0].changes.endTime', localId: 'move' }),
     ] });
+  });
+
+  it('fixes a relative date to the accepting turn, so it does not move on a later day (#918)', () => {
+    const due = (dateExpression: string) => ({ kind: 'temporal_constraint' as const, localId: 'due', taskRef: { localId: 't' },
+      targetRef: { localId: 't' }, constraintKind: 'deadline' as const, constraintLevel: 'hard' as const, dateExpression,
+      namedTimePeriod: null, startTime: null, endTime: '13:00', precision: 'exact' as const });
+    const context = (acceptedDate: string) => ({ acceptedDate, turnKey: acceptedDate, expectedRevision: 0,
+      conversationId: 'c', turnId: 't', sourceText: '締切は明日の13時' });
+    const accepted = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due('tomorrow')] }), context('2026-08-26'));
+    expect(accepted.status === 'applied' && accepted.state.graph.temporalConstraints[0].dateExpression).toBe('2026-08-27');
+    const week = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due('this_week')] }), context('2026-08-26'));
+    expect(week.status === 'applied' && week.state.graph.temporalConstraints[0].dateExpression).toBe('2026-08-24/2026-08-30');
+    // Absolute dates are kept as stated; an unresolvable expression is rejected at that field, not guessed.
+    const absolute = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due('2026-09-07')] }), context('2026-08-26'));
+    expect(absolute.status === 'applied' && absolute.state.graph.temporalConstraints[0].dateExpression).toBe('2026-09-07');
+    expect(applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due('someday')] }), context('2026-08-26')))
+      .toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ path: 'add[1].dateExpression', localId: 'due' })] });
+  });
+
+  it('requires a rate stated about one workload to be in that work\'s unit (run 41004723952 native-multiturn-rate)', () => {
+    const work = { ...workload('w', 7), unitCode: 'page' as const, unitLabel: '枚' };
+    const rate = (unitCode: 'page' | 'custom') => ({ kind: 'effort_estimate' as const, localId: 'rate', taskRef: { localId: 't' },
+      targetRef: { localId: 'w' }, effortKind: 'duration_per_unit' as const, minutes: 5, unitCode, unitLabel: '枚', precision: 'exact' as const });
+    expect(turn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, work, rate('page')] })).status).toBe('applied');
+    expect(turn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, work, rate('custom')] }))).toMatchObject({ status: 'rejected', errors: [
+      expect.objectContaining({ path: 'add[2].unitCode', localId: 'rate' }), expect.objectContaining({ path: 'add[2].unitLabel', localId: 'rate' })] });
+    // An owner-wide rate (about the task) is not tied to one work's unit.
+    expect(turn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, work, { ...rate('custom'), targetRef: { localId: 't' } }] })).status).toBe('applied');
   });
 
   it('corrects quantity and deadline independently in the same turn', () => {

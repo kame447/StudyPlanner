@@ -99,7 +99,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
     expect(binding.status).toBe('bound');
     if (binding.status !== 'bound') return;
     const applied = applyWeeklyPlanningVNextTurn(state, binding.delta, {
-      turnKey: 'answer-1', expectedRevision: state.graph.revision, conversationId, turnId: 'turn-answer', sourceText: '60分',
+      acceptedDate: '2026-11-02', turnKey: 'answer-1', expectedRevision: state.graph.revision, conversationId, turnId: 'turn-answer', sourceText: '60分',
     });
     expect(applied.status).toBe('applied');
     if (applied.status !== 'applied') return;
@@ -171,7 +171,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
         targetRef: { workLineageId: question.forWork!.workLineageId }, effortKind: 'total_duration',
         minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' }],
       patch: [], remove: [], relate: [], defer: [],
-    }, { turnKey: 'e01', expectedRevision: state.graph.revision, conversationId, turnId: 'e01', sourceText: '60分' });
+    }, { acceptedDate: '2026-11-02', turnKey: 'e01', expectedRevision: state.graph.revision, conversationId, turnId: 'e01', sourceText: '60分' });
     expect(applied.status).toBe('applied');
     if (applied.status === 'applied') expect(projectWeeklyPlanningVNext(applied.state).owners[0].work[0].minutes).toBe(60);
   });

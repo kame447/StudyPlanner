@@ -82,7 +82,8 @@ export const VNEXT_PROVIDER_SCENARIOS: VNextProviderScenario[] = [
   { id: 'deadline-tomorrow-1300', seed: remainingSeed,
     clock: { currentDate: '2026-08-26', planningStartDate: '2026-08-24', planningEndDate: '2026-08-30', timeZone: 'Asia/Tokyo' },
     turns: [{ text: '締切は明日の13時です。', expected: { minutes: [45], questions: [],
-      temporal: { kind: 'deadline', dateExpression: 'tomorrow', startTime: null, endTime: '13:00' } } }] },
+      // Stored as the date of the accepting turn's clock (2026-08-26 + 1), never the symbolic word.
+      temporal: { kind: 'deadline', dateExpression: '2026-08-27', startTime: null, endTime: '13:00' } } }] },
   { id: 'note-and-new-task', seed: remainingSeed, turns: [{ text: 'メモですが、ペンの補充は済んでいるので予定に入れないでください。別件で英語の音読を30分やりたいです。',
     expected: { minutes: [30, 45], taskCount: 2, questions: [] } }] },
   { id: 'wait', seed: remainingSeed, turns: [{ text: '待って。いったん何も変更しないで。', expected: { unchanged: true, answerKind: null } }] },

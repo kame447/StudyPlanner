@@ -19,7 +19,7 @@ function turn(state: WeeklyPlanningVNextState, partial: Partial<VNextTurnDelta>)
     state,
     { add: [], patch: [], remove: [], relate: [], defer: [], ...partial },
     {
-      turnKey: `turn-${turnCounter}`,
+      acceptedDate: '2026-11-02', turnKey: `turn-${turnCounter}`,
       expectedRevision: state.graph.revision,
       conversationId: 'conversation',
       turnId: `turn-${turnCounter}`,
@@ -314,7 +314,7 @@ describe('projectWeeklyPlanningVNext', () => {
       const result = applyWeeklyPlanningVNextTurn(state, {
         add: [], remove: [], relate: [], defer: [],
         patch: [{ ...amountPatch('half', active(state, 'remaining'), 0), changes: { ...amountPatch('x', '', 0).changes, amount: null, rangeStart: '1' } }],
-      }, { turnKey: 'half-range', expectedRevision: state.graph.revision, conversationId: 'conversation', turnId: 'half-range', sourceText: '1ページから' });
+      }, { acceptedDate: '2026-11-02', turnKey: 'half-range', expectedRevision: state.graph.revision, conversationId: 'conversation', turnId: 'half-range', sourceText: '1ページから' });
       expect(result).toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ code: 'invalid_value', path: 'patch[0].changes.rangeEnd' })] });
     });
 

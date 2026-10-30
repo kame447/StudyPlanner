@@ -272,6 +272,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     } else {
       const result = applyWeeklyPlanningVNextTurn(state, delta, {
         turnKey: `${scope.conversationId}:${params.turnId}`,
+        acceptedDate: scope.clock.currentDate,
         expectedRevision: state.graph.revision,
         conversationId: scope.conversationId,
         turnId: params.turnId,

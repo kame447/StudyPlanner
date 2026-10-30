@@ -36,7 +36,7 @@ describe('VNext native provider', () => {
       let state = createEmptyWeeklyPlanningVNextState();
       if (scenario.seed.length) {
         const seeded = applyWeeklyPlanningVNextTurn(state, { ...emptyDelta(), add: scenario.seed }, {
-          expectedRevision: 0, turnKey: `seed:${scenario.id}`, conversationId: 'synthetic', turnId: 'seed', sourceText: 'Synthetic evidence',
+          expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: `seed:${scenario.id}`, conversationId: 'synthetic', turnId: 'seed', sourceText: 'Synthetic evidence',
         });
         expect(seeded.status, `${scenario.id}: ${JSON.stringify(seeded)}`).toBe('applied');
         if (seeded.status === 'applied') state = seeded.state;
@@ -49,7 +49,7 @@ describe('VNext native provider', () => {
     const scenario = VNEXT_PROVIDER_SCENARIOS.find(item => item.id === 'deadline-tomorrow-1300')!;
     expect(scenario.clock?.currentDate).toBe('2026-08-26');
     const seed = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), { ...emptyDelta(), add: scenario.seed },
-      { expectedRevision: 0, turnKey: 'seed-bound', conversationId: 'synthetic', turnId: 'seed', sourceText: 'seed' });
+      { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'seed-bound', conversationId: 'synthetic', turnId: 'seed', sourceText: 'seed' });
     if (seed.status !== 'applied') throw new Error('setup');
     const reading = { status: 'interpreted' as const, delta: emptyDelta(), answer: null,
       metrics: { calls: 1, repairs: 0, latencyMs: 0 } };
@@ -108,7 +108,7 @@ describe('VNext native provider', () => {
     if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
     expect(result.delta.add[1]).toMatchObject({ amount: 45, quantityRole: 'target', unitCode: 'minute', unitLabel: '分' });
     const applied = applyWeeklyPlanningVNextTurn(params.state, result.delta, {
-      expectedRevision: 0, turnKey: 'valid-time-work', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText,
+      expectedRevision: 0, acceptedDate: params.clock.currentDate, turnKey: 'valid-time-work', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText,
     });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     const projection = projectWeeklyPlanningVNext(applied.state);
@@ -213,7 +213,7 @@ describe('VNext native provider', () => {
     const scenario = VNEXT_PROVIDER_SCENARIOS.find(candidate => candidate.id === id)!;
     const params = input([]);
     const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: scenario.seed }, {
-      expectedRevision: 0, turnKey: id, conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic',
+      expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: id, conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic',
     });
     if (seeded.status !== 'applied') throw new Error('setup');
     params.state = seeded.state;
@@ -234,7 +234,7 @@ describe('VNext native provider', () => {
       projection: params.projection, lineageOf: createVNextLineageResolver(params.state.graph).lineageOf, interpreted });
     if (resolved.status !== 'delta') throw new Error('answer not bound');
     const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, {
-      expectedRevision: params.state.graph.revision, turnKey: `${id}:turn`, conversationId: 'synthetic', turnId: 'turn', sourceText: scenario.turns[0].text,
+      expectedRevision: params.state.graph.revision, acceptedDate: params.clock.currentDate, turnKey: `${id}:turn`, conversationId: 'synthetic', turnId: 'turn', sourceText: scenario.turns[0].text,
     });
     if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
     expect(checkVNextProviderScenario(scenario.turns[0].expected, params.state, applied.state, interpreted)).toEqual([]);
@@ -264,7 +264,7 @@ describe('VNext native provider', () => {
       { kind: 'workload', localId: 'work', taskRef: { localId: 'task' }, componentRef: null,
         quantityRole: 'remaining', amount: 7, unitCode: 'custom', unitLabel: '枚', rangeStart: null,
         rangeEnd: null, perOccurrence: false, periodExpression: 'this_week' },
-    ] }, { expectedRevision: 0, turnKey: 'seed', conversationId: 'c', turnId: 'seed', sourceText: 'evidence' });
+    ] }, { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'seed', conversationId: 'c', turnId: 'seed', sourceText: 'evidence' });
     if (seeded.status !== 'applied') throw new Error('setup');
     params.state = seeded.state;
     params.projection = projectWeeklyPlanningVNext(params.state);
@@ -284,7 +284,7 @@ describe('VNext native provider', () => {
     const params = input([]);
     const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [
       { kind: 'task', localId: 'existing', title: 'Existing', category: 'study' },
-    ] }, { expectedRevision: 0, turnKey: 'seed-alias', conversationId: 'c', turnId: 'seed', sourceText: 'seed' });
+    ] }, { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'seed-alias', conversationId: 'c', turnId: 'seed', sourceText: 'seed' });
     if (seeded.status !== 'applied') throw new Error('setup');
     params.state = seeded.state;
     params.projection = projectWeeklyPlanningVNext(params.state);
@@ -323,11 +323,11 @@ describe('VNext native provider', () => {
   it('prompt includes clock, active IDs, open/presented questions and omits historical inactive facts', () => {
     const params = input([]);
     const added = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [{ kind: 'task', localId: 't', category: 'study', title: 'Original' }] },
-      { expectedRevision: 0, turnKey: 'setup', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
+      { expectedRevision: 0, acceptedDate: '2026-11-02', turnKey: 'setup', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
     if (added.status !== 'applied') throw new Error('setup');
     const changed = applyWeeklyPlanningVNextTurn(added.state, { ...emptyDelta(), patch: [{ kind: 'task', localId: 'p',
       targetFactId: added.state.graph.tasks[0].id, changes: { title: 'Changed', category: null } }] },
-    { expectedRevision: 1, turnKey: 'change', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
+    { expectedRevision: 1, acceptedDate: '2026-11-02', turnKey: 'change', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
     if (changed.status !== 'applied') throw new Error('setup');
     params.state = changed.state;
     const message = JSON.parse(buildWeeklyPlanningVNextProviderMessages(params)[1].content);

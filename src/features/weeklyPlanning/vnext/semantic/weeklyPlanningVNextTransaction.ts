@@ -23,9 +23,10 @@ import {
   createVNextLineageResolver,
   isValidVNextQuantityBasis,
   resolveVNextEffortBinding,
+  vnextUnitIdentity,
   vnextLineageIdByFactId,
 } from '../weeklyPlanningVNextWorkIdentity';
-import { vnextTemporalBoundRepairFields } from '../weeklyPlanningVNextTemporalBound';
+import { fixVNextDateExpression, vnextTemporalBoundRepairFields } from '../weeklyPlanningVNextTemporalBound';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -78,19 +79,41 @@ export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState 
 }
 
 /** Pure atomic application. This function consumes semantic meaning, never raw-language heuristics. */
+/** Every date the delta states, fixed to the turn's accepted date before anything reads it. */
+function fixDeltaDates(delta: VNextTurnDelta, acceptedDate: string,
+  error: (code: VNextTurnError['code'], path: string, factId: string | null, localId: string | null) => void): VNextTurnDelta {
+  const fix = (expression: string | null, path: string, localId: string) => {
+    if (expression === null) return null;
+    const fixed = fixVNextDateExpression(expression, acceptedDate);
+    if (fixed === null) error('invalid_value', path, null, localId);
+    return fixed ?? expression;
+  };
+  return {
+    ...delta,
+    add: delta.add.map((fact, index) => (fact.kind === 'temporal_constraint'
+      ? { ...fact, dateExpression: fix(fact.dateExpression, `add[${index}].dateExpression`, fact.localId) } : fact)),
+    patch: delta.patch.map((patch, index) => (patch.kind === 'temporal_constraint'
+      ? { ...patch, changes: { ...patch.changes,
+        dateExpression: fix(patch.changes.dateExpression, `patch[${index}].changes.dateExpression`, patch.localId) } } : patch)),
+  };
+}
+
 export function applyWeeklyPlanningVNextTurn(
   state: WeeklyPlanningVNextState,
-  delta: VNextTurnDelta,
+  statedDelta: VNextTurnDelta,
   context: VNextTurnContext,
 ): VNextTurnResult {
   const errors: VNextTurnError[] = [];
   const error = (code: VNextTurnError['code'], path: string, factId: string | null = null,
     localId: string | null = null) => errors.push({ code, path, factId, localId });
   const reject = (): VNextTurnResult => ({ status: 'rejected', state, errors });
-  if (!context.turnKey.trim() || !context.conversationId.trim() || !context.turnId.trim() || !context.sourceText.trim()) {
+  if (!context.turnKey.trim() || !context.conversationId.trim() || !context.turnId.trim() || !context.sourceText.trim()
+    || fixVNextDateExpression(context.acceptedDate, context.acceptedDate) !== context.acceptedDate) {
     error('invalid_value', 'context');
     return reject();
   }
+  const delta = fixDeltaDates(statedDelta, context.acceptedDate, error);
+  if (errors.length) return reject();
   if (state.graph.appliedTurnKeys.includes(context.turnKey)) return { status: 'duplicate', state };
   if (context.expectedRevision !== state.graph.revision) {
     error('stale_revision', 'context.expectedRevision');
@@ -370,9 +393,18 @@ export function applyWeeklyPlanningVNextTurn(
     }
   }
   for (const effort of graph.effortEstimates) {
-    if (touchedEfforts.has(effort.id) && effort.unitCode === 'custom'
-      && (typeof effort.unitLabel !== 'string' || !effort.unitLabel.trim())) {
-      const location = locations.get(effort.id)!;
+    if (!touchedEfforts.has(effort.id)) continue;
+    const location = locations.get(effort.id)!;
+    if (effort.unitCode === 'custom' && (typeof effort.unitLabel !== 'string' || !effort.unitLabel.trim())) {
+      error('invalid_value', `${location.path}.unitLabel`, effort.id, location.localId);
+      continue;
+    }
+    // A rate stated about one workload is in that work's unit; in another unit it could never
+    // apply to its own target. Which code denotes the stated word stays the model's choice.
+    const measured = effort.kind === 'duration_per_unit'
+      ? graph.workloads.find(workload => workload.id === activeLeaf(graph, effort.targetFactId)) : undefined;
+    if (measured && vnextUnitIdentity(effort) !== vnextUnitIdentity(measured)) {
+      error('invalid_value', `${location.path}.unitCode`, effort.id, location.localId);
       error('invalid_value', `${location.path}.unitLabel`, effort.id, location.localId);
     }
   }

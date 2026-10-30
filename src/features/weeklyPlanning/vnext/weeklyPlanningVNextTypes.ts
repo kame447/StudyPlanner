@@ -234,6 +234,8 @@ export interface VNextTurnDelta {
 export interface VNextTurnContext {
   /** Idempotency key; a key already in graph.appliedTurnKeys is a duplicate. */
   turnKey: string;
+  /** Local date (YYYY-MM-DD) the turn is accepted on; relative dates in it are fixed against this (#918). */
+  acceptedDate: string;
   expectedRevision: number;
   conversationId: string;
   turnId: string;
