@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -169,7 +170,7 @@ describe('Actual admission across the entire full-read lifetime', () => {
     await act(async () => { writer.release.resolve(); result = await done; await microtasks(); });
     // Undo and recurring confirmation deliberately report failures via notices.
     if (operation !== 'undo' && operation !== 'recurrence') {
-      expect(result).toBe(outcome === 'success' ? undefined : writer.failure);
+      expect(result).toEqual(outcome === 'success' ? undefined : new UserFacingError(({ save: '記録を保存できませんでした。', 'standalone-save': '記録を保存できませんでした。', link: '予定に紐づけできませんでした。', delete: '記録を削除できませんでした。', 'plan-delete': '予定を削除できませんでした。', undo: '復元できませんでした。', recurrence: '繰り返し予定の削除に失敗しました。' })[operation]));
     }
     expect(writer.dispatch).toHaveBeenCalledTimes(1);
     if (timing === 'read-after-settlement') {

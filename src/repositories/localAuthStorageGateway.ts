@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import type { User } from '../types/domain';
 import type { AuthStorageGateway } from './repositoryContracts';
 
@@ -57,7 +58,7 @@ export function createLocalAuthStorageGateway(storage: Storage = window.localSto
             if (raw === null) storage.removeItem(key); else storage.setItem(key, raw);
           } catch { recoveryFailed = true; }
         }
-        if (recoveryFailed) throw new Error('新規登録に失敗し、保存状態の復元にも失敗しました。');
+        if (recoveryFailed) throw new UserFacingError('新規登録に失敗し、保存状態の復元にも失敗しました。');
         throw error;
       }
     },

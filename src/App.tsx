@@ -395,7 +395,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         isWorkspaceSurface
           ? isScheduleSurface
             ? 'app-shell schedule-workspace-shell'
-            : `app-shell${viewMode === 'bookshelf' ? ' bookshelf-workspace-shell' : viewMode === 'report' ? ' report-workspace-shell' : ''}`
+            : `app-shell${viewMode === 'bookshelf' ? ' bookshelf-workspace-shell' : viewMode === 'report' ? ' report-workspace-shell' : viewMode === 'timetable' ? ' timetable-workspace-shell' : ''}`
           : `app-shell home-app-shell${isActiveAiPlanningSurface ? ' ai-planning-active' : ''}`
       }
     >

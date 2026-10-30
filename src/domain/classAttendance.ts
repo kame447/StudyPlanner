@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { isIsoCalendarDate } from '../lib/timetableCalendar';
 
 export const ATTENDANCE_STATUSES = ['present', 'absent', 'late-or-left'] as const;
@@ -25,14 +26,14 @@ export interface ClassAttendanceDraft {
 
 export function assertAttendanceScope(userId: string, templateId: string): void {
   if (![userId, templateId].every(value => value.length > 0 && !value.includes('/'))) {
-    throw new Error('授業とログイン状態を確認してください。');
+    throw new UserFacingError('授業とログイン状態を確認してください。');
   }
 }
 
 export function assertAttendanceDraft(draft: ClassAttendanceDraft): void {
   assertAttendanceScope(draft.userId, draft.templateId);
   if (!isIsoCalendarDate(draft.date) || !ATTENDANCE_STATUSES.includes(draft.status)) {
-    throw new Error('実施日と出欠を確認してください。');
+    throw new UserFacingError('実施日と出欠を確認してください。');
   }
 }
 
@@ -41,7 +42,7 @@ export function readClassAttendance(value: unknown, userId: string, templateId: 
   if (!row || row.schemaVersion !== 1 || row.userId !== userId || row.templateId !== templateId
     || typeof row.date !== 'string' || typeof row.status !== 'string'
     || typeof row.createdAt !== 'string' || typeof row.updatedAt !== 'string') {
-    throw new Error('出欠記録を読み込めませんでした。');
+    throw new UserFacingError('出欠記録を読み込めませんでした。');
   }
   assertAttendanceDraft(row as ClassAttendance);
   return row as ClassAttendance;

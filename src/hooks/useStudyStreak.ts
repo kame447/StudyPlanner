@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buildStudyStreakModel, nextAutomaticStudyRestDate } from '../lib/studyStreak';
 import type { StudyHistoryHint, StudyStreakHistory, StudyStreakRepository } from '../repositories/studyStreakRepository';
@@ -60,19 +61,19 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
       try {
         accepted = await repository.read(userId, { hint, today, refresh: request.force && confirmedRetry.current !== request });
         if (!current()) return;
-        if (accepted.userId !== userId || !accepted.historyComplete || !Array.isArray(accepted.monthEvents)) throw new Error('学習履歴を確認できませんでした。');
+        if (accepted.userId !== userId || !accepted.historyComplete || !Array.isArray(accepted.monthEvents)) throw new UserFacingError('学習履歴を確認できませんでした。');
         // A successful explicit confirmation satisfies this retry only. Later
         // input changes use normal owner/day/generation validation again.
         if (request.force) confirmedRetry.current = request;
         setState({ userId, repository, hint, history: accepted, refreshing: true, readError: null });
       } catch (error) {
         if (current()) setState(previous => ({ ...previous, refreshing: false,
-          readError: error instanceof Error ? error.message : '学習履歴を読み込めませんでした。' }));
+          readError: error instanceof UserFacingError ? error.message : '学習履歴を読み込めませんでした。' }));
         return;
       }
       try {
         if (!repository.canUseRestDays && nextAutomaticStudyRestDate({ ...accepted, today })) {
-          throw new Error('このブラウザーではお休みチケットを安全に保存できません。');
+          throw new UserFacingError('このブラウザーではお休みチケットを安全に保存できません。');
         }
         if (repository.canUseRestDays) {
           let date: string | null;
@@ -81,14 +82,14 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
             const next = await repository.useRestDay(accepted, date, today, { signal: controller.signal });
             if (!current()) return;
             if (next.userId !== userId || !next.historyComplete || !Array.isArray(next.monthEvents) || !next.restDays.some(day => day.date === date)) {
-              throw new Error('お休みチケットの保存を確認できませんでした。');
+              throw new UserFacingError('お休みチケットの保存を確認できませんでした。');
             }
             accepted = next;
             setState({ userId, repository, hint, history: accepted, refreshing: true, readError: null });
           }
         }
       } catch (error) {
-        if (current()) setSaveError(error instanceof Error ? error.message : 'お休みチケットを保存できませんでした。');
+        if (current()) setSaveError(error instanceof UserFacingError ? error.message : 'お休みチケットの保存結果を確認できませんでした。確認し直してから操作してください。');
       } finally {
         if (current()) {
           setSaving(false);

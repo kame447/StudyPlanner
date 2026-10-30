@@ -164,7 +164,7 @@ export function AuthScreen({
             </button>)}
           </div>
 
-          <div id={`${formId}-panel`} role="tabpanel" aria-labelledby={`${formId}-${intent}`}>
+          <div className="auth-entry-panel" data-intent={intent} id={`${formId}-panel`} role="tabpanel" aria-labelledby={`${formId}-${intent}`}>
             <form
               className="auth-form"
               aria-label={requestTitle}

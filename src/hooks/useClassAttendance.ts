@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AttendanceStatus, ClassAttendance } from '../domain/classAttendance';
 import type { ClassAttendanceRepository } from '../repositories/classAttendanceRepository';
@@ -56,7 +57,7 @@ export function useClassAttendance(userId: string, templateId: string, repositor
         .sort((a, b) => b.date.localeCompare(a.date)) }));
       return true;
     } catch (error) {
-      if (revision === lifetime.current) setSaveError(error instanceof Error ? error.message : '出欠を保存できませんでした。');
+      if (revision === lifetime.current) setSaveError(error instanceof UserFacingError ? error.message : '出欠の保存結果を確認できませんでした。再読み込みして記録を確認してください。');
       return false;
     } finally {
       finishSave();

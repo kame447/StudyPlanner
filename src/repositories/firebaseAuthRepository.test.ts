@@ -66,11 +66,11 @@ it('creates a missing profile with the registration timestamp and existing fallb
 it('retains read and required-write failures and the unverified-account boundary', async () => {
   const repo = await repository();
   mocks.getDoc.mockRejectedValueOnce(new Error('read unavailable'));
-  await expect(repo.getCurrentUser()).rejects.toThrow('read unavailable');
+  await expect(repo.getCurrentUser()).rejects.toThrow('ログイン状態を確認できませんでした。');
   expect(mocks.setDoc).not.toHaveBeenCalled();
   setRead({ ...profile, username: ' Student ' });
   mocks.setDoc.mockRejectedValueOnce(new Error('required write unavailable'));
-  await expect(repo.getCurrentUser()).rejects.toThrow('required write unavailable');
+  await expect(repo.getCurrentUser()).rejects.toThrow('ログイン状態を確認できませんでした。');
   mocks.getDoc.mockClear(); mocks.setDoc.mockClear();
   expect(await (await repository({ ...authUser, emailVerified: false } as FirebaseUser)).getCurrentUser()).toBeNull();
   expect(mocks.signOut).toHaveBeenCalledOnce();
@@ -118,7 +118,7 @@ it('handles observer errors without replacing later profile errors or required r
   setRead({ ...profile, username: ' Student ' }); await repo.getCurrentUser();
   expect(mocks.setDoc).toHaveBeenCalledOnce(); release(); expect(stop).toHaveBeenCalledOnce();
   mocks.getDoc.mockRejectedValueOnce(new Error('ordinary read unavailable'));
-  await expect(repo.getCurrentUser()).rejects.toThrow('ordinary read unavailable');
+  await expect(repo.getCurrentUser()).rejects.toThrow('ログイン状態を確認できませんでした。');
 });
 it('releases a subscription when revocation happens during registration or live identity changes', async () => {
   const { createStartupSessionScope } = await import('../lib/startupSessionScope');
@@ -168,4 +168,79 @@ it.each(['password', 'google.com'])('reauthenticates the current %s provider wit
   if (provider === 'password') expect(mocks.reauthCredential).toHaveBeenCalledWith(user, 'credential');
   else expect(mocks.reauthPopup).toHaveBeenCalledWith(user, undefined);
   expect(mocks.setDoc).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['auth/email-already-in-use', 'すでに登録されています'],
+  ['auth/invalid-email', '形式を確認'],
+  ['auth/weak-password', '6文字以上'],
+  ['auth/invalid-credential', 'メールアドレスまたはパスワード'],
+  ['auth/user-not-found', 'メールアドレスまたはパスワード'],
+  ['auth/wrong-password', 'メールアドレスまたはパスワード'],
+  ['auth/user-disabled', '管理者にお問い合わせ'],
+  ['auth/too-many-requests', 'しばらく待って'],
+  ['auth/network-request-failed', '通信状況を確認'],
+  ['auth/popup-blocked', 'ポップアップを許可'],
+  ['auth/popup-closed-by-user', 'キャンセル'],
+  ['auth/requires-recent-login', 'ログインし直して'],
+  ['auth/unknown-provider-code', 'ログインを完了できませんでした'],
+])('translates %s without exposing provider message', async (code, guidance) => {
+  const repo = await repository();
+  const sdk = await import('firebase/auth');
+  vi.mocked(sdk.signInWithEmailAndPassword).mockRejectedValueOnce(
+    Object.assign(new Error('Firebase RAW_SECRET https://private.invalid/ stack'), { code }));
+  const error = await repo.signInWithPassword('synthetic@example.test', 'synthetic-only').catch(error => error);
+  const { UserFacingError } = await import('../lib/userFacingError');
+  expect(error).toBeInstanceOf(UserFacingError);
+  expect(error.message).toContain(guidance);
+  expect(error.message).not.toMatch(/Firebase|auth\/|RAW_SECRET|private\.invalid|stack/);
+  expect(sdk.signInWithEmailAndPassword).toHaveBeenCalledTimes(1);
+});
+
+it.each(['signUpWithPassword', 'signInWithPassword', 'signInWithGoogle', 'sendPasswordReset', 'getCurrentUser', 'updateUserProfile', 'signOut'] as const)(
+  'contains persistence failure at the %s boundary without issuing the operation', async operation => {
+    const repo = await repository();
+    mocks.setPersistence.mockRejectedValueOnce(Object.assign(new Error('RAW_SECRET'), { code: 'auth/network-request-failed' }));
+    const calls = {
+      signUpWithPassword: () => repo.signUpWithPassword('synthetic@example.test', 'synthetic-only', 'Synthetic'),
+      signInWithPassword: () => repo.signInWithPassword('synthetic@example.test', 'synthetic-only'),
+      signInWithGoogle: () => repo.signInWithGoogle(), sendPasswordReset: () => repo.sendPasswordReset('synthetic@example.test'),
+      getCurrentUser: () => repo.getCurrentUser(), updateUserProfile: () => repo.updateUserProfile('owner', { username: 'Synthetic', avatar: '' }),
+      signOut: () => repo.signOut(),
+    };
+    const error = await calls[operation]().catch(error => error);
+    expect(error.message).toContain('通信状況を確認'); expect(error.message).not.toContain('RAW_SECRET');
+    expect(mocks.getDoc).not.toHaveBeenCalled(); expect(mocks.setDoc).not.toHaveBeenCalled();
+    const sdk = await import('firebase/auth');
+    expect(sdk.signInWithEmailAndPassword).not.toHaveBeenCalled();
+    expect(sdk.createUserWithEmailAndPassword).not.toHaveBeenCalled();
+  });
+
+it('preserves verification guidance and contains asynchronous profile failure after login', async () => {
+  const repo = await repository(); const sdk = await import('firebase/auth');
+  vi.mocked(sdk.signInWithEmailAndPassword).mockResolvedValueOnce({ user: { ...authUser, emailVerified: false } } as never);
+  await expect(repo.signInWithPassword('synthetic@example.test', 'synthetic-only')).rejects.toThrow('受信トレイの確認リンク');
+  expect(mocks.signOut).toHaveBeenCalledOnce();
+  vi.mocked(sdk.signInWithEmailAndPassword).mockResolvedValueOnce({ user: authUser } as never);
+  mocks.getDoc.mockRejectedValueOnce(new Error('RAW_PROFILE_SECRET'));
+  await expect(repo.signInWithPassword('synthetic@example.test', 'synthetic-only')).rejects.toThrow('ログインを完了できませんでした');
+});
+
+it('does not describe partial registration as an absent account or encourage blind resubmission', async () => {
+  const repo = await repository(); const sdk = await import('firebase/auth');
+  vi.mocked(sdk.createUserWithEmailAndPassword).mockResolvedValueOnce({ user: authUser } as never);
+  vi.mocked(sdk.sendEmailVerification).mockRejectedValueOnce(Object.assign(new Error('RAW_SECRET'), { code: 'auth/network-request-failed' }));
+  const error = await repo.signUpWithPassword('synthetic@example.test', 'synthetic-only', 'Synthetic').catch(error => error);
+  expect(error.message).toContain('確認メールの受信状況やログイン状態を確認');
+  expect(error.message).not.toContain('RAW_SECRET');
+  expect(sdk.createUserWithEmailAndPassword).toHaveBeenCalledOnce();
+});
+
+
+it.each([null, 17, 'RAW_SECRET', new Error('RAW_SECRET')])('uses operation guidance for an unknown reset failure (%s)', async failure => {
+  const repo = await repository(); const sdk = await import('firebase/auth');
+  vi.mocked(sdk.sendPasswordResetEmail).mockRejectedValueOnce(failure);
+  const error = await repo.sendPasswordReset('synthetic@example.test').catch(error => error);
+  expect(error.message).toBe('パスワード再設定メールを送信できませんでした。');
+  expect(error.message).not.toContain('RAW_SECRET');
 });

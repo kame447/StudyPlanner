@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { StrictMode, Suspense, startTransition, useLayoutEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -158,7 +159,7 @@ it('audit failed refresh does not revoke an otherwise valid acknowledgment', asy
   let done!: Promise<void>; await act(async()=>{done=state.saveStandaloneActual(draftFor(),STANDALONE.id);});
   await persisted.promise;
   const original=boundary.repository.getScheduleSnapshot; boundary.repository.getScheduleSnapshot=async()=>{throw new Error('read failure');};
-  await act(async()=>{await expect(state.loadPlannerData('owner')).rejects.toThrow('read failure');});
+  await act(async()=>{await expect(state.loadPlannerData('owner')).rejects.toThrow(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。"));});
   boundary.repository.getScheduleSnapshot=original;
   await act(async()=>{response.resolve();await done;});
   await expectPersistedProjection('failed reads have not replaced the acknowledged state');
@@ -198,7 +199,7 @@ it('audit superseded load and newer failed load do not revoke acknowledgment',as
   const original=boundary.repository.getScheduleSnapshot;const loadGate=deferred();let calls=0;
   boundary.repository.getScheduleSnapshot=async(owner)=>{if(++calls===1){const saved=await original(owner);await loadGate.promise;return saved;}throw new Error('newer load failed');};
   let oldLoad!:Promise<void>;await act(async()=>{oldLoad=state.loadPlannerData('owner');});
-  await act(async()=>{await expect(state.loadPlannerData('owner')).rejects.toThrow('newer load failed');});
+  await act(async()=>{await expect(state.loadPlannerData('owner')).rejects.toThrow(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。"));});
   await act(async()=>{loadGate.resolve();await oldLoad;});boundary.repository.getScheduleSnapshot=original;
   await act(async()=>{response.resolve();await saving;});
   await expectPersistedProjection('neither attempted load installed a newer snapshot');
@@ -486,7 +487,7 @@ it('successful targeted repair leaves failed full health stale and the full succ
   const fullStamp = state.plannerDataAvailability.lastSuccessfulAt;
   const getScheduleSnapshot = boundary.repository.getScheduleSnapshot;
   const plans = vi.spyOn(boundary.repository, 'getScheduleSnapshot').mockRejectedValueOnce(new Error('full unavailable'));
-  await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('full unavailable'); });
+  await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。")); });
   plans.mockImplementation(getScheduleSnapshot);
   const reads = vi.spyOn(boundary.repository, 'getActuals');
   await act(async () => { old.response.resolve(); await old.done; });
@@ -546,7 +547,7 @@ it.each(['reset', 'owner change', 'A-B-A', 'unmount'] as const)('retained full r
   await mount();
   const getScheduleSnapshot = boundary.repository.getScheduleSnapshot;
   const plans = vi.spyOn(boundary.repository, 'getScheduleSnapshot').mockRejectedValueOnce(new Error('full unavailable'));
-  await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('full unavailable'); });
+  await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。")); });
   const retry = state.retryPlannerData;
   plans.mockImplementation(getScheduleSnapshot);
   if (expiry === 'reset') await act(async () => { state.resetPlannerData(); });

@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RootManagedAuthenticationProvider } from '../components/RootManagedAuthenticationContext';
@@ -243,4 +244,33 @@ it('optional settlement callback failures cannot alter successful bootstrap', as
   await act(async () => { await latestState!.bootstrapSession(async () => {}); });
   expect(settled).toHaveBeenCalledOnce(); expect(showNotice).not.toHaveBeenCalled();
   expect(renderedState(renderer)).toBe('ready:user-1'); act(() => renderer.unmount());
+});
+
+
+describe('safe authentication notices', () => {
+  it.each(['signUpWithPassword', 'signInWithPassword', 'signInWithGoogle', 'sendPasswordReset'] as const)(
+    'keeps raw external errors out of %s notices and preserves authored guidance', async operation => {
+      const { renderer, showNotice } = renderHarness();
+      const invoke = () => operation === 'signUpWithPassword'
+        ? latestState!.signUpWithPassword('synthetic@example.test', 'synthetic-only', 'Synthetic')
+        : operation === 'signInWithPassword' ? latestState!.signInWithPassword('synthetic@example.test', 'synthetic-only')
+          : operation === 'sendPasswordReset' ? latestState!.sendPasswordReset('synthetic@example.test')
+            : latestState!.signInWithGoogle();
+      authRepositoryMock[operation].mockRejectedValueOnce(new Error('Firebase auth/private RAW_SECRET'));
+      await act(async () => { await invoke(); });
+      expect(showNotice.mock.lastCall?.[0]).not.toMatch(/Firebase|auth\/|RAW_SECRET/);
+      authRepositoryMock[operation].mockRejectedValueOnce(new UserFacingError('確認メールを開いてください。'));
+      await act(async () => { await invoke(); });
+      expect(showNotice.mock.lastCall?.[0]).toBe('確認メールを開いてください。');
+      act(() => renderer.unmount());
+    });
+
+  it('does not expose raw bootstrap errors even when a repository implementation is unavailable', async () => {
+    const { renderer, showNotice } = renderHarness();
+    authRepositoryMock.getCurrentUser.mockRejectedValueOnce(new Error('RAW_SESSION_SECRET'));
+    await act(async () => { await latestState!.bootstrapSession(vi.fn()); });
+    expect(showNotice.mock.lastCall?.[0]).toBe('セッションの復元に失敗しました。');
+    expect(latestState!.booting).toBe(false);
+    act(() => renderer.unmount());
+  });
 });

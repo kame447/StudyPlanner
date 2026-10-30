@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createPlanDraftFromPlan } from '../domain/planner';
@@ -118,7 +119,7 @@ it.each(operations)('releases a rejected %s only after rollback publication and 
   const method = ({ edit: 'upsertTodo', schedule: 'scheduleTodoPlan', delete: 'deleteTodo' } as const)[operation];
   const original = boundary.repository[method] as (...args: unknown[]) => Promise<unknown>;
   Object.assign(boundary.repository, { [method]: vi.fn(original).mockRejectedValueOnce(new Error('Controlled no-write failure')) });
-  await act(async () => { await expect(run(state, operation)).rejects.toThrow('Controlled no-write failure'); });
+  await act(async () => { await expect(run(state, operation)).rejects.toThrow(new UserFacingError(({ edit: 'Todoを保存できませんでした。', schedule: 'Todoを予定化できませんでした。', delete: 'Todoを削除できませんでした。' })[operation])); });
   expect(state.todos).toEqual([T]);
   expect(await repository.getTodos('owner')).toEqual([T]);
   await act(async () => { await run(state, operation); });

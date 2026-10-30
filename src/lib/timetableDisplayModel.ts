@@ -1,4 +1,18 @@
-import type { RecurrenceWeekday, ScheduleTemplate, TimetablePeriod, TimetablePeriodDraft } from '../types/domain';
+import { findPeriodNumberForTemplate, getPeriodTimeStatus, templateVisibleInAlternatingWeek } from './timetableViewModel';
+import type { RecurrenceWeekday, ScheduleTemplate, TimetablePeriod, TimetablePeriodDraft, TimetableTerm } from '../types/domain';
+
+/** Header and loading scaffold use the same compact dates; sheets retain full dates. */
+export function formatTimetablePeriodRange(term: TimetableTerm | null, compact = false): string {
+  if (!term?.startDate && !term?.endDate) return '期間未設定';
+  if (!compact) return `${term.startDate ?? '開始日未設定'} 〜 ${term.endDate ?? '終了日未設定'}`;
+  const dateLabel = (value: string | null | undefined, unset: string) => {
+    if (!value) return unset;
+    const [year, month, day] = value.split('-').map(Number);
+    const yearLabel = year === term.year ? '' : year === term.year + 1 ? '翌' : `${year}/`;
+    return `${yearLabel}${month}/${day}`;
+  };
+  return `${dateLabel(term.startDate, '開始日未設定')}〜${dateLabel(term.endDate, '終了日未設定')}`;
+}
 
 export type DisplayPeriod = TimetablePeriodDraft & {
   id?: string;
@@ -27,10 +41,11 @@ export interface TimetableDisplayInput {
   activeTermId: string;
   timetablePeriods: readonly TimetablePeriod[];
   scheduleTemplates: readonly ScheduleTemplate[];
+  usesAlternatingWeeks?: boolean;
 }
 
 /** The loaded grid and its loading scaffold share the same row selection. */
-export function buildTimetableDisplayModel({ userId, activeTermId, timetablePeriods, scheduleTemplates }: TimetableDisplayInput) {
+export function buildTimetableDisplayModel({ userId, activeTermId, timetablePeriods, scheduleTemplates, usesAlternatingWeeks = false }: TimetableDisplayInput) {
   const savedPeriodsForTerm = timetablePeriods
     .filter(period => period.termId === activeTermId)
     .map(period => ({ ...period }))
@@ -53,9 +68,19 @@ export function buildTimetableDisplayModel({ userId, activeTermId, timetablePeri
       });
     }
   });
+  const displayPeriods = Array.from(periods.values()).sort((left, right) => left.periodNumber - right.periodNumber);
+  // Reserve the larger A/B stack once so switching weeks and loading cannot
+  // resize a row. Alternative-week cards are not incorrectly added together.
+  const rowMinimumCardCounts = displayPeriods.map(period => Math.max(1, ...WEEKDAY_OPTIONS.flatMap(day =>
+    (['a', 'b'] as const).map(week => termTemplates.filter(template => template.weekday === day.value
+      && findPeriodNumberForTemplate(template, displayPeriods) === period.periodNumber
+      && templateVisibleInAlternatingWeek(template, usesAlternatingWeeks, week)).length),
+  )));
   return {
     savedPeriodsForTerm,
     termTemplates,
-    displayPeriods: Array.from(periods.values()).sort((left, right) => left.periodNumber - right.periodNumber),
+    displayPeriods,
+    rowMinimumCardCounts,
+    gridRows: `auto ${rowMinimumCardCounts.map((count, index) => `minmax(${Math.max(count * 4, getPeriodTimeStatus(displayPeriods[index]) === 'valid' ? 4 : 5)}rem, 1fr)`).join(' ')}`,
   };
 }
