@@ -1,0 +1,23 @@
+{
+  "source": "/private/tmp/astra-audit/final-conversations.json",
+  "A": {
+    "factLifecycles": [
+      { "factId": "wpf_availability_afud7tt4cdot", "status": "active", "createdRevision": 3, "terminalRevision": null, "supersededByFactId": null }
+    ],
+    "availabilityDeclarations": [
+      { "id": "wpf_availability_afud7tt4cdot", "kind": "unavailable", "dateExpression": "tomorrow", "namedTimePeriod": null, "startTime": "14:30", "endTime": "20:00", "recurrenceKind": null, "days": [], "constraintLevel": "hard", "capacityMinutes": null, "resolutionStatus": "unresolved", "source": { "conversationId": "issue156-final-a", "turnId": "issue156-final-a:request:3", "semanticLocalId": "availability_1", "sourceText": "14時半から20時まではバイトです", "origin": "user" }, "createdRevision": 3 }
+    ]
+  },
+  "B": {
+    "factLifecycles": [
+      { "factId": "wpf_task_1ngkih31o6yr3f", "status": "active", "createdRevision": 2, "terminalRevision": null, "supersededByFactId": null },
+      { "factId": "wpf_temporal_2n24bf5nbm7z", "status": "active", "createdRevision": 3, "terminalRevision": null, "supersededByFactId": null }
+    ],
+    "tasks": [
+      { "id": "wpf_task_1ngkih31o6yr3f", "category": "study", "title": "研究室のレポートを仕上げる", "source": { "conversationId": "issue156-final-b", "turnId": "issue156-final-b:request:2", "semanticLocalId": "task_lab_report", "sourceText": "研究室のレポートを仕上げたいです", "origin": "user" }, "createdRevision": 2 }
+    ],
+    "temporalConstraints": [
+      { "id": "wpf_temporal_2n24bf5nbm7z", "taskId": "wpf_task_1ngkih31o6yr3f", "targetFactId": "wpf_task_1ngkih31o6yr3f", "kind": "deadline", "constraintLevel": "hard", "dateExpression": "tomorrow", "namedTimePeriod": null, "startTime": null, "endTime": "13:00", "precision": "exact", "source": { "conversationId": "issue156-final-b", "turnId": "issue156-final-b:request:3", "semanticLocalId": "focused_temporal_constraint", "sourceText": "締切は明日の13時です", "origin": "user" }, "createdRevision": 3 }
+    ]
+  }
+}
