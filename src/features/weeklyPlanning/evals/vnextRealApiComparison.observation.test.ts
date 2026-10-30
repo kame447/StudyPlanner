@@ -552,7 +552,7 @@ const runRealApi = shouldRun ? describe : describe.skip;
 
 describe('VNext real API conversation fixture contract (offline)', () => {
   it('contains only synthetic turns and typed per-turn oracles', () => {
-    expect(vnextRealApiConversations.length).toBeGreaterThanOrEqual(12);
+    expect(vnextRealApiConversations).toHaveLength(14);
     expect(new Set(vnextRealApiConversations.map(({ id }) => id)).size).toBe(vnextRealApiConversations.length);
     for (const conversation of vnextRealApiConversations) {
       expect(conversation.turns.length, conversation.id).toBeGreaterThan(0);
@@ -578,6 +578,15 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     expect(progressCase?.turns[2].oracle.projectedWorkloads).toEqual([
       { task: 'slides', role: 'remaining', amount: 8, unitCode: 'custom', unitLabel: '枚' },
     ]);
+    const yesterdayCase = vnextRealApiConversations.find(({ id }) => id === 'yesterday-math-completed-30-minutes');
+    expect(yesterdayCase?.clock?.currentDate).toBe('2026-10-30');
+    expect(yesterdayCase?.turns[0].userText).toBe('昨日は数学を30分勉強しました。');
+    expect(yesterdayCase?.turns[0].oracle).toMatchObject({
+      inVNextScope: true,
+      questionCode: null,
+      workloads: [{ task: 'math', role: 'completed', amount: 30, unitCode: 'minute', unitLabel: '分' }],
+      temporal: [],
+    });
   });
 });
 

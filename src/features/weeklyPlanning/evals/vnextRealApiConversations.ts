@@ -243,6 +243,13 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
     ],
   },
   {
+    id: 'yesterday-math-completed-30-minutes', source: 'real API run 41001146547 / scenario yesterday-completed',
+    description: 'Measure whether yesterday activity is interpreted as completed work; its occurrence date is outside the VNext fact contract.',
+    clock: { currentDate: '2026-10-30', weekStartDate: '2026-10-26', planningEndDate: '2026-11-01' },
+    turns: [{ userText: '昨日は数学を30分勉強しました。', oracle: ready(0,
+      [workload('math', 'completed', 30, 'minute', '分')], [], [], { projectedMinutes: null }) }],
+  },
+  {
     id: 'recurrence-out-of-vnext-scope', source: 'implementation-contract.md VNext supported facts',
     description: '繰り返し規則はVNextのtask/component/workload/effort/temporal範囲外。成功扱いしない。',
     turns: [{ userText: '来週から毎週月曜日に英語を勉強する予定にしてください。', oracle: {

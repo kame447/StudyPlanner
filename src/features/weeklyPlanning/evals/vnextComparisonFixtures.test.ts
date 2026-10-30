@@ -32,6 +32,7 @@ describe('VNext offline comparison fixture contract', () => {
       'contract-882-r8-e60-order-a',
       'contract-882-r8-e60-order-b',
       'contract-yesterday-progress',
+      'contract-past-activity-misread-as-session',
       'contract-custom-page-unit-change',
       'contract-repair-no-data-loss',
       'contract-one-to-thirty-minute-correction',
@@ -68,5 +69,25 @@ describe('VNext offline comparison fixture contract', () => {
     expect(explicitRemaining.knownV5Defects?.join(' ')).toContain('#919');
     expect(regressionFixtures.find(({ id }) => id === 'contract-checkpoint-reload-approve')?.checkpoint)
       .toMatchObject({ version: 'weekly-planning-resumable-conversation-v1', graphRevision: 3 });
+  });
+
+  it('separates the typed completed-work reading from the preserved misread input', () => {
+    const completed = regressionFixtures.find(({ id }) => id === 'contract-yesterday-progress')!;
+    const misread = regressionFixtures.find(({ id }) => id === 'contract-past-activity-misread-as-session')!;
+    expect(completed.turns[0].facts).toEqual([
+      { kind: 'workload', task: 'math', role: 'completed', amount: 30, unit: 'minute' },
+    ]);
+    expect(completed.oracle).toMatchObject({
+      outcome: 'nothing_to_schedule',
+      preserved: ['completed=30 minutes'],
+    });
+    expect(completed.oracle.notes?.join(' ')).toContain('date it occurred');
+    expect(completed.oracle.notes?.join(' ')).toContain('unsupported in #926');
+    expect(misread.turns[0].facts).toEqual([
+      { kind: 'temporal', task: 'math', constraint: 'deadline', dateExpression: '2026-10-28' },
+      { kind: 'effort', task: 'math', measure: 'session_duration', minutes: 30 },
+    ]);
+    expect(misread.oracle).toMatchObject({ outcome: 'question', question: 'missing_schedulable_work' });
+    expect(misread.oracle.notes?.join(' ')).toContain('Do not reclassify this misread by comparing its date');
   });
 });
