@@ -5,6 +5,11 @@
 // know is supplied here: an estimate question names the asked work's amount
 // (which may be derived, e.g. total − completed), and a VNext-only question asks
 // for clarification with its option labels required in the text.
+// The renderer has no state authority: its text is stored only as what was shown
+// (the presented question's shownText, for binding the next answer), never read
+// as a fact. Breaks if the reply text is parsed back into facts or a failed render
+// still presents its question. Tests: ExperimentalSession integration "explains each
+// result through the Stable V5 renderer…", OptionChoice "offers Jev the displayed text…".
 import type { VNextQuestion, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import {
   createWeeklyPlanningStableV5CurrentTurnGrounding,

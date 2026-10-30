@@ -1,5 +1,12 @@
 // The single deterministic projector of the VNext core: amount of work, minutes,
 // and typed questions per owner, recomputed from stated facts every turn.
+// Why here only: nothing derived (remaining, minutes, which estimate applies) is
+// stored, so a correction can never leave a stale copy behind (the V5 failure mode,
+// #881 C). New estimate bases and question kinds are added here, in one place.
+// Breaks if bypassed: a second computation of amounts disagrees after a correction.
+// Tests: weeklyPlanningVNextProjection.test.ts ("derives remaining from total and
+// completed…", "binds a same-turn quantity and total correction in either order",
+// "never silently drops or double-counts other-basis work…").
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
 import type { WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
 import type {

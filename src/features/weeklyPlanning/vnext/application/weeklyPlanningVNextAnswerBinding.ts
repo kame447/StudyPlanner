@@ -173,6 +173,9 @@ function restatedOptionChange(option: VNextTurnDelta, delta: VNextTurnDelta, gra
  * binds re-presents the current question and applies nothing; an answer restated
  * as a fact in the same reading is a conflict, never two commits. The
  * session, the provider's validation and every evaluation harness use this one function.
+ * Do not add a second place that merges an answer into a delta: the provider's dry run and the
+ * session must apply the same thing. Tests: ExperimentalSession integration "…restated as a fact in
+ * the same reading is one statement…" (estimate, Astra F02; option).
  */
 export function resolveWeeklyPlanningVNextTurnDelta(params: {
   presentationFresh: boolean;

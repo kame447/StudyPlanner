@@ -74,6 +74,11 @@ interface VNextReferencingFacts {
 /**
  * The same facts with every reference naming the current version of the fact it points to (a
  * renamed task keeps its work). Pure and read-only: stored facts keep their history.
+ * Every consumer that follows references (scheduling, the renderer's view) uses this; a new
+ * reference-bearing collection is added here once. Breaks if a consumer maps its own list: it
+ * misses a field and loses renamed owners (Astra VP03, user audit S03). Tests: SchedulerGraph
+ * "uses the renamed task in the scheduling view…", ExperimentalSession integration "explains
+ * each result through the Stable V5 renderer…" (rename case).
  */
 export function withCurrentVNextReferences<G extends VNextReferencingFacts>(graph: G, current: (id: string) => string): G {
   const orNull = (id: string | null) => (id === null ? null : current(id));

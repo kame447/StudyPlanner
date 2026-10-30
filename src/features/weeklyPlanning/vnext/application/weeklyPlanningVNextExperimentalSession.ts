@@ -225,7 +225,17 @@ function systemReply(outcome: WeeklyPlanningVNextExperimentalTurnOutcome, previe
 const isEmpty = (delta: VNextTurnDelta) =>
   delta.add.length + delta.patch.length + delta.remove.length + delta.relate.length + delta.defer.length === 0;
 
-/** One user turn. Every step reads from and writes to the checkpoint slot, so a reload is the normal path. */
+/**
+ * One user turn. Every step reads from and writes to the checkpoint slot, so a reload is the normal path.
+ * Order (each step has one owner; do not reorder): read the checkpoint bytes → interpret against
+ * them (horizon and dates from the state, the shown reply as context) → stale check → bind the answer
+ * (answer binding) → one transaction → project → preview (V5 placement) → render (V5 renderer) →
+ * stale check again → bind what was displayed → one write. Breaks if reordered: a write before a
+ * stale check overwrites another tab; binding from the state's question instead of the display
+ * pairs a question with a notice (user audit S01). Tests: integration "writes nothing when another
+ * turn saved…", "a failure notice never becomes the presented question…", OptionChoice
+ * "reads a reply to an older revision without its question…".
+ */
 export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   scope: WeeklyPlanningVNextExperimentalScope;
   ports: WeeklyPlanningVNextExperimentalPorts;
@@ -398,6 +408,10 @@ export type WeeklyPlanningVNextExperimentalApproval =
  * Saves the shown preview. The existing approval guard checks it against the
  * current revision; the ledger records each block, so a partial save resumes
  * with the same operation and an approved preview is never saved twice.
+ * The save boundary: only this function writes plans, and only blocks that were shown. Do not save
+ * from a turn or re-schedule here (the user approves what they saw). Tests: integration
+ * "asks, binds the answer…saves partially, resumes, and never saves twice", "a correction before
+ * approval replaces the shown preview…".
  */
 export async function approveWeeklyPlanningVNextExperimentalPreview(params: {
   scope: WeeklyPlanningVNextExperimentalScope;
