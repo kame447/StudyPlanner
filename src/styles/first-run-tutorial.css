@@ -101,9 +101,6 @@
 :root[data-theme='dark'] .first-run-tour-back { color: #b5c9c1; }
 :root[data-theme='dark'] .first-run-tour-eyebrow,
 :root[data-theme='dark'] .first-run-tour-plan-link { color: #8dd4c5; }
-@media (prefers-reduced-motion: reduce) {
-  .first-run-tour-dots span { transition: none; }
-}
 .app-settings-page .support-tour-link {
   display: flex;
   align-items: center;

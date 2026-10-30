@@ -28,6 +28,7 @@ it('keeps the actual app Home navigation after chunk rejection without reloading
     matchMedia: () => ({ matches: true }), requestAnimationFrame: () => 1, cancelAnimationFrame() {},
     addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout, performance,
     history: { state: {}, length: 1, pushState() {}, replaceState() {} } });
+  window.localStorage.setItem('laplance-first-run-tour-v1:owner', 'done');
   vi.stubGlobal('HTMLElement', class {});
   vi.stubGlobal('document', Object.assign(new EventTarget(), { documentElement: { dataset: {}, style: {} }, body: { style: {} }, visibilityState: 'visible' }));
   vi.spyOn(console, 'error').mockImplementation(() => {});

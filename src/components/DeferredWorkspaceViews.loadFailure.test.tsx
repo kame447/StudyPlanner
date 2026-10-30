@@ -46,6 +46,9 @@ function snapshot(owner = 'owner'): PlannerAppSnapshot {
 }
 async function mount(initial?: Record<string, unknown>) {
   win = browser(initial); vi.stubGlobal('window', win);
+  // Navigation/chunk-failure fixtures represent returning users.
+  win.localStorage.setItem('laplance-first-run-tour-v1:owner', 'done');
+  win.localStorage.setItem('laplance-first-run-tour-v1:other', 'done');
   await act(async () => { renderer = create(<ApplicationRouteRoot authSession={fake.session} />, {
     createNodeMock: element => element.type === 'dialog' ? dialogNode : element.type === 'button' ? backNode : null,
   }); await vi.dynamicImportSettled(); });
