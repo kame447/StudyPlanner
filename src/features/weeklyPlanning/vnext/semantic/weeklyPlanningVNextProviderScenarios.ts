@@ -2,6 +2,7 @@
 import type { WeeklyPlanningVNextInterpretation, WeeklyPlanningVNextInterpretationClock } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextAddFact, VNextQuestionCode, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
+import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 
 interface Expected {
   amounts?: number[];
@@ -18,6 +19,7 @@ interface Expected {
   answerOptionIndex?: number;
   efforts?: { kind: string; minutes: number }[];
   temporal?: { kind: string; dateExpression: string; startTime: string | null; endTime: string | null };
+  questionWork?: { amount: number; unitLabel: string };
 }
 export interface VNextProviderScenario {
   id: string;
@@ -63,7 +65,7 @@ export const VNEXT_PROVIDER_SCENARIOS: VNextProviderScenario[] = [
   { id: 'yesterday-completed', seed: [task, work('total', 20, 'scope_total'), rate], turns: [{ text: '数学プリントは昨日までに12枚終わっています。',
     expected: { amounts: [8], minutes: [40], questions: [], roles: [{ role: 'completed', amount: 12 }] } }] },
   { id: 'custom-unit-change', seed: [task, work('remaining', 7), rate], turns: [{ text: '残りの単位を枚からセットに訂正します。数は7のままです。',
-    expected: { amounts: [7], questions: ['missing_effort_estimate'], unitLabel: 'セット' } }] },
+    expected: { questions: ['missing_effort_estimate'], questionWork: { amount: 7, unitLabel: 'セット' } } }] },
   { id: 'custom-page-preservation', seed: [task, { ...work('remaining', 7), unitLabel: 'ページ' } as VNextAddFact,
     { ...rate, unitLabel: 'ページ' } as VNextAddFact], turns: [{ text: '数学プリントの残りを8ページに訂正してください。単位の設定は今のままです。',
     expected: { amounts: [8], minutes: [40], questions: [], unitLabel: 'ページ' } }] },
@@ -91,9 +93,10 @@ export const VNEXT_PROVIDER_SCENARIOS: VNextProviderScenario[] = [
   { id: 'category-title-correction', seed: remainingSeed, turns: [{ text: '数学プリントという予定は実は勉強ではなく、書類のコピーです。タイトルを「書類のコピー」に変え、学習以外の分類に訂正してください。作業量と見積もりはそのままです。',
     expected: { category: 'non_study', taskCount: 1, minutes: [45], questions: [] } }] },
   { id: 'estimate-answer', seed: [task, work('remaining', 8)], turns: [{ text: '残り全体で60分です。',
-    expected: { unchanged: true, answerKind: 'estimate_minutes', answerMinutes: 60 } }] },
+    expected: { amounts: [8], minutes: [60], questions: [], answerKind: 'estimate_minutes', answerMinutes: 60 } }] },
   { id: 'option-answer', seed: [task, work('total', 20, 'scope_total'), work('completed', 12, 'completed'), work('remaining', 7)],
-    turns: [{ text: '1つ目の選択肢でお願いします。', expected: { unchanged: true, answerKind: 'option', answerOptionIndex: 0 } }] },
+    turns: [{ text: '1つ目の選択肢でお願いします。', expected: { questions: ['missing_effort_estimate'],
+      roles: [{ role: 'remaining', amount: 8 }], questionWork: { amount: 8, unitLabel: '枚' }, answerKind: 'option', answerOptionIndex: 0 } }] },
 ];
 
 /** Typed-state oracle: no free-text matching, renderer wording or model self-report. */
@@ -129,5 +132,14 @@ export function checkVNextProviderScenario(expected: Expected, before: WeeklyPla
   }
   if (expected.temporal && !after.graph.temporalConstraints.some(fact => active.has(fact.id)
     && Object.entries(expected.temporal!).every(([key, value]) => fact[key as keyof typeof fact] === value))) failures.push(`missing temporal bound ${JSON.stringify(expected.temporal)}`);
+  if (expected.questionWork) {
+    const resolver = createVNextLineageResolver(after.graph);
+    const matches = projection.questions.some(question => {
+      const work = question.forWork;
+      const defining = work && workloads.find(fact => fact.id === resolver.leafOf(work.definingFactId));
+      return work?.amount === expected.questionWork!.amount && defining?.unitLabel === expected.questionWork!.unitLabel;
+    });
+    if (!matches) failures.push(`missing question work ${JSON.stringify(expected.questionWork)}`);
+  }
   return failures;
 }

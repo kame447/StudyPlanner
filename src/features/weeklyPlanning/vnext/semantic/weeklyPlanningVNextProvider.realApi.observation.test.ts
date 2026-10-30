@@ -8,6 +8,7 @@ import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextPro
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
+import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const run = shouldRun ? describe : describe.skip;
@@ -64,13 +65,22 @@ run('VNext native provider synthetic real API observations', () => {
             presentedQuestion, userText: turn.text, clock });
           observation.result = result;
           let applyStatus = 'empty';
-          if (result.status === 'interpreted' && Object.values(result.delta).some(items => items.length)) {
-            const applied = applyWeeklyPlanningVNextTurn(state, result.delta, { expectedRevision: state.graph.revision,
-              turnKey: `${scenario.id}:turn:${index}`, conversationId: `synthetic:${scenario.id}`,
-              turnId: String(index), sourceText: turn.text });
-            applyStatus = applied.status;
-            if (applied.status === 'applied' || applied.status === 'noop') state = applied.state;
-            else failures.push(`turn ${index}: post-interpretation transaction ${applied.status}`);
+          if (result.status === 'interpreted') {
+            const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
+              presented: presentedQuestion ? { questionKey: presentedQuestion.key, graphRevision: projection.graphRevision } : null,
+              projection, lineageOf: createVNextLineageResolver(state.graph).lineageOf, interpreted: result });
+            observation.resolved = resolved;
+            if (resolved.status === 'represent') {
+              failures.push(`turn ${index}: answer did not bind to the presented question`);
+              applyStatus = 'represent';
+            } else if (Object.values(resolved.delta).some(items => items.length)) {
+              const applied = applyWeeklyPlanningVNextTurn(state, resolved.delta, { expectedRevision: state.graph.revision,
+                turnKey: `${scenario.id}:turn:${index}`, conversationId: `synthetic:${scenario.id}`,
+                turnId: String(index), sourceText: turn.text });
+              applyStatus = applied.status;
+              if (applied.status === 'applied' || applied.status === 'noop') state = applied.state;
+              else failures.push(`turn ${index}: post-interpretation transaction ${applied.status}`);
+            }
           }
           if (result.status === 'failed') failures.push(`turn ${index}: provider ${result.reason}`);
           const oracleFailures = checkVNextProviderScenario(turn.expected, before, state, result);

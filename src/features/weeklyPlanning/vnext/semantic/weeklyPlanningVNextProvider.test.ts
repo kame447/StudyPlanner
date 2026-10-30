@@ -7,6 +7,8 @@ import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVN
 import { decodeVNextProviderOutput, VNEXT_PROVIDER_RESPONSE_FORMAT } from './weeklyPlanningVNextProviderSchema';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
+import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
+import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 
 const emptyDelta = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const task = (localId = 'task', title = 'Math') => ({ kind: 'task', localId, category: 'study', title });
@@ -145,16 +147,74 @@ describe('VNext native provider', () => {
       expect(result).toMatchObject({ status: 'failed', reason, metrics: { calls: 1, repairs: 0 } });
     });
 
-  it('fails unaddressable whole-clause errors without a semantic reread', async () => {
-    const result = await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify({ delta: null, answer: null })]));
-    expect(result).toMatchObject({ status: 'failed', metrics: { calls: 1, repairs: 0 } });
+  it('takes one complete new reading for non-field errors and validates the new delta', async () => {
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(input([
+      JSON.stringify({ delta: null, answer: null }), JSON.stringify(output([task(), workload()])),
+    ]));
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+  });
+
+  it('rereads an element-level temporal error once rather than dropping its entire clause through a splice', async () => {
+    const first = output([task(), { kind: 'temporal_constraint', localId: 'bad-interval', taskRef: { localId: 'task' },
+      targetRef: { localId: 'task' }, constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: 'this_week',
+      namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' }]);
+    const params = input([JSON.stringify(first), JSON.stringify(output([task(), workload()]))]);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    if (result.status === 'interpreted') expect(result.delta.add[1]).toMatchObject({ kind: 'workload', amount: 7 });
+    const calls = vi.mocked(params.client.createChatCompletion).mock.calls;
+    expect(JSON.parse(calls[1][0].messages[calls[1][0].messages.length - 1].content).instruction).toContain('Discard the prior reading');
+  });
+
+  it('a second non-field failure cannot trigger a second reread or commit state', async () => {
+    const bad = JSON.stringify({ delta: null, answer: null });
+    const params = input([bad, bad, JSON.stringify(output())]);
+    const original = structuredClone(params.state);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'failed', reason: 'rejected_after_repair', metrics: { calls: 2, repairs: 1 } });
+    expect(params.state).toEqual(original);
+  });
+
+  it.each(['882-iter4-explicit-r8', 'custom-unit-change'])('judges %s through the session binder and question-work oracle', async id => {
+    const scenario = VNEXT_PROVIDER_SCENARIOS.find(candidate => candidate.id === id)!;
+    const params = input([]);
+    const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: scenario.seed }, {
+      expectedRevision: 0, turnKey: id, conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic',
+    });
+    if (seeded.status !== 'applied') throw new Error('setup');
+    params.state = seeded.state;
+    params.projection = projectWeeklyPlanningVNext(params.state);
+    params.presentedQuestion = params.projection.questions[0] ?? null;
+    params.client = { createChatCompletion: vi.fn(async request => {
+      const context = JSON.parse(request.messages[1].content);
+      return id === '882-iter4-explicit-r8'
+        ? JSON.stringify(output([], { kind: 'option', optionId: context.presentedQuestion.options[0].optionId, minutes: null }))
+        : JSON.stringify({ delta: { ...emptyDelta(), patch: [{ kind: 'workload', localId: 'change-unit',
+          targetFactId: context.activeFacts.workloads[0].id, amountDelta: null, changes: { amount: null, unitCode: null,
+            unitLabel: 'セット', quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] }, answer: null });
+    }) };
+    const interpreted = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    if (interpreted.status !== 'interpreted') throw new Error(JSON.stringify(interpreted));
+    const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
+      presented: params.presentedQuestion ? { questionKey: params.presentedQuestion.key, graphRevision: params.projection.graphRevision } : null,
+      projection: params.projection, lineageOf: createVNextLineageResolver(params.state.graph).lineageOf, interpreted });
+    if (resolved.status !== 'delta') throw new Error('answer not bound');
+    const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, {
+      expectedRevision: params.state.graph.revision, turnKey: `${id}:turn`, conversationId: 'synthetic', turnId: 'turn', sourceText: scenario.turns[0].text,
+    });
+    if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
+    expect(checkVNextProviderScenario(scenario.turns[0].expected, params.state, applied.state, interpreted)).toEqual([]);
   });
 
   it.each([
-    [{ kind: 'option', optionId: 'unverified-option', minutes: null }, { kind: 'option', optionId: 'unverified-option' }],
+    [{ kind: 'option', optionId: 'O1', minutes: null }, { kind: 'option', optionId: 'unverified-option' }],
     [{ kind: 'estimate_minutes', optionId: null, minutes: 45 }, { kind: 'estimate_minutes', minutes: 45 }],
   ])('decodes answers without selecting or binding them (%j)', async (wire, answer) => {
-    const result = await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify(output([], wire))]));
+    const params = input([JSON.stringify(output([], wire))]);
+    params.presentedQuestion = { code: 'remaining_inconsistent', key: 'raw-question["id"]', ownerKey: 'owner',
+      taskId: 'stored-task', componentId: null, subjectLineageIds: [], forWork: null,
+      options: [{ optionId: 'unverified-option', value: 8, delta: emptyDelta() }] };
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
     expect(result).toMatchObject({ status: 'interpreted', answer });
   });
 
@@ -177,10 +237,36 @@ describe('VNext native provider', () => {
     const patch = { kind: 'workload', localId: 'p', targetFactId: params.state.graph.workloads[0].id,
       amountDelta: null, changes: { amount: 8, unitCode: null, unitLabel: null, quantityRole: null,
         rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } };
-    params.client = input([JSON.stringify({ delta: { ...emptyDelta(), patch: [patch] }, answer: null })]).client;
+    params.client = { createChatCompletion: vi.fn(async request => {
+      const context = JSON.parse(request.messages[1].content);
+      return JSON.stringify({ delta: { ...emptyDelta(), patch: [{ ...patch, targetFactId: context.activeFacts.workloads[0].id }] }, answer: null });
+    }) };
     const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
     expect(result).toMatchObject({ status: 'interpreted', delta: { patch: [patch] } });
     expect(params.state.graph.workloads[0].amount).toBe(7);
+  });
+
+  it('repairs an unknown alias using the same vocabulary while retaining independent facts', async () => {
+    const params = input([]);
+    const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [
+      { kind: 'task', localId: 'existing', title: 'Existing', category: 'study' },
+    ] }, { expectedRevision: 0, turnKey: 'seed-alias', conversationId: 'c', turnId: 'seed', sourceText: 'seed' });
+    if (seeded.status !== 'applied') throw new Error('setup');
+    params.state = seeded.state;
+    params.projection = projectWeeklyPlanningVNext(params.state);
+    let calls = 0;
+    params.client = { createChatCompletion: vi.fn(async request => {
+      const context = JSON.parse(request.messages[1].content);
+      const taskAlias = context.activeFacts.tasks[0].id;
+      const taskRef = { factId: ++calls === 1 ? `${taskAlias}]},` : taskAlias };
+      return JSON.stringify(output([{ ...workload(), taskRef }, task('independent', calls === 1 ? 'Preserve this' : 'Overwritten by repair')]));
+    }) };
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    if (result.status === 'interpreted') {
+      expect(result.delta.add[0]).toMatchObject({ taskRef: { factId: seeded.state.graph.tasks[0].id } });
+      expect(result.delta.add[1]).toMatchObject({ title: 'Preserve this' });
+    }
   });
 
   it('rejects unknown/inherited-key fields and mixed answer payloads', () => {
@@ -191,7 +277,7 @@ describe('VNext native provider', () => {
   it('keeps experimental provider/session requests outside production trace and outbox', () => {
     // Explicit exclusion contract: synthetic experiment receipts are artifacts, never production trace.
     const files = ['./weeklyPlanningVNextProvider.ts', './weeklyPlanningVNextProviderPrompt.ts',
-      './weeklyPlanningVNextProviderSchema.ts', '../application/weeklyPlanningVNextExperimentalSession.ts'];
+      './weeklyPlanningVNextProviderSchema.ts', './weeklyPlanningVNextProviderReferences.ts', '../application/weeklyPlanningVNextExperimentalSession.ts'];
     for (const file of files) {
       const source = readFileSync(new URL(file, import.meta.url), 'utf8');
       const imports = [...source.matchAll(/(?:from\s*|import\s*\()(['"])([^'"]+)\1/g)].map(match => match[2]);

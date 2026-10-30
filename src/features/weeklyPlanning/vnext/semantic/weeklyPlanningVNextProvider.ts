@@ -4,6 +4,7 @@ import type { VNextTurnError } from '../weeklyPlanningVNextTypes';
 import { applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { decodeVNextProviderOutput, VNEXT_PROVIDER_RESPONSE_FORMAT, type VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
+import { createVNextProviderReferences } from './weeklyPlanningVNextProviderReferences';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -69,7 +70,12 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
     const finish = (result: Omit<Extract<WeeklyPlanningVNextInterpretation, { status: 'failed' }>, 'metrics'>
       | Omit<Extract<WeeklyPlanningVNextInterpretation, { status: 'interpreted' }>, 'metrics'>): WeeklyPlanningVNextInterpretation =>
       ({ ...result, metrics: { ...metrics, latencyMs: Math.max(0, Date.now() - started) } });
-    const messages = buildWeeklyPlanningVNextProviderMessages(input);
+    const references = createVNextProviderReferences();
+    const messages = buildWeeklyPlanningVNextProviderMessages(input, references);
+    const decode = (value: unknown) => {
+      const shaped = decodeVNextProviderOutput(value);
+      return shaped.status === 'decoded' ? references.decodeReading(shaped.reading) : shaped;
+    };
     const request = async () => {
       metrics.calls++;
       return input.client.createChatCompletion({ messages, responseFormat: VNEXT_PROVIDER_RESPONSE_FORMAT,
@@ -81,14 +87,14 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
     let original: unknown;
     try { original = JSON.parse(raw); }
     catch { return finish({ status: 'failed', reason: 'unparseable', errors: [] }); }
-    const decoded = decodeVNextProviderOutput(original);
+    const decoded = decode(original);
     const errors = decoded.status === 'rejected' ? decoded.errors : validateReading(input, decoded.reading);
     if (!errors.length && decoded.status === 'decoded') return finish({ status: 'interpreted', ...decoded.reading });
-    if (!record(original) || errors.some(error => !repairAddress(error, original))) {
-      return finish({ status: 'failed', reason: 'rejected_after_repair', errors });
-    }
+    const formal = record(original) && errors.every(error => repairAddress(error, original));
     messages.push({ role: 'assistant', content: raw }, { role: 'user', content: JSON.stringify({
-      instruction: 'Formal repair only. Return the full schema document with exactly these addressed fields corrected. Keep every other field unchanged. Match elements by localId, not array position. Do not re-read meaning or add/remove clauses.',
+      instruction: formal
+        ? 'Formal repair only. Return the full schema document with exactly these addressed fields corrected. Keep every other field unchanged. Match elements by localId, not array position. Do not re-read meaning or add/remove clauses.'
+        : 'Discard the prior reading. Interpret the whole original utterance again against the supplied state and clock. Return a new full schema document, retaining all independent contributions of that utterance. Use only the same supplied short reference aliases. This is the single allowed new reading.',
       errors: errors.map(({ path, localId }) => ({ path, localId })),
     }) });
     metrics.repairs++;
@@ -97,9 +103,9 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
     let repaired: unknown;
     try { repaired = JSON.parse(raw); }
     catch { return finish({ status: 'failed', reason: 'unparseable', errors }); }
-    const spliced = spliceRepair(original, repaired, errors);
+    const spliced = formal ? spliceRepair(original, repaired, errors) : repaired;
     if (!spliced) return finish({ status: 'failed', reason: 'rejected_after_repair', errors });
-    const final = decodeVNextProviderOutput(spliced);
+    const final = decode(spliced);
     const finalErrors = final.status === 'rejected' ? final.errors : validateReading(input, final.reading);
     return final.status === 'decoded' && !finalErrors.length
       ? finish({ status: 'interpreted', ...final.reading })
