@@ -43,12 +43,16 @@ export interface RealApiTurnOracle {
   inVNextScope: boolean;
   outOfScopeReason?: string;
   workloads: readonly RealApiWorkloadOracle[];
+  /** Equivalent active fact sets accepted for provider-specific but semantically identical readings. */
+  workloadAlternatives?: readonly (readonly RealApiWorkloadOracle[])[];
   efforts: readonly RealApiEffortOracle[];
   temporal: readonly RealApiTemporalOracle[];
   /** Stable machine question code after this turn; null means no open question. */
   questionCode: string | null;
   /** Work minutes from the typed projection, if ready. */
   projectedMinutes: number | null;
+  /** True when a stated time estimate must be bound to future work, not observed pace. */
+  requireFutureWorkEstimate?: boolean;
   /** If true, a non-answer must leave facts and the same blocking question intact. */
   preservePreviousTypedState?: boolean;
   /** Pairs of workload entries in oracle order that must belong to different task owners. */
@@ -176,14 +180,16 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
     id: 'timebox-only-work', source: 'implementation-contract.md §5.3時間単位workload',
     description: '分で明示されたworkloadをそのまま作業時間として扱い、追加rateを掛けない。',
     turns: [{ userText: '英語の音読を30分だけします。', oracle: ready(30,
-      [workload('reading-aloud', 'remaining', 30, 'minute', '分')]) }],
+      [workload('reading-aloud', 'target', 30, 'minute', '分')]) }],
   },
   {
     id: 'separate-work-then-correction', source: 'implementation-contract.md §5.5, #905, #912',
     description: '別作業の確認後に一方だけ数量訂正しても、もう一方を落とさない。',
     turns: [
-      { userText: 'スライドは残り10枚です。別作業でファイル整理が残り30分あります。', oracle: q('same_or_distinct_work',
-        [workload('slides', 'remaining', 10, 'custom', '枚'), workload('file-cleanup', 'remaining', 30, 'minute', '分')]) },
+      { userText: 'スライドは残り10枚です。別作業でファイル整理が残り30分あります。', oracle: {
+        ...q('missing_effort_estimate', [workload('slides', 'remaining', 10, 'custom', '枚'), workload('file-cleanup', 'remaining', 30, 'minute', '分')]),
+        projectedMinutes: 30,
+      } },
       { userText: 'それは別の仕事です。スライドは残り8枚に訂正し、1枚6分です。', oracle: ready(78,
         [workload('slides', 'remaining', 8, 'custom', '枚'), workload('file-cleanup', 'remaining', 30, 'minute', '分')],
         [rate('slides', 6, 'custom', '枚')], [], { distinctWorkloadPairs: [[0, 1]] }) },
@@ -198,18 +204,33 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
         inVNextScope: false, outOfScopeReason: 'planning-window selection is not represented by the VNext fact contract',
         workloads: [], efforts: [], temporal: [], questionCode: null, projectedMinutes: null,
       } },
-      { userText: '研究室のレポートを仕上げたいです', oracle: ready(0, [], [], [], { projectedMinutes: null }) },
+      { userText: '研究室のレポートを仕上げたいです', oracle: {
+        ...ready(0, [], [], [], { projectedMinutes: null }),
+        questionCode: 'missing_schedulable_work',
+      } },
       { userText: '締切は明日の13時です', oracle: {
         ...ready(0, [], [], [], { projectedMinutes: null }),
+        questionCode: 'missing_schedulable_work',
         expectedTaskCount: 1,
         temporal: [{ task: 'report', kind: 'deadline', dateExpression: '2026-08-27', time: '13:00', level: 'hard' }],
       } },
-      { userText: '完成を100%とすると、今は50%くらいです', oracle: ready(0, [], [], [
-        { task: 'report', kind: 'deadline', dateExpression: '2026-08-27', time: '13:00', level: 'hard' },
-      ], { projectedMinutes: null }) },
+      { userText: '完成を100%とすると、今は50%くらいです', oracle: {
+        ...ready(0, [workload('report', 'scope_total', 100, 'custom', '%'), workload('report', 'completed', 50, 'custom', '%')], [], [
+          { task: 'report', kind: 'deadline', dateExpression: '2026-08-27', time: '13:00', level: 'hard' },
+        ], { projectedMinutes: null }),
+        questionCode: 'missing_effort_estimate',
+        workloadAlternatives: [[workload('report', 'completed', 50, 'custom', '%')]],
+      } },
       { userText: '残りは1時間半くらいです', oracle: ready(90,
         [workload('report', 'remaining', 90, 'minute', '分')], [],
-        [{ task: 'report', kind: 'deadline', dateExpression: '2026-08-27', time: '13:00', level: 'hard' }]) },
+        [{ task: 'report', kind: 'deadline', dateExpression: '2026-08-27', time: '13:00', level: 'hard' }], {
+          workloadAlternatives: [
+            [workload('report', 'scope_total', 100, 'custom', '%'), workload('report', 'completed', 50, 'custom', '%')],
+            [workload('report', 'completed', 50, 'custom', '%')],
+            [workload('report', 'completed', 50, 'custom', '%'), workload('report', 'remaining', 50, 'custom', '%')],
+          ],
+          requireFutureWorkEstimate: true,
+        }) },
     ],
   },
   {

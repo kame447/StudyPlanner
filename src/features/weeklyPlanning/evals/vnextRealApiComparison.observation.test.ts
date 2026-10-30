@@ -134,6 +134,7 @@ interface V5TurnObservation {
   temporal: Array<{ taskId: string; kind: string; dateExpression: string | null; constraintLevel: string; startTime: string | null; endTime: string | null }>;
   schedulerStatus: string | null;
   workMinutes: number | null;
+  workEstimateBases: Array<string | null>;
   previewMinutes: number | null;
   aiCalls: number;
   rendererCalls: number;
@@ -230,22 +231,23 @@ function observedFacts(graph: WeeklyPlanningFactGraphV5): ObservedFacts {
   return { taskIds, workloads, efforts, temporal };
 }
 
-function previewMinutes(graph: WeeklyPlanningFactGraphV5, conversation: RealApiConversation): { status: string; minutes: number | null; workMinutes: number | null } {
+function previewMinutes(graph: WeeklyPlanningFactGraphV5, conversation: RealApiConversation): { status: string; minutes: number | null; workMinutes: number | null; workEstimateBases: Array<string | null> } {
   const clock = clockFor(conversation);
   const placementGraph = createWeeklyPlanningPlacementGraphViewV5(graph);
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
   const compiled = compileGenericSchedulerInput({ graph: activeGraph, context: { ownerId: 'vnext-real-api', ...contextFor(conversation) } });
-  if (compiled.status !== 'ready' || !compiled.input) return { status: compiled.status, minutes: null, workMinutes: null };
+  if (compiled.status !== 'ready' || !compiled.input) return { status: compiled.status, minutes: null, workMinutes: null, workEstimateBases: [] };
   const preview = scheduleWeeklyPlanningStableV5Preview({
     input: compiled.input,
     graph: placementGraph,
     notBefore: { date: clock.currentDate, time: '09:00' },
   });
-  if (preview.status !== 'ready') return { status: preview.status, minutes: null, workMinutes: null };
+  if (preview.status !== 'ready') return { status: preview.status, minutes: null, workMinutes: null, workEstimateBases: [] };
   const estimates = compiled.input.movableWorkItems.map((item) => item.baseEstimatedMinutes);
+  const workEstimateBases = compiled.input.movableWorkItems.map((item) => item.estimateBasis ?? null);
   const workMinutes = estimates.length > 0 && estimates.every((minutes) => typeof minutes === 'number')
     ? estimates.reduce((sum, minutes) => sum + (minutes ?? 0), 0) : null;
-  return { status: preview.status, minutes: preview.candidates.reduce((sum, candidate) => sum + candidate.durationMinutes, 0), workMinutes };
+  return { status: preview.status, minutes: preview.candidates.reduce((sum, candidate) => sum + candidate.durationMinutes, 0), workMinutes, workEstimateBases };
 }
 
 function sameUnitIdentity(
@@ -294,11 +296,17 @@ function matchWorkloads(actual: readonly ObservedWorkload[], expected: readonly 
   return { matched: pairs.length === expected.length && remaining.length === 0, pairs };
 }
 
+function matchOracleWorkloads(observed: readonly ObservedWorkload[], oracle: RealApiTurnOracle) {
+  const candidates = [oracle.workloads, ...(oracle.workloadAlternatives ?? [])];
+  const matches = candidates.map((candidate) => matchWorkloads(observed, candidate));
+  return matches.find((match) => match.matched) ?? matches[0];
+}
+
 function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question: string | null, workMinutes: number | null,
-  oracle: RealApiTurnOracle, projectedWorkloads: readonly ObservedWorkload[] = []): string[] {
+  oracle: RealApiTurnOracle, projectedWorkloads: readonly ObservedWorkload[] = [], workEstimateBases: readonly (string | null)[] = []): string[] {
   if (!oracle.inVNextScope) return [];
   const differences: string[] = [];
-  const workloads = matchWorkloads(observed.workloads, oracle.workloads);
+  const workloads = matchOracleWorkloads(observed.workloads, oracle);
   if (!workloads.matched) differences.push('workloads differ');
   if (oracle.expectedTaskCount !== undefined && observed.taskIds.length !== oracle.expectedTaskCount) {
     differences.push(`task count expected=${oracle.expectedTaskCount} observed=${observed.taskIds.length}`);
@@ -318,6 +326,9 @@ function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question
   }
   if (question !== oracle.questionCode) differences.push(`question expected=${oracle.questionCode ?? 'none'} observed=${question ?? 'none'}`);
   if (workMinutes !== oracle.projectedMinutes) differences.push(`work minutes expected=${oracle.projectedMinutes ?? 'none'} observed=${workMinutes ?? 'none'}`);
+  if (oracle.requireFutureWorkEstimate && !hasFutureWorkEstimate(workEstimateBases)) {
+    differences.push(`future work estimate required; observed bases=${workEstimateBases.join(',') || 'none'}`);
+  }
   for (const wanted of oracle.efforts) {
     const expectedWork = workloads.pairs.find(([expected]) => expected.task === wanted.task && expected.role === wanted.forRole)?.[0]
       ?? oracle.projectedWorkloads?.find((work) => work.task === wanted.task && work.role === wanted.forRole);
@@ -354,6 +365,10 @@ function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question
     }
   }
   return differences;
+}
+
+function hasFutureWorkEstimate(bases: readonly (string | null)[]): boolean {
+  return bases.length > 0 && bases.every((basis) => basis !== null && basis !== 'observed_pace');
 }
 
 async function runV5Conversation(conversation: RealApiConversation): Promise<ConversationObservation> {
@@ -423,8 +438,8 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     if (fixtureTurn.oracle.inVNextScope && currentQuestion !== null) clarificationCount += 1;
     const questionSignature = currentQuestion === null ? null : JSON.stringify({ question: currentQuestion, workloads: facts.workloads });
     if (questionSignature !== null && questionSignature === previousQuestionSignature && !fixtureTurn.oracle.preservePreviousTypedState) repeatedQuestionCount += 1;
-    const preview = graph ? previewMinutes(graph, conversation) : { status: 'no_graph', minutes: null, workMinutes: null };
-    const oracleDifferences = error ? [error] : graph ? compareTypedOracle(facts, currentQuestion, preview.workMinutes, fixtureTurn.oracle) : ['typed state unavailable'];
+    const preview = graph ? previewMinutes(graph, conversation) : { status: 'no_graph', minutes: null, workMinutes: null, workEstimateBases: [] };
+    const oracleDifferences = error ? [error] : graph ? compareTypedOracle(facts, currentQuestion, preview.workMinutes, fixtureTurn.oracle, [], preview.workEstimateBases) : ['typed state unavailable'];
     const expectedClarification = fixtureTurn.oracle.questionCode !== null;
     const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification && currentQuestion === null;
     const wrongRejection = fixtureTurn.oracle.inVNextScope && !expectedClarification && currentQuestion !== null;
@@ -439,7 +454,8 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
         debugTraceEvents: error || resultForDiagnostics?.failure ? debugTrace : [],
       },
       questionCode: currentQuestion,
-      ...facts, schedulerStatus: preview.status, workMinutes: preview.workMinutes, previewMinutes: preview.minutes,
+      ...facts, schedulerStatus: preview.status, workMinutes: preview.workMinutes,
+      workEstimateBases: preview.workEstimateBases, previewMinutes: preview.minutes,
       aiCalls: debugTrace.filter((event) => event.stage === 'semantic_provider_request').length,
       rendererCalls: debugTrace.filter((event) => event.stage === 'dialogue_renderer_request').length,
       latencyMs, clarificationCount, wrongAcceptance, wrongRejection, repeatedQuestionCount,
@@ -460,6 +476,10 @@ function vnextProjectedWorkMinutes(owners: ReturnType<typeof projectWeeklyPlanni
   const work = owners.flatMap((owner) => owner.work);
   return work.length > 0 && work.every((item) => typeof item.minutes === 'number')
     ? work.reduce((sum, item) => sum + (item.minutes ?? 0), 0) : null;
+}
+
+function vnextProjectedWorkEstimateBases(owners: ReturnType<typeof projectWeeklyPlanningVNext>['owners']): Array<string | null> {
+  return owners.flatMap((owner) => owner.work.map((work) => work.estimateBasis));
 }
 
 async function runVNextConversation(conversation: RealApiConversation): Promise<VNextConversationObservation> {
@@ -517,6 +537,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
     let readiness: string | null = null;
     let minutes: number | null = null;
     let workMinutes: number | null = null;
+    let workEstimateBases: Array<string | null> = [];
     let interpretation: WeeklyPlanningVNextExperimentalTurn['interpretation'] = null;
     let transactionErrors: WeeklyPlanningVNextExperimentalTurn['errors'] = [];
     let appliedDelta: WeeklyPlanningVNextExperimentalTurn['appliedDelta'] = null;
@@ -546,6 +567,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
       readiness = projection.readiness;
       minutes = vnextPreviewMinutes(result.preview?.blocks ?? null);
       workMinutes = vnextProjectedWorkMinutes(projection.owners);
+      workEstimateBases = vnextProjectedWorkEstimateBases(projection.owners);
       const projectedWorkloads: ObservedWorkload[] = projection.owners.flatMap((owner) => owner.work.map((work) => ({
         factId: work.definingFactId,
         taskId: work.taskId,
@@ -556,7 +578,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         perOccurrence: work.perOccurrence,
         periodExpression: work.periodExpression,
       })));
-      const differences = error ? [error] : compareTypedOracle(facts, question, workMinutes, fixtureTurn.oracle, projectedWorkloads);
+      const differences = error ? [error] : compareTypedOracle(facts, question, workMinutes, fixtureTurn.oracle, projectedWorkloads, workEstimateBases);
       const expectedClarification = fixtureTurn.oracle.questionCode !== null;
       const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification && question === null;
       const wrongRejection = fixtureTurn.oracle.inVNextScope && !expectedClarification && question !== null;
@@ -574,6 +596,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         ...facts,
         schedulerStatus: readiness,
         workMinutes,
+        workEstimateBases,
         previewMinutes: minutes,
         aiCalls: calls,
         rendererCalls: 0,
@@ -605,6 +628,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         ...facts,
         schedulerStatus: readiness,
         workMinutes,
+        workEstimateBases,
         previewMinutes: minutes,
         aiCalls: calls,
         rendererCalls: 0,
@@ -676,6 +700,41 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     expect(deadlineCase?.turns[2].oracle.temporal).toEqual([
       { task: 'report', kind: 'deadline', dateExpression: '2026-08-27', time: '13:00', level: 'hard' },
     ]);
+    expect(deadlineCase?.clock?.currentDate).toBe('2026-08-26');
+    expect(deadlineCase?.turns[1].oracle.questionCode).toBe('missing_schedulable_work');
+    expect(deadlineCase?.turns[2].oracle.questionCode).toBe('missing_schedulable_work');
+    expect(deadlineCase?.turns[3].oracle).toMatchObject({
+      questionCode: 'missing_effort_estimate',
+      workloads: [
+        { task: 'report', role: 'scope_total', amount: 100, unitCode: 'custom', unitLabel: '%' },
+        { task: 'report', role: 'completed', amount: 50, unitCode: 'custom', unitLabel: '%' },
+      ],
+      workloadAlternatives: [[
+        { task: 'report', role: 'completed', amount: 50, unitCode: 'custom', unitLabel: '%' },
+      ]],
+    });
+    expect(deadlineCase?.turns[4].oracle.workloadAlternatives).toHaveLength(3);
+    expect(deadlineCase?.turns[4].oracle.requireFutureWorkEstimate).toBe(true);
+    expect(hasFutureWorkEstimate(['work_total'])).toBe(true);
+    expect(hasFutureWorkEstimate(['direct_effort'])).toBe(true);
+    expect(hasFutureWorkEstimate(['observed_pace'])).toBe(false);
+    expect(hasFutureWorkEstimate([null])).toBe(false);
+    const observedPercentFacts: ObservedWorkload[] = [
+      { factId: 'scope', taskId: 'report-task', role: 'scope_total', amount: 100, unitCode: 'custom', unitLabel: '%', perOccurrence: false, periodExpression: null },
+      { factId: 'done', taskId: 'report-task', role: 'completed', amount: 50, unitCode: 'custom', unitLabel: '%', perOccurrence: false, periodExpression: null },
+    ];
+    expect(matchOracleWorkloads(observedPercentFacts, deadlineCase!.turns[3].oracle).matched).toBe(true);
+    expect(matchOracleWorkloads([observedPercentFacts[1]], deadlineCase!.turns[3].oracle).matched).toBe(true);
+    expect(matchOracleWorkloads([
+      observedPercentFacts[1],
+      { ...observedPercentFacts[1], factId: 'remaining', role: 'remaining', amount: 50 },
+    ], deadlineCase!.turns[4].oracle).matched).toBe(true);
+    const timeboxCase = vnextRealApiConversations.find(({ id }) => id === 'timebox-only-work');
+    expect(timeboxCase?.turns[0].oracle.workloads).toEqual([
+      { task: 'reading-aloud', role: 'target', amount: 30, unitCode: 'minute', unitLabel: '分' },
+    ]);
+    const separateWorkCase = vnextRealApiConversations.find(({ id }) => id === 'separate-work-then-correction');
+    expect(separateWorkCase?.turns[0].oracle).toMatchObject({ questionCode: 'missing_effort_estimate', projectedMinutes: 30 });
     const progressCase = vnextRealApiConversations.find(({ id }) => id === 'issue881-final-c-corrected-completion');
     expect(progressCase?.turns[2].oracle.projectedWorkloads).toEqual([
       { task: 'slides', role: 'remaining', amount: 8, unitCode: 'custom', unitLabel: '枚' },
@@ -730,6 +789,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
             providerCalls: { v5: v5Turn ? v5Turn.aiCalls + v5Turn.rendererCalls : null, vnext: vnextTurn.aiCalls },
             questions: { v5: v5Turn?.questionCode ?? null, vnext: vnextTurn.questionCode },
             workMinutes: { v5: v5Turn?.workMinutes ?? null, vnext: vnextTurn.workMinutes },
+            workEstimateBases: { v5: v5Turn?.workEstimateBases ?? [], vnext: vnextTurn.workEstimateBases },
             previewMinutes: { v5: v5Turn?.previewMinutes ?? null, vnext: vnextTurn.previewMinutes },
             wrongAcceptance: { v5: v5Turn?.wrongAcceptance ?? false, vnext: vnextTurn.wrongAcceptance },
             wrongRejection: { v5: v5Turn?.wrongRejection ?? false, vnext: vnextTurn.wrongRejection },
@@ -777,6 +837,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           temporal: [],
           schedulerStatus: null,
           workMinutes: null,
+          workEstimateBases: [],
           previewMinutes: null,
           aiCalls: 0,
           rendererCalls: 0,
@@ -813,6 +874,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           temporal: [],
           schedulerStatus: null,
           workMinutes: null,
+          workEstimateBases: [],
           previewMinutes: null,
           aiCalls: 0,
           rendererCalls: 0,
