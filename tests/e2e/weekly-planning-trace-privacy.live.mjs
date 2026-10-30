@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test';
 
 // Production check of the weekly-planning trace privacy boundary (Issue #45).
-// It writes one isolated synthetic session for the shared live account and
-// never calls /delete, /admin/sessions or /admin/archive, so traces that other
-// runs left on the shared account are neither read nor removed. The synthetic
-// session holds only masked fictitious text and expires after 180 days.
+// The shared-account test writes one isolated synthetic session and never
+// calls /delete, /admin/sessions or /admin/archive, so traces that other runs
+// left on the shared account are neither read nor removed. That session holds
+// only masked fictitious text and expires after 180 days.
+// Deletion runs only on a dedicated trace-only account (STUDYPLANNER_TRACE_E2E_*),
+// whose traces are all synthetic.
 
 function requireSecret(name) {
   const value = process.env[name]?.trim();
@@ -19,6 +21,8 @@ const livePassword = requireSecret('STUDYPLANNER_LIVE_PASSWORD');
 const liveAccessKey = process.env.STUDYPLANNER_LIVE_ACCESS_KEY?.trim() ?? '';
 const traceApiUrl = (process.env.STUDYPLANNER_LIVE_TRACE_API_URL?.trim()
   || 'https://studyplanner-ai-proxy.kame-website.workers.dev').replace(/\/$/, '');
+const traceAccountEmail = process.env.STUDYPLANNER_TRACE_E2E_EMAIL?.trim() ?? '';
+const traceAccountPassword = process.env.STUDYPLANNER_TRACE_E2E_PASSWORD?.trim() ?? '';
 const runId = process.env.GITHUB_RUN_ID?.trim() || `${Date.now()}`;
 
 const CONTRACT_VERSION = '2026-07-29-v4';
@@ -41,7 +45,7 @@ async function waitForAuthSurface(page) {
     .not.toBe('pending');
 }
 
-async function signIn(page) {
+async function signIn(page, email = liveEmail, password = livePassword) {
   await page.goto('/');
 
   const primaryNav = page.locator('.primary-bottom-nav');
@@ -59,8 +63,8 @@ async function signIn(page) {
   }
 
   await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
-  await page.getByLabel('メールアドレス').fill(liveEmail);
-  await page.getByLabel('パスワード', { exact: true }).fill(livePassword);
+  await page.getByLabel('メールアドレス').fill(email);
+  await page.getByLabel('パスワード', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'ログインする' }).click();
 
   const authError = page.locator('.inline-error, .app-notice.error').first();
@@ -193,4 +197,52 @@ test('weekly-planning trace: auth, consent gate, v2 append and restricted read o
   for (const secret of [SYNTHETIC_EMAIL, SYNTHETIC_PHONE, SYNTHETIC_URL_QUERY, SYNTHETIC_CREDENTIAL]) {
     expect(output).not.toContain(secret);
   }
+});
+
+test('weekly-planning trace: consent, append, non-reader 403 and idempotent delete on a dedicated trace account', async ({ page }) => {
+  test.skip(!traceAccountEmail || !traceAccountPassword,
+    'STUDYPLANNER_TRACE_E2E_EMAIL / STUDYPLANNER_TRACE_E2E_PASSWORD are not configured.');
+  await signIn(page, traceAccountEmail, traceAccountPassword);
+
+  const accepted = await traceCall(page, '/weekly-planning-trace/policy/accept', {});
+  report('dedicated_policy_accept', { status: accepted.status });
+  expect(accepted.status).toBe(200);
+
+  const key = `live-dedicated-${runId}`;
+  const started = await traceCall(page, '/weekly-planning-trace/session/start', {
+    idempotencyKey: `weekly-trace-${key}`,
+    conversationCorrelationKey: `conversation-${key}`,
+    session: sessionMetadata(0),
+  });
+  report('dedicated_session_start', { status: started.status, sessionId: started.body.sessionId ?? null });
+  expect(started.status).toBe(200);
+  const sessionId = String(started.body.sessionId);
+  const logicalConversationId = String(started.body.logicalConversationId);
+  const appended = await traceCall(page, '/weekly-planning-trace/append', {
+    session: { ...sessionMetadata(1), id: sessionId, logicalConversationId },
+    entries: [turnDiagnosticV2({
+      id: `${sessionId}-00000000`, sessionId, logicalConversationId, sequence: 0,
+      requestId: `request-${key}`,
+    }, new Date().toISOString())],
+  });
+  report('dedicated_append_v2', { status: appended.status, acceptedEntries: appended.body.acceptedEntries ?? null });
+  expect(appended.status).toBe(200);
+
+  // The dedicated account is not a trace reader.
+  const read = await traceCall(page, '/weekly-planning-trace/admin/entries', { sessionId });
+  report('dedicated_restricted_read', { status: read.status, errorCode: read.body.errorCode ?? null });
+  expect(read.status).toBe(403);
+  expect(read.body.errorCode).toBe('trace_reader_forbidden');
+
+  const deleted = await traceCall(page, '/weekly-planning-trace/delete', {});
+  report('dedicated_delete', { status: deleted.status, deletedEntries: deleted.body.deletedEntries, deletedSessions: deleted.body.deletedSessions });
+  expect(deleted.status).toBe(200);
+  expect(deleted.body.deletedEntries).toBeGreaterThanOrEqual(1);
+  expect(deleted.body.deletedSessions).toBeGreaterThanOrEqual(1);
+
+  const again = await traceCall(page, '/weekly-planning-trace/delete', {});
+  report('dedicated_delete_again', { status: again.status, deletedEntries: again.body.deletedEntries, deletedSessions: again.body.deletedSessions });
+  expect(again.status).toBe(200);
+  expect(again.body.deletedEntries).toBe(0);
+  expect(again.body.deletedSessions).toBe(0);
 });
