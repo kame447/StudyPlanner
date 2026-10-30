@@ -11,6 +11,11 @@ import type {
  * Lineage of every fact that has a lifecycle entry: the first version of its
  * supersede chain. A removed fact ends its lineage; a fact added afterwards
  * starts a new one even when its values are equal.
+ * Each version's root is resolved once per call and reused by the versions after it,
+ * so a long correction history costs linear, not quadratic, work (it is resolved in
+ * the transaction, projection, provider and renderer alike). Nothing is cached across
+ * calls. A malformed cycle still stops at the first repeated version and is not reused.
+ * Tests: __tests__/weeklyPlanningVNextWorkIdentity.test.ts (lineage).
  */
 export function vnextLineageIdByFactId(
   graph: Pick<WeeklyPlanningVNextGraph, 'factLifecycles'>,
@@ -22,15 +27,27 @@ export function vnextLineageIdByFactId(
     }
   }
   const lineage = new Map<string, string>();
+  // Roots of versions whose walk ended at a first version; only these are reused.
+  const settled = new Map<string, string>();
   for (const entry of graph.factLifecycles) {
+    const path = [entry.factId];
+    const seen = new Set(path);
     let root = entry.factId;
-    const seen = new Set<string>([root]);
-    while (predecessor.has(root)) {
+    let resolved = settled.get(root);
+    let cyclic = false;
+    while (resolved === undefined && predecessor.has(root)) {
       root = predecessor.get(root)!;
-      if (seen.has(root)) break; // malformed cycle: stop rather than loop
+      if (seen.has(root)) { cyclic = true; break; } // malformed cycle: stop rather than loop
       seen.add(root);
+      resolved = settled.get(root);
+      path.push(root);
     }
-    lineage.set(entry.factId, root);
+    if (cyclic) {
+      lineage.set(entry.factId, root);
+    } else {
+      for (const factId of path) settled.set(factId, resolved ?? root);
+      lineage.set(entry.factId, resolved ?? root);
+    }
   }
   return lineage;
 }

@@ -114,3 +114,57 @@ describe('VNext work identity kernel', () => {
     expect(lineages.get('reintroduced-completed')).toBe('reintroduced-completed');
   });
 });
+
+describe('lineage resolution', () => {
+  type Entry = WeeklyPlanningVNextGraph['factLifecycles'][number];
+  const version = (factId: string, status: Entry['status'], supersededByFactId: string | null = null): Entry =>
+    ({ factId, status, createdRevision: 1, terminalRevision: status === 'active' ? null : 2, supersededByFactId });
+  /** The walk from each version to the first one, as it was before roots were reused: the meaning oracle. */
+  function walkEachVersion(factLifecycles: Entry[]): Map<string, string> {
+    const predecessor = new Map(factLifecycles.filter((e) => e.status === 'superseded' && e.supersededByFactId)
+      .map((e) => [e.supersededByFactId!, e.factId]));
+    return new Map(factLifecycles.map((entry) => {
+      let root = entry.factId;
+      const seen = new Set([root]);
+      while (predecessor.has(root)) {
+        root = predecessor.get(root)!;
+        if (seen.has(root)) break;
+        seen.add(root);
+      }
+      return [entry.factId, root];
+    }));
+  }
+  const chain = (prefix: string, n: number) => Array.from({ length: n }, (_, i) =>
+    version(`${prefix}${i}`, i < n - 1 ? 'superseded' : 'active', i < n - 1 ? `${prefix}${i + 1}` : null));
+
+  it.each([
+    ['one chain, oldest first', chain('a', 6)],
+    ['one chain, newest first', chain('a', 6).reverse()],
+    ['two interleaved chains', chain('a', 4).flatMap((e, i) => [e, chain('b', 4)[i]])],
+    // Removed then re-added with equal values: a new fact, a new lineage.
+    ['remove and re-add', [version('w1', 'superseded', 'w2'), version('w2', 'removed'), version('w3', 'active')]],
+    // Malformed data: the walk stops at the first repeated version instead of looping.
+    ['two-version cycle', [version('x', 'superseded', 'y'), version('y', 'superseded', 'x')]],
+    ['a tail into a cycle', [version('t', 'superseded', 'c1'), version('c1', 'superseded', 'c2'), version('c2', 'superseded', 'c1')]],
+  ])('has the same meaning as walking from each version: %s', (_name, factLifecycles) => {
+    expect(vnextLineageIdByFactId({ factLifecycles })).toEqual(walkEachVersion(factLifecycles));
+  });
+
+  it('resolves a long correction history with linear work, in either order', () => {
+    // Map reads, not wall-clock time: a bound that does not depend on the machine.
+    const reads = (factLifecycles: Entry[]) => {
+      const get = Map.prototype.get;
+      let count = 0;
+      Map.prototype.get = function (this: Map<unknown, unknown>, key: unknown) { count += 1; return get.call(this, key); };
+      try {
+        const lineage = vnextLineageIdByFactId({ factLifecycles });
+        return { count, lineage };
+      } finally { Map.prototype.get = get; }
+    };
+    for (const versions of [chain('v', 1000), chain('v', 1000).reverse()]) {
+      const { count, lineage } = reads(versions);
+      expect(lineage.get('v999')).toBe('v0');
+      expect(count).toBeLessThanOrEqual(6 * versions.length);
+    }
+  });
+});
