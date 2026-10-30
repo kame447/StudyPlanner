@@ -1,0 +1,78 @@
+name: Home contrast settled-paint diagnostic
+
+on:
+  push:
+    branches:
+      - diagnose/home-contrast-settled-paint
+    paths:
+      - tests/e2e/home-content-responsive.spec.mjs
+      - .github/workflows/home-contrast-diagnostic.yml
+
+permissions:
+  contents: read
+
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+
+concurrency:
+  group: home-contrast-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contrast:
+    name: home contrast (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --user 1001
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Snapshot application manifests
+        run: sha256sum package.json package-lock.json > /tmp/home-contrast-manifests.sha256
+      - name: Install pinned isolated test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+      - name: Verify unchanged application manifests
+        run: sha256sum -c /tmp/home-contrast-manifests.sha256
+      - name: Build production bundle
+        run: npm run build
+      - name: Run only three dark contrast cases, three times, no retries
+        shell: bash
+        env:
+          DIAGNOSTIC_BROWSER: ${{ matrix.browser }}
+        run: |
+          set -euo pipefail
+          cat > tests/e2e/home-contrast.diagnostic.config.mjs <<'CONFIG'
+          import base from './playwright.config.mjs';
+          export default {
+            ...base,
+            testMatch: '**/home-content-responsive.spec.mjs',
+            retries: 0,
+            workers: 1,
+            projects: [{ name: process.env.DIAGNOSTIC_BROWSER, use: { ...base.projects[0].use, browserName: process.env.DIAGNOSTIC_BROWSER } }],
+          };
+          CONFIG
+          ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/home-contrast.diagnostic.config.mjs --grep 'desktop (1280x720|1440x900|1920x1080) dark uses readable columns inside one viewport' --repeat-each=3 --retries=0
+      - name: Upload bounded diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: home-contrast-${{ matrix.browser }}-${{ github.sha }}
+          path: |
+            artifacts/playwright-results/
+            artifacts/playwright-results.json
+          retention-days: 7
+          if-no-files-found: warn
