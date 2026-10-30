@@ -174,7 +174,7 @@ it.each(['delete', 'undo'] as const)('%s rejection after persistence repairs sur
   expect(gate.dispatch).toHaveBeenCalledTimes(1);
   expect(state.studySubjects).toEqual(await fixture.repository.getStudySubjects('owner'));
   expect(state.plannerDataAvailability.status).toBe('ready');
-  expect(showNotice.mock.calls.some(call => call[0] === failure.message && call[1] === 'error')).toBe(true);
+  expect(showNotice).toHaveBeenCalledWith(writer === 'delete' ? '教科を削除できませんでした。' : '復元できませんでした。', 'error');
 });
 
 it('retained Undo refuses an already observed same-ID replacement before writing', async () => {

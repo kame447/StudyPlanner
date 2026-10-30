@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { createTimetableTermId } from '../domain/timetableDataNormalization';
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -135,7 +136,7 @@ describe('usePlannerDataState planner-data read authority', () => {
       const failure = new Error('month event save failed');
       repository.upsertMonthEvent.mockRejectedValueOnce(failure);
       await act(async () => {
-        await expect(readState().saveMonthEvent({ ...draft, date: '2027-01-15', endDate: '2027-01-15' }, before[0].id)).rejects.toBe(failure);
+        await expect(readState().saveMonthEvent({ ...draft, date: '2027-01-15', endDate: '2027-01-15' }, before[0].id)).rejects.toEqual(new UserFacingError("月の主要予定を保存できませんでした。"));
       });
       expect(readState().monthEvents).toEqual(before);
       expect(readState().selectedDate).toBe('2026-12-15');
@@ -172,7 +173,7 @@ describe('usePlannerDataState planner-data read authority', () => {
       }
     });
 
-    expect(caught).toBe(failure);
+    expect(caught).toEqual(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。"));
     expect(readState().plannerDataAvailability).toMatchObject({
       status: 'unavailable',
       ownerId: 'owner-a',
@@ -188,7 +189,7 @@ describe('usePlannerDataState planner-data read authority', () => {
     const renderer = create(<Harness userId="owner-a" />);
 
     await act(async () => {
-      await expect(readState().loadPlannerData('owner-a')).rejects.toBe(failure);
+      await expect(readState().loadPlannerData('owner-a')).rejects.toEqual(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。"));
     });
     expect(readState().plannerDataAvailability.status).toBe('unavailable');
 
@@ -228,7 +229,7 @@ describe('usePlannerDataState planner-data read authority', () => {
       }
     });
 
-    expect(caught).toBe(failure);
+    expect(caught).toEqual(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。"));
     expect(readState().plannerDataAvailability).toMatchObject({
       status: 'stale',
       ownerId: 'owner-a',
@@ -495,7 +496,7 @@ describe('usePlannerDataState transform orchestration', () => {
     const failure = new Error('actual save failed');
     repository.upsertActualWithMaterialProgress.mockRejectedValueOnce(failure);
     await act(async () => {
-      await expect(saveProgressActual(mode, progressDraft(mode))).rejects.toBe(failure);
+      await expect(saveProgressActual(mode, progressDraft(mode))).rejects.toEqual(new UserFacingError("記録を保存できませんでした。"));
     });
     expect(readState().actuals).toEqual([]);
     expect(readState().studyMaterials).toEqual([material]);
@@ -505,11 +506,11 @@ describe('usePlannerDataState transform orchestration', () => {
     const savedMaterials = readState().studyMaterials;
     repository.upsertActualWithMaterialProgress.mockRejectedValueOnce(failure);
     await act(async () => {
-      await expect(saveProgressActual(mode, { ...progressDraft(mode), note: 'failed edit' }, savedActual.id)).rejects.toBe(failure);
+      await expect(saveProgressActual(mode, { ...progressDraft(mode), note: 'failed edit' }, savedActual.id)).rejects.toEqual(new UserFacingError('記録を保存できませんでした。'));
     });
     expect(readState().actuals).toEqual([savedActual]);
     expect(readState().studyMaterials).toBe(savedMaterials);
-    expect(showNotice).toHaveBeenLastCalledWith('actual save failed', 'error');
+    expect(showNotice).toHaveBeenLastCalledWith('記録を保存できませんでした。', 'error');
     renderer.unmount();
   });
 });
@@ -603,7 +604,7 @@ describe('usePlannerDataState overlapping Todo mutations', () => {
     });
     const expectedOthers = readState().todos.filter(item => item.id !== first.id);
     const failure = new Error('first failed');
-    await act(async () => { pending.reject(failure); expect(await failed).toBe(failure); });
+    await act(async () => { pending.reject(failure); expect(await failed).toEqual(new UserFacingError(operation === 'save' ? 'Todoを保存できませんでした。' : 'Todoを削除できませんでした。')); });
     expect(readState().todos.find((item) => item.id === first.id)).toEqual(first);
     expect(readState().todos.filter(item => item.id !== first.id)).toEqual(expectedOthers);
     renderer.unmount();
@@ -635,7 +636,7 @@ describe('usePlannerDataState overlapping Todo mutations', () => {
     });
     await act(async () => { await readState().saveTodo({ ...second, title: 'saved' }, second.id); });
     const failure = new Error('linked mutation rejected');
-    await act(async () => { pending.reject(failure); expect(await failed).toBe(failure); });
+    await act(async () => { pending.reject(failure); expect(await failed).toEqual(new UserFacingError(operation === 'schedule' ? 'Todoを予定化できませんでした。' : '予定を削除できませんでした。')); });
     expect(readState().todos.find(item => item.id === first.id)).toEqual(first);
     expect(readState().todos.find(item => item.id === second.id)?.title).toBe('saved');
     renderer.unmount();
@@ -667,4 +668,54 @@ describe('usePlannerDataState overlapping Todo mutations', () => {
     renderer.unmount();
   });
 
+});
+
+describe('planner user-facing error boundary', () => {
+  beforeEach(() => { vi.clearAllMocks(); latestState = null; resetRepositoryMocks(); });
+
+  it.each([
+    Object.assign(new Error('FirebaseError: synthetic-secret https://internal.invalid'), { code: 'permission-denied', customData: { token: 'synthetic-secret' } }),
+    { code: 'unavailable', message: 'synthetic-secret raw API error' },
+  ])('does not expose unknown persistence details to notices or the caller', async failure => {
+    const renderer = create(<Harness userId="owner-a" />);
+    await act(async () => { await readState().loadPlannerData('owner-a'); });
+    repository.upsertMonthEvent.mockRejectedValueOnce(failure);
+    let caught: unknown;
+    await act(async () => {
+      caught = await readState().saveMonthEvent({ ...createEmptyMonthEventDraft('owner-a', '2026-10-30'), title: 'Synthetic event' }).catch(error => error);
+    });
+    expect(caught).toEqual(new UserFacingError('月の主要予定を保存できませんでした。'));
+    expect(caught).not.toBe(failure);
+    expect(caught).not.toHaveProperty('code');
+    expect(caught).not.toHaveProperty('customData');
+    expect(caught).not.toHaveProperty('cause');
+    expect(showNotice).toHaveBeenLastCalledWith('月の主要予定を保存できませんでした。', 'error');
+    expect(JSON.stringify(showNotice.mock.calls)).not.toContain('synthetic-secret');
+    expect(failure.message).toContain('synthetic-secret'); // Do not mutate upstream diagnostics.
+    expect(repository.upsertMonthEvent).toHaveBeenCalledTimes(1);
+    renderer.unmount();
+  });
+
+  it('retains a controlled recovery message and the same safe error instance', async () => {
+    const renderer = create(<Harness userId="owner-a" />);
+    await act(async () => { await readState().loadPlannerData('owner-a'); });
+    const recovery = new UserFacingError('保存結果を確認してから、未保存分だけ再試行してください。');
+    repository.upsertMonthEvent.mockRejectedValueOnce(recovery);
+    await act(async () => {
+      await expect(readState().saveMonthEvent({ ...createEmptyMonthEventDraft('owner-a', '2026-10-30'), title: 'Synthetic event' })).rejects.toBe(recovery);
+    });
+    expect(showNotice).toHaveBeenLastCalledWith(recovery.message, 'error');
+    expect(repository.upsertMonthEvent).toHaveBeenCalledTimes(1);
+    renderer.unmount();
+  });
+
+  it('preserves local required-title guidance without issuing a write', async () => {
+    const renderer = create(<Harness userId="owner-a" />);
+    await act(async () => { await readState().loadPlannerData('owner-a'); });
+    await act(async () => {
+      await expect(readState().saveTodo({ userId: 'owner-a', title: '', subject: '', type: 'study', estimatedMinutes: null, dueDate: null, memo: '' })).rejects.toEqual(new UserFacingError('Todoのタイトルを入れてください。'));
+    });
+    expect(repository.upsertTodo).not.toHaveBeenCalled();
+    renderer.unmount();
+  });
 });

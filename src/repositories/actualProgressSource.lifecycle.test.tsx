@@ -71,7 +71,7 @@ describe('Actual provenance through real persistence and UI lifecycles', () => {
     await act(async () => { renderer = create(<Harness />); });
     await act(async () => { await state.loadPlannerData('owner'); });
     const failed = vi.spyOn(boundary.repository, 'deleteMonthEvent').mockRejectedValueOnce(Error('offline'));
-    await act(async () => { await expect(state.deleteMonthEvent(state.monthEvents[0])).rejects.toThrow('offline'); });
+    await act(async () => { await expect(state.deleteMonthEvent(state.monthEvents[0])).rejects.toThrow('月の主要予定を削除できませんでした。'); });
     expect(state.monthEvents).toHaveLength(1); expect(state.actuals[0].progressSource).toBeUndefined();
     failed.mockRestore();
     await act(async () => { await state.deleteMonthEvent(state.monthEvents[0]); });

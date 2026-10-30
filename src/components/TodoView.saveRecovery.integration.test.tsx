@@ -28,10 +28,11 @@ function change(name: string, value: string) {
 }
 
 it.each((['edit', 'schedule'] as const).flatMap(operation => [
-  { operation, failure: 'Error', createError: () => new Error('controlled save failure'), notice: 'controlled save failure' },
-  { operation, failure: 'DOMException', createError: () => new DOMException('controlled save failure', 'QuotaExceededError'), notice: 'controlled save failure' },
-  { operation, failure: 'provider error', createError: () => Object.assign(new Error('controlled save failure'), { code: ' storage/unavailable ' }), notice: 'storage/unavailable: controlled save failure' },
-]))('retains failed Todo $operation input after $failure and persists one explicit retry', async ({ operation, createError, notice }) => {
+  { operation, failure: 'Error', createError: () => new Error('controlled save failure') },
+  { operation, failure: 'DOMException', createError: () => new DOMException('controlled save failure', 'QuotaExceededError') },
+  { operation, failure: 'provider error', createError: () => Object.assign(new Error('controlled save failure'), { code: ' storage/unavailable ' }) },
+]))('retains failed Todo $operation input after $failure and persists one explicit retry', async ({ operation, createError }) => {
+  const notice = operation === 'edit' ? 'Todoを保存できませんでした。' : 'Todoを予定化できませんでした。';
   const { repository } = createLocalFixture();
   await repository.upsertTodo(originalTodo);
   boundary.repository = { ...repository };
@@ -65,7 +66,10 @@ it.each((['edit', 'schedule'] as const).flatMap(operation => [
   expect(await repository.getPlans('owner')).toEqual([]);
   expect.soft(stayedOpenWhilePending).toBe(true);
   expect(renderer!.root.findAllByType('form')).toHaveLength(1);
-  expect(renderer!.root.findByProps({ role: 'alert' }).children.join('')).toContain('controlled save failure');
+  const errorText = renderer!.root.findByProps({ role: 'alert' }).children.join('');
+  expect(errorText).toBe(notice);
+  expect(errorText).not.toContain('controlled save failure');
+  expect(errorText).not.toContain('storage/unavailable');
   expect(showNotice).toHaveBeenCalledWith(notice, 'error');
   expect(field(renderer!.root, operation === 'edit' ? 'タイトル' : '開始時刻').props.value)
     .toBe(operation === 'edit' ? '失敗しても残す課題' : '18:45');

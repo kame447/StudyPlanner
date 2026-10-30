@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -275,7 +276,7 @@ describe('shared Actual pending admission', () => {
     await expectBlocked(() => state.saveActual(A, draft()), reason);
     await expectBlocked(() => state.linkStandaloneActualToPlan(STANDALONE, A), reason);
     const failure = new Error('Delete rejected');
-    expect(await finish(gate, done, failDelete ? failure : undefined)).toBe(failDelete ? failure : undefined);
+    expect(await finish(gate, done, failDelete ? failure : undefined)).toEqual(failDelete ? new UserFacingError("記録を削除できませんでした。") : undefined);
     expect(state.getActualActionBlockReason(occurrence(A))).toBeNull();
     if (failDelete) expect(state.getActualActionBlockReason(LINKED)).toBeNull();
     await act(async () => { await state.saveActual(A, draft({ note: 'After settled delete' })); });
@@ -293,7 +294,7 @@ describe('shared Actual pending admission', () => {
     const { done } = await start(save, gate);
     const pending = state.actuals[0];
     expect(state.getActualActionBlockReason(pending)).not.toBeNull();
-    expect(await finish(gate, done, failure)).toBe(failure);
+    expect(await finish(gate, done, failure)).toEqual(new UserFacingError("記録を保存できませんでした。"));
     expect(state.actuals).toEqual(existing ? [existing] : []);
     expect(state.getActualActionBlockReason(existing ?? (isLinked ? occurrence(A) : {
       userId: 'owner', planId: null, occurrenceDate: DATE,
@@ -322,7 +323,7 @@ describe('shared Actual pending admission', () => {
     expect((await fixture.gateway.readActuals())).toHaveLength(1);
     const reason = state.getActualActionBlockReason(occurrence(A));
     await expectBlocked(() => state.saveActual(A, input), reason);
-    expect(await finish({ release }, done)).toBe(failure);
+    expect(await finish({ release }, done)).toEqual(new UserFacingError("記録を保存できませんでした。"));
     expect(state.actuals).toEqual([]);
     expect(await fixture.repository.getActuals('owner')).toEqual([]);
     expect((await fixture.repository.getStudyMaterials('owner'))[0].currentUnit).toBe(20);

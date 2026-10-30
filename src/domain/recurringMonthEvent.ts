@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { addDays } from '../lib/date';
 import { getMonthEventOccurrenceStartDate, getMonthEventSpanDays, getPreviousMonthEventOccurrenceDate } from '../lib/monthEvents';
 import { sanitizeMonthEventDraft, validateMonthEventDraft } from '../lib/monthEventEditor';
@@ -5,7 +6,7 @@ import { createMonthEventDraftFromEvent, createMonthEventFromDraft } from './pla
 import type { MonthEvent, MonthEventDraft } from '../types/domain';
 
 export type MonthEventEditScope = 'single' | 'future';
-export class MonthEventEditValidationError extends Error {}
+export class MonthEventEditValidationError extends UserFacingError {}
 export interface MonthEventEditRequest {
   source: MonthEvent;
   occurrenceDate: string;
@@ -26,7 +27,7 @@ export function buildRecurringMonthEventEdit(
 ): { monthEvents: MonthEvent[]; editedEvent: MonthEvent } {
   const start = getMonthEventOccurrenceStartDate(source, occurrenceDate);
   if (source.repeat === 'none' || !start || source.userId !== draft.userId) {
-    throw new Error('予定が更新されました。現在の予定を開き直してください。');
+    throw new UserFacingError('予定が更新されました。現在の予定を開き直してください。');
   }
   if (scope === 'future' && draft.date < start) {
     throw new MonthEventEditValidationError('これ以降の予定は、選んだ回より前の日へ変更できません。この予定だけ変更するか、開始日を戻してください。');
@@ -38,7 +39,7 @@ export function buildRecurringMonthEventEdit(
     ? { ...draft, repeat: 'none', repeatUntil: null, excludedDates: [] }
     : { ...draft, repeatUntil: source.repeatUntil, excludedDates: source.excludedDates.filter(date => date >= start) });
   const error = validateMonthEventDraft(nextDraft);
-  if (error) throw new Error(error);
+  if (error) throw new UserFacingError(error);
   const previous = getPreviousMonthEventOccurrenceDate(source, start);
   if (scope === 'future' && !previous) {
     const editedEvent = createMonthEventFromDraft(nextDraft, source);

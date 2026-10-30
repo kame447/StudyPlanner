@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import {
   useCallback,
   useLayoutEffect,
@@ -9,7 +10,7 @@ import {
 } from 'react';
 import type { ShowNotice } from './useNoticeState';
 
-export class PlannerMutationScopeExpiredError extends Error {
+export class PlannerMutationScopeExpiredError extends UserFacingError {
   constructor() {
     super('操作中にアカウントまたはデータが切り替わりました。現在の画面を確認してください。');
     this.name = 'PlannerMutationScopeExpiredError';

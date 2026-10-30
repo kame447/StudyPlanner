@@ -77,10 +77,10 @@ describe('automatic streak protection and display lifetime', () => {
     function Harness() { state = useStudyStreak('owner', '2026-10-09', repo); return null; }
     let renderer!: ReturnType<typeof create>;
     await act(async () => { renderer = create(<Harness />); });
-    expect(state).toMatchObject({ status: 'error', model: null, readError: 'permission-denied' });
+    expect(state).toMatchObject({ status: 'error', model: null, readError: '学習履歴を読み込めませんでした。' });
     expect(repo.useRestDay).not.toHaveBeenCalled();
     await act(async () => state.retry());
-    expect(state.saveError).toBe('offline');
+    expect(state.saveError).toBe('お休みチケットの保存結果を確認できませんでした。確認し直してから操作してください。');
     expect(state.model?.availableTickets).toBe(1);
     await act(async () => state.retry());
     expect(state.model?.availableTickets).toBe(0);
@@ -110,7 +110,7 @@ describe('automatic streak protection and display lifetime', () => {
     expect(state).toMatchObject({ status: 'ready', refreshing: true });
     expect(state.model?.currentStreak).toBe(7);
     await act(async () => refresh.reject(new Error('offline')));
-    expect(state).toMatchObject({ status: 'ready', refreshing: false, readError: 'offline' });
+    expect(state).toMatchObject({ status: 'ready', refreshing: false, readError: '学習履歴を読み込めませんでした。' });
     expect(state.model?.currentStreak).toBe(7);
     expect(repo.useRestDay).not.toHaveBeenCalled();
     act(() => renderer.unmount());
@@ -258,7 +258,7 @@ describe('explicit streak retry scope', () => {
     await act(async () => { renderer = create(<Harness source={emptyHistory()} />); });
     vi.mocked(repo.read).mockRejectedValueOnce(new Error('offline'));
     await act(async () => state.retry());
-    expect(state.readError).toBe('offline');
+    expect(state.readError).toBe('学習履歴を読み込めませんでした。');
     await act(async () => renderer.update(<Harness source={emptyHistory()} />));
     await act(async () => renderer.update(<Harness source={emptyHistory()} />));
     expect(vi.mocked(repo.read).mock.calls.map(([, options]) => options?.refresh)).toEqual([false, true, true, false]);
