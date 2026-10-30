@@ -103,7 +103,8 @@ function presentedIntake(graphRevision: number): PlanningIntakeState {
 
 function applyTurn(state: WeeklyPlanningVNextState, delta: VNextTurnDelta, turnKey: string, sourceText: string): WeeklyPlanningVNextState {
   const result = applyWeeklyPlanningVNextTurn(state, delta, {
-    turnKey, acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, expectedRevision: state.graph.revision, conversationId: CONVERSATION, turnId: turnKey, sourceText,
+    turnKey, acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' },
+    defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, expectedRevision: state.graph.revision, conversationId: CONVERSATION, turnId: turnKey, sourceText,
   });
   if (result.status !== 'applied') throw new Error(`${result.status}: ${'errors' in result ? JSON.stringify(result.errors) : ''}`);
   return result.state;

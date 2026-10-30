@@ -282,6 +282,8 @@ export interface VNextTurnContext {
   weekStartsOn: WeeklyPlanningWeekStartsOn;
   /** The planning window in force when this turn was stated. */
   planningHorizon: { startDate: string; endDate: string };
+  /** The selected week to use when this turn leaves no single active window. */
+  defaultPlanningHorizon: { startDate: string; endDate: string };
   expectedRevision: number;
   conversationId: string;
   turnId: string;

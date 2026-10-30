@@ -20,6 +20,8 @@ export interface WeeklyPlanningVNextInterpretationClock {
   weekStartsOn: WeeklyPlanningWeekStartsOn;
   planningStartDate: string;
   planningEndDate: string;
+  /** The selected week, retained even while a stated window moves the effective horizon. */
+  defaultPlanningHorizon: { startDate: string; endDate: string };
   timeZone: string;
 }
 

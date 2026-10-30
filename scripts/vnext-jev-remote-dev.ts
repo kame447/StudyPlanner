@@ -24,7 +24,7 @@ export async function prepareVNextJevDevCase(item: VNextJevComparisonCase) {
     add: [{ kind: 'task', localId: 'task', category: 'study', title: item.seed.taskTitle }, ...item.seed.facts],
     patch: [], remove: [], relate: [], defer: [],
   }, { expectedRevision: 0, acceptedDate: item.seed.acceptedDate, weekStartsOn: 'monday',
-    planningHorizon: { startDate: week.range.start, endDate: week.range.end }, turnKey: 'seed',
+    planningHorizon: { startDate: week.range.start, endDate: week.range.end }, defaultPlanningHorizon: { startDate: week.range.start, endDate: week.range.end }, turnKey: 'seed',
     conversationId, turnId: 'seed', sourceText: 'Synthetic development seed' });
   if (seeded.status !== 'applied') throw new Error('Development seed rejected.');
   const state = seeded.state;

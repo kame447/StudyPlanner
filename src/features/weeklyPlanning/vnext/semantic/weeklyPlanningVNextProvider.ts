@@ -74,6 +74,7 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
     acceptedDate: input.clock.currentDate,
     weekStartsOn: input.clock.weekStartsOn,
     planningHorizon: { startDate: input.clock.planningStartDate, endDate: input.clock.planningEndDate },
+    defaultPlanningHorizon: input.clock.defaultPlanningHorizon,
     turnKey: `native-dry-run:${input.state.graph.revision}`,
     conversationId: 'native-provider-dry-run', turnId: 'native-provider-dry-run', sourceText: input.userText,
   });

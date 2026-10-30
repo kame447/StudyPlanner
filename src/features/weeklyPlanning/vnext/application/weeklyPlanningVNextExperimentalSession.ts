@@ -71,8 +71,11 @@ export interface WeeklyPlanningVNextExperimentalScope {
   ownerId: string;
   weekStartDate: string;
   conversationId: string;
-  /** clock.planningStartDate/EndDate is the selected week: the horizon until a planning window is stated. */
-  clock: WeeklyPlanningVNextInterpretationClock;
+  /**
+   * clock.planningStartDate/EndDate is the selected week: the horizon until a planning window is
+   * stated, and the default the session gives the model and the transaction.
+   */
+  clock: Omit<WeeklyPlanningVNextInterpretationClock, 'defaultPlanningHorizon'>;
   /** Earliest placement time on clock.currentDate (HH:MM): the time the turn is planned from. */
   notBeforeTime: string;
 }
@@ -253,8 +256,10 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
 
   // The model reads dates against the horizon the state currently has (a stated planning window moves it).
   const horizon = schedulingContext(scope, ports, state);
-  const clock = { ...scope.clock, planningStartDate: horizon.planningStartDate || scope.clock.planningStartDate,
-    planningEndDate: horizon.planningEndDate || scope.clock.planningEndDate };
+  const clock: WeeklyPlanningVNextInterpretationClock = { ...scope.clock,
+    planningStartDate: horizon.planningStartDate || scope.clock.planningStartDate,
+    planningEndDate: horizon.planningEndDate || scope.clock.planningEndDate,
+    defaultPlanningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate } };
   const interpretation = await ports.interpret({
     client: ports.client, state, projection: before, presentedQuestion, userText: params.userText, clock,
     // The reply the question was shown in: what the user's words answer (e.g. an ordinal over its options).
@@ -299,6 +304,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
         // Dates are fixed against the same horizon and week the model read them with.
         weekStartsOn: clock.weekStartsOn,
         planningHorizon: { startDate: clock.planningStartDate, endDate: clock.planningEndDate },
+        defaultPlanningHorizon: clock.defaultPlanningHorizon,
         expectedRevision: state.graph.revision,
         conversationId: scope.conversationId,
         turnId: params.turnId,

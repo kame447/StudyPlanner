@@ -11,7 +11,7 @@ export async function runNamedPeriodReproduction(options: { outputPath: string; 
   const temporary = `${options.outputPath}.${process.pid}.partial`;
   const artifact = { codeHead: options.codeHead, syntheticOnly: true,
     userText: '今週はゼミ発表のスライドを仕上げたいです。全部で20枚で、もう12枚できています。',
-    clock: { currentDate: '2026-11-02', weekStartsOn: 'monday' as const, planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
+    clock: { defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, currentDate: '2026-11-02', weekStartsOn: 'monday' as const, planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' },
     completed: false, physicalCalls: 0, runs: [] as unknown[] };
   const persist = async () => {
     await writeFile(temporary, JSON.stringify(artifact, null, 2) + '\n', { mode: 0o600 });

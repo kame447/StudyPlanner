@@ -5,7 +5,7 @@ import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPl
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 
 const empty = (): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
-const context = { expectedRevision: 0, turnKey: 'seed', conversationId: 'oracle-control', turnId: 'turn', sourceText: 'Synthetic control', weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-10-30' };
+const context = { expectedRevision: 0, turnKey: 'seed', conversationId: 'oracle-control', turnId: 'turn', sourceText: 'Synthetic control', weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-10-30' };
 function apply(state: WeeklyPlanningVNextState, delta: VNextTurnDelta): WeeklyPlanningVNextState {
   const result = applyWeeklyPlanningVNextTurn(state, delta, { ...context, expectedRevision: state.graph.revision, turnKey: `turn:${state.graph.revision}` });
   if (result.status !== 'applied') throw new Error(JSON.stringify(result));

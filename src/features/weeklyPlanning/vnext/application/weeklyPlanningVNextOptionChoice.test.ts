@@ -26,7 +26,8 @@ function stateWith(adds: VNextAddFact[]): WeeklyPlanningVNextState {
   const result = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), { add: [
     { kind: 'task', localId: 't', category: 'study', title: '数学プリント' }, ...adds,
   ], patch: [], remove: [], relate: [], defer: [] }, {
-    acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: 'seed', expectedRevision: 0, conversationId: 'c', turnId: 'seed', sourceText: 'seed',
+    acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' },
+    defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: 'seed', expectedRevision: 0, conversationId: 'c', turnId: 'seed', sourceText: 'seed',
   });
   if (result.status !== 'applied') throw new Error(JSON.stringify(result));
   return result.state;
@@ -37,7 +38,7 @@ function input(state: WeeklyPlanningVNextState, userText: string): WeeklyPlannin
   return { client: {} as OpenAiCompatibleClient, state, projection, presentedQuestion, userText,
     presentedText: presentedQuestion ? presentWeeklyPlanningVNextQuestion(state, presentedQuestion).text : null,
     clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo',
-    weekStartsOn: 'monday' } };
+    weekStartsOn: 'monday', defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' } } };
 }
 const fullReadingResult: WeeklyPlanningVNextInterpretation = { status: 'interpreted',
   delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
@@ -104,7 +105,8 @@ describe('VNext closed-set option choice before the full reading', () => {
       { kind: 'task', localId: 't', category: 'study', title: '数学' }, pages('a', 'remaining', 20),
       { ...pages('b', 'remaining', 8), unitCode: 'custom', unitLabel: '問' } as VNextAddFact,
     ], patch: [], remove: [], relate: [], defer: [] }, {
-      acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: `${long}:t1`, expectedRevision: 0, conversationId: long, turnId: 't1', sourceText: 'seed',
+      acceptedDate: '2026-11-02', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' },
+    defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: `${long}:t1`, expectedRevision: 0, conversationId: long, turnId: 't1', sourceText: 'seed',
     });
     if (result.status !== 'applied') throw new Error(JSON.stringify(result));
     const sent: CandidateChoiceRequest[] = [];

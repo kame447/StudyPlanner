@@ -20,7 +20,7 @@ const workloadChanges = (amount: number | null) => ({ amount, unitCode: null, un
   quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null });
 function turn(state: WeeklyPlanningVNextState, changes: VNextTurnDelta, key = `turn-${state.graph.revision}`) {
   return applyWeeklyPlanningVNextTurn(state, changes, { expectedRevision: state.graph.revision,
-    weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: key, conversationId: 'c', turnId: key, sourceText: 'user evidence' });
+    weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: key, conversationId: 'c', turnId: key, sourceText: 'user evidence' });
 }
 function applied(state: WeeklyPlanningVNextState, changes: VNextTurnDelta): WeeklyPlanningVNextState {
   const result = turn(state, changes);
@@ -67,6 +67,51 @@ const portedFacts: { fact: VNextAddFact; collection: 'planningWindows' | 'recurr
 ];
 
 describe('experimental VNext typed transaction', () => {
+  it.each(['remove-add', 'patch'] as const)('anchors a deadline in the final replacement window with %s (S02)', replacement => {
+    const state = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task,
+      { kind: 'planning_window', localId: 'old-window', windowKind: 'absolute', value: '2026-11-09/2026-11-15', start: '2026-11-09', end: '2026-11-15' },
+    ] }));
+    const snapshot = structuredClone(state);
+    const deadline: VNextAddFact = { kind: 'temporal_constraint', localId: 'deadline', taskRef: { factId: state.graph.tasks[0].id }, targetRef: { factId: state.graph.tasks[0].id },
+      constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: 'weekday:friday', namedTimePeriod: null, startTime: null, endTime: '13:00', precision: 'exact' };
+    const result = applyWeeklyPlanningVNextTurn(state, delta({
+      add: [deadline, ...(replacement === 'remove-add' ? [{ kind: 'planning_window' as const, localId: 'new-window', windowKind: 'absolute' as const,
+        value: '2026-11-16/2026-11-22', start: '2026-11-16', end: '2026-11-22' }] : [])],
+      patch: replacement === 'patch' ? [{ kind: 'planning_window', localId: 'new-window', targetFactId: state.graph.planningWindows[0].id,
+        changes: { windowKind: null, value: null, start: '2026-11-16', end: '2026-11-22' } }] : [],
+      remove: replacement === 'remove-add' ? [{ targetFactId: state.graph.planningWindows[0].id }] : [],
+    }), { expectedRevision: state.graph.revision, acceptedDate: '2026-11-02', weekStartsOn: 'monday',
+      planningHorizon: { startDate: '2026-11-09', endDate: '2026-11-15' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: 'replace', conversationId: 'c', turnId: 'replace', sourceText: 'replacement window and Friday deadline' });
+    expect(state).toEqual(snapshot);
+    if (result.status !== 'applied') throw new Error(JSON.stringify(result));
+    const active = new Set(result.state.graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
+    expect(result.state.graph.planningWindows.filter(window => active.has(window.id))).toMatchObject([{ start: '2026-11-16', end: '2026-11-22' }]);
+    expect(result.state.graph.temporalConstraints[0]).toMatchObject({ dateExpression: '2026-11-20', endTime: '13:00' });
+    expect(result.state.graph.revision).toBe(state.graph.revision + 1);
+  });
+
+  it.each([
+    ['2026-11-02', '2026-11-08', '2026-11-06'],
+    ['2026-11-23', '2026-11-29', '2026-11-27'],
+  ])('uses the selected default %s–%s after removing the only window', (startDate, endDate, friday) => {
+    const state = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task,
+      { kind: 'planning_window', localId: 'old-window', windowKind: 'absolute', value: '2026-11-09/2026-11-15', start: '2026-11-09', end: '2026-11-15' },
+    ] }));
+    const snapshot = structuredClone(state);
+    const result = applyWeeklyPlanningVNextTurn(state, delta({ add: [
+      { kind: 'temporal_constraint', localId: 'deadline', taskRef: { factId: state.graph.tasks[0].id }, targetRef: { factId: state.graph.tasks[0].id },
+        constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: 'weekday:friday', namedTimePeriod: null, startTime: null, endTime: '13:00', precision: 'exact' },
+    ], remove: [{ targetFactId: state.graph.planningWindows[0].id }] }), {
+      expectedRevision: state.graph.revision, acceptedDate: '2026-11-02', weekStartsOn: 'monday',
+      planningHorizon: { startDate: '2026-11-09', endDate: '2026-11-15' }, defaultPlanningHorizon: { startDate, endDate },
+      turnKey: 'remove-window', conversationId: 'c', turnId: 'remove-window', sourceText: 'withdraw the window and state a Friday deadline',
+    });
+    expect(state).toEqual(snapshot);
+    if (result.status !== 'applied') throw new Error(JSON.stringify(result));
+    expect(result.state.graph.factLifecycles.find(entry => entry.factId === state.graph.planningWindows[0].id)?.status).toBe('removed');
+    expect(result.state.graph.temporalConstraints[0].dateExpression).toBe(friday);
+  });
+
   it.each([
     ['monday', '2026-11-09', '2026-11-15'],
     ['sunday', '2026-11-08', '2026-11-14'],
@@ -76,7 +121,7 @@ describe('experimental VNext typed transaction', () => {
       task, { kind: 'temporal_constraint', localId: 'bound', taskRef: { localId: 't' }, targetRef: { localId: 't' },
         constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: 'next_week', namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' },
     ] }), { expectedRevision: 0, acceptedDate: '2026-11-02', weekStartsOn,
-      planningHorizon: { startDate: '2026-11-01', endDate: '2026-11-07' }, turnKey: 'week', conversationId: 'c', turnId: 'week', sourceText: 'next week' });
+      planningHorizon: { startDate: '2026-11-01', endDate: '2026-11-07' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: 'week', conversationId: 'c', turnId: 'week', sourceText: 'next week' });
     if (result.status !== 'applied') throw new Error(JSON.stringify(result));
     expect(result.state.graph.planningWindows[0]).toMatchObject({ kind: 'absolute', start, end });
     expect(result.state.graph.temporalConstraints[0].dateExpression).toBe(`${start}/${end}`);
@@ -101,7 +146,7 @@ describe('experimental VNext typed transaction', () => {
     expect(bound(state, '2026-11-02')).toMatchObject({ endDate: '2026-11-06' });
     expect(bound(state, '2026-11-07')).toMatchObject({ endDate: '2026-11-06' });
     const later = applyWeeklyPlanningVNextTurn(state, delta({ patch: [{ ...amountPatch(state, 90), targetFactId: state.graph.workloads[0].id }] }), {
-      acceptedDate: '2026-11-07', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-15' },
+      acceptedDate: '2026-11-07', weekStartsOn: 'monday', planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-15' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' },
       expectedRevision: state.graph.revision, turnKey: 'later-correction', conversationId: 'c', turnId: 'later-correction', sourceText: '90 minutes',
     });
     if (later.status !== 'applied') throw new Error(JSON.stringify(later));
@@ -141,7 +186,7 @@ describe('experimental VNext typed transaction', () => {
         dateExpression: 'today', namedTimePeriod: null, startTime: null, endTime: '13:00', precision: 'exact' },
     ] }));
     const context = { expectedRevision: state.graph.revision, acceptedDate: '2026-11-02', weekStartsOn: 'monday' as const,
-      planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-04' }, turnKey: 'no-friday', conversationId: 'c', turnId: 'no-friday', sourceText: 'Friday' };
+      planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-04' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, turnKey: 'no-friday', conversationId: 'c', turnId: 'no-friday', sourceText: 'Friday' };
     const add = applyWeeklyPlanningVNextTurn(state, delta({ add: [{ kind: 'availability_declaration', localId: 'once', availabilityKind: 'unavailable', dateExpression: 'weekday:friday',
       namedTimePeriod: null, startTime: '09:00', endTime: '10:00', recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard' }] }), context);
     expect(add).toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ path: 'add[0].dateExpression', localId: 'once' })] });
@@ -154,7 +199,7 @@ describe('experimental VNext typed transaction', () => {
 
   it.each(['weekday:monday', 'tomorrow', '2026-02-30'])('rejects %s as the accepting clock date', acceptedDate => {
     const state = createEmptyWeeklyPlanningVNextState();
-    const result = applyWeeklyPlanningVNextTurn(state, delta({ add: [task] }), { weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate,
+    const result = applyWeeklyPlanningVNextTurn(state, delta({ add: [task] }), { weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate,
       expectedRevision: 0, turnKey: 'clock', conversationId: 'c', turnId: 'clock', sourceText: 'user evidence' });
     expect(result).toMatchObject({ status: 'rejected', errors: [{ code: 'invalid_value', path: 'context' }] });
     expect(result.state).toBe(state);
@@ -215,7 +260,7 @@ describe('experimental VNext typed transaction', () => {
         startTime: '09:00', endTime: '10:00', recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard' },
     ] }));
     const later = applyWeeklyPlanningVNextTurn(state, delta({ add: [{ kind: 'task', localId: 'later', category: 'study', title: 'Later' }] }), {
-      expectedRevision: state.graph.revision, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-10', turnKey: 'later', conversationId: 'c', turnId: 'later', sourceText: 'later statement',
+      expectedRevision: state.graph.revision, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-10', turnKey: 'later', conversationId: 'c', turnId: 'later', sourceText: 'later statement',
     });
     if (later.status !== 'applied') throw new Error('setup');
     expect(later.state.graph.availabilityDeclarations[0].dateExpression).toBe('2026-11-03');
@@ -303,7 +348,7 @@ describe('experimental VNext typed transaction', () => {
   it('rejects stale revision, terminal target and unknown target', () => {
     const state = setup(false);
     const changes = delta({ patch: [amountPatch(state, 8)] });
-    const stale = applyWeeklyPlanningVNextTurn(state, changes, { expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'stale', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
+    const stale = applyWeeklyPlanningVNextTurn(state, changes, { expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'stale', conversationId: 'c', turnId: 't', sourceText: 'evidence' });
     expect(stale.status).toBe('rejected');
     const next = applied(state, changes);
     expect(turn(next, changes).status).toBe('rejected');
@@ -316,7 +361,7 @@ describe('experimental VNext typed transaction', () => {
     const result = turn(state, changes, 'replay');
     expect(result.status).toBe('applied');
     const replay = applyWeeklyPlanningVNextTurn(result.state, changes, { expectedRevision: state.graph.revision,
-      weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'replay', conversationId: 'c', turnId: 'replay', sourceText: 'evidence' });
+      weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'replay', conversationId: 'c', turnId: 'replay', sourceText: 'evidence' });
     expect(replay.status).toBe('duplicate');
     expect(replay.state).toBe(result.state);
   });
@@ -407,7 +452,7 @@ describe('experimental VNext typed transaction', () => {
     const due = (dateExpression: string) => ({ kind: 'temporal_constraint' as const, localId: 'due', taskRef: { localId: 't' },
       targetRef: { localId: 't' }, constraintKind: 'deadline' as const, constraintLevel: 'hard' as const, dateExpression,
       namedTimePeriod: null, startTime: null, endTime: '13:00', precision: 'exact' as const });
-    const context = (acceptedDate: string) => ({ weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-08-24', endDate: '2026-09-06' }, acceptedDate, turnKey: acceptedDate, expectedRevision: 0,
+    const context = (acceptedDate: string) => ({ weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-08-24', endDate: '2026-09-06' }, defaultPlanningHorizon: { startDate: '2026-08-24', endDate: '2026-08-30' }, acceptedDate, turnKey: acceptedDate, expectedRevision: 0,
       conversationId: 'c', turnId: 't', sourceText: '締切は明日の13時' });
     const accepted = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due('tomorrow')] }), context('2026-08-26'));
     expect(accepted.status === 'applied' && accepted.state.graph.temporalConstraints[0].dateExpression).toBe('2026-08-27');

@@ -106,7 +106,10 @@ export function applyWeeklyPlanningVNextTurn(
     || !['monday', 'sunday'].includes(context.weekStartsOn)
     || !context.planningHorizon || !isValidCalendarDate(context.planningHorizon.startDate)
     || !isValidCalendarDate(context.planningHorizon.endDate)
-    || context.planningHorizon.startDate > context.planningHorizon.endDate) {
+    || context.planningHorizon.startDate > context.planningHorizon.endDate
+    || !context.defaultPlanningHorizon || !isValidCalendarDate(context.defaultPlanningHorizon.startDate)
+    || !isValidCalendarDate(context.defaultPlanningHorizon.endDate)
+    || context.defaultPlanningHorizon.startDate > context.defaultPlanningHorizon.endDate) {
     error('invalid_value', 'context');
     return reject();
   }
@@ -295,18 +298,7 @@ export function applyWeeklyPlanningVNextTurn(
     diff.superseded.push({ kind: patch.kind, id: patch.targetFactId });
     if (patch.kind === 'effort_estimate') touchedEfforts.add(id);
   };
-  // The horizon is established inside this same transaction before any other
-  // stated date is anchored. Original delta indices still identify every error.
-  delta.add.forEach((fact, index) => { if (fact.kind === 'planning_window') addFact(fact, index); });
-  delta.patch.forEach((patch, index) => { if (patch.kind === 'planning_window') patchFact(patch, index); });
-  const activeWindowIds = activeIds(graph);
-  const windows = graph.planningWindows.filter(window => activeWindowIds.has(window.id));
-  if (windows.length === 1 && windows[0].start && windows[0].end) {
-    planningHorizon = { startDate: windows[0].start, endDate: windows[0].end };
-  }
-  delta.add.forEach((fact, index) => { if (fact.kind !== 'planning_window') addFact(fact, index); });
-  delta.patch.forEach((patch, index) => { if (patch.kind !== 'planning_window') patchFact(patch, index); });
-  delta.remove.forEach((removal, index) => {
+  const removeFact = (removal: VNextTurnDelta['remove'][number], index: number) => {
     const found = target(removal.targetFactId, `remove[${index}].targetFactId`);
     if (!found) return;
     terminalize(graph, removal.targetFactId, null);
@@ -328,7 +320,28 @@ export function applyWeeklyPlanningVNextTurn(
         }
       }
     }
-  });
+  };
+  // All operations on the horizon authority share this stage. Dependent dates
+  // read its final active state, independent of the delta's update expression.
+  const removesWindow = (removal: VNextTurnDelta['remove'][number]) =>
+    originalFacts.get(removal.targetFactId)?.kind === 'planning_window';
+  delta.add.forEach((fact, index) => { if (fact.kind === 'planning_window') addFact(fact, index); });
+  delta.patch.forEach((patch, index) => { if (patch.kind === 'planning_window') patchFact(patch, index); });
+  delta.remove.forEach((removal, index) => { if (removesWindow(removal)) removeFact(removal, index); });
+  if (errors.length) return reject();
+  const changesWindow = delta.add.some(fact => fact.kind === 'planning_window')
+    || delta.patch.some(patch => patch.kind === 'planning_window') || delta.remove.some(removesWindow);
+  if (changesWindow) {
+    const activeWindowIds = activeIds(graph);
+    const windows = graph.planningWindows.filter(window => activeWindowIds.has(window.id));
+    planningHorizon = windows.length === 1 && windows[0].kind === 'absolute' && windows[0].start && windows[0].end
+      ? { startDate: windows[0].start, endDate: windows[0].end }
+      : context.defaultPlanningHorizon;
+  }
+  // Original delta indices still identify every repair path.
+  delta.add.forEach((fact, index) => { if (fact.kind !== 'planning_window') addFact(fact, index); });
+  delta.patch.forEach((patch, index) => { if (patch.kind !== 'planning_window') patchFact(patch, index); });
+  delta.remove.forEach((removal, index) => { if (!removesWindow(removal)) removeFact(removal, index); });
   if (errors.length) return reject();
 
   // All explicit operations have completed. Bind newly stated/changed totals to that final work.

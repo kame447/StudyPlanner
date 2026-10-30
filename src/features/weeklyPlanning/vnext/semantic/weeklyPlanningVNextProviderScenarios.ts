@@ -89,7 +89,7 @@ export const VNEXT_PROVIDER_SCENARIOS: VNextProviderScenario[] = [
     expected: { roles: [{ role: 'remaining', amount: 7 }], minutes: [45], questions: [],
       temporal: { kind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-11-03', startTime: null, endTime: null } } }] },
   { id: 'deadline-tomorrow-1300', seed: remainingSeed,
-    clock: { weekStartsOn: 'monday', currentDate: '2026-08-26', planningStartDate: '2026-08-24', planningEndDate: '2026-08-30', timeZone: 'Asia/Tokyo' },
+    clock: { defaultPlanningHorizon: { startDate: '2026-08-24', endDate: '2026-08-30' }, weekStartsOn: 'monday', currentDate: '2026-08-26', planningStartDate: '2026-08-24', planningEndDate: '2026-08-30', timeZone: 'Asia/Tokyo' },
     turns: [{ text: '締切は明日の13時です。', expected: { roles: [{ role: 'remaining', amount: 7 }], minutes: [45], questions: [],
       // Stored as the date of the accepting turn's clock (2026-08-26 + 1), never the symbolic word.
       temporal: { kind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-08-27', startTime: null, endTime: '13:00' } } }] },
