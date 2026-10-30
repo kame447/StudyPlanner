@@ -53,9 +53,10 @@ function questionKey(params: {
 }
 
 /**
- * Minutes per unit observed in the user's recorded memory-pace sessions, by unit code: derived each
- * turn from the read-only calendar by Stable V5's deriveWeeklyPlanningMemoryPaceEstimateV5, passed in
- * and never stored. Absent means no observation.
+ * Minutes per unit observed in the user's recorded memory-pace sessions, by unit identity
+ * (`vnextUnitIdentity`: the code, and the label of a custom unit — 首 is not 項目): derived each turn
+ * from the read-only calendar by Stable V5's deriveWeeklyPlanningMemoryPaceEstimateV5, passed in and
+ * never stored. Absent means no observation.
  */
 export type WeeklyPlanningVNextObservedMemoryPace = Readonly<Record<string, number>>;
 
@@ -331,7 +332,7 @@ function estimateOwnerWork(
       // As in Stable V5, memorization work with no estimate of its own uses the user's observed pace
       // (amount × median minutes per unit); a stated estimate always wins, and nothing is stored.
       const minutesPerUnit = context.memorizationTasks.has(context.resolver.lineageOf(owner.taskId))
-        ? context.observedMemoryPace[unit.workload.unitCode] : undefined;
+        ? context.observedMemoryPace[vnextUnitIdentity(unit.workload)] : undefined;
       if (minutesPerUnit !== undefined && Number.isFinite(minutesPerUnit) && minutesPerUnit > 0) {
         work.push(workItem(unit, { minutes: unit.amount * minutesPerUnit, basis: 'observed_memory_pace', effortIds: [] }));
         continue;

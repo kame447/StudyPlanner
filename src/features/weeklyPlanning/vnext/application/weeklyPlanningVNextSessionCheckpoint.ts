@@ -67,6 +67,17 @@ function validEffortExtension(effort: VNextEffortEstimateFact): boolean {
   return labelOk && bindingOk && (binding === null || effort.kind === 'total_duration');
 }
 
+/**
+ * A v1 checkpoint saved before study contexts carried an activity (#926, before 038d95d8) has none on
+ * its contexts; that is the same meaning as a migrated V5 context — not stated — so it reads as 'unknown'.
+ * Only an absent field is read this way; an invalid value still makes the checkpoint unreadable.
+ */
+function withStatedActivity(value: unknown): unknown {
+  if (!isRecord(value) || !isRecord(value.graph) || !Array.isArray(value.graph.studyContexts)) return value;
+  return { ...value, graph: { ...value.graph, studyContexts: value.graph.studyContexts.map((context) =>
+    (isRecord(context) && !('activityKind' in context) ? { ...context, activityKind: 'unknown' } : context)) } };
+}
+
 function validState(value: unknown, conversationId: string): value is WeeklyPlanningVNextState {
   if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals'])
     || value.version !== WEEKLY_PLANNING_VNEXT_STATE_VERSION || !isRecord(value.graph)
@@ -135,14 +146,15 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
       || value.ownerId !== params.ownerId || value.weekStartDate !== params.weekStartDate
       || typeof value.conversationId !== 'string' || !value.conversationId.trim()
       || typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))
-      || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion', 'preview', 'messages'])
-      || !validState(value.vnext.state, value.conversationId) || !validPreview(value.vnext.preview)
+      || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion', 'preview', 'messages'])) return null;
+    const state = withStatedActivity(value.vnext.state);
+    if (!validState(state, value.conversationId) || !validPreview(value.vnext.preview)
       || !validMessages(value.vnext.messages)) return null;
     const presented = value.vnext.presentedQuestion;
     if (presented !== null && !(isRecord(presented) && hasExactKeys(presented, ['questionKey', 'graphRevision', 'shownText'])
       && typeof presented.questionKey === 'string' && Number.isInteger(presented.graphRevision)
       && typeof presented.shownText === 'string')) return null;
-    return value as unknown as WeeklyPlanningVNextSessionCheckpoint;
+    return { ...value, vnext: { ...value.vnext, state } } as unknown as WeeklyPlanningVNextSessionCheckpoint;
   } catch {
     return null;
   }

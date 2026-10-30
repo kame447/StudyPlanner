@@ -23,6 +23,7 @@ import {
 } from '../../preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyPlanDraftBlock } from '../../types';
 import { projectWeeklyPlanningVNext, type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
+import { vnextUnitIdentity } from '../weeklyPlanningVNextWorkIdentity';
 import type { Actual, MonthEvent, Plan, ScheduleTemplate } from '../../../../types/domain';
 import { deriveWeeklyPlanningMemoryPaceEstimateV5 } from '../../personalization/weeklyPlanningMemoryPaceObservationsV5';
 import type { GenericSchedulerInputContext } from '../../semantic/weeklyPlanningGenericSchedulerInput';
@@ -94,12 +95,19 @@ export interface WeeklyPlanningVNextCalendar {
   timetableTermId?: string;
 }
 
-/** Observed minutes per unit for the units of the stated work, by Stable V5's own derivation. */
+/**
+ * Observed minutes per unit for the units of the stated work, by Stable V5's own derivation. V5 matches
+ * only the unit code; VNext's unit identity also tells custom units apart by label, so each identity
+ * reads only the calibration plans measured in that same unit (V5 validates each result against its plan).
+ */
 function observedMemoryPace(state: WeeklyPlanningVNextState, calendar: WeeklyPlanningVNextCalendar): WeeklyPlanningVNextObservedMemoryPace {
   const pace: Record<string, number> = {};
-  for (const unitCode of new Set(state.graph.workloads.map((workload) => workload.unitCode))) {
-    const observed = deriveWeeklyPlanningMemoryPaceEstimateV5({ plans: calendar.plans, actuals: calendar.actuals, unitCode });
-    if (observed.observationCount > 0 && observed.medianMinutesPerUnit !== null) pace[unitCode] = observed.medianMinutesPerUnit;
+  const units = new Map(state.graph.workloads.map((workload) => [vnextUnitIdentity(workload), workload.unitCode]));
+  for (const [identity, unitCode] of units) {
+    const plans = calendar.plans.filter((plan) => plan.weeklyPlanningObservationSource !== undefined
+      && vnextUnitIdentity(plan.weeklyPlanningObservationSource) === identity);
+    const observed = deriveWeeklyPlanningMemoryPaceEstimateV5({ plans, actuals: calendar.actuals, unitCode });
+    if (observed.observationCount > 0 && observed.medianMinutesPerUnit !== null) pace[identity] = observed.medianMinutesPerUnit;
   }
   return pace;
 }
