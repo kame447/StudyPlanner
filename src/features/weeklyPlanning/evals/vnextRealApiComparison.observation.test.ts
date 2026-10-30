@@ -671,6 +671,8 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
   };
   const turns: VNextTurnObservation[] = [];
   let previousQuestionSignature: string | null = null;
+  // One user in one tab: each turn answers the reply the previous turn showed.
+  let shownRevision: number | null = null;
   let clarificationCount = 0;
   let repeatedQuestionCount = 0;
 
@@ -697,8 +699,9 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
     let previewBlockedBy: string[] = [];
     try {
       const result = await submitWeeklyPlanningVNextExperimentalTurn({
-        scope, ports, turnId: `turn-${index + 1}`, userText: fixtureTurn.userText,
+        scope, ports, turnId: `turn-${index + 1}`, userText: fixtureTurn.userText, shownRevision,
       });
+      shownRevision = result.graphRevision;
       outcome = result.outcome;
       interpretation = result.interpretation;
       transactionErrors = result.errors;

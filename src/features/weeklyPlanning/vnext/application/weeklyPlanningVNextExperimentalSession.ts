@@ -44,8 +44,8 @@ import {
   parseWeeklyPlanningStableV5PersistedSession,
   scheduleWeeklyPlanningStableV5Preview,
 } from '../weeklyPlanningVNextV5Boundary';
-import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 import { resolveWeeklyPlanningVNextTurnDelta } from './weeklyPlanningVNextAnswerBinding';
+import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
 import {
   migrateWeeklyPlanningV5GraphToVNextSession,
   parseWeeklyPlanningVNextSessionCheckpoint,
@@ -183,11 +183,6 @@ function shownPreview(
   };
 }
 
-function taskTitle(state: WeeklyPlanningVNextState, taskId: string): string {
-  const leaf = createVNextLineageResolver(state.graph).leafOf(taskId) ?? taskId;
-  return state.graph.tasks.find((task) => task.id === leaf)?.title ?? '';
-}
-
 function replyFor(state: WeeklyPlanningVNextState, question: VNextQuestion | null,
   preview: WeeklyPlanningVNextShownPreview | null, outcome: WeeklyPlanningVNextExperimentalTurnOutcome,
   previewBlockedBy: string[]): string {
@@ -195,15 +190,7 @@ function replyFor(state: WeeklyPlanningVNextState, question: VNextQuestion | nul
   if (outcome === 'interpretation_failed' || outcome === 'rejected') {
     return 'うまく反映できませんでした。もう一度、言い方を変えて教えてください。';
   }
-  if (question) {
-    const title = taskTitle(state, question.taskId);
-    if (question.code === 'missing_schedulable_work') return `「${title}」は、どれくらいやりますか？（時間や量）`;
-    if (question.code === 'missing_effort_estimate' && question.forWork) {
-      return `「${title}」の${question.forWork.amount}は、全部で何分くらいかかりそうですか？`;
-    }
-    const values = question.options.map((option) => option.value).join(' / ');
-    return `「${title}」について確認させてください（${question.code}${values ? `: ${values}` : ''}）。`;
-  }
+  if (question) return presentWeeklyPlanningVNextQuestion(state, question).text;
   if (preview) {
     const clockMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
     const minutes = preview.blocks.reduce((sum, block) => sum + clockMinutes(block.endTime) - clockMinutes(block.startTime), 0);
@@ -222,6 +209,12 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   ports: WeeklyPlanningVNextExperimentalPorts;
   turnId: string;
   userText: string;
+  /**
+   * Graph revision of the reply the user is answering (`graphRevision` of the turn shown), or null
+   * before any reply. Another tab may have moved the conversation on since; then the stored question is
+   * not the one the user saw, and the words are read without it.
+   */
+  shownRevision: number | null;
 }): Promise<WeeklyPlanningVNextExperimentalTurn> {
   const { scope, ports } = params;
   const rawBefore = ports.checkpoint.read();
@@ -233,7 +226,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   let { state } = read.checkpoint;
   const before = projectWeeklyPlanningVNext(state);
   const presented = read.checkpoint.presentedQuestion;
-  const presentedQuestion = presented && presented.graphRevision === state.graph.revision
+  const presentationFresh = presented !== null && presented.graphRevision === params.shownRevision;
+  const presentedQuestion = presentationFresh && presented.graphRevision === state.graph.revision
     ? before.questions.find((question) => question.key === presented.questionKey) ?? null
     : null;
 
@@ -256,9 +250,10 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     outcome = 'interpretation_failed';
     errors = interpretation.errors;
   } else {
-    // The checkpoint stores the presented question with the reply it was shown in, so it is that reply's question.
+    // The checkpoint stores the presented question with the reply it was shown in; it is the question
+    // answered only when that reply is the one the user saw.
     const resolution = resolveWeeklyPlanningVNextTurnDelta({
-      presentationFresh: true,
+      presentationFresh,
       presented,
       projection: before,
       graph: state.graph,

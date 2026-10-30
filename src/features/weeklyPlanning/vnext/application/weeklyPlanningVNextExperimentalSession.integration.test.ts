@@ -77,8 +77,13 @@ function harness(script: Array<WeeklyPlanningVNextInterpretation | ((input: Week
   return { ports, slots, saved, inputs, saveCalls: () => saveCalls };
 }
 
-const turn = (ports: WeeklyPlanningVNextExperimentalPorts, turnId: string, userText: string) =>
-  submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId, userText });
+/** One user in one tab: each turn answers the reply the previous turn showed. */
+const shownRevisions = new WeakMap<WeeklyPlanningVNextExperimentalPorts, number>();
+const turn = async (ports: WeeklyPlanningVNextExperimentalPorts, turnId: string, userText: string) => {
+  const result = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId, userText, shownRevision: shownRevisions.get(ports) ?? null });
+  if (result.graphRevision !== null) shownRevisions.set(ports, result.graphRevision);
+  return result;
+};
 
 describe('VNext experimental session end to end (offline)', () => {
   it('asks, binds the answer to the asked work, previews, saves partially, resumes, and never saves twice', async () => {
@@ -205,7 +210,7 @@ describe('VNext experimental session end to end (offline)', () => {
     const h = harness([interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, minutes] }), interpreted({})]);
     const shown = await turn(h.ports, 't1', 'ゼミ資料を60分');
     // Later, on the same revision, nothing changes: the time of day moved, but the shown preview is not made again.
-    const later = await submitWeeklyPlanningVNextExperimentalTurn({ scope: { ...scope, notBeforeTime: '14:00' }, ports: h.ports, turnId: 't2', userText: 'うーん' });
+    const later = await submitWeeklyPlanningVNextExperimentalTurn({ scope: { ...scope, notBeforeTime: '14:00' }, ports: h.ports, turnId: 't2', userText: 'うーん', shownRevision: shown.graphRevision });
     expect(later).toMatchObject({ outcome: 'noop', graphRevision: shown.graphRevision });
     expect(later.preview).toEqual(shown.preview);
     await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports });

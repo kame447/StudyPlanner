@@ -107,8 +107,10 @@ run('#926 VNext native session real API end to end', () => {
     const steps = record.steps as unknown[];
     // The first save fails whatever the block count, so the receipt and its resume are always exercised.
     const { ports, slots, saved, saveAttempts } = createPorts({ failSaveAttempt: 1 });
+    let shownRevision: number | null = null;
     const say = async (turnId: string, text: string) => {
-      const turn = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId, userText: text });
+      const turn = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId, userText: text, shownRevision });
+      shownRevision = turn.graphRevision;
       steps.push({ turnId, user: text, ...snapshot(turn), work: scheduledWork(ports) });
       return turn;
     };
@@ -175,7 +177,7 @@ run('#926 VNext native session real API end to end', () => {
     const { ports, slots } = createPorts({ legacyV5: v5Raw });
     const record: Record<string, unknown> = {};
     try {
-      const turn = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'm1', userText: '英単語は毎日じゃなくていいので、今週合計で90分やります' });
+      const turn = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'm1', userText: '英単語は毎日じゃなくていいので、今週合計で90分やります', shownRevision: null });
       record.turn = { ...snapshot(turn), work: scheduledWork(ports) };
       expect(turn.outcome).toBe('applied');
       expect(scheduledWork(ports)).toEqual([expect.objectContaining({ minutes: 90 })]);
