@@ -59,6 +59,39 @@ export function createVNextLineageResolver(
   };
 }
 
+/** The fact references a graph carries, by collection: the one list both scheduling and dialogue follow. */
+interface VNextReferencingFacts {
+  readonly studyContexts: ReadonlyArray<{ taskId: string }>;
+  readonly components: ReadonlyArray<{ taskId: string; parentComponentId: string | null }>;
+  readonly workloads: ReadonlyArray<{ taskId: string; componentId: string | null }>;
+  readonly effortEstimates: ReadonlyArray<{ taskId: string; targetFactId: string }>;
+  readonly temporalConstraints: ReadonlyArray<{ taskId: string; targetFactId: string }>;
+  readonly taskDateRules: ReadonlyArray<{ taskId: string; targetFactId: string }>;
+  readonly recurrences: ReadonlyArray<{ taskId: string; targetFactId: string }>;
+  readonly relations: ReadonlyArray<{ fromTaskId: string; toTaskId: string }>;
+}
+
+/**
+ * The same facts with every reference naming the current version of the fact it points to (a
+ * renamed task keeps its work). Pure and read-only: stored facts keep their history.
+ */
+export function withCurrentVNextReferences<G extends VNextReferencingFacts>(graph: G, current: (id: string) => string): G {
+  const orNull = (id: string | null) => (id === null ? null : current(id));
+  const owned = <T extends { taskId: string; targetFactId: string }>(fact: T): T =>
+    ({ ...fact, taskId: current(fact.taskId), targetFactId: current(fact.targetFactId) });
+  return {
+    ...graph,
+    studyContexts: graph.studyContexts.map((fact) => ({ ...fact, taskId: current(fact.taskId) })),
+    components: graph.components.map((fact) => ({ ...fact, taskId: current(fact.taskId), parentComponentId: orNull(fact.parentComponentId) })),
+    workloads: graph.workloads.map((fact) => ({ ...fact, taskId: current(fact.taskId), componentId: orNull(fact.componentId) })),
+    effortEstimates: graph.effortEstimates.map(owned),
+    temporalConstraints: graph.temporalConstraints.map(owned),
+    taskDateRules: graph.taskDateRules.map(owned),
+    recurrences: graph.recurrences.map(owned),
+    relations: graph.relations.map((fact) => ({ ...fact, fromTaskId: current(fact.fromTaskId), toTaskId: current(fact.toTaskId) })),
+  };
+}
+
 /** Unit identity: the unit code, plus the NFKC-normalized label for custom units. */
 export function vnextUnitIdentity(unit: { unitCode: string | null; unitLabel: string | null }): string {
   const label = unit.unitCode === 'custom' ? (unit.unitLabel ?? '').normalize('NFKC').trim() : '';

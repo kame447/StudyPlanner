@@ -17,7 +17,7 @@ import {
   type WeeklyPlanningStableV5DialogueQuestionIntent,
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from '../weeklyPlanningVNextV5Boundary';
-import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
+import { createVNextLineageResolver, withCurrentVNextReferences } from '../weeklyPlanningVNextWorkIdentity';
 import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
 import type { WeeklyPlanningVNextShownPreview } from './weeklyPlanningVNextSessionCheckpoint';
 
@@ -27,30 +27,6 @@ export const VNEXT_RECENT_MESSAGE_LIMIT = 4;
 export interface WeeklyPlanningVNextMessage {
   role: 'user' | 'assistant';
   content: string;
-}
-
-/**
- * The graph as the renderer's helpers expect it: every reference names the current version of the
- * fact it points to (a renamed task keeps its work). Read-only; stored facts keep their history.
- */
-function currentReferenceGraph(graph: WeeklyPlanningVNextState['graph']): WeeklyPlanningVNextState['graph'] {
-  const { leafOf } = createVNextLineageResolver(graph);
-  const current = (id: string) => leafOf(id) ?? id;
-  const owned = <T extends { taskId: string; targetFactId: string }>(fact: T): T =>
-    ({ ...fact, taskId: current(fact.taskId), targetFactId: current(fact.targetFactId) });
-  return {
-    ...graph,
-    studyContexts: graph.studyContexts.map((fact) => ({ ...fact, taskId: current(fact.taskId) })),
-    components: graph.components.map((fact) => ({ ...fact, taskId: current(fact.taskId),
-      parentComponentId: fact.parentComponentId === null ? null : current(fact.parentComponentId) })),
-    workloads: graph.workloads.map((fact) => ({ ...fact, taskId: current(fact.taskId),
-      componentId: fact.componentId === null ? null : current(fact.componentId) })),
-    effortEstimates: graph.effortEstimates.map(owned),
-    temporalConstraints: graph.temporalConstraints.map(owned),
-    taskDateRules: graph.taskDateRules.map(owned),
-    recurrences: graph.recurrences.map(owned),
-    relations: graph.relations.map((fact) => ({ ...fact, fromTaskId: current(fact.fromTaskId), toTaskId: current(fact.toTaskId) })),
-  };
 }
 
 function questionIntent(state: WeeklyPlanningVNextState, question: VNextQuestion,
@@ -81,10 +57,11 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   recentConversation: readonly WeeklyPlanningVNextMessage[];
 }): WeeklyPlanningStableV5DialogueRenderInput {
   const { state, question, preview } = params;
-  const graph = currentReferenceGraph(state.graph);
+  // The renderer's helpers follow exact ids, so they read the facts with current references.
+  const { leafOf } = createVNextLineageResolver(state.graph);
+  const graph = withCurrentVNextReferences(state.graph, (id) => leafOf(id) ?? id);
   const planningInformation = createWeeklyPlanningStableV5DialogueProjection(graph);
   const actionKind = question ? 'question' : preview ? 'preview_ready' : 'status';
-  const { leafOf } = createVNextLineageResolver(state.graph);
   const asked = question ? question.forWork?.definingFactId ?? question.taskId : null;
   const targetFactId = asked === null ? null : leafOf(asked) ?? asked;
   const optionLabels = question ? Object.values(presentWeeklyPlanningVNextQuestion(state, question).optionLabels) : [];

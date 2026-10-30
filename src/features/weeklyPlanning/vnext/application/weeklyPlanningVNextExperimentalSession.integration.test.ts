@@ -273,6 +273,27 @@ describe('VNext experimental session end to end (offline)', () => {
     expect(previewed.rendered[1].recentConversation).toEqual([{ role: 'user', content: 'ゼミ資料を60分' }, { role: 'assistant', content: '（説明 preview_ready）' }]);
   });
 
+  it('a failure notice never becomes the presented question; the question shown before stays bound (user audit S01)', async () => {
+    const seed = interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] });
+    const failedReading: WeeklyPlanningVNextInterpretation = { status: 'failed', reason: 'provider_error', errors: [], metrics };
+    const negative = (input: WeeklyPlanningVNextInterpretationInput) => interpreted({ patch: [{ kind: 'workload', localId: 'edit',
+      targetFactId: input.state.graph.workloads[0].id, amountDelta: null, changes: { amount: -1, quantityRole: null, unitCode: null,
+        unitLabel: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] });
+    for (const failure of [failedReading, negative]) {
+      const h = harness([seed, failure, (input) => {
+        expect(input.presentedText).toBe('（説明 question）');
+        return interpreted({}, { kind: 'estimate_minutes', minutes: 120, per: 'whole_work' });
+      }]);
+      const asked = await turn(h.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+      const shown = JSON.parse(h.slots.get('vnext')!).vnext.presentedQuestion;
+      expect(shown).toMatchObject({ shownText: '（説明 question）' });
+      const notice = await turn(h.ports, 't2', '…');
+      expect(notice).toMatchObject({ replySource: 'system', graphRevision: asked.graphRevision });
+      expect(JSON.parse(h.slots.get('vnext')!).vnext.presentedQuestion).toEqual(shown);
+      expect(await turn(h.ports, 't3', '2時間')).toMatchObject({ outcome: 'applied' });
+    }
+  });
+
   it('a correction before approval replaces the shown preview, so the old preview cannot be saved', async () => {
     const h = harness([
       interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),

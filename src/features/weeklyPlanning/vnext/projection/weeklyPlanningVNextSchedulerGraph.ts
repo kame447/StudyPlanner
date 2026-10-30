@@ -31,7 +31,7 @@ import {
   type WeeklyPlanningPlacementGraphViewV5,
 } from '../../semantic/weeklyPlanningPlacementGraphViewV5';
 import type { WeeklyPlanningVNextProjection, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
-import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
+import { createVNextLineageResolver, withCurrentVNextReferences } from '../weeklyPlanningVNextWorkIdentity';
 
 export type WeeklyPlanningVNextSchedulerCompilation =
   | { status: 'not_ready' }
@@ -76,7 +76,7 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
   const resolver = createVNextLineageResolver(state.graph);
   const current = (id: string) => resolver.leafOf(id) ?? id;
   const currentOrNull = (id: string | null) => (id === null ? null : current(id));
-  const base = createWeeklyPlanningActiveSchedulerGraphViewV5(state.graph);
+  const base = withCurrentVNextReferences(createWeeklyPlanningActiveSchedulerGraphViewV5(state.graph), current);
   const sources = new Map([...state.graph.workloads, ...state.graph.tasks].map((fact) => [fact.id, fact.source]));
 
   const readyOwners = projection.owners.filter((owner) => owner.status === 'ready');
@@ -111,28 +111,17 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
     ...base.components.map((component) => component.id)]);
   const sessionPolicies = base.effortEstimates
     .filter((effort) => effort.kind === 'session_duration')
-    .map((effort) => ({ ...effort, taskId: current(effort.taskId), targetFactId: current(effort.targetFactId) }))
     .filter((effort) => scheduledIds.has(effort.targetFactId) && scheduledTaskIds.has(effort.taskId));
 
   const graph = {
     ...base,
     tasks: base.tasks.filter((task) => scheduledTaskIds.has(task.id) || !ownedTaskIds.has(task.id)),
-    studyContexts: base.studyContexts.map((fact) => ({ ...fact, taskId: current(fact.taskId) })),
-    components: base.components.map((fact) => ({
-      ...fact, taskId: current(fact.taskId), parentComponentId: currentOrNull(fact.parentComponentId),
-    })),
     workloads,
     // Intrinsic minute/hour work needs no estimate; V5 reads the amount itself.
     effortEstimates: [...estimates.filter((estimate) => {
       const work = workloads.find((workload) => workload.id === estimate.targetFactId)!;
       return work.unitCode !== 'minute' && work.unitCode !== 'hour';
     }), ...sessionPolicies],
-    temporalConstraints: base.temporalConstraints.map((fact) => ({
-      ...fact, taskId: current(fact.taskId), targetFactId: current(fact.targetFactId),
-    })),
-    taskDateRules: base.taskDateRules.map((fact) => ({ ...fact, taskId: current(fact.taskId), targetFactId: current(fact.targetFactId) })),
-    recurrences: base.recurrences.map((fact) => ({ ...fact, taskId: current(fact.taskId), targetFactId: current(fact.targetFactId) })),
-    relations: base.relations.map((fact) => ({ ...fact, fromTaskId: current(fact.fromTaskId), toTaskId: current(fact.toTaskId) })),
   };
 
   const compiled = compileGenericSchedulerInput({ graph, context: params.context });

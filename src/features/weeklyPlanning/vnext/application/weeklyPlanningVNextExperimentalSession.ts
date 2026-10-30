@@ -324,7 +324,6 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   // Failures and stops are notices; everything the user is told about the plan comes from the renderer.
   let reply: string;
   let replySource: WeeklyPlanningVNextExperimentalTurn['replySource'];
-  let shownQuestion: VNextQuestion | null = question;
   if (outcome === 'interpretation_failed' || outcome === 'rejected' || previewBlockedBy.length) {
     reply = systemReply(outcome, previewBlockedBy);
     replySource = 'system';
@@ -341,18 +340,26 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       // As in Stable V5: the preview stays (unsaved) and is said so; a question that was not shown is not presented.
       reply = preview ? RENDERER_PREVIEW_CONTINGENCY : RENDERER_TECHNICAL_STOP;
       replySource = 'renderer_fallback';
-      shownQuestion = null;
     }
     // The renderer is a model call: if another turn saved meanwhile, nothing of this turn is written.
     if (ports.checkpoint.read() !== rawBefore) return staleTurn();
   }
+  // What the user now sees decides, once, which question their next words answer. The question the
+  // state still asks is not the same thing: a rendered reply shows it with this text; a failed render
+  // shows none; a notice shows no new question, so an earlier shown question stays bound only while
+  // it is still asked at the same revision (it is still on screen above the notice).
+  const previous = read.checkpoint.presentedQuestion;
+  const presentedQuestionRecord = replySource === 'renderer'
+    ? (question ? { questionKey: question.key, graphRevision: projection.graphRevision, shownText: reply } : null)
+    : replySource === 'system' && previous !== null && previous.graphRevision === projection.graphRevision
+      && projection.questions.some((asked) => asked.key === previous.questionKey) ? previous : null;
   const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
     ownerId: scope.ownerId,
     weekStartDate: scope.weekStartDate,
     conversationId: scope.conversationId,
     vnext: {
       state,
-      presentedQuestion: shownQuestion ? { questionKey: shownQuestion.key, graphRevision: projection.graphRevision, shownText: reply } : null,
+      presentedQuestion: presentedQuestionRecord,
       preview,
       messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
         { role: 'assistant' as const, content: reply }].slice(-VNEXT_RECENT_MESSAGE_LIMIT),
