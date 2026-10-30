@@ -38,6 +38,8 @@ const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const outputDir = process.env.WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR
   ?? 'artifacts/issue156-real-api';
 const timeoutMs = Number(process.env.WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS ?? '300000');
+/** Every observed turn in order, saved even when an assertion fails so the failure can be classified (#881). */
+const recordedObservations: Observation[] = [];
 
 interface LearningStrategyRecordObservation {
   id: string;
@@ -184,7 +186,7 @@ async function conversation(params: {
     if (!runtime) throw new Error(`${params.name} turn ${index + 1}: runtime session missing`);
 
     const assistantText = store.getState().lastAssistantMessage ?? result.message;
-    observations.push({
+    const observation: Observation = {
       index: index + 1,
       name: params.name,
       userText,
@@ -201,7 +203,9 @@ async function conversation(params: {
         status: record.status,
       })),
       qualityObservation: { asksForContentProgress: asksForContentProgress(assistantText) },
-    });
+    };
+    observations.push(observation);
+    recordedObservations.push(observation);
   }
 
   return observations;
@@ -287,6 +291,7 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
   it('uses explicit time as schedulable work and does not turn strategy choice into scope interrogation', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-26T12:00:00.000Z'));
+    let completed = false;
     try {
     const goldPhraseTurns = await conversation({
       name: 'gold-frase-daily-hour',
@@ -404,13 +409,14 @@ run('Issue #156 timeboxed planning overasking real API gate', () => {
       expectedRole: 'remaining',
     });
 
-    mkdirSync(outputDir, { recursive: true });
-    writeFileSync(
-      `${outputDir}/timebox-overasking.json`,
-      `${JSON.stringify({ goldPhraseTurns, observations }, null, 2)}\n`,
-    );
+    completed = true;
     } finally {
       vi.useRealTimers();
+      mkdirSync(outputDir, { recursive: true });
+      writeFileSync(
+        `${outputDir}/timebox-overasking.json`,
+        `${JSON.stringify({ completed, observations: recordedObservations }, null, 2)}\n`,
+      );
     }
   }, Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 300_000);
 });
