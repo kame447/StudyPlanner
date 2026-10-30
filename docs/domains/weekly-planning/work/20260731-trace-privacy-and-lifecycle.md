@@ -1,8 +1,8 @@
 # 週間計画 trace privacy / lifecycle production rollout
 
-Status: active / retention verified in production; v2 diagnostic masking in PR #925; production delete/audit E2E and operator deletion path pending
+Status: active / retention, v2 masking, consent, auth and restricted read verified in production; production delete/audit on a dedicated account and the operator deletion path (#917) pending
 Priority: P1 operations
-Updated: 2026-10-29
+Updated: 2026-10-30
 Tracking: Issue #45
 Related: Issue #89 production trace recovery, Issue #164 storage design
 
@@ -66,6 +66,23 @@ Worker `2c95328b` (tag `main-af6d6496`) was deployed at about 12:34 UTC. Firesto
 
 `turn_diagnostic` schema v2 strings are now masked before storage, and also when the admin entry page reads v2 entries stored before the fix. Masked: email, phone, URL query/hash, and credential-like runs (a 28+ character run with a 16+ character segment containing a digit). Kept: the envelope fields, UUID-based ids, `sha256:` / `fnv1a32:` digests, identifier labels and full text length. Matching is best effort, not a guarantee. Already-stored v2 documents are not rewritten. They are masked when read and expire within 180 days. The Debug Bundle already used the v1 redactor.
 
+## 2026-10-30 production live trace check (ProudNoether)
+
+PR #925 is merged (main `493d9900`), audited CLEAN by Codex Sol, and deployed as Worker `da1223bc` (rollback `2c95328b`). Bindings, Jev settings and secret names did not change.
+
+`tests/e2e/weekly-planning-trace-privacy.live.mjs` runs through `Live Account Browser Verification` with `spec=tests/e2e/weekly-planning-trace-privacy.live.mjs`. It signs in to production as the shared live account. The ID token stays in the page. It writes one new synthetic session and never calls delete, admin/sessions or admin/archive. Runs 40998186598 and 40998509879:
+
+- Unauthenticated `/policy` → 401. Consent status → 200, accepted (policy 2026-07-18-v1).
+- `session/start` → 200 (new session). Appending one v2 `turn_diagnostic` with a fictitious email, phone, URL query and credential → 200, `acceptedEntries` 1.
+- Restricted read of that session only → 200 (the shared account is a trace reader). None of the synthetic values appear in the response.
+- Firestore console, synthetic entry `weekly-trace-a31130d3-…-00000000` only:
+  - Stored `userInput.text` is `連絡は [EMAIL] / [PHONE] https://example.test/p?[QUERY_REDACTED] [TOKEN][PHONE]`.
+  - The task UUID, `traceSchema`, `sequence`, `traceSubjectToken` / `Epoch` and the `expireAt` Timestamp are kept. There is no `userId` field.
+- Access audit: a COUNT of `targetSessionId ==` that session returns 1, the `list_entries` record.
+- The 2 synthetic sessions remain on the shared account. They contain only masked fictitious text and expire within 180 days.
+
+Not covered on production (the shared account is a reader and must not be bulk-deleted): non-reader 403, delete, a second delete returning 0/0, and the `delete_own_traces` audit. The second test in the same spec covers these. It runs only when a dedicated trace-only account is configured (see Remaining production work).
+
 ## Account-deletion request runbook (trace data, minimal)
 
 Full account withdrawal is Issue #917. This covers only weekly-planning traces.
@@ -77,9 +94,13 @@ Full account withdrawal is Issue #917. This covers only weekly-planning traces.
 
 ## Remaining production work
 
-- Independent Codex Sol audit of PR #925 has not been done. Both ORRERY child spawns were refused by the launcher (`child state belongs to another registration` / `canonical Codex registration metadata is missing, invalid, or does not match the child token`). The operator needs to run `agentstack-doctor`.
-- Deploy PR #925 to the Worker (ACQUIRE/RELEASE on #305, keeping Jev and the other bindings), then read back.
-- Production delete/audit E2E with a synthetic account (consent → append → admin Logs and Debug Bundle → delete → second delete 0/0 → audit present): **not performed.** Agent safety rules prohibit an agent from creating accounts or entering passwords on the production site, and the admin Logs need an authenticated admin session. The owner can run it by hand. Do not bulk-delete the shared test account, because it holds other traces. The emulator E2E covers the same flow.
+- Production delete and non-reader check on a dedicated account: **not performed.** Agents must not create production accounts. One owner step unblocks it:
+  1. Create a fictitious account in the production app (not an admin).
+  2. Finish its first-run screens.
+  3. Add its credentials to the `live-account-verification` environment as `STUDYPLANNER_TRACE_E2E_EMAIL` / `STUDYPLANNER_TRACE_E2E_PASSWORD`.
+
+  Then dispatch `Live Account Browser Verification` with `spec=tests/e2e/weekly-planning-trace-privacy.live.mjs`. The run covers consent → append → non-reader 403 → delete → second delete 0/0. After it, check that the `delete_own_traces` audit COUNT has increased.
+- The admin Logs / Debug Bundle UI was not exercised in production. The restricted read API and its audit record were.
 - The operator path for deletion requests (runbook step 3) depends on #917.
 - Privacy / legal review: **no professional legal review has been performed.** Only the engineering comparison below exists.
 
