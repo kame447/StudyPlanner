@@ -28,6 +28,7 @@ import {
 } from '../weeklyPlanningVNextWorkIdentity';
 import { fixVNextDateExpression, vnextTemporalBoundRepairFields } from '../weeklyPlanningVNextTemporalBound';
 import { isValidCalendarDate, resolveCanonicalDateExpression } from '../../semantic/weeklyPlanningCalendarResolver';
+import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -41,6 +42,7 @@ const collections = {
 /** Closed field sets: identities and ownership are never writable through a patch. */
 export const VNEXT_PATCH_FIELDS = {
   task: ['category', 'title'], component: ['role', 'label'],
+  study_context: ['purpose', 'contextLabel', 'activityKind'],
   workload: ['quantityRole', 'amount', 'unitCode', 'unitLabel', 'rangeStart', 'rangeEnd', 'perOccurrence', 'periodExpression'],
   effort_estimate: ['effortKind', 'minutes', 'unitCode', 'unitLabel', 'precision'],
   temporal_constraint: ['constraintKind', 'constraintLevel', 'dateExpression', 'namedTimePeriod', 'startTime', 'endTime', 'precision'],
@@ -87,7 +89,7 @@ function terminalize(graph: WeeklyPlanningVNextGraph, factId: string, replacemen
 
 export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState {
   return { version: WEEKLY_PLANNING_VNEXT_STATE_VERSION,
-    graph: { ...createEmptyWeeklyPlanningFactGraphV5(), effortEstimates: [] },
+    graph: { ...createEmptyWeeklyPlanningFactGraphV5(), effortEstimates: [], studyContexts: [] },
     workRelations: [], deferrals: [] };
 }
 
@@ -217,6 +219,8 @@ export function applyWeeklyPlanningVNextTurn(
   const addPayload = (fact: VNextAddFact, path: string): Record<string, unknown> => {
     switch (fact.kind) {
       case 'task': return { category: fact.category, title: fact.title };
+      case 'study_context': return { taskId: ref(fact.taskRef, `${path}.taskRef`), purpose: fact.purpose,
+        contextLabel: fact.contextLabel, activityKind: fact.activityKind };
       case 'component': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
         parentComponentId: fact.parentComponentRef ? ref(fact.parentComponentRef, `${path}.parentComponentRef`) : null,
         role: fact.role, label: fact.label };
@@ -456,6 +460,14 @@ export function applyWeeklyPlanningVNextTurn(
       error('invalid_value', location ? `${location.path}${suffix}` : validationError,
         fact?.id ?? null, location?.localId ?? null);
     } else error('invalid_value', validationError);
+  }
+  // V5 validates purpose and ownership; the VNext-only activity extension is
+  // checked here when stated, never inferred from a title, unit or context label.
+  for (const studyContext of graph.studyContexts) {
+    const location = locations.get(studyContext.id);
+    if (location && !SEMANTIC_STUDY_ACTIVITY_KINDS_V5.includes(studyContext.activityKind)) {
+      error('invalid_value', `${location.path}.activityKind`, studyContext.id, location.localId);
+    }
   }
   for (const workload of graph.workloads) {
     const location = locations.get(workload.id);

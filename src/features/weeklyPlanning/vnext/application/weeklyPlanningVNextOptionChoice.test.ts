@@ -167,7 +167,7 @@ describe('VNext option choice inside the experimental session', () => {
     const slot = (key: string) => ({ read: () => slots.get(key) ?? null, write: (raw: string) => void slots.set(key, raw) });
     return { client: {} as OpenAiCompatibleClient, interpret, checkpoint: slot('vnext'), legacyV5Checkpoint: { read: () => null },
       approvalLedger: slot('ledger'), now: () => '2026-11-02T09:00:00.000Z',
-      calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
+      calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }),
       createRenderer: () => ({ render: async () => ({ status: 'rendered' as const, text: '（説明）', rawResponse: '' }) }),
       plans: { findExistingPlanId: async () => undefined, saveBlock: async (block) => ({ planId: block.id }) } };
   }

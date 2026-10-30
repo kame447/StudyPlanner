@@ -68,7 +68,7 @@ function createPorts(options: { legacyV5?: string; failSaveAttempt?: number } = 
         return { planId: `plan:${block.id}` };
       },
     },
-    calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
+    calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }),
     createRenderer: (options) => createWeeklyPlanningStableV5DialogueRendererCore(client, options),
     now: () => new Date().toISOString(),
   };

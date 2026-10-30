@@ -48,6 +48,7 @@ function graphWithWorkloads(workloads: WorkloadFactV5[]): WeeklyPlanningVNextGra
   const base = createEmptyWeeklyPlanningFactGraphV5();
   return {
     ...base,
+    studyContexts: [],
     revision: 1,
     tasks: [{ id: 'task-slides', category: 'non_study', title: 'スライド', source: source('task-slides'), createdRevision: 1 }],
     workloads,

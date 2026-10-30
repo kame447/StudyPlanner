@@ -4,6 +4,17 @@ import type { VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
 
 const empty = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 describe('request-scoped provider reference vocabulary', () => {
+  it('decodes a study context task reference without deriving activity from the context label', () => {
+    const references = createVNextProviderReferences();
+    references.encodeContext({ tasks: [{ id: 'stored:["task"]' }] });
+    const result = references.decodeReading({ delta: { ...empty(), add: [
+      { kind: 'study_context', localId: 'study', taskRef: { factId: 'F1' }, purpose: 'self_study', contextLabel: '暗記', activityKind: 'unknown' },
+    ] }, answer: null });
+    expect(result).toMatchObject({ status: 'decoded', reading: { delta: { add: [
+      { taskRef: { factId: 'stored:["task"]' }, contextLabel: '暗記', activityKind: 'unknown' },
+    ] } } });
+  });
+
   it('decodes task-order and recurrence references through the same fact vocabulary', () => {
     const references = createVNextProviderReferences();
     references.encodeContext({ tasks: [{ id: 'first:["task"]' }, { id: 'second:["task"]' }] });

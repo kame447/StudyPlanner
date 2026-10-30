@@ -5,6 +5,7 @@ import {
   SEMANTIC_TASK_CATEGORIES_V5, SEMANTIC_WORKLOAD_UNIT_CODES_V5,
   SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5,
   SEMANTIC_AVAILABILITY_KINDS_V5, SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5,
+  SEMANTIC_STUDY_PURPOSES_V5, SEMANTIC_STUDY_ACTIVITY_KINDS_V5,
 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { CANONICAL_WEEKDAY_DATE_EXPRESSIONS } from '../../semantic/weeklyPlanningCalendarResolver';
 import { WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5 } from '../../semantic/weeklyPlanningSemanticSchemaV5';
@@ -39,6 +40,7 @@ const v5 = WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.schema as {
 export const VNEXT_PLANNING_WINDOW_KINDS = v5.properties.planningWindow.anyOf[0].properties.kind.enum;
 export const VNEXT_TASK_RELATION_KINDS = v5.properties.relations.items.properties.kind.enum;
 
+export const VNEXT_STUDY_CONTEXT_REQUIREMENT = `study_context records the user's stated study meaning for taskRef. purpose uses ${SEMANTIC_STUDY_PURPOSES_V5.join(', ')}; activityKind uses ${SEMANTIC_STUDY_ACTIVITY_KINDS_V5.join(', ')}. memorization_retrieval means the user intends to memorize or retrieve learned items; use the other activity kinds when the stated activity has that meaning, and unknown when it is not stated. A title, contextLabel or quantity unit alone does not establish the activity: never infer memorization from them. contextLabel is a stated descriptive label or null. This fact states activity, not a learned pace or permission for a calibration/learning-strategy proposal.`;
 export const VNEXT_WORKLOAD_PERIOD_REQUIREMENT = 'periodExpression is the measurement interval or frequency that defines the stated amount (for example per day, per week, or an explicitly period-scoped target). It is part of the quantity basis, not a history timestamp or deadline. When reporting progress on an accepted whole, keep that whole\'s period basis, null when unscoped, unless the user explicitly changes what the amount measures. When work was completed or is due does not create a new quantity period. Keep historical timing as source evidence; use temporal facts for stated scheduling constraints, and do not invent a completion-date fact. Preserve genuinely stated daily, weekly or other measurement scopes.';
 export const VNEXT_PLANNING_WINDOW_REQUIREMENT = `planning_window uses windowKind ${VNEXT_PLANNING_WINDOW_KINDS.join(', ')}. For an absolute window state start/end; for a relative or named window state its canonical date value and null start/end. Code freezes its range when accepted. A patch stating a new value changes the effective window; do not copy old bounds into that correction.`;
 export const VNEXT_RECURRENCE_REQUIREMENT = `recurrenceKind is ${SEMANTIC_RECURRENCE_KINDS_V5.join(', ')}; count is positive for times_per_week, otherwise null unless stated. days uses canonical weekday tokens (${CANONICAL_WEEKDAY_DATE_EXPRESSIONS.join(', ')}); use [] when no specific weekdays were stated. One occurrence's amount belongs in a workload with perOccurrence true, plus this recurrence fact targeting that workload's task or component in the same task. The target is never a workload fact; V5 pairs the perOccurrence workload with its task/component owner. Never emit multiplied or expanded occurrence workloads.`;
@@ -51,6 +53,8 @@ const described = (rule: FieldRule, description: string): FieldRule => ({ ...rul
 /** The same field owner supplies standalone corrections and native provider patches. */
 const changesByKind = {
   task: { category: enumeration(SEMANTIC_TASK_CATEGORIES_V5), title: text },
+  study_context: { purpose: described(enumeration(SEMANTIC_STUDY_PURPOSES_V5), VNEXT_STUDY_CONTEXT_REQUIREMENT),
+    contextLabel: described(text, VNEXT_STUDY_CONTEXT_REQUIREMENT), activityKind: described(enumeration(SEMANTIC_STUDY_ACTIVITY_KINDS_V5), VNEXT_STUDY_CONTEXT_REQUIREMENT) },
   component: { role: enumeration(SEMANTIC_COMPONENT_ROLES_V5), label: text },
   workload: { amount: number, unitCode: unit, unitLabel: text,
     quantityRole: enumeration(SEMANTIC_QUANTITY_ROLES_V5), rangeStart: text, rangeEnd: text,

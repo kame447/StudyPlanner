@@ -22,8 +22,9 @@ import {
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../../preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyPlanDraftBlock } from '../../types';
-import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
-import type { MonthEvent, Plan, ScheduleTemplate } from '../../../../types/domain';
+import { projectWeeklyPlanningVNext, type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
+import type { Actual, MonthEvent, Plan, ScheduleTemplate } from '../../../../types/domain';
+import { deriveWeeklyPlanningMemoryPaceEstimateV5 } from '../../personalization/weeklyPlanningMemoryPaceObservationsV5';
 import type { GenericSchedulerInputContext } from '../../semantic/weeklyPlanningGenericSchedulerInput';
 import {
   compileWeeklyPlanningVNextSchedulerInput,
@@ -81,12 +82,26 @@ export interface WeeklyPlanningVNextExperimentalScope {
   notBeforeTime: string;
 }
 
-/** The user's existing schedule, read-only: placement avoids it exactly as Stable V5 does. */
+/**
+ * The user's existing schedule and records, read-only and read once per turn: placement avoids the
+ * schedule exactly as Stable V5 does, and recorded memory-pace results give the observed pace.
+ */
 export interface WeeklyPlanningVNextCalendar {
   plans: readonly Plan[];
+  actuals: readonly Actual[];
   monthEvents: readonly MonthEvent[];
   scheduleTemplates: readonly ScheduleTemplate[];
   timetableTermId?: string;
+}
+
+/** Observed minutes per unit for the units of the stated work, by Stable V5's own derivation. */
+function observedMemoryPace(state: WeeklyPlanningVNextState, calendar: WeeklyPlanningVNextCalendar): WeeklyPlanningVNextObservedMemoryPace {
+  const pace: Record<string, number> = {};
+  for (const unitCode of new Set(state.graph.workloads.map((workload) => workload.unitCode))) {
+    const observed = deriveWeeklyPlanningMemoryPaceEstimateV5({ plans: calendar.plans, actuals: calendar.actuals, unitCode });
+    if (observed.observationCount > 0 && observed.medianMinutesPerUnit !== null) pace[unitCode] = observed.medianMinutesPerUnit;
+  }
+  return pace;
 }
 
 export interface WeeklyPlanningVNextExperimentalPorts {
@@ -189,6 +204,7 @@ function schedulingContext(scope: WeeklyPlanningVNextExperimentalScope, ports: W
 function shownPreview(
   scope: WeeklyPlanningVNextExperimentalScope,
   ports: WeeklyPlanningVNextExperimentalPorts,
+  calendar: WeeklyPlanningVNextCalendar,
   state: WeeklyPlanningVNextState,
   projection: WeeklyPlanningVNextProjection,
 ): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[] } {
@@ -202,7 +218,10 @@ function shownPreview(
   const scheduled = scheduleWeeklyPlanningStableV5Preview({
     input: compiled.compilation.input,
     graph: compiled.placementGraph,
-    ...ports.calendar(),
+    plans: calendar.plans,
+    monthEvents: calendar.monthEvents,
+    scheduleTemplates: calendar.scheduleTemplates,
+    timetableTermId: calendar.timetableTermId,
     notBefore: { date: scope.clock.currentDate, time: scope.notBeforeTime },
   });
   if (scheduled.status !== 'ready') {
@@ -264,7 +283,10 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       interpretation: null, appliedDelta: null, errors: [] };
   }
   let { state } = read.checkpoint;
-  const before = projectWeeklyPlanningVNext(state);
+  // One calendar snapshot per turn: the observed pace before and after the turn, and the preview, agree.
+  const calendar = ports.calendar();
+  const pace = observedMemoryPace(state, calendar);
+  const before = projectWeeklyPlanningVNext(state, pace);
   const presented = read.checkpoint.presentedQuestion;
   const presentationFresh = presented !== null && presented.graphRevision === params.shownRevision;
   const presentedQuestion = presentationFresh && presented.graphRevision === state.graph.revision
@@ -333,14 +355,14 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     }
   }
 
-  const projection = projectWeeklyPlanningVNext(state);
+  const projection = projectWeeklyPlanningVNext(state, observedMemoryPace(state, calendar));
   const question = projection.questions[0] ?? null;
   // A shown preview belongs to its revision: while the revision is current it is
   // exactly what the user saw (and may have approved), so it is not made again.
   const shown = read.checkpoint.preview;
   const made = question
     ? { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] }
-    : shownPreview(scope, ports, state, projection);
+    : shownPreview(scope, ports, calendar, state, projection);
   const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision
     ? { preview: shown, unplacedOwnerKeys: made.unplacedOwnerKeys, previewBlockedBy: [] }
     : made;

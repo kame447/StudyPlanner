@@ -14,6 +14,8 @@ import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanni
 import { SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5, SEMANTIC_AVAILABILITY_KINDS_V5,
   SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5 } from '../../semantic/weeklyPlanningSemanticSchemaV5';
+import { SEMANTIC_STUDY_PURPOSES_V5, SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
+import { VNEXT_STUDY_CONTEXT_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 import { VNEXT_RECURRENCE_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT,
   VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 
@@ -60,6 +62,39 @@ function changedUnitInput(): WeeklyPlanningVNextInterpretationInput {
 }
 
 describe('VNext native provider', () => {
+  it('repairs a study activity once using the shared requirement without rewriting independent work', async () => {
+    const context = { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' },
+      purpose: 'self_study', contextLabel: null, activityKind: 'memorization' };
+    const work = { ...workload(), unitCode: 'word', unitLabel: '語' };
+    const original = output([task('task', '英単語'), work, context]);
+    const repaired = output([task('task', '英単語'), { ...work, amount: 999 }, { ...context, activityKind: 'memorization_retrieval' }]);
+    const params = input([JSON.stringify(original), JSON.stringify(repaired)]);
+    params.userText = '英単語7語を暗記したいです。';
+    const before = structuredClone(params.state);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    expect(params.state).toEqual(before);
+    expect(describeVNextProviderField('add[2].activityKind', original)).toBe(VNEXT_STUDY_CONTEXT_REQUIREMENT);
+    const patch = { ...output(), delta: { ...emptyDelta(), patch: [{ kind: 'study_context', localId: 'fix', targetFactId: 'F2',
+      changes: { purpose: null, contextLabel: null, activityKind: 'reading' } }] } };
+    expect(describeVNextProviderField('patch[0].changes.activityKind', patch)).toBe(VNEXT_STUDY_CONTEXT_REQUIREMENT);
+    const messages = vi.mocked(params.client.createChatCompletion).mock.calls[1][0].messages;
+    expect(messages[0].content).toContain(VNEXT_STUDY_CONTEXT_REQUIREMENT);
+    expect(JSON.parse(messages[messages.length - 1].content as string).errors).toEqual([
+      { path: 'delta.add[2].activityKind', localId: 'study', requirement: VNEXT_STUDY_CONTEXT_REQUIREMENT },
+    ]);
+    if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+    expect(result.delta.add[1]).toMatchObject({ amount: 7 });
+    const final = applyWeeklyPlanningVNextTurn(params.state, result.delta, {
+      expectedRevision: 0, acceptedDate: params.clock.currentDate, weekStartsOn: params.clock.weekStartsOn,
+      planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate }, defaultPlanningHorizon: params.clock.defaultPlanningHorizon,
+      turnKey: 'study-context', conversationId: 'synthetic', turnId: 'study-context', sourceText: params.userText,
+    });
+    if (final.status !== 'applied') throw new Error(JSON.stringify(final));
+    expect(final.state.graph.studyContexts[0]).toMatchObject({ taskId: final.state.graph.tasks[0].id,
+      purpose: 'self_study', contextLabel: null, activityKind: 'memorization_retrieval' });
+  });
+
   it('shares the workload-period meaning between add, patch, prompt and the one addressed repair', async () => {
     const original = output([task(), { ...workload(), periodExpression: 42 }]);
     const repaired = output([task(), { ...workload('work', 999), periodExpression: null }]);
@@ -151,12 +186,14 @@ describe('VNext native provider', () => {
     expect(final.status === 'applied' && final.state.graph.temporalConstraints[0].dateExpression).toBe('2026-11-04');
   });
 
-  it('reuses the five ported V5 vocabularies in its strict schema and shared prompt', () => {
+  it('reuses ported V5 vocabularies in its strict schema and shared prompt', () => {
     type Schema = { properties?: Record<string, Schema>; enum?: readonly string[]; items?: Schema; anyOf?: Schema[] };
     const root = VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.schema as Schema;
     const variants = root.properties!.delta.properties!.add.items!.anyOf!;
     const variant = (kind: string) => variants.find(schema => schema.properties!.kind.enum![0] === kind)!;
     const v5 = WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.schema as Schema;
+    expect(variant('study_context').properties!.purpose.enum).toBe(SEMANTIC_STUDY_PURPOSES_V5);
+    expect(variant('study_context').properties!.activityKind.enum).toBe(SEMANTIC_STUDY_ACTIVITY_KINDS_V5);
     expect(variant('planning_window').properties!.windowKind.enum).toBe(v5.properties!.planningWindow.anyOf![0].properties!.kind.enum);
     expect(variant('relation').properties!.relationKind.enum).toBe(v5.properties!.relations.items!.properties!.kind.enum);
     expect(variant('recurrence').properties!.recurrenceKind.enum).toBe(SEMANTIC_RECURRENCE_KINDS_V5);
@@ -165,7 +202,7 @@ describe('VNext native provider', () => {
     expect(variant('availability_declaration').properties!.recurrenceKind.anyOf![0].enum).toBe(SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5);
     const prompt = buildWeeklyPlanningVNextProviderMessages(input([]))[0].content;
     for (const requirement of [VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT,
-      VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT]) expect(prompt).toContain(requirement);
+      VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT, VNEXT_STUDY_CONTEXT_REQUIREMENT]) expect(prompt).toContain(requirement);
   });
 
   it('decodes and dry-runs all five ported fact shapes without a V5 state update', async () => {

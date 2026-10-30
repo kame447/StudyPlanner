@@ -64,8 +64,13 @@ export function adaptWeeklyPlanningV5GraphToVNext(
         ? { ...entry, status: 'removed' as const, terminalRevision: v5Graph.revision, supersededByFactId: null }
         : entry),
   };
+  // V5 does not store the study activity (it lived in each turn's document), so a migrated study context
+  // is 'unknown': nothing in the saved facts says the work is memorization, and no title or label is read
+  // as if it did. The user states it again for observed memory pace to apply.
+  const studyContexts = statedGraph.studyContexts.map((fact) => ({ ...fact, activityKind: 'unknown' as const }));
   const shellGraph: WeeklyPlanningVNextGraph = {
     ...statedGraph,
+    studyContexts,
     effortEstimates: [],
   };
   const resolver = createVNextLineageResolver(shellGraph);
@@ -159,7 +164,7 @@ export function adaptWeeklyPlanningV5GraphToVNext(
         components: statedGraph.components.map((fact) => ({
           ...fact, taskId: ownerRoot(fact.taskId), parentComponentId: ownerRootOrNull(fact.parentComponentId),
         })),
-        studyContexts: statedGraph.studyContexts.map((fact) => ({ ...fact, taskId: ownerRoot(fact.taskId) })),
+        studyContexts: studyContexts.map((fact) => ({ ...fact, taskId: ownerRoot(fact.taskId) })),
         workloads: statedGraph.workloads.map((fact) => ({
           ...fact, taskId: ownerRoot(fact.taskId), componentId: ownerRootOrNull(fact.componentId),
         })),

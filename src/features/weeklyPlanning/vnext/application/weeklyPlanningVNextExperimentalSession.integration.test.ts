@@ -79,7 +79,7 @@ function harness(script: Array<WeeklyPlanningVNextInterpretation | ((input: Week
         return { planId: `plan:${block.id}` };
       },
     },
-    calendar: () => ({ plans: [], monthEvents: [], scheduleTemplates: [] }),
+    calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }),
     createRenderer: () => ({ async render(input) {
       rendered.push(input);
       return { status: 'rendered', text: `（説明 ${input.actionKind}）`, rawResponse: '' };
@@ -224,7 +224,7 @@ describe('VNext experimental session end to end (offline)', () => {
     const free = harness([interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: '部屋の掃除' }, minutes] })]);
     expect((await turn(free.ports, 't1', '部屋の掃除を60分')).preview!.blocks[0]).toMatchObject({ date: '2026-11-02', startTime: '09:00' });
     const busy = harness([interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: '部屋の掃除' }, minutes] })]);
-    busy.ports.calendar = () => ({ plans: [existing], monthEvents: [], scheduleTemplates: [] });
+    busy.ports.calendar = () => ({ plans: [existing], actuals: [], monthEvents: [], scheduleTemplates: [] });
     expect((await turn(busy.ports, 't1', '部屋の掃除を60分')).preview!.blocks[0]).toMatchObject({ date: '2026-11-02', startTime: '10:20', endTime: '11:20' });
   });
 

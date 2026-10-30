@@ -1,14 +1,14 @@
 import type { JsonSchemaResponseFormat } from '../../../../services/ai/openAiCompatibleClientTypes';
 import { SEMANTIC_BASE_TEMPORAL_CONSTRAINT_KINDS_V5, SEMANTIC_COMPONENT_ROLES_V5,
   SEMANTIC_CONSTRAINT_LEVELS_V5, SEMANTIC_NAMED_TIME_PERIODS_V5, SEMANTIC_QUANTITY_ROLES_V5, SEMANTIC_TASK_CATEGORIES_V5,
-  SEMANTIC_WORKLOAD_UNIT_CODES_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
+  SEMANTIC_WORKLOAD_UNIT_CODES_V5, SEMANTIC_STUDY_PURPOSES_V5, SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5, SEMANTIC_AVAILABILITY_KINDS_V5,
   SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import type { WeeklyPlanningVNextInterpretedAnswer } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnDelta, VNextTurnError } from '../weeklyPlanningVNextTypes';
-import { VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
+import { VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 
-export { VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
+export { VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 
 type Schema = { type?: string; properties?: Record<string, Schema>; required?: string[];
   additionalProperties?: boolean; enum?: readonly unknown[]; anyOf?: Schema[]; items?: Schema; description?: string };
@@ -31,6 +31,10 @@ const precision = enumeration(['exact', 'approximate', 'unspecified']);
 const unit = enumeration(SEMANTIC_WORKLOAD_UNIT_CODES_V5);
 const add: Schema = { anyOf: [
   object({ kind: enumeration(['task']), localId: text, category: enumeration(SEMANTIC_TASK_CATEGORIES_V5), title: text }),
+  object({ kind: enumeration(['study_context']), localId: text, taskRef: ref,
+    purpose: { ...enumeration(SEMANTIC_STUDY_PURPOSES_V5), description: VNEXT_STUDY_CONTEXT_REQUIREMENT },
+    contextLabel: { ...nullable(text), description: VNEXT_STUDY_CONTEXT_REQUIREMENT },
+    activityKind: { ...enumeration(SEMANTIC_STUDY_ACTIVITY_KINDS_V5), description: VNEXT_STUDY_CONTEXT_REQUIREMENT } }),
   object({ kind: enumeration(['component']), localId: text, taskRef: ref, parentComponentRef: nullable(ref),
     role: enumeration(SEMANTIC_COMPONENT_ROLES_V5), label: text }),
   object({ kind: enumeration(['workload']), localId: text, taskRef: ref, componentRef: nullable(ref),

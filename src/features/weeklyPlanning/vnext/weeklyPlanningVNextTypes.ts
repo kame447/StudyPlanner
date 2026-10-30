@@ -11,6 +11,7 @@ import type {
   SemanticConstraintLevelV5,
   SemanticNamedTimePeriodV5,
   SemanticQuantityRoleV5,
+  SemanticStudyActivityKindV5,
   SemanticTaskCategoryV5,
   SemanticWorkloadUnitCodeV5,
 } from '../semantic/weeklyPlanningSemanticTypesV5';
@@ -46,8 +47,14 @@ export interface VNextEffortEstimateFact extends EffortEstimateFactV5 {
   workBinding: VNextEffortWorkBinding | null;
 }
 
+/** Explicit activity meaning retained by VNext; V5's stored context omitted it. */
+export type VNextStudyContextFact = WeeklyPlanningFactGraphV5['studyContexts'][number] & {
+  activityKind: SemanticStudyActivityKindV5;
+};
+
 export interface WeeklyPlanningVNextGraph extends WeeklyPlanningFactGraphV5 {
   effortEstimates: VNextEffortEstimateFact[];
+  studyContexts: VNextStudyContextFact[];
 }
 
 export type VNextWorkRelationKind = 'same' | 'distinct';
@@ -155,6 +162,9 @@ type TaskDateRulePayload = StatedPayload<WeeklyPlanningFactGraphV5['taskDateRule
 type AvailabilityPayload = StatedPayload<WeeklyPlanningFactGraphV5['availabilityDeclarations'][number]>;
 type RelationPayload = StatedPayload<WeeklyPlanningFactGraphV5['relations'][number]>;
 
+export type VNextAddStudyContext = Omit<StatedPayload<VNextStudyContextFact>, 'taskId'> & {
+  kind: 'study_context'; localId: string; taskRef: VNextFactRef;
+};
 export type VNextAddPlanningWindow = Omit<PlanningWindowPayload, 'kind'> & {
   kind: 'planning_window'; localId: string; windowKind: PlanningWindowPayload['kind'];
 };
@@ -173,6 +183,7 @@ export type VNextAddRelation = Omit<RelationPayload, 'kind' | 'fromTaskId' | 'to
 
 export type VNextAddFact =
   | VNextAddTask
+  | VNextAddStudyContext
   | VNextAddComponent
   | VNextAddWorkload
   | VNextAddEffort
@@ -184,6 +195,7 @@ export type VNextAddFact =
   | VNextAddRelation;
 
 type NullableChanges<T> = { [K in keyof T]-?: T[K] | null };
+export type VNextStudyContextChanges = NullableChanges<Omit<VNextAddStudyContext, 'kind' | 'localId' | 'taskRef'>>;
 export type VNextPlanningWindowChanges = NullableChanges<Omit<VNextAddPlanningWindow, 'kind' | 'localId'>>;
 export type VNextRecurrenceChanges = NullableChanges<Omit<VNextAddRecurrence, 'kind' | 'localId' | 'taskRef' | 'targetRef'>>;
 export type VNextTaskDateRuleChanges = NullableChanges<Omit<VNextAddTaskDateRule, 'kind' | 'localId' | 'taskRef' | 'targetRef'>>;
@@ -235,6 +247,7 @@ export interface VNextComponentChanges {
 // splice) can address it the same way as an added fact.
 export type VNextPatch =
   | { kind: 'task'; localId: string; targetFactId: string; changes: VNextTaskChanges }
+  | { kind: 'study_context'; localId: string; targetFactId: string; changes: VNextStudyContextChanges }
   | { kind: 'component'; localId: string; targetFactId: string; changes: VNextComponentChanges }
   | {
       kind: 'workload';
@@ -365,6 +378,7 @@ export type VNextEstimateBasis =
   | 'rate'
   | 'work_total'
   | 'observed_pace'
+  | 'observed_memory_pace'
   | 'session_duration'
   | 'task_total';
 

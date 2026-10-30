@@ -52,12 +52,22 @@ function questionKey(params: {
     .join(':');
 }
 
+/**
+ * Minutes per unit observed in the user's recorded memory-pace sessions, by unit code: derived each
+ * turn from the read-only calendar by Stable V5's deriveWeeklyPlanningMemoryPaceEstimateV5, passed in
+ * and never stored. Absent means no observation.
+ */
+export type WeeklyPlanningVNextObservedMemoryPace = Readonly<Record<string, number>>;
+
 interface ProjectionContext {
   state: WeeklyPlanningVNextState;
   resolver: VNextLineageResolver;
   workloadsById: Map<string, WorkloadFactV5>;
   activeWorkloads: WorkloadFactV5[];
   efforts: VNextEffortEstimateFact[];
+  /** Task lineages whose stated study activity is memorization. */
+  memorizationTasks: Set<string>;
+  observedMemoryPace: WeeklyPlanningVNextObservedMemoryPace;
 }
 
 function hasRelation(
@@ -318,6 +328,14 @@ function estimateOwnerWork(
     const forWork = { workLineageId: unit.workLineageId, definingFactId: unit.definingFactId, amount: unit.amount,
       unitCode: unit.workload.unitCode, unitLabel: unit.workload.unitLabel };
     if (candidates.length === 0) {
+      // As in Stable V5, memorization work with no estimate of its own uses the user's observed pace
+      // (amount × median minutes per unit); a stated estimate always wins, and nothing is stored.
+      const minutesPerUnit = context.memorizationTasks.has(context.resolver.lineageOf(owner.taskId))
+        ? context.observedMemoryPace[unit.workload.unitCode] : undefined;
+      if (minutesPerUnit !== undefined && Number.isFinite(minutesPerUnit) && minutesPerUnit > 0) {
+        work.push(workItem(unit, { minutes: unit.amount * minutesPerUnit, basis: 'observed_memory_pace', effortIds: [] }));
+        continue;
+      }
       return ownerQuestion(owner, 'missing_effort_estimate', [unit.workLineageId], { forWork, values: [unit.amount] });
     }
     if (candidates.some((candidate) => !sameMinutes(candidate.minutes, candidates[0].minutes))) {
@@ -391,7 +409,10 @@ function missingWorkOwner(context: ProjectionContext, taskId: string): VNextOwne
   };
 }
 
-export function projectWeeklyPlanningVNext(state: WeeklyPlanningVNextState): WeeklyPlanningVNextProjection {
+export function projectWeeklyPlanningVNext(
+  state: WeeklyPlanningVNextState,
+  observedMemoryPace: WeeklyPlanningVNextObservedMemoryPace = {},
+): WeeklyPlanningVNextProjection {
   const graph = state.graph;
   const resolver = createVNextLineageResolver(graph);
   const activeWorkloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads);
@@ -401,6 +422,10 @@ export function projectWeeklyPlanningVNext(state: WeeklyPlanningVNextState): Wee
     workloadsById: new Map(graph.workloads.map((workload) => [workload.id, workload])),
     activeWorkloads,
     efforts: filterActiveWeeklyPlanningFactsV5(graph, graph.effortEstimates),
+    memorizationTasks: new Set(filterActiveWeeklyPlanningFactsV5(graph, graph.studyContexts)
+      .filter((study) => study.activityKind === 'memorization_retrieval')
+      .map((study) => resolver.lineageOf(study.taskId))),
+    observedMemoryPace,
   };
 
   // Settle which work is scheduled first, so scope-wide totals see the final work set.

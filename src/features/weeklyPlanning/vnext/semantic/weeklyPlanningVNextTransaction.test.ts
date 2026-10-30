@@ -40,8 +40,12 @@ const activeWorkloads = (state: WeeklyPlanningVNextState) => state.graph.workloa
 const activeEfforts = (state: WeeklyPlanningVNextState) => state.graph.effortEstimates.filter(fact =>
   state.graph.factLifecycles.some(entry => entry.factId === fact.id && entry.status === 'active'));
 
-const portedFacts: { fact: VNextAddFact; collection: 'planningWindows' | 'recurrences' | 'taskDateRules' | 'availabilityDeclarations' | 'relations';
+const portedFacts: { fact: VNextAddFact; collection: 'studyContexts' | 'planningWindows' | 'recurrences' | 'taskDateRules' | 'availabilityDeclarations' | 'relations';
   patch: VNextPatch; added: Record<string, unknown>; changed: Record<string, unknown>; invalidField: string; invalidValue: unknown }[] = [
+  { fact: { kind: 'study_context', localId: 'ported', taskRef: { localId: 't' }, purpose: 'exam', contextLabel: 'Vocabulary', activityKind: 'memorization_retrieval' },
+    collection: 'studyContexts', patch: { kind: 'study_context', localId: 'edit', targetFactId: '', changes: { purpose: null, contextLabel: null, activityKind: 'problem_solving' } },
+    added: { purpose: 'exam', contextLabel: 'Vocabulary', activityKind: 'memorization_retrieval' },
+    changed: { purpose: 'exam', contextLabel: 'Vocabulary', activityKind: 'problem_solving' }, invalidField: 'activityKind', invalidValue: 'invented' },
   { fact: { kind: 'planning_window', localId: 'ported', windowKind: 'relative_week', value: 'next_week', start: null, end: null },
     collection: 'planningWindows', patch: { kind: 'planning_window', localId: 'edit', targetFactId: '',
       changes: { windowKind: null, value: 'tomorrow', start: null, end: null } },
@@ -67,6 +71,31 @@ const portedFacts: { fact: VNextAddFact; collection: 'planningWindows' | 'recurr
 ];
 
 describe('experimental VNext typed transaction', () => {
+  it('retains unknown activity despite a memorization title/label and word unit, and guards task dependencies', () => {
+    const state = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [
+      { ...task, title: '英単語暗記' }, { ...workload('words', 20), unitCode: 'word', unitLabel: '語' },
+      { kind: 'study_context', localId: 'study', taskRef: { localId: 't' }, purpose: 'exam', contextLabel: '暗記', activityKind: 'unknown' },
+    ] }));
+    expect(state.graph.studyContexts[0].activityKind).toBe('unknown');
+    const blocked = turn(state, delta({ remove: [{ targetFactId: state.graph.tasks[0].id }] }));
+    expect(blocked).toMatchObject({ status: 'rejected', errors: expect.arrayContaining([expect.objectContaining({ code: 'active_dependents' })]) });
+    expect(blocked.state).toBe(state);
+  });
+
+  it('uses V5 validation for a study purpose and task-only ownership', () => {
+    const context = { kind: 'study_context' as const, localId: 'study', taskRef: { localId: 't' },
+      purpose: 'self_study' as const, contextLabel: null, activityKind: 'reading' as const };
+    for (const [fact, field] of [
+      [{ ...context, purpose: 'invented' } as unknown as VNextAddFact, 'purpose'],
+      [{ ...context, taskRef: { localId: 'work' } }, 'taskRef'],
+    ] as const) {
+      const state = createEmptyWeeklyPlanningVNextState();
+      const result = turn(state, delta({ add: [task, workload('work', 20), fact] }));
+      expect(result).toMatchObject({ status: 'rejected', errors: expect.arrayContaining([expect.objectContaining({ path: `add[2].${field}`, localId: 'study' })]) });
+      expect(result.state).toBe(state);
+    }
+  });
+
   it.each(['remove-add', 'patch'] as const)('anchors a deadline in the final replacement window with %s (S02)', replacement => {
     const state = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task,
       { kind: 'planning_window', localId: 'old-window', windowKind: 'absolute', value: '2026-11-09/2026-11-15', start: '2026-11-09', end: '2026-11-15' },

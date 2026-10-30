@@ -6,6 +6,7 @@
 import { WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION } from '../weeklyPlanningVNextV5Boundary';
 import type { WeeklyPlanningFactGraphV5 } from '../weeklyPlanningVNextV5Boundary';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPlanningFactGraphValidatorV5';
+import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { frozenGroundingRange } from '../../application/weeklyPlanningTemporalContext';
 import type { WeeklyPlanningGroundingRecord } from '../../intake/weeklyPlanningIntakeTypes';
 import { adaptWeeklyPlanningV5GraphToVNext, type WeeklyPlanningVNextAdapterNote } from '../projection/weeklyPlanningVNextV5Adapter';
@@ -73,6 +74,7 @@ function validState(value: unknown, conversationId: string): value is WeeklyPlan
   const graph = value.graph as unknown as WeeklyPlanningVNextState['graph'];
   if (!validateWeeklyPlanningFactGraphValueV5(graph).graph) return false;
   if (!Array.isArray(graph.effortEstimates) || !graph.effortEstimates.every(validEffortExtension)) return false;
+  if (!graph.studyContexts.every((context) => (SEMANTIC_STUDY_ACTIVITY_KINDS_V5 as readonly unknown[]).includes(context.activityKind))) return false;
   const sources = [graph.tasks, graph.components, graph.workloads, graph.effortEstimates, graph.temporalConstraints,
     graph.planningWindows, graph.recurrences, graph.taskDateRules, graph.availabilityDeclarations, graph.relations]
     .flat().map((fact) => fact.source.conversationId);

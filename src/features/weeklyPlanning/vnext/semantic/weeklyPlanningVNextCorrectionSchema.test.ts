@@ -8,6 +8,7 @@ const workload = () => ({ kind: 'workload', localId: 'r8', targetFactId: 'r', am
 
 describe('VNext experimental provider correction fragment', () => {
   it.each([
+    { kind: 'study_context', changes: { purpose: null, contextLabel: null, activityKind: 'reading' } },
     { kind: 'planning_window', changes: { windowKind: null, value: 'next_week', start: null, end: null } },
     { kind: 'recurrence', changes: { recurrenceKind: 'weekly', count: null, days: ['weekday:monday'] } },
     { kind: 'task_date_rule', changes: { ruleKind: 'excluded_date', dateExpression: 'weekday:friday', constraintLevel: null } },
@@ -39,7 +40,7 @@ describe('VNext experimental provider correction fragment', () => {
     const root = VNEXT_CORRECTION_RESPONSE_FORMAT.json_schema.schema as Schema;
     expect(root.additionalProperties).toBe(false);
     const variants = root.properties!.patch.items!.anyOf!;
-    expect(variants).toHaveLength(10);
+    expect(variants).toHaveLength(11);
     for (const variant of variants) {
       const kind = variant.properties!.kind.enum![0] as keyof typeof VNEXT_PATCH_FIELDS;
       const changes = variant.properties!.changes;
