@@ -39,6 +39,9 @@ const allowedConsumers = new Set([
   'src/features/weeklyPlanning/semantic/weeklyPlanningTemporalDateRegisteredDomainV5.ts',
   // #305 reference routing: read-only manifest/selection consumer, no graph commit authority.
   'src/features/weeklyPlanning/semantic/weeklyPlanningReplyReferenceChoiceV5.ts',
+  // #926 VNext closed-set option choice (experimental, unwired): read-only manifest/selection
+  // consumer whose selection is only an option answer for the existing binder; no commit authority.
+  'src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextOptionChoice.ts',
   ...numericConsumers,
 ]);
 const testOnlyHelpers = new Set([
