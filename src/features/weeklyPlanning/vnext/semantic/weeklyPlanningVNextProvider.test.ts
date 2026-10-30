@@ -6,7 +6,7 @@ import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } fro
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
 import { decodeVNextProviderOutput, VNEXT_PROVIDER_RESPONSE_FORMAT } from './weeklyPlanningVNextProviderSchema';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
-import { VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
+import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
 
 const emptyDelta = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const task = (localId = 'task', title = 'Math') => ({ kind: 'task', localId, category: 'study', title });
@@ -27,8 +27,8 @@ function input(responses: (string | Error)[]): WeeklyPlanningVNextInterpretation
 
 describe('VNext native provider', () => {
   it('every synthetic observation seed is valid and has a projectable typed state before any API call', () => {
-    expect(VNEXT_PROVIDER_SCENARIOS.length).toBe(22);
-    expect(new Set(VNEXT_PROVIDER_SCENARIOS.map(scenario => scenario.id)).size).toBe(22);
+    expect(VNEXT_PROVIDER_SCENARIOS.length).toBe(23);
+    expect(new Set(VNEXT_PROVIDER_SCENARIOS.map(scenario => scenario.id)).size).toBe(23);
     for (const scenario of VNEXT_PROVIDER_SCENARIOS) {
       let state = createEmptyWeeklyPlanningVNextState();
       if (scenario.seed.length) {
@@ -39,6 +39,27 @@ describe('VNext native provider', () => {
         if (seeded.status === 'applied') state = seeded.state;
       }
       expect(() => projectWeeklyPlanningVNext(state), scenario.id).not.toThrow();
+    }
+  });
+
+  it('deadline oracle preserves tomorrow 13:00 as an end bound under the captured August 26 clock', () => {
+    const scenario = VNEXT_PROVIDER_SCENARIOS.find(item => item.id === 'deadline-tomorrow-1300')!;
+    expect(scenario.clock?.currentDate).toBe('2026-08-26');
+    const seed = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), { ...emptyDelta(), add: scenario.seed },
+      { expectedRevision: 0, turnKey: 'seed-bound', conversationId: 'synthetic', turnId: 'seed', sourceText: 'seed' });
+    if (seed.status !== 'applied') throw new Error('setup');
+    const reading = { status: 'interpreted' as const, delta: emptyDelta(), answer: null,
+      metrics: { calls: 1, repairs: 0, latencyMs: 0 } };
+    for (const misplaced of [false, true]) {
+      const candidate = structuredClone(seed.state);
+      candidate.graph.temporalConstraints.push({ id: 'bound', taskId: candidate.graph.tasks[0].id,
+        targetFactId: candidate.graph.tasks[0].id, kind: 'deadline', constraintLevel: 'hard', dateExpression: 'tomorrow',
+        namedTimePeriod: null, startTime: misplaced ? '13:00' : null, endTime: misplaced ? null : '13:00', precision: 'exact',
+        source: candidate.graph.tasks[0].source, createdRevision: 1 });
+      candidate.graph.factLifecycles.push({ factId: 'bound', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null });
+      const failures = checkVNextProviderScenario(scenario.turns[0].expected, seed.state, candidate, reading);
+      if (misplaced) expect(failures).toContainEqual(expect.stringContaining('missing temporal bound'));
+      else expect(failures).toEqual([]);
     }
   });
   it('uses an object root, required properties and closed objects in every strict-schema branch', () => {

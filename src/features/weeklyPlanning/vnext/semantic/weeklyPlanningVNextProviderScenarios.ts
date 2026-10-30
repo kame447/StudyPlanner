@@ -1,5 +1,5 @@
 // Synthetic observation inputs and typed oracles. No actual user conversation data.
-import type { WeeklyPlanningVNextInterpretation } from '../weeklyPlanningVNextInterpretationContract';
+import type { WeeklyPlanningVNextInterpretation, WeeklyPlanningVNextInterpretationClock } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextAddFact, VNextQuestionCode, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 
@@ -17,10 +17,12 @@ interface Expected {
   answerMinutes?: number;
   answerOptionIndex?: number;
   efforts?: { kind: string; minutes: number }[];
+  temporal?: { kind: string; dateExpression: string; startTime: string | null; endTime: string | null };
 }
 export interface VNextProviderScenario {
   id: string;
   seed: VNextAddFact[];
+  clock?: WeeklyPlanningVNextInterpretationClock;
   turns: { text: string; expected: Expected }[];
 }
 const task: VNextAddFact = { kind: 'task', localId: 'task', title: '数学プリント', category: 'study' };
@@ -75,6 +77,10 @@ export const VNEXT_PROVIDER_SCENARIOS: VNextProviderScenario[] = [
     expected: { amounts: [4], minutes: [120], roles: [{ role: 'remaining', amount: 4 }], questions: [], efforts: [{ kind: 'session_duration', minutes: 30 }] } }] },
   { id: 'explicit-date', seed: remainingSeed, turns: [{ text: '数学プリントの締め切りは2026年11月3日です。',
     expected: { date: '2026-11-03', minutes: [45], questions: [] } }] },
+  { id: 'deadline-tomorrow-1300', seed: remainingSeed,
+    clock: { currentDate: '2026-08-26', planningStartDate: '2026-08-24', planningEndDate: '2026-08-30', timeZone: 'Asia/Tokyo' },
+    turns: [{ text: '締切は明日の13時です。', expected: { minutes: [45], questions: [],
+      temporal: { kind: 'deadline', dateExpression: 'tomorrow', startTime: null, endTime: '13:00' } } }] },
   { id: 'note-and-new-task', seed: remainingSeed, turns: [{ text: 'メモですが、ペンの補充は済んでいるので予定に入れないでください。別件で英語の音読を30分やりたいです。',
     expected: { minutes: [30, 45], taskCount: 2, questions: [] } }] },
   { id: 'wait', seed: remainingSeed, turns: [{ text: '待って。いったん何も変更しないで。', expected: { unchanged: true, answerKind: null } }] },
@@ -121,5 +127,7 @@ export function checkVNextProviderScenario(expected: Expected, before: WeeklyPla
   if (expected.efforts) for (const effort of expected.efforts) {
     if (!after.graph.effortEstimates.some(fact => active.has(fact.id) && fact.kind === effort.kind && fact.minutes === effort.minutes)) failures.push(`missing effort ${JSON.stringify(effort)}`);
   }
+  if (expected.temporal && !after.graph.temporalConstraints.some(fact => active.has(fact.id)
+    && Object.entries(expected.temporal!).every(([key, value]) => fact[key as keyof typeof fact] === value))) failures.push(`missing temporal bound ${JSON.stringify(expected.temporal)}`);
   return failures;
 }

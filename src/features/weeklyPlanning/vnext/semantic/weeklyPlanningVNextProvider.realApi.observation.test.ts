@@ -12,7 +12,7 @@ import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPl
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const run = shouldRun ? describe : describe.skip;
 const outputDir = join(process.env.WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR ?? 'artifacts/weekly-planning-real-api', 'vnext-provider');
-const clock = { currentDate: '2026-10-30', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' };
+const defaultClock = { currentDate: '2026-10-30', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' };
 const empty = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 
 function requiredEnv(name: string): string {
@@ -24,6 +24,7 @@ function requiredEnv(name: string): string {
 run('VNext native provider synthetic real API observations', () => {
   for (const scenario of VNEXT_PROVIDER_SCENARIOS) {
     it(scenario.id, async () => {
+      const clock = scenario.clock ?? defaultClock;
       const observations: unknown[] = [];
       const failures: string[] = [];
       let state = createEmptyWeeklyPlanningVNextState();
