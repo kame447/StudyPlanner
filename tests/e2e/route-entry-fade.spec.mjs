@@ -66,7 +66,14 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
           });
           samples.push({ phase, route, id: id(node), t: performance.now(), opacity: Number(style.opacity), transform: style.transform,
             overlayOpen: Boolean(node.querySelector('.ai-chat-drawer-layer')), visible: node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }), pending: node.hasAttribute('data-initial-layout-pending'),
-            x: rect.x, y: rect.y, width: rect.width, chrome });
+            x: rect.x, y: rect.y, width: rect.width, chrome,
+            // Root stability does not imply stationary descendants. Keep these
+            // observations separate: schedule CRUD/period motion is unchanged.
+            descendants: ['month', 'week', 'day'].includes(route) ? [...node.querySelectorAll('[data-motion-key]')].map(child => {
+              const s = getComputedStyle(child), r = child.getBoundingClientRect();
+              return { id: id(child), key: child.dataset.motionKey, x: r.x, y: r.y, width: r.width, height: r.height,
+                transform: s.transform, translate: s.translate, scale: s.scale, rotate: s.rotate, opacity: s.opacity };
+            }) : [] });
         }
         if (samples.length < 6000) frame = requestAnimationFrame(tick);
       };
@@ -80,7 +87,7 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
       await expect(body).toBeVisible();
       await expect(body).not.toHaveAttribute('data-initial-layout-pending');
       const css = await body.evaluate(node => { const s = getComputedStyle(node); return { name: s.animationName, duration: s.animationDuration, delay: s.animationDelay, fill: s.animationFillMode }; });
-      expect(css).toEqual({ name: 'ui-surface-fade', duration: level === 'off' ? '0s' : level === 'reduced' ? '0.12s' : '0.15s', delay: '0s', fill: 'backwards' });
+      expect(css).toEqual({ name: 'ui-surface-fade', duration: level === 'off' ? '0s' : level === 'reduced' ? '0.12s' : '0.3s', delay: '0s', fill: 'backwards' });
       // Only completion is awaited here; the recorder has already captured from
       // before the click, including transparent/partial-opacity entry frames.
       await expect.poll(() => body.evaluate(node => node.getAnimations().filter(a => a.animationName === 'ui-surface-fade').length)).toBe(0);
