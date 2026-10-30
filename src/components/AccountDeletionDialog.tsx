@@ -47,7 +47,6 @@ export function AccountDeletionDialog({ uid, retry = false, onClose, onCompleted
       setError(result.status === 'reauth_required' ? 'もう一度、本人確認をしてください。'
         : result.status === 'failed' && result.reason === 'authentication' ? '本人確認ができませんでした。もう一度お試しください。'
         : result.status === 'failed' && result.reason === 'admin_forbidden' ? '管理者アカウントの退会はお問い合わせください。'
-        : result.status === 'failed' && result.reason === 'unconfirmed' ? '退会処理の状況を確認できませんでした。お問い合わせください。'
         : '退会を完了できませんでした。もう一度お試しください。');
     } catch {
       setPhase('retry'); setError('退会を完了できませんでした。もう一度お試しください。');
