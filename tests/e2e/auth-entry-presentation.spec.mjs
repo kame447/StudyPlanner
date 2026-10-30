@@ -263,6 +263,7 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
       const panel = page.getByRole('tabpanel');
       const duration = level === 'standard' ? '0.3s' : level === 'reduced' ? '0.12s' : '0s';
       const settle = async phase => {
+        await expect(page.locator('html')).toHaveAttribute('data-motion', level);
         await expect(panel).toHaveCSS('animation-duration', duration);
         await expect.poll(() => panel.evaluate(node => node.getAnimations().filter(a => a.playState === 'running').length)).toBe(0);
         await expect(panel).toHaveCSS('opacity', '1');
