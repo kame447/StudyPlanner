@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { performance } from 'node:perf_hooks';
 import { getAiConfig } from '../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   resetUserPlanningContextRuntimeForTestV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
@@ -114,6 +115,49 @@ interface ObservedFacts {
   temporal: ObservedTemporal[];
 }
 
+type ChatCompletionRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
+interface RawProviderCallObservation {
+  request: Pick<ChatCompletionRequest, 'messages' | 'responseFormat' | 'purpose' | 'temperature' | 'maxCompletionTokens'>;
+  rawResponseText?: string;
+  /** The shared client returns content text only, so the HTTP finish/usage envelope is unavailable here. */
+  finishReason: null;
+  usage: null;
+  latencyMs: number | null;
+  transportFailure?: true;
+}
+
+function captureProviderCalls(client: OpenAiCompatibleClient, calls: () => RawProviderCallObservation[]): OpenAiCompatibleClient {
+  return {
+    semanticCensusEnabled: client.semanticCensusEnabled,
+    semanticCensusObserver: client.semanticCensusObserver,
+    async createChatCompletion(request) {
+      const observation: RawProviderCallObservation = {
+        request: {
+          messages: structuredClone(request.messages),
+          responseFormat: request.responseFormat ? structuredClone(request.responseFormat) : undefined,
+          purpose: request.purpose,
+          temperature: request.temperature,
+          maxCompletionTokens: request.maxCompletionTokens,
+        },
+        finishReason: null,
+        usage: null,
+        latencyMs: null,
+      };
+      calls().push(observation);
+      const startedAt = performance.now();
+      try {
+        observation.rawResponseText = await client.createChatCompletion(request);
+        observation.latencyMs = Math.round(performance.now() - startedAt);
+        return observation.rawResponseText;
+      } catch (cause) {
+        observation.latencyMs = Math.round(performance.now() - startedAt);
+        observation.transportFailure = true;
+        throw cause;
+      }
+    },
+  };
+}
+
 interface V5TurnObservation {
   turn: number;
   status: 'pass' | 'fail' | 'not_reached' | 'out_of_scope';
@@ -121,6 +165,7 @@ interface V5TurnObservation {
   inVNextScope: boolean;
   accepted: boolean | null;
   error: string | null;
+  rawProviderCalls: RawProviderCallObservation[];
   failureDetail?: {
     failure: WeeklyPlanningTurnFailure | null;
     candidateCommitRejectionReason: WeeklyPlanningTurnExecutionResult['candidateCommitRejectionReason'] | null;
@@ -386,12 +431,20 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
   const session = createWeeklyPlanningControllerSession(ownerId, sessionWeekStart, conversationId);
   let capturedResult: WeeklyPlanningTurnExecutionResult | null = null;
   let capturedRequestId: string | null = null;
+  let rawProviderCalls: RawProviderCallObservation[] = [];
   const services: WeeklyPlanningTurnApplicationServices = {
     submitControlledTurn: submitWeeklyPlanningControlledTurn,
     runtimeGateway: {
       async execute(params) {
         capturedRequestId = params.pending.requestId;
-        capturedResult = await weeklyPlanningTurnRuntimeGateway.execute(params);
+        const baseClient = params.semanticObservation?.client ?? createOpenAiCompatibleClient(getAiConfig());
+        capturedResult = await weeklyPlanningTurnRuntimeGateway.execute({
+          ...params,
+          semanticObservation: {
+            client: captureProviderCalls(baseClient, () => rawProviderCalls),
+            finish: resolution => params.semanticObservation?.finish(resolution),
+          },
+        });
         return capturedResult;
       },
     },
@@ -407,6 +460,7 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     const fixtureTurn: RealApiConversationTurn = conversation.turns[index];
     capturedResult = null;
     capturedRequestId = null;
+    rawProviderCalls = [];
     const startedAt = performance.now();
     let accepted: boolean | null = null;
     let error: string | null = null;
@@ -446,7 +500,7 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     turns.push({
       turn: index + 1, userText: fixtureTurn.userText, inVNextScope: fixtureTurn.oracle.inVNextScope,
       status: !fixtureTurn.oracle.inVNextScope ? 'out_of_scope' : error || oracleDifferences.length > 0 ? 'fail' : 'pass',
-      accepted, error,
+      accepted, error, rawProviderCalls: structuredClone(rawProviderCalls),
       failureDetail: {
         failure: resultForDiagnostics?.failure ?? null,
         candidateCommitRejectionReason: resultForDiagnostics?.candidateCommitRejectionReason ?? null,
@@ -503,8 +557,9 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
     write: (raw: string) => { slots.set(key, raw); },
   });
   const plans = new Map<string, string>();
+  let rawProviderCalls: RawProviderCallObservation[] = [];
   const ports: WeeklyPlanningVNextExperimentalPorts = {
-    client: createOpenAiCompatibleClient(getAiConfig()),
+    client: captureProviderCalls(createOpenAiCompatibleClient(getAiConfig()), () => rawProviderCalls),
     interpret: createWeeklyPlanningVNextProviderInterpreter(),
     checkpoint: slot('vnext'),
     legacyV5Checkpoint: { read: () => null },
@@ -526,6 +581,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
 
   for (let index = 0; index < conversation.turns.length; index += 1) {
     const fixtureTurn = conversation.turns[index];
+    rawProviderCalls = [];
     const startedAt = performance.now();
     let error: string | null = null;
     let outcome = 'not_reached';
@@ -592,6 +648,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         inVNextScope: fixtureTurn.oracle.inVNextScope,
         accepted: error === null && ['applied', 'noop', 'duplicate'].includes(outcome),
         error,
+        rawProviderCalls: structuredClone(rawProviderCalls),
         questionCode: question,
         ...facts,
         schedulerStatus: readiness,
@@ -624,6 +681,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         inVNextScope: fixtureTurn.oracle.inVNextScope,
         accepted: false,
         error,
+        rawProviderCalls: structuredClone(rawProviderCalls),
         questionCode: question,
         ...facts,
         schedulerStatus: readiness,
@@ -675,6 +733,30 @@ function summarize(observations: readonly ConversationObservation[]) {
 }
 
 const runRealApi = shouldRun ? describe : describe.skip;
+
+describe('real API provider call capture (offline)', () => {
+  it('records request messages and raw content without client credentials or unavailable envelope metadata', async () => {
+    const calls: RawProviderCallObservation[] = [];
+    const request: ChatCompletionRequest = {
+      messages: [{ role: 'user', content: 'synthetic utterance' }],
+      purpose: 'weekly_planning_semantic_normalizer',
+    };
+    const responses = ['{"initial":true}', '{"repair":true}'];
+    const client = captureProviderCalls({ async createChatCompletion() { return responses.shift()!; } }, () => calls);
+    await expect(client.createChatCompletion(request)).resolves.toBe('{"initial":true}');
+    await expect(client.createChatCompletion({ ...request, messages: [...request.messages, { role: 'user', content: 'repair request' }] }))
+      .resolves.toBe('{"repair":true}');
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({
+      request: { messages: request.messages, purpose: 'weekly_planning_semantic_normalizer' },
+      rawResponseText: '{"initial":true}',
+      finishReason: null,
+      usage: null,
+    });
+    expect(calls[1]).toMatchObject({ rawResponseText: '{"repair":true}' });
+    expect(JSON.stringify(calls)).not.toContain('apiKey');
+  });
+});
 
 describe('VNext real API conversation fixture contract (offline)', () => {
   it('contains only synthetic turns and typed per-turn oracles', () => {
@@ -829,6 +911,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           inVNextScope: turn.oracle.inVNextScope,
           accepted: null,
           error,
+          rawProviderCalls: [],
           failureDetail: { failure: null, candidateCommitRejectionReason: null, responseSource: null, debugTraceEvents: [] },
           questionCode: null,
           taskIds: [],
@@ -866,6 +949,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           inVNextScope: turn.oracle.inVNextScope,
           accepted: null,
           error,
+          rawProviderCalls: [],
           failureDetail: undefined,
           questionCode: null,
           taskIds: [],

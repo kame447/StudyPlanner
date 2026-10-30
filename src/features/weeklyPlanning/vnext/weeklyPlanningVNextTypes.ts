@@ -301,7 +301,14 @@ export interface VNextQuestion {
   componentId: string | null;
   subjectLineageIds: string[];
   /** The work an estimate answer is bound to, by identity (`VNextWorkRef`). */
-  forWork: { workLineageId: string; definingFactId: string; amount: number } | null;
+  forWork: {
+    workLineageId: string;
+    definingFactId: string;
+    amount: number;
+    /** The asked work's unit: a per-unit answer is stated in it. */
+    unitCode: SemanticWorkloadUnitCodeV5;
+    unitLabel: string;
+  } | null;
   options: VNextQuestionOption[];
 }
 

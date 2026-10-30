@@ -10,6 +10,9 @@ type Schema = { type?: string; properties?: Record<string, Schema>; required?: s
   additionalProperties?: boolean; enum?: readonly unknown[]; anyOf?: Schema[]; items?: Schema; description?: string };
 export const VNEXT_QUANTITY_ROLE_REQUIREMENT = 'target = an amount the user intends to do in this planning period; remaining = what is left of a bounded whole; scope_total = the whole size of a bounded task or material; completed = an amount already done. declared/unknown are only for a stated quantity whose role the words do not establish; they are not the default for an explicit planned amount. Roles are meanings, not calculations.';
 export const VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT = 'A workload unitLabel is a required non-empty unit word for its amount, even when unitCode is a standard code. Preserve the user-language unit wording (for example 分, 時間, ページ). It is never null or an empty string. This requirement is separate from nullable effort-estimate units.';
+export const VNEXT_CONSTRAINT_LEVEL_REQUIREMENT = 'hard = a constraint that must be met, including a deadline or fixed commitment; soft = a preference; unknown = the words do not establish the level. Do not use unknown merely because a required deadline was not explicitly called hard.';
+export const VNEXT_TEMPORAL_TARGET_REQUIREMENT = 'A temporal_constraint targetRef must name its task or a component in that same task, using a supplied fact alias or a new localId. It cannot target a workload, estimate or projected work.';
+export const VNEXT_ESTIMATE_ANSWER_REQUIREMENT = 'An estimate answer concerns the asked work itself: whole_work = minutes for all of that work; unit = minutes for one unit in the unitCode/unitLabel shown in presentedQuestion.forWork. Return the stated minutes without multiplying or computing a total. Time already spent on completed work or time for another task is not an answer to this work question; represent it as an ordinary delta fact. For an option answer, per is null.';
 const text: Schema = { type: 'string' }, number: Schema = { type: 'number' };
 const object = (properties: Record<string, Schema>): Schema => ({ type: 'object', properties,
   required: Object.keys(properties), additionalProperties: false });
@@ -31,9 +34,10 @@ const add: Schema = { anyOf: [
   object({ kind: enumeration(['effort_estimate']), localId: text, taskRef: ref, targetRef: effortRef,
     effortKind: enumeration(['total_duration', 'duration_per_unit', 'session_duration']), minutes: number,
     unitCode: nullable(unit), unitLabel: nullable(text), precision }),
-  object({ kind: enumeration(['temporal_constraint']), localId: text, taskRef: ref, targetRef: ref,
+  object({ kind: enumeration(['temporal_constraint']), localId: text, taskRef: ref,
+    targetRef: { ...ref, description: VNEXT_TEMPORAL_TARGET_REQUIREMENT },
     constraintKind: enumeration(SEMANTIC_BASE_TEMPORAL_CONSTRAINT_KINDS_V5),
-    constraintLevel: enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5), dateExpression: nullable(text),
+    constraintLevel: { ...enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5), description: VNEXT_CONSTRAINT_LEVEL_REQUIREMENT }, dateExpression: nullable(text),
     namedTimePeriod: nullable(text), startTime: nullable(text), endTime: nullable(text), precision }),
 ] };
 const correction = VNEXT_CORRECTION_RESPONSE_FORMAT.json_schema.schema as Schema;
@@ -41,7 +45,8 @@ const root = object({ delta: object({ add: array(add), patch: correction.propert
   remove: correction.properties!.remove,
   relate: array(object({ kind: enumeration(['same', 'distinct']), a: ref, b: ref })),
   defer: array(object({ questionKey: text })),
-}), answer: nullable(object({ kind: enumeration(['option', 'estimate_minutes']), optionId: nullable(text), minutes: nullable(number) })) });
+}), answer: nullable(object({ kind: enumeration(['option', 'estimate_minutes']), optionId: nullable(text), minutes: nullable(number),
+  per: { ...nullable(enumeration(['whole_work', 'unit'])), description: VNEXT_ESTIMATE_ANSWER_REQUIREMENT } })) });
 
 export const VNEXT_PROVIDER_RESPONSE_FORMAT: JsonSchemaResponseFormat = { type: 'json_schema',
   json_schema: { name: 'weekly_planning_vnext_native_v1', strict: true, schema: root as Record<string, unknown> } };
@@ -116,14 +121,15 @@ export function decodeVNextProviderOutput(value: unknown):
   const errors = validate(root, value, '', null);
   if (errors.length) return { status: 'rejected', errors };
   const wire = structuredClone(value) as { delta: VNextTurnDelta; answer: {
-    kind: 'option' | 'estimate_minutes'; optionId: string | null; minutes: number | null;
+    kind: 'option' | 'estimate_minutes'; optionId: string | null; minutes: number | null; per: 'whole_work' | 'unit' | null;
   } | null };
   let answer: WeeklyPlanningVNextInterpretedAnswer | null = null;
   if (wire.answer) {
-    if (wire.answer.kind === 'option' && typeof wire.answer.optionId === 'string' && wire.answer.minutes === null) {
+    if (wire.answer.kind === 'option' && typeof wire.answer.optionId === 'string' && wire.answer.minutes === null && wire.answer.per === null) {
       answer = { kind: 'option', optionId: wire.answer.optionId };
-    } else if (wire.answer.kind === 'estimate_minutes' && typeof wire.answer.minutes === 'number' && wire.answer.optionId === null) {
-      answer = { kind: 'estimate_minutes', minutes: wire.answer.minutes };
+    } else if (wire.answer.kind === 'estimate_minutes' && typeof wire.answer.minutes === 'number' && wire.answer.optionId === null
+      && (wire.answer.per === 'whole_work' || wire.answer.per === 'unit')) {
+      answer = { kind: 'estimate_minutes', minutes: wire.answer.minutes, per: wire.answer.per };
     } else return { status: 'rejected', errors: [{ code: 'invalid_value', path: 'answer', localId: null, factId: null }] };
   }
   return { status: 'decoded', reading: { delta: wire.delta, answer } };

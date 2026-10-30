@@ -5,7 +5,8 @@ import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextPro
 import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT,
-  VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
+  VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT,
+  VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
@@ -30,8 +31,8 @@ function input(responses: (string | Error)[]): WeeklyPlanningVNextInterpretation
 
 describe('VNext native provider', () => {
   it('every synthetic observation seed is valid and has a projectable typed state before any API call', () => {
-    expect(VNEXT_PROVIDER_SCENARIOS.length).toBe(23);
-    expect(new Set(VNEXT_PROVIDER_SCENARIOS.map(scenario => scenario.id)).size).toBe(23);
+    expect(VNEXT_PROVIDER_SCENARIOS.length).toBe(24);
+    expect(new Set(VNEXT_PROVIDER_SCENARIOS.map(scenario => scenario.id)).size).toBe(24);
     for (const scenario of VNEXT_PROVIDER_SCENARIOS) {
       let state = createEmptyWeeklyPlanningVNextState();
       if (scenario.seed.length) {
@@ -53,16 +54,16 @@ describe('VNext native provider', () => {
     if (seed.status !== 'applied') throw new Error('setup');
     const reading = { status: 'interpreted' as const, delta: emptyDelta(), answer: null,
       metrics: { calls: 1, repairs: 0, latencyMs: 0 } };
-    for (const misplaced of [false, true]) {
+    for (const [misplaced, level] of [[false, 'hard'], [true, 'hard'], [false, 'unknown']] as const) {
       const candidate = structuredClone(seed.state);
       candidate.graph.temporalConstraints.push({ id: 'bound', taskId: candidate.graph.tasks[0].id,
         // Stored form: dates are fixed to the accepting turn (2026-08-26 + 1) by the transaction.
-        targetFactId: candidate.graph.tasks[0].id, kind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-08-27',
+        targetFactId: candidate.graph.tasks[0].id, kind: 'deadline', constraintLevel: level, dateExpression: '2026-08-27',
         namedTimePeriod: null, startTime: misplaced ? '13:00' : null, endTime: misplaced ? null : '13:00', precision: 'exact',
         source: candidate.graph.tasks[0].source, createdRevision: 1 });
       candidate.graph.factLifecycles.push({ factId: 'bound', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null });
       const failures = checkVNextProviderScenario(scenario.turns[0].expected, seed.state, candidate, reading);
-      if (misplaced) expect(failures).toContainEqual(expect.stringContaining('missing temporal bound'));
+      if (misplaced || level === 'unknown') expect(failures).toContainEqual(expect.stringContaining('missing temporal bound'));
       else expect(failures).toEqual([]);
     }
   });
@@ -223,7 +224,7 @@ describe('VNext native provider', () => {
     params.client = { createChatCompletion: vi.fn(async request => {
       const context = JSON.parse(request.messages[1].content);
       return id === '882-iter4-explicit-r8'
-        ? JSON.stringify(output([], { kind: 'option', optionId: context.presentedQuestion.options[0].optionId, minutes: null }))
+        ? JSON.stringify(output([], { kind: 'option', optionId: context.presentedQuestion.options[0].optionId, minutes: null, per: null }))
         : JSON.stringify({ delta: { ...emptyDelta(), patch: [{ kind: 'workload', localId: 'change-unit',
           targetFactId: context.activeFacts.workloads[0].id, amountDelta: null, changes: { amount: null, unitCode: null,
             unitLabel: 'セット', quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] }, answer: null });
@@ -242,8 +243,9 @@ describe('VNext native provider', () => {
   });
 
   it.each([
-    [{ kind: 'option', optionId: 'O1', minutes: null }, { kind: 'option', optionId: 'unverified-option' }],
-    [{ kind: 'estimate_minutes', optionId: null, minutes: 45 }, { kind: 'estimate_minutes', minutes: 45 }],
+    [{ kind: 'option', optionId: 'O1', minutes: null, per: null }, { kind: 'option', optionId: 'unverified-option' }],
+    [{ kind: 'estimate_minutes', optionId: null, minutes: 45, per: 'whole_work' }, { kind: 'estimate_minutes', minutes: 45, per: 'whole_work' }],
+    [{ kind: 'estimate_minutes', optionId: null, minutes: 8, per: 'unit' }, { kind: 'estimate_minutes', minutes: 8, per: 'unit' }],
   ])('decodes answers without selecting or binding them (%j)', async (wire, answer) => {
     const params = input([JSON.stringify(output([], wire))]);
     params.presentedQuestion = { code: 'remaining_inconsistent', key: 'raw-question["id"]', ownerKey: 'owner',
@@ -251,6 +253,64 @@ describe('VNext native provider', () => {
       options: [{ optionId: 'unverified-option', value: 8, delta: emptyDelta() }] };
     const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
     expect(result).toMatchObject({ status: 'interpreted', answer });
+  });
+
+  it.each([undefined, null, 'invented'])('does not guess whole-work or unit meaning for per=%s', per => {
+    expect(decodeVNextProviderOutput(output([], { kind: 'estimate_minutes', optionId: null, minutes: 8, per })).status).toBe('rejected');
+  });
+
+  it.each(['whole_work', 'unit'] as const)('keeps per=%s through native decode, shared binding and projection without computing model output', async per => {
+    const params = input([JSON.stringify(output([], { kind: 'estimate_minutes', optionId: null, minutes: 8, per }))]);
+    const seedFacts = VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === 'estimate-answer')!.seed;
+    const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: seedFacts }, { expectedRevision: 0,
+      turnKey: 'answer-seed', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic', acceptedDate: params.clock.currentDate });
+    if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
+    params.state = seed.state;
+    params.projection = projectWeeklyPlanningVNext(seed.state);
+    params.presentedQuestion = params.projection.questions[0];
+    const interpreted = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    if (interpreted.status !== 'interpreted') throw new Error(JSON.stringify(interpreted));
+    const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true, projection: params.projection,
+      presented: { questionKey: params.presentedQuestion.key, graphRevision: params.projection.graphRevision },
+      lineageOf: createVNextLineageResolver(seed.state.graph).lineageOf, interpreted });
+    if (resolved.status !== 'delta') throw new Error('answer did not bind');
+    const applied = applyWeeklyPlanningVNextTurn(seed.state, resolved.delta, { expectedRevision: seed.state.graph.revision,
+      turnKey: 'answer-turn', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText, acceptedDate: params.clock.currentDate });
+    if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
+    expect(interpreted.answer).toEqual({ kind: 'estimate_minutes', minutes: 8, per });
+    expect(projectWeeklyPlanningVNext(applied.state).owners[0].work[0].minutes).toBe(per === 'unit' ? 64 : 8);
+  });
+
+  it('uses schema-owned temporal level and target requirements in the prompt and the one field repair', async () => {
+    const params = input([]);
+    const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [
+      { kind: 'task', localId: 't', category: 'study', title: 'Reading' },
+      { kind: 'workload', localId: 'work', taskRef: { localId: 't' }, componentRef: null, quantityRole: 'remaining', amount: 8,
+        unitCode: 'custom', unitLabel: '枚', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+    ] }, { expectedRevision: 0, turnKey: 'temporal-seed', conversationId: 'synthetic', turnId: 'seed',
+      sourceText: 'synthetic', acceptedDate: params.clock.currentDate });
+    if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
+    params.state = seed.state;
+    params.projection = projectWeeklyPlanningVNext(params.state);
+    let calls = 0;
+    params.client = { createChatCompletion: vi.fn(async request => {
+      const context = JSON.parse(request.messages[1].content);
+      const bound = { kind: 'temporal_constraint', localId: 'deadline', taskRef: { factId: context.activeFacts.tasks[0].id },
+        targetRef: { factId: ++calls === 1 ? context.activeFacts.workloads[0].id : context.activeFacts.tasks[0].id },
+        constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+        startTime: null, endTime: '13:00', precision: 'exact' };
+      return JSON.stringify(output([bound]));
+    }) };
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    const requests = vi.mocked(params.client.createChatCompletion).mock.calls;
+    expect(requests[0][0].messages[0].content).toContain(VNEXT_CONSTRAINT_LEVEL_REQUIREMENT);
+    expect(requests[0][0].messages[0].content).toContain(VNEXT_TEMPORAL_TARGET_REQUIREMENT);
+    expect(requests[0][0].messages[0].content).toContain(VNEXT_ESTIMATE_ANSWER_REQUIREMENT);
+    const repair = JSON.parse(requests[1][0].messages[requests[1][0].messages.length - 1].content);
+    expect(repair.errors).toContainEqual(expect.objectContaining({ path: 'add[0].targetRef', localId: 'deadline', requirement: VNEXT_TEMPORAL_TARGET_REQUIREMENT }));
+    const reading = output([{ kind: 'temporal_constraint', constraintKind: 'deadline', constraintLevel: 'hard' }]);
+    expect(describeVNextProviderField('add[0].constraintLevel', reading)).toBe(VNEXT_CONSTRAINT_LEVEL_REQUIREMENT);
   });
 
   it('accepts a no-contribution turn without sending an empty delta to the transaction', async () => {
@@ -306,7 +366,7 @@ describe('VNext native provider', () => {
 
   it('rejects unknown/inherited-key fields and mixed answer payloads', () => {
     expect(decodeVNextProviderOutput(JSON.parse('{"delta":{"add":[],"patch":[],"remove":[],"relate":[],"defer":[]},"answer":null,"constructor":{}}')).status).toBe('rejected');
-    expect(decodeVNextProviderOutput(output([], { kind: 'option', optionId: 'x', minutes: 45 })).status).toBe('rejected');
+    expect(decodeVNextProviderOutput(output([], { kind: 'option', optionId: 'x', minutes: 45, per: null })).status).toBe('rejected');
   });
 
   it('keeps experimental provider/session requests outside production trace and outbox', () => {

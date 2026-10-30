@@ -94,7 +94,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
     expect(freshness.status).toBe('fresh');
     const binding = bindWeeklyPlanningVNextAnswer({
       presentationFresh: freshness.status === 'fresh', presented, projection, lineageOf: createVNextLineageResolver(state.graph).lineageOf,
-      answer: { kind: 'estimate_minutes', minutes: 60 },
+      answer: { kind: 'estimate_minutes', minutes: 60, per: 'whole_work' },
     });
     expect(binding.status).toBe('bound');
     if (binding.status !== 'bound') return;
@@ -122,7 +122,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
       presentationFresh: freshness.status === 'fresh',
       presented: { questionKey: projection.questions[0].key, graphRevision: projection.graphRevision },
       projection, lineageOf: createVNextLineageResolver(state.graph).lineageOf,
-      answer: { kind: 'estimate_minutes', minutes: 60 },
+      answer: { kind: 'estimate_minutes', minutes: 60, per: 'whole_work' },
     });
     expect(binding).toEqual({ status: 'represent', question: projection.questions[0] });
   });

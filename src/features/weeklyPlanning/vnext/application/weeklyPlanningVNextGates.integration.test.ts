@@ -152,7 +152,7 @@ describe('#926 no-cost integration gates', () => {
     expect(bindWeeklyPlanningVNextAnswer({
       presentationFresh: fresh.status === 'fresh', presented: reloaded.vnext.presentedQuestion, projection: reloadedProjection,
       lineageOf: createVNextLineageResolver(reloaded.vnext.state.graph).lineageOf,
-      answer: { kind: 'estimate_minutes', minutes: 60 },
+      answer: { kind: 'estimate_minutes', minutes: 60, per: 'whole_work' },
     }).status).toBe('bound');
     // A presentation made against the V5 revision is stale after migration.
     const staleFromV5 = resolveWeeklyPlanningQuestionPresentationFreshness({
@@ -188,7 +188,7 @@ describe('#926 no-cost integration gates', () => {
       presented: { questionKey: asked.questions[0].key, graphRevision: asked.graphRevision },
       projection: asked,
       lineageOf: createVNextLineageResolver(state.graph).lineageOf,
-      answer: { kind: 'estimate_minutes', minutes: 60 },
+      answer: { kind: 'estimate_minutes', minutes: 60, per: 'whole_work' },
     });
     if (binding.status !== 'bound') throw new Error(binding.status);
     state = applyTurn(state, binding.delta, 'answer', '60分');

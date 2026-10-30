@@ -19,8 +19,11 @@ export interface WeeklyPlanningVNextPresentedQuestion {
 export type WeeklyPlanningVNextAnswer =
   /** A typed UI choice or a focused short answer resolved to one presented option. */
   | { kind: 'option'; optionId: string }
-  /** A total in minutes for the asked work; the binder names the task and work from the question, not the AI. */
-  | { kind: 'estimate_minutes'; minutes: number }
+  /**
+   * Minutes for the asked work, for the whole of it or per unit; the binder names the task,
+   * the work and (per unit) the work's unit from the question, not the AI.
+   */
+  | { kind: 'estimate_minutes'; minutes: number; per: 'whole_work' | 'unit' }
   /** A semantic reading of a longer answer, already a typed delta. */
   | { kind: 'delta'; delta: VNextTurnDelta };
 
@@ -81,11 +84,12 @@ export function bindWeeklyPlanningVNextAnswer(params: {
           kind: 'effort_estimate',
           localId: 'answer_estimate',
           taskRef: { factId: question.taskId },
-          targetRef: { workLineageId: question.forWork.workLineageId },
-          effortKind: 'total_duration',
+          ...(answer.per === 'whole_work'
+            ? { targetRef: { workLineageId: question.forWork.workLineageId }, effortKind: 'total_duration' as const,
+                unitCode: null, unitLabel: null }
+            : { targetRef: { factId: question.forWork.definingFactId }, effortKind: 'duration_per_unit' as const,
+                unitCode: question.forWork.unitCode, unitLabel: question.forWork.unitLabel }),
           minutes: answer.minutes,
-          unitCode: null,
-          unitLabel: null,
           precision: 'exact',
         }],
       },

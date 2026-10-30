@@ -6,10 +6,11 @@ import {
 } from './vnextComparisonFixtures';
 
 describe('VNext offline comparison fixture contract', () => {
-  it('keeps all 21 revised prototype cases as independent typed scenarios', () => {
-    expect(prototypeFixtures).toHaveLength(21);
-    expect(new Set(prototypeFixtures.map(({ id }) => id)).size).toBe(21);
+  it('keeps all 20 distinct revised prototype cases as independent typed scenarios', () => {
+    expect(prototypeFixtures).toHaveLength(20);
+    expect(new Set(prototypeFixtures.map(({ id }) => id)).size).toBe(20);
     expect(prototypeFixtures.every(({ turns, oracle }) => turns.length > 0 && oracle.outcome)).toBe(true);
+    expect(prototypeFixtures.some(({ id }) => id === 'proto-a02-p2')).toBe(true);
   });
 
   it('includes the named historical and contract regressions without treating V5 output as truth', () => {
@@ -24,24 +25,28 @@ describe('VNext offline comparison fixture contract', () => {
       'issue-911-rate-total-conflict',
       'issue-912-target-other-scope',
       'issue-913-range-per-occurrence',
-      'issue-916-consent-no-new-number',
-      'compound-progress-and-effort',
-      'old-checkpoint-explicit-date',
       'category-and-identity-not-guessed',
-      'contract-882-explicit-r7',
       'contract-882-r8-e60-order-a',
       'contract-882-r8-e60-order-b',
       'contract-yesterday-progress',
       'contract-past-activity-misread-as-session',
-      'contract-custom-page-unit-change',
       'contract-repair-no-data-loss',
       'contract-one-to-thirty-minute-correction',
       'contract-explicit-date',
       'contract-note-plus-new-task',
       'contract-wait-deferral',
+    ]) expect(ids.has(id), `missing fixture ${id}`).toBe(true);
+
+    for (const id of [
+      'issue-916-consent-no-new-number',
+      'compound-progress-and-effort',
+      'old-checkpoint-explicit-date',
+      'contract-882-explicit-r7',
+      'contract-custom-page-unit-change',
       'contract-denial-does-not-authorize-save',
       'contract-checkpoint-reload-approve',
-    ]) expect(ids.has(id), `missing fixture ${id}`).toBe(true);
+    ]) expect(ids.has(id), `unexpected duplicate or out-of-scope fixture ${id}`).toBe(false);
+    expect(regressionFixtures).toHaveLength(27);
 
     const defects = regressionFixtures.filter(({ knownV5Defects }) => knownV5Defects?.length);
     expect(defects.map(({ id }) => id)).toEqual(expect.arrayContaining([
@@ -54,6 +59,9 @@ describe('VNext offline comparison fixture contract', () => {
     expect(allVNextComparisonFixtures.every(({ provenance, turns, oracle }) =>
       provenance.length > 0 && turns.length > 0 && oracle.outcome.length > 0)).toBe(true);
     expect(allVNextComparisonFixtures.every(({ v5 }) => v5 === 'unreachable')).toBe(true);
+    expect(prototypeFixtures.find(({ id }) => id === 'proto-c8')?.turns).toHaveLength(1);
+    expect(prototypeFixtures.find(({ id }) => id === 'proto-a01-p1')?.turns).toHaveLength(1);
+    expect(regressionFixtures.find(({ id }) => id === 'issue-905-45-minute-work')?.turns).toHaveLength(1);
     expect(regressionFixtures.filter(({ v5KnownDefect }) => v5KnownDefect)
       .every(({ v5KnownDefect }) => Boolean(v5KnownDefect?.expectedV5Behaviour.length))).toBe(true);
   });
@@ -67,8 +75,7 @@ describe('VNext offline comparison fixture contract', () => {
     expect(replay4.oracle.preserved).toContain('remaining=8');
     expect(explicitRemaining.oracle.preserved).toContain('remaining=7');
     expect(explicitRemaining.knownV5Defects?.join(' ')).toContain('#919');
-    expect(regressionFixtures.find(({ id }) => id === 'contract-checkpoint-reload-approve')?.checkpoint)
-      .toMatchObject({ version: 'weekly-planning-resumable-conversation-v1', graphRevision: 3 });
+    expect(explicitRemaining.provenance).toContain('#882 R7 replay');
   });
 
   it('separates the typed completed-work reading from the preserved misread input', () => {
@@ -89,5 +96,7 @@ describe('VNext offline comparison fixture contract', () => {
     ]);
     expect(misread.oracle).toMatchObject({ outcome: 'question', question: 'missing_schedulable_work' });
     expect(misread.oracle.notes?.join(' ')).toContain('Do not reclassify this misread by comparing its date');
+    expect(misread.name).toContain('negative corruption test');
+    expect(misread.oracle.notes?.join(' ')).toContain('not a semantic acceptance');
   });
 });

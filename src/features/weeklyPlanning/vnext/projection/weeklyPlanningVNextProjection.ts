@@ -308,7 +308,8 @@ function estimateOwnerWork(
   const work: VNextWorkItem[] = [];
   for (const unit of units) {
     const candidates = estimateCandidates(context, unit, allScheduled);
-    const forWork = { workLineageId: unit.workLineageId, definingFactId: unit.definingFactId, amount: unit.amount };
+    const forWork = { workLineageId: unit.workLineageId, definingFactId: unit.definingFactId, amount: unit.amount,
+      unitCode: unit.workload.unitCode, unitLabel: unit.workload.unitLabel };
     if (candidates.length === 0) {
       return ownerQuestion(owner, 'missing_effort_estimate', [unit.workLineageId], { forWork, values: [unit.amount] });
     }

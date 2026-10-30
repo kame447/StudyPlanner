@@ -17,6 +17,7 @@ import type {
   WeeklyPlanningVNextInterpretation,
   WeeklyPlanningVNextInterpretationInput,
 } from '../weeklyPlanningVNextInterpretationContract';
+import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import type { VNextAddFact, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import {
   approveWeeklyPlanningVNextExperimentalPreview,
@@ -83,7 +84,7 @@ describe('VNext experimental session end to end (offline)', () => {
   it('asks, binds the answer to the asked work, previews, saves partially, resumes, and never saves twice', async () => {
     const h = harness([
       interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),
-      interpreted({}, { kind: 'estimate_minutes', minutes: 120 }),
+      interpreted({}, { kind: 'estimate_minutes', minutes: 120, per: 'whole_work' }),
     ]);
 
     const first = await turn(h.ports, 't1', 'ゼミ資料は20枚で12枚できた');
@@ -120,10 +121,26 @@ describe('VNext experimental session end to end (offline)', () => {
     expect(failing.saveCalls()).toBe(callsAfterCompletion);
   });
 
+  it('binds a per-unit answer as a rate in the asked work\'s unit, and a whole-work answer as its total (run 41006879822)', async () => {
+    const stated = interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] });
+    const perUnit = harness([stated, interpreted({}, { kind: 'estimate_minutes', minutes: 8, per: 'unit' })]);
+    await turn(perUnit.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+    const rated = await turn(perUnit.ports, 't2', '1枚あたり8分くらい');
+    expect(rated).toMatchObject({ outcome: 'applied', question: null });
+    expect(rated.appliedDelta!.add[0]).toMatchObject({ effortKind: 'duration_per_unit', minutes: 8, unitCode: 'page', unitLabel: '枚' });
+    const read = readWeeklyPlanningVNextExperimentalSession(scope, perUnit.ports);
+    const work = read.status === 'ready' ? projectWeeklyPlanningVNext(read.checkpoint.state).owners.flatMap((owner) => owner.work) : [];
+    expect(work).toEqual([expect.objectContaining({ amount: 8, minutes: 64, estimateBasis: 'rate' })]);
+
+    const whole = harness([stated, interpreted({}, { kind: 'estimate_minutes', minutes: 120, per: 'whole_work' })]);
+    await turn(whole.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+    expect((await turn(whole.ports, 't2', '残りは2時間')).appliedDelta!.add[0]).toMatchObject({ effortKind: 'total_duration', minutes: 120 });
+  });
+
   it('a correction before approval replaces the shown preview, so the old preview cannot be saved', async () => {
     const h = harness([
       interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),
-      interpreted({}, { kind: 'estimate_minutes', minutes: 120 }),
+      interpreted({}, { kind: 'estimate_minutes', minutes: 120, per: 'whole_work' }),
       (input) => interpreted({ patch: [{
         kind: 'workload', localId: 'fix', targetFactId: input.state.graph.workloads.find((w) => w.quantityRole === 'completed')!.id, amountDelta: null,
         changes: { amount: 14, unitCode: null, unitLabel: null, quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null },

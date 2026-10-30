@@ -34,7 +34,11 @@ export interface WeeklyPlanningVNextInterpretationInput {
 /** What the words say about the presented question, in the binder's vocabulary. */
 export type WeeklyPlanningVNextInterpretedAnswer =
   | { kind: 'option'; optionId: string }
-  | { kind: 'estimate_minutes'; minutes: number };
+  /**
+   * Minutes the words state for the asked work itself: for the whole of it, or for one of
+   * its units. Time about other work (for example, time already spent) is not an answer.
+   */
+  | { kind: 'estimate_minutes'; minutes: number; per: 'whole_work' | 'unit' };
 
 export interface WeeklyPlanningVNextInterpretationMetrics {
   /** Provider requests made for this turn, including the one allowed repair. */
