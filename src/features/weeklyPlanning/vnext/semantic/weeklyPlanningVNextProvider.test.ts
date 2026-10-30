@@ -6,7 +6,7 @@ import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextPro
 import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT,
-  VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT,
+  VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_NAMED_TIME_PERIOD_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT,
   VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
@@ -611,6 +611,60 @@ describe('VNext native provider', () => {
     expect(repair.errors).toContainEqual(expect.objectContaining({ path: 'add[0].targetRef', localId: 'deadline', requirement: VNEXT_TEMPORAL_TARGET_REQUIREMENT }));
     const reading = output([{ kind: 'temporal_constraint', constraintKind: 'deadline', constraintLevel: 'hard' }]);
     expect(describeVNextProviderField('add[0].constraintLevel', reading)).toBe(VNEXT_CONSTRAINT_LEVEL_REQUIREMENT);
+  });
+
+  it('repairs an invalid named period once using the schema vocabulary without changing the date or independent workload', async () => {
+    const bound = { kind: 'temporal_constraint', localId: 'tc1', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+      constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: 'this_week', namedTimePeriod: 'this_week',
+      startTime: null, endTime: null, precision: 'exact' };
+    const original = output([task(), workload(), bound]);
+    const repaired = output([task(), workload('work', 999), { ...bound, namedTimePeriod: null, dateExpression: 'next_week' }]);
+    const params = input([JSON.stringify(original), JSON.stringify(repaired)]);
+    const before = structuredClone(params.state);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    expect(params.state).toEqual(before);
+    expect(describeVNextProviderField('add[2].namedTimePeriod', original)).toBe(VNEXT_NAMED_TIME_PERIOD_REQUIREMENT);
+    const requests = vi.mocked(params.client.createChatCompletion).mock.calls;
+    expect(requests[0][0].messages[0].content).toContain(VNEXT_NAMED_TIME_PERIOD_REQUIREMENT);
+    const messages = requests[1][0].messages;
+    const repair = JSON.parse(messages[messages.length - 1].content);
+    expect(repair.instruction).toContain('Formal repair only');
+    expect(repair.errors).toContainEqual({ path: 'add[2].namedTimePeriod', localId: 'tc1', requirement: VNEXT_NAMED_TIME_PERIOD_REQUIREMENT });
+    expect(VNEXT_NAMED_TIME_PERIOD_REQUIREMENT).toContain('before_sleep, before_meal, after_meal');
+    expect(VNEXT_NAMED_TIME_PERIOD_REQUIREMENT).toContain('custom:<label>');
+    expect(VNEXT_NAMED_TIME_PERIOD_REQUIREMENT).toContain('Calendar days, weeks and dates belong in dateExpression');
+    if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+    expect(result.delta.add[1]).toMatchObject({ amount: 7 });
+    expect(result.delta.add[2]).toMatchObject({ dateExpression: 'this_week', namedTimePeriod: null });
+  });
+
+  it.each([null, 'this_week'])('requires an empty temporal constraint to acquire a bound in the one field repair (%s)', async dateExpression => {
+    const bound = { kind: 'temporal_constraint', localId: 'tc1', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+      constraintKind: 'preferred_window', constraintLevel: 'soft', dateExpression: null, namedTimePeriod: null,
+      startTime: null, endTime: null, precision: 'exact' };
+    const params = input([JSON.stringify(output([task(), workload(), bound])),
+      JSON.stringify(output([task(), workload('work', 999), { ...bound, dateExpression }]))]);
+    const before = structuredClone(params.state);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result.metrics).toMatchObject({ calls: 2, repairs: 1 });
+    expect(params.state).toEqual(before);
+    const fields = ['dateExpression', 'namedTimePeriod', 'startTime', 'endTime'];
+    const paths = fields.map(field => `add[2].${field}`);
+    const messages = vi.mocked(params.client.createChatCompletion).mock.calls[1][0].messages;
+    const repair = JSON.parse(messages[messages.length - 1].content);
+    expect(repair.instruction).toContain('Formal repair only');
+    expect(repair.errors.map((error: { path: string }) => error.path).sort()).toEqual([...paths].sort());
+    expect(repair.errors.every((error: { localId: string }) => error.localId === 'tc1')).toBe(true);
+    if (dateExpression === null) {
+      expect(result).toMatchObject({ status: 'failed', reason: 'rejected_after_repair' });
+      if (result.status !== 'failed') throw new Error(JSON.stringify(result));
+      expect(result.errors.map(error => error.path).sort()).toEqual([...paths].sort());
+    } else {
+      if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+      expect(result.delta.add[1]).toMatchObject({ amount: 7 });
+      expect(result.delta.add[2]).toMatchObject({ dateExpression: 'this_week', namedTimePeriod: null, startTime: null, endTime: null });
+    }
   });
 
   it('accepts a no-contribution turn without sending an empty delta to the transaction', async () => {
