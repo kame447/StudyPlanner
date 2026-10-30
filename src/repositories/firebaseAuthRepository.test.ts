@@ -193,8 +193,15 @@ it.each(['signUpWithPassword', 'signInWithPassword', 'signInWithGoogle', 'sendPa
 it('preserves verification guidance and contains asynchronous profile failure after login', async () => {
   const repo = await repository(); const sdk = await import('firebase/auth');
   vi.mocked(sdk.signInWithEmailAndPassword).mockResolvedValueOnce({ user: { ...authUser, emailVerified: false } } as never);
-  await expect(repo.signInWithPassword('synthetic@example.test', 'synthetic-only')).rejects.toThrow('受信トレイの確認リンク');
+  await expect(repo.signInWithPassword('synthetic@example.test', 'synthetic-only')).rejects.toThrow('確認メールを再送しました');
+  expect(sdk.sendEmailVerification).toHaveBeenCalledOnce();
   expect(mocks.signOut).toHaveBeenCalledOnce();
+  vi.mocked(sdk.signInWithEmailAndPassword).mockResolvedValueOnce({ user: { ...authUser, emailVerified: false } } as never);
+  vi.mocked(sdk.sendEmailVerification).mockRejectedValueOnce(Object.assign(new Error('RAW_SECRET'), { code: 'auth/too-many-requests' }));
+  const throttled = await repo.signInWithPassword('synthetic@example.test', 'synthetic-only').catch(error => error);
+  expect(throttled.message).toContain('しばらく待ってからもう一度ログインすると確認メールを再送');
+  expect(throttled.message).not.toContain('RAW_SECRET');
+  expect(mocks.signOut).toHaveBeenCalledTimes(2);
   vi.mocked(sdk.signInWithEmailAndPassword).mockResolvedValueOnce({ user: authUser } as never);
   mocks.getDoc.mockRejectedValueOnce(new Error('RAW_PROFILE_SECRET'));
   await expect(repo.signInWithPassword('synthetic@example.test', 'synthetic-only')).rejects.toThrow('ログインを完了できませんでした');

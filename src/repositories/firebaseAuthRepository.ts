@@ -218,9 +218,18 @@ export function createFirebaseAuthRepository(
         );
 
         if (isPasswordLogin(credential.user) && !credential.user.emailVerified) {
+          // An expired, lost or never-sent link must not lock the account out:
+          // a password-proven login is the only place to send a fresh one.
+          let resent = true;
+          try {
+            await sendEmailVerification(credential.user);
+          } catch {
+            resent = false;
+          }
           await firebaseSignOut(firebaseAuth);
-          throw new UserFacingError(
-            'メール確認がまだ完了していません。受信トレイの確認リンクを開いてからログインしてください。',
+          throw new UserFacingError(resent
+            ? 'メール確認がまだ完了していません。確認メールを再送しました。新しいメールのリンクを開いてからログインしてください。'
+            : 'メール確認がまだ完了していません。受信トレイの確認リンクを開いてからログインしてください。リンクの期限が切れた場合は、しばらく待ってからもう一度ログインすると確認メールを再送します。',
           );
         }
 
