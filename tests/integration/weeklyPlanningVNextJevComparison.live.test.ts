@@ -1042,4 +1042,3 @@ describe('VNext Jev raw-dev artifact contract (offline)', () => {
     }
   });
 });
-
