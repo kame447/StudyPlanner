@@ -93,6 +93,7 @@ interface ObservedEffort {
   unitCode: string | null;
   unitLabel: string | null;
   forRole: RealApiWorkRole | 'task';
+  bindingKind?: string | null;
 }
 
 interface ObservedTemporal {
@@ -124,6 +125,7 @@ interface V5TurnObservation {
   efforts: ObservedEffort[];
   temporal: Array<{ taskId: string; kind: string; dateExpression: string | null; constraintLevel: string; startTime: string | null; endTime: string | null }>;
   schedulerStatus: string | null;
+  workMinutes: number | null;
   previewMinutes: number | null;
   aiCalls: number;
   rendererCalls: number;
@@ -202,6 +204,7 @@ function observedFacts(graph: WeeklyPlanningFactGraphV5): ObservedFacts {
       factId: fact.id, taskId: fact.taskId, kind: fact.kind, minutes: fact.minutes,
       unitCode: fact.unitCode, unitLabel: extension.unitLabel ?? null,
       forRole,
+      bindingKind: binding?.kind ?? null,
     };
   });
   const temporal = graph.temporalConstraints.filter((fact) => active.has(fact.id)).map((fact) => ({
@@ -211,19 +214,50 @@ function observedFacts(graph: WeeklyPlanningFactGraphV5): ObservedFacts {
   return { taskIds, workloads, efforts, temporal };
 }
 
-function previewMinutes(graph: WeeklyPlanningFactGraphV5, conversation: RealApiConversation): { status: string; minutes: number | null } {
+function previewMinutes(graph: WeeklyPlanningFactGraphV5, conversation: RealApiConversation): { status: string; minutes: number | null; workMinutes: number | null } {
   const clock = clockFor(conversation);
   const placementGraph = createWeeklyPlanningPlacementGraphViewV5(graph);
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
   const compiled = compileGenericSchedulerInput({ graph: activeGraph, context: { ownerId: 'vnext-real-api', ...contextFor(conversation) } });
-  if (compiled.status !== 'ready' || !compiled.input) return { status: compiled.status, minutes: null };
+  if (compiled.status !== 'ready' || !compiled.input) return { status: compiled.status, minutes: null, workMinutes: null };
   const preview = scheduleWeeklyPlanningStableV5Preview({
     input: compiled.input,
     graph: placementGraph,
     notBefore: { date: clock.currentDate, time: '09:00' },
   });
-  if (preview.status !== 'ready') return { status: preview.status, minutes: null };
-  return { status: preview.status, minutes: preview.candidates.reduce((sum, candidate) => sum + candidate.durationMinutes, 0) };
+  if (preview.status !== 'ready') return { status: preview.status, minutes: null, workMinutes: null };
+  const estimates = compiled.input.movableWorkItems.map((item) => item.baseEstimatedMinutes);
+  const workMinutes = estimates.length > 0 && estimates.every((minutes) => typeof minutes === 'number')
+    ? estimates.reduce((sum, minutes) => sum + (minutes ?? 0), 0) : null;
+  return { status: preview.status, minutes: preview.candidates.reduce((sum, candidate) => sum + candidate.durationMinutes, 0), workMinutes };
+}
+
+function sameUnitIdentity(
+  actual: { unitCode: string | null; unitLabel: string | null },
+  expected: { unitCode: string | null; unitLabel: string | null },
+  expectedTask?: string,
+): boolean {
+  if (actual.unitCode === expected.unitCode) {
+    if (expected.unitCode === 'custom') return actual.unitLabel === expected.unitLabel;
+    return actual.unitLabel === null || actual.unitLabel === '' || actual.unitLabel === actual.unitCode
+      || expected.unitLabel === null || expected.unitLabel === actual.unitLabel;
+  }
+  // These corpus cases have equivalent closed and custom encodings. The task
+  // and stated label constrain each alias; unrelated custom-unit changes fail.
+  const aliases: Record<string, Record<string, string[]>> = {
+    vocabulary: { 'custom:個': ['word:word', 'word:単語', 'word:個'] },
+    math: { 'custom:問': ['problem:problem', 'problem:問題', 'problem:問'] },
+    questions: { 'custom:問': ['problem:problem', 'problem:問題', 'problem:問'] },
+    slides: { 'custom:枚': ['page:page', 'page:ページ', 'page:枚'] },
+  };
+  const expectedKey = `${expected.unitCode}:${expected.unitLabel ?? ''}`;
+  return expectedTask !== undefined && (aliases[expectedTask]?.[expectedKey] ?? []).includes(`${actual.unitCode}:${actual.unitLabel ?? ''}`);
+}
+
+function effortUnitMatchesWork(fact: ObservedEffort, work: ObservedWorkload, task: string): boolean {
+  if (fact.unitCode !== work.unitCode) return false;
+  if (fact.unitLabel === null || fact.unitLabel === '') return true;
+  return sameUnitIdentity(fact, work, task);
 }
 
 function matchWorkloads(actual: readonly ObservedWorkload[], expected: readonly RealApiWorkloadOracle[]): { matched: boolean; pairs: Array<[RealApiWorkloadOracle, ObservedWorkload | null]> } {
@@ -231,7 +265,7 @@ function matchWorkloads(actual: readonly ObservedWorkload[], expected: readonly 
   const pairs: Array<[RealApiWorkloadOracle, ObservedWorkload | null]> = [];
   for (const wanted of expected) {
     const index = remaining.findIndex((fact) => fact.role === wanted.role && fact.amount === wanted.amount
-      && fact.unitCode === wanted.unitCode && fact.unitLabel === wanted.unitLabel
+      && sameUnitIdentity(fact, wanted, wanted.task)
       && (wanted.perOccurrence === undefined || fact.perOccurrence === wanted.perOccurrence)
       && (wanted.periodExpression === undefined || fact.periodExpression === wanted.periodExpression));
     if (index < 0) {
@@ -244,7 +278,7 @@ function matchWorkloads(actual: readonly ObservedWorkload[], expected: readonly 
   return { matched: pairs.length === expected.length && remaining.length === 0, pairs };
 }
 
-function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question: string | null, minutes: number | null,
+function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question: string | null, workMinutes: number | null,
   oracle: RealApiTurnOracle, projectedWorkloads: readonly ObservedWorkload[] = []): string[] {
   if (!oracle.inVNextScope) return [];
   const differences: string[] = [];
@@ -267,11 +301,29 @@ function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question
     if (!left || !right || left.taskId !== right.taskId) differences.push(`work owner identity differs at ${leftIndex}/${rightIndex}`);
   }
   if (question !== oracle.questionCode) differences.push(`question expected=${oracle.questionCode ?? 'none'} observed=${question ?? 'none'}`);
-  if (minutes !== oracle.projectedMinutes) differences.push(`preview minutes expected=${oracle.projectedMinutes ?? 'none'} observed=${minutes ?? 'none'}`);
+  if (workMinutes !== oracle.projectedMinutes) differences.push(`work minutes expected=${oracle.projectedMinutes ?? 'none'} observed=${workMinutes ?? 'none'}`);
   for (const wanted of oracle.efforts) {
-    const found = observed.efforts.some((fact) => fact.kind === wanted.kind && fact.minutes === wanted.minutes
-      && fact.unitCode === wanted.unitCode && (fact.unitLabel === null || fact.unitLabel === wanted.unitLabel)
-      && fact.forRole === wanted.forRole);
+    const expectedWork = workloads.pairs.find(([expected]) => expected.task === wanted.task && expected.role === wanted.forRole)?.[0]
+      ?? oracle.projectedWorkloads?.find((work) => work.task === wanted.task && work.role === wanted.forRole);
+    const projectedBoundWork = expectedWork && projectedWorkloads.find((fact) => fact.role === wanted.forRole
+      && fact.amount === expectedWork.amount && sameUnitIdentity(fact, expectedWork, wanted.task));
+    const boundWork = (expectedWork && workloads.pairs.find(([expected]) => expected.task === wanted.task)?.[1])
+      ?? projectedBoundWork;
+    const found = observed.efforts.some((fact) => {
+      if (fact.kind !== wanted.kind || fact.minutes !== wanted.minutes || !boundWork || fact.taskId !== boundWork.taskId) return false;
+      const sameSpecificRole = fact.forRole === wanted.forRole;
+      const sameTaskBinding = fact.forRole === 'task'
+        && observed.workloads.filter((work) => work.taskId === boundWork.taskId && ['remaining', 'target', 'declared'].includes(work.role)).length === 1;
+      const sameProjectedWorkBinding = projectedBoundWork?.taskId === fact.taskId
+        && (fact.forRole === 'scope_total' || fact.bindingKind === 'future_work');
+      if (!sameSpecificRole && !sameTaskBinding && !sameProjectedWorkBinding) return false;
+      if (wanted.kind === 'duration_per_unit') {
+        return effortUnitMatchesWork(fact, boundWork, wanted.task) && sameUnitIdentity(boundWork, wanted, wanted.task);
+      }
+      // V5 stores total/session estimates in minutes; null in this oracle means
+      // “not per workload unit”, not “the stored unit code must be null”.
+      return fact.unitCode === null || fact.unitCode === 'minute';
+    });
     if (!found) differences.push(`effort missing ${wanted.kind}/${wanted.minutes}/${wanted.forRole}`);
   }
   if (oracle.checkTemporal !== false) {
@@ -354,8 +406,8 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     if (fixtureTurn.oracle.inVNextScope && currentQuestion !== null) clarificationCount += 1;
     const questionSignature = currentQuestion === null ? null : JSON.stringify({ question: currentQuestion, workloads: facts.workloads });
     if (questionSignature !== null && questionSignature === previousQuestionSignature && !fixtureTurn.oracle.preservePreviousTypedState) repeatedQuestionCount += 1;
-    const preview = graph ? previewMinutes(graph, conversation) : { status: 'no_graph', minutes: null };
-    const oracleDifferences = error ? [error] : graph ? compareTypedOracle(facts, currentQuestion, preview.minutes, fixtureTurn.oracle) : ['typed state unavailable'];
+    const preview = graph ? previewMinutes(graph, conversation) : { status: 'no_graph', minutes: null, workMinutes: null };
+    const oracleDifferences = error ? [error] : graph ? compareTypedOracle(facts, currentQuestion, preview.workMinutes, fixtureTurn.oracle) : ['typed state unavailable'];
     const expectedClarification = fixtureTurn.oracle.questionCode !== null;
     const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification && currentQuestion === null;
     const wrongRejection = fixtureTurn.oracle.inVNextScope && !expectedClarification && currentQuestion !== null;
@@ -363,7 +415,7 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
       turn: index + 1, userText: fixtureTurn.userText, inVNextScope: fixtureTurn.oracle.inVNextScope,
       status: !fixtureTurn.oracle.inVNextScope ? 'out_of_scope' : error || oracleDifferences.length > 0 ? 'fail' : 'pass',
       accepted, error, questionCode: currentQuestion,
-      ...facts, schedulerStatus: preview.status, previewMinutes: preview.minutes,
+      ...facts, schedulerStatus: preview.status, workMinutes: preview.workMinutes, previewMinutes: preview.minutes,
       aiCalls: debugTrace.filter((event) => event.stage === 'semantic_provider_request').length,
       rendererCalls: debugTrace.filter((event) => event.stage === 'dialogue_renderer_request').length,
       latencyMs, clarificationCount, wrongAcceptance, wrongRejection, repeatedQuestionCount,
@@ -378,6 +430,12 @@ function vnextPreviewMinutes(blocks: readonly { startTime: string; endTime: stri
   if (!blocks) return null;
   const toMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
   return blocks.reduce((sum, block) => sum + toMinutes(block.endTime) - toMinutes(block.startTime), 0);
+}
+
+function vnextProjectedWorkMinutes(owners: ReturnType<typeof projectWeeklyPlanningVNext>['owners']): number | null {
+  const work = owners.flatMap((owner) => owner.work);
+  return work.length > 0 && work.every((item) => typeof item.minutes === 'number')
+    ? work.reduce((sum, item) => sum + (item.minutes ?? 0), 0) : null;
 }
 
 async function runVNextConversation(conversation: RealApiConversation): Promise<ConversationObservation> {
@@ -434,6 +492,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
     let facts: ObservedFacts = { taskIds: [], workloads: [], efforts: [], temporal: [] };
     let readiness: string | null = null;
     let minutes: number | null = null;
+    let workMinutes: number | null = null;
     try {
       const result = await submitWeeklyPlanningVNextExperimentalTurn({
         scope, ports, turnId: `turn-${index + 1}`, userText: fixtureTurn.userText,
@@ -454,6 +513,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
       question = projection.questions[0]?.code ?? null;
       readiness = projection.readiness;
       minutes = vnextPreviewMinutes(result.preview?.blocks ?? null);
+      workMinutes = vnextProjectedWorkMinutes(projection.owners);
       const projectedWorkloads: ObservedWorkload[] = projection.owners.flatMap((owner) => owner.work.map((work) => ({
         factId: work.definingFactId,
         taskId: work.taskId,
@@ -464,7 +524,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         perOccurrence: work.perOccurrence,
         periodExpression: work.periodExpression,
       })));
-      const differences = error ? [error] : compareTypedOracle(facts, question, minutes, fixtureTurn.oracle, projectedWorkloads);
+      const differences = error ? [error] : compareTypedOracle(facts, question, workMinutes, fixtureTurn.oracle, projectedWorkloads);
       const expectedClarification = fixtureTurn.oracle.questionCode !== null;
       const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification && question === null;
       const wrongRejection = fixtureTurn.oracle.inVNextScope && !expectedClarification && question !== null;
@@ -481,6 +541,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         questionCode: question,
         ...facts,
         schedulerStatus: readiness,
+        workMinutes,
         previewMinutes: minutes,
         aiCalls: calls,
         rendererCalls: 0,
@@ -507,6 +568,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         questionCode: question,
         ...facts,
         schedulerStatus: readiness,
+        workMinutes,
         previewMinutes: minutes,
         aiCalls: calls,
         rendererCalls: 0,
@@ -588,6 +650,24 @@ describe('VNext real API conversation fixture contract (offline)', () => {
       temporal: [],
     });
   });
+
+  it('compares equivalent unit encodings while rejecting a changed custom unit', () => {
+    expect(sameUnitIdentity(
+      { unitCode: 'word', unitLabel: 'word' },
+      { unitCode: 'custom', unitLabel: '個' },
+      'vocabulary',
+    )).toBe(true);
+    expect(effortUnitMatchesWork(
+      { unitCode: 'custom', unitLabel: null } as ObservedEffort,
+      { unitCode: 'custom', unitLabel: 'セット' } as ObservedWorkload,
+      'cards',
+    )).toBe(true);
+    expect(sameUnitIdentity(
+      { unitCode: 'custom', unitLabel: '枚' },
+      { unitCode: 'custom', unitLabel: 'セット' },
+      'cards',
+    )).toBe(false);
+  });
 });
 
 runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
@@ -609,6 +689,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
             vnext: vnextTurn.status,
             providerCalls: { v5: v5Turn ? v5Turn.aiCalls + v5Turn.rendererCalls : null, vnext: vnextTurn.aiCalls },
             questions: { v5: v5Turn?.questionCode ?? null, vnext: vnextTurn.questionCode },
+            workMinutes: { v5: v5Turn?.workMinutes ?? null, vnext: vnextTurn.workMinutes },
             previewMinutes: { v5: v5Turn?.previewMinutes ?? null, vnext: vnextTurn.previewMinutes },
             wrongAcceptance: { v5: v5Turn?.wrongAcceptance ?? false, vnext: vnextTurn.wrongAcceptance },
             wrongRejection: { v5: v5Turn?.wrongRejection ?? false, vnext: vnextTurn.wrongRejection },
@@ -645,6 +726,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           efforts: [],
           temporal: [],
           schedulerStatus: null,
+          workMinutes: null,
           previewMinutes: null,
           aiCalls: 0,
           rendererCalls: 0,
@@ -679,6 +761,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           efforts: [],
           temporal: [],
           schedulerStatus: null,
+          workMinutes: null,
           previewMinutes: null,
           aiCalls: 0,
           rendererCalls: 0,

@@ -4,7 +4,8 @@ import type { WeeklyPlanningVNextInterpretationInput } from '../weeklyPlanningVN
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
-import { decodeVNextProviderOutput, VNEXT_PROVIDER_RESPONSE_FORMAT } from './weeklyPlanningVNextProviderSchema';
+import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT,
+  VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
@@ -80,6 +81,39 @@ describe('VNext native provider', () => {
       if (schema.items) inspect(schema.items);
     };
     inspect(root);
+  });
+
+  it('publishes the same workload role/label requirements in schema and prompt, separately from estimate units', () => {
+    const wire = output([task(), workload()]);
+    expect(describeVNextProviderField('add[1].quantityRole', wire)).toBe(VNEXT_QUANTITY_ROLE_REQUIREMENT);
+    expect(describeVNextProviderField('delta.add[1].unitLabel', wire)).toBe(VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT);
+    const messages = buildWeeklyPlanningVNextProviderMessages(input([]));
+    expect(messages[0].content).toContain(VNEXT_QUANTITY_ROLE_REQUIREMENT);
+    expect(messages[0].content).toContain(VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT);
+    expect(describeVNextProviderField('add[0].unitLabel', output([{ kind: 'effort_estimate', localId: 'e',
+      taskRef: { localId: 'task' }, targetRef: { localId: 'task' }, effortKind: 'total_duration', minutes: 45,
+      unitCode: null, unitLabel: null, precision: 'exact' }]))).toBeNull();
+    expect(describeVNextProviderField('unrecognized.path', wire)).toBeNull();
+  });
+
+  it.each([null, ''])('repairs invalid workload unitLabel %j with its schema requirement and retains target/time', async unitLabel => {
+    const first = { ...workload('work', 45), quantityRole: 'target', unitCode: 'minute', unitLabel };
+    const repaired = { ...first, amount: 999, quantityRole: 'declared', unitLabel: '分' };
+    const params = input([JSON.stringify(output([task(), first])), JSON.stringify(output([task(), repaired]))]);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    const calls = vi.mocked(params.client.createChatCompletion).mock.calls;
+    const repairMessage = JSON.parse(calls[1][0].messages[calls[1][0].messages.length - 1].content);
+    expect(repairMessage.errors).toContainEqual(expect.objectContaining({ localId: 'work', requirement: VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT }));
+    if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+    expect(result.delta.add[1]).toMatchObject({ amount: 45, quantityRole: 'target', unitCode: 'minute', unitLabel: '分' });
+    const applied = applyWeeklyPlanningVNextTurn(params.state, result.delta, {
+      expectedRevision: 0, turnKey: 'valid-time-work', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText,
+    });
+    if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
+    const projection = projectWeeklyPlanningVNext(applied.state);
+    expect(projection.questions).toEqual([]);
+    expect(projection.owners.flatMap(owner => owner.work).map(work => work.minutes)).toEqual([45]);
   });
 
   it('decodes every native add kind and all three reference namespaces', () => {

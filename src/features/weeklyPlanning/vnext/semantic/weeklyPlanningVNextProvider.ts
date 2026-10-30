@@ -3,7 +3,7 @@ import type { WeeklyPlanningVNextInterpretation, WeeklyPlanningVNextInterpretati
 import type { VNextTurnError } from '../weeklyPlanningVNextTypes';
 import { applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
-import { decodeVNextProviderOutput, VNEXT_PROVIDER_RESPONSE_FORMAT, type VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
+import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT, type VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
 import { createVNextProviderReferences } from './weeklyPlanningVNextProviderReferences';
 
 type RecordValue = Record<string, unknown>;
@@ -95,7 +95,10 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
       instruction: formal
         ? 'Formal repair only. Return the full schema document with exactly these addressed fields corrected. Keep every other field unchanged. Match elements by localId, not array position. Do not re-read meaning or add/remove clauses.'
         : 'Discard the prior reading. Interpret the whole original utterance again against the supplied state and clock. Return a new full schema document, retaining all independent contributions of that utterance. Use only the same supplied short reference aliases. This is the single allowed new reading.',
-      errors: errors.map(({ path, localId }) => ({ path, localId })),
+      errors: errors.map(({ path, localId }) => {
+        const requirement = describeVNextProviderField(path, original);
+        return { path, localId, ...(requirement ? { requirement } : {}) };
+      }),
     }) });
     metrics.repairs++;
     try { raw = await request(); }
