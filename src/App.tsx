@@ -777,7 +777,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     </div>
       {deletionOpen ? deletionDialog : null}
       <AppSettingsDialog
-        onDeleteAccount={() => setDeletionOpen(true)}
+        onDeleteAccount={isFirebaseEnabled() ? () => setDeletionOpen(true) : undefined}
         homeScenePreferences={homeScenePreference.preferences}
         onChangeHomeSceneStyle={homeScenePreference.setStyle}
         onChangeHomeSceneMotion={homeScenePreference.setAnimated}

@@ -1,11 +1,14 @@
-import type { FirestoreServiceAccountClient } from './firestoreServiceAccountClient';
+import { FirestoreWriteConflictError, type FirestoreServiceAccountClient } from './firestoreServiceAccountClient';
 import { WorkerSubrequestBudget, type WorkerSubrequestPhase } from './workerSubrequestBudget';
 
 export const ACCOUNT_DELETION_COLLECTION = 'account_deletions';
 const RETENTION_MS = 180 * 86_400_000;
+// Longer than one bounded request; a crashed holder only delays a retry.
+const LEASE_MS = 120_000;
 const PAGE_SIZE = 100;
 
 export class AccountDeletionYield extends Error {}
+export class AccountDeletionBusy extends Error {}
 
 // Leave room to persist a checkpoint/error after any operation yields.
 export class AccountDeletionBudget extends WorkerSubrequestBudget {
@@ -32,12 +35,16 @@ export interface AccountDeletionRecord extends Record<string, unknown> {
   completedSteps: string[];
   deletedCounts: Record<string, number>;
   lastErrorCode?: string;
+  // Pseudonymous telemetry actor, kept only while the job runs: its directory
+  // entry is removed first so later events cannot be attached to this account.
+  observabilityActorSubjectId?: string | null;
   workerRevision: string;
   expiresAt: string;
+  leaseUntil?: string;
 }
 
 export type AccountDeletionFirestore = Pick<FirestoreServiceAccountClient,
-  'getDocument' | 'setDocument' | 'queryDocuments' | 'listCollectionDocuments'
+  'getDocument' | 'getDocumentSnapshot' | 'setDocument' | 'queryDocuments' | 'listCollectionDocuments'
   | 'commitWrites' | 'deleteByStringField' | 'queryDocumentsAfter'
   | 'queryDocumentSnapshotsByNameAfter'>;
 
@@ -71,8 +78,14 @@ export async function runAccountDeletionJob(
 ): Promise<'completed' | 'in_progress'> {
   const { firestore, budget } = ports;
   const now = ports.now ?? (() => new Date());
-  const existing = await firestore.getDocument(ACCOUNT_DELETION_COLLECTION, uid);
+  const snapshot = await firestore.getDocumentSnapshot(ACCOUNT_DELETION_COLLECTION, uid);
+  const existing = snapshot?.value;
   if (existing?.status === 'completed') return 'completed';
+  // One request at a time: a concurrent request must not overwrite the
+  // holder's progress, including a record the holder already completed.
+  if (typeof existing?.leaseUntil === 'string' && Date.parse(existing.leaseUntil) > now().getTime()) {
+    throw new AccountDeletionBusy();
+  }
   const requestedAt = now().toISOString();
   const job: AccountDeletionRecord = existing
     ? { ...existing, attempts: Number(existing.attempts) + 1 } as AccountDeletionRecord
@@ -86,8 +99,19 @@ export async function runAccountDeletionJob(
     job.updatedAt = now().toISOString();
     await budget.save(() => firestore.setDocument(ACCOUNT_DELETION_COLLECTION, uid, job));
   };
-  // The tombstone must reach Firestore before deleting any user data.
-  await save();
+  // The tombstone must reach Firestore before deleting any user data. This
+  // conditional write also takes the lease against the version read above.
+  job.leaseUntil = new Date(now().getTime() + LEASE_MS).toISOString();
+  job.updatedAt = now().toISOString();
+  try {
+    await budget.save(() => firestore.commitWrites([{
+      collection: ACCOUNT_DELETION_COLLECTION, id: uid, value: job,
+      currentDocument: snapshot ? { updateTime: snapshot.updateTime } : { exists: false },
+    }]));
+  } catch (error) {
+    if (error instanceof FirestoreWriteConflictError) throw new AccountDeletionBusy();
+    throw error;
+  }
 
   async function deleteDocuments(collection: string, ids: string[]): Promise<number> {
     await firestore.commitWrites(ids.map((id) => ({ collection, id, delete: true as const })));
@@ -108,8 +132,21 @@ export async function runAccountDeletionJob(
     const document = await firestore.getDocument(collection, uid);
     return document ? deleteDocuments(collection, [uid]) : 0;
   }
+  const savedActor = async () => job.observabilityActorSubjectId ?? null;
 
+  // Profiles and the telemetry actor go first: trace writes require an accepted
+  // policy on the profile and telemetry cannot create a new actor once the
+  // tombstone exists, so a still-open device cannot refill finished steps.
   const steps: Array<{ name: string; run(): Promise<number> }> = [
+    { name: 'profiles', run: () => deleteUidDocument('profiles') },
+    { name: 'observability_actor_directory', async run() {
+      if (!('observabilityActorSubjectId' in job)) {
+        job.observabilityActorSubjectId = await ports.actorSubjectId();
+        await save();
+      }
+      const actor = job.observabilityActorSubjectId;
+      return actor ? firestore.deleteByStringField('observability_actor_directory', 'actorSubjectId', [actor]) : 0;
+    } },
     { name: 'traces', run: ports.deleteTraces },
     { name: 'support_inquiries', async run() {
       let count = 0;
@@ -158,12 +195,12 @@ export async function runAccountDeletionJob(
     ...['observability_events', 'observability_actor_day'].map((collection) => ({
       name: collection,
       async run() {
-        const actor = await ports.actorSubjectId();
+        const actor = await savedActor();
         return actor ? firestore.deleteByStringField(collection, 'actorSubjectId', [actor]) : 0;
       },
     })),
     { name: 'observability_user_summaries', async run() {
-      const actor = await ports.actorSubjectId();
+      const actor = await savedActor();
       if (!actor) return 0;
       let count = 0;
       for (const environment of ['production', 'preview', 'development', 'test']) {
@@ -173,7 +210,7 @@ export async function runAccountDeletionJob(
       return count;
     } },
     { name: 'observability_active_user_accumulator', async run() {
-      const actor = await ports.actorSubjectId();
+      const actor = await savedActor();
       if (!actor) return 0;
       // The 64 shared accumulator shards have no expiry: remove only this actor's
       // line, with an update-time precondition to protect a concurrent scan.
@@ -194,10 +231,6 @@ export async function runAccountDeletionJob(
       }
       return count;
     } },
-    { name: 'observability_actor_directory', async run() {
-      const actor = await ports.actorSubjectId();
-      return actor ? firestore.deleteByStringField('observability_actor_directory', 'actorSubjectId', [actor]) : 0;
-    } },
     { name: 'quota', async run() {
       // These names exactly match index.ts/worker.ts and productObservabilityApi.ts.
       for (const name of [`uid:${encodeURIComponent(uid.trim()).slice(0, 160)}`, `telemetry:uid:${encodeURIComponent(uid)}`]) {
@@ -206,7 +239,6 @@ export async function runAccountDeletionJob(
       }
       return 0;
     } },
-    { name: 'profiles', run: () => deleteUidDocument('profiles') },
     { name: 'auth', async run() { await ports.deleteAuth(); return 1; } },
   ];
 
@@ -221,11 +253,14 @@ export async function runAccountDeletionJob(
       await save();
     }
     job.status = 'completed';
+    delete job.observabilityActorSubjectId;
+    delete job.leaseUntil;
     job.completedAt = now().toISOString();
     job.expiresAt = new Date(now().getTime() + RETENTION_MS).toISOString();
     await save();
     return 'completed';
   } catch (error) {
+    delete job.leaseUntil;
     if (error instanceof AccountDeletionYield) {
       await save();
       return 'in_progress';

@@ -349,6 +349,11 @@ async function handlePolicyAccept(
   firestore: WeeklyPlanningTraceFirestoreClient,
   session: WeeklyPlanningTraceApiSession,
 ): Promise<WeeklyPlanningTraceApiResult> {
+  // An account being deleted must not get its profile back (#917).
+  if (await firestore.getDocument('account_deletions', session.uid)) {
+    return error(context, 409, '退会処理中のため受け付けられません。',
+      'trace_account_deleting', 'conflict');
+  }
   const acceptedAt = new Date().toISOString();
   await firestore.setDocument(PROFILES, session.uid, {
     weeklyPlanningTracePolicy: {

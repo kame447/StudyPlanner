@@ -146,12 +146,35 @@ describe.skipIf(!enabled)('account deletion through real Worker/Auth/Firestore e
     injectFailureUid = a.uid;
     const concurrent = await Promise.all([deleteAccount(recentToken), deleteAccount(recentToken)]);
     const statuses: number[] = concurrent.map(result => result.status);
+    expect(statuses.some(status => status !== 409)).toBe(true);
     for (const result of concurrent) {
-      expect([200, 202, 503]).toContain(result.status);
-      await result.body?.cancel();
+      expect([200, 202, 409, 503]).toContain(result.status);
+      if (result.status === 409) expect(await result.json()).toMatchObject({ errorCode: 'account_deletion_in_progress' });
+      else await result.body?.cancel();
     }
-    let blockedWriteChecked = false, completed = false;
+    let blockedWriteChecked = false, secondDeviceTraceChecked = false, completed = false;
     for (let attempt = 0; attempt < 100; attempt += 1) {
+      const checkpoint = await server.getDocument('account_deletions', a.uid);
+      const completedSteps = checkpoint?.completedSteps;
+      if (!secondDeviceTraceChecked && Array.isArray(completedSteps) && completedSteps.includes('traces')) {
+        // A second open device still has a valid Auth token. Its trace request
+        // must fail at policy admission after the profile and traces are gone.
+        const lookup = await auth('lookup', { idToken: a.idToken });
+        expect(lookup.ok).toBe(true);
+        expect(await lookup.json()).toMatchObject({ users: [{ localId: a.uid }] });
+        const timestamp = new Date().toISOString();
+        const refused = await handleWeeklyPlanningTraceApi(new Request('https://worker.test/weekly-planning-trace/session/start', {
+          method: 'POST', headers: { Authorization: `Bearer ${a.idToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idempotencyKey: `second-device-${a.uid}-${run}`, conversationCorrelationKey: `second-device-${a.uid}`,
+            session: { status: 'active', startedAt: timestamp, lastActivityAt: timestamp, turnCount: 0, entryCount: 0,
+              hasPreview: false, hasApprovalFailure: false, hasFallback: false, hasError: false, appVersion: 'emulator', schemaVersion: 1 },
+          }),
+        }), env, { uid: a.uid }, tokenProvider);
+        expect(refused.status).toBe(412);
+        expect(refused.body).toMatchObject({ errorCode: 'trace_policy_required', errorCategory: 'policy' });
+        secondDeviceTraceChecked = true;
+      }
       const result = await deleteAccount(recentToken); statuses.push(result.status);
       if (!blockedWriteChecked && await server.getDocument('account_deletions', a.uid)) {
         const staleWrite = await realFetch(`http://${firestoreHost}/v1/projects/${project}/databases/(default)/documents/todos/resurrection-${a.uid}`, {
@@ -165,7 +188,7 @@ describe.skipIf(!enabled)('account deletion through real Worker/Auth/Firestore e
       if (result.status === 202) expect(await result.json()).toEqual({ status: 'in_progress' });
     }
     expect(injected).toBe(true); expect(statuses).toContain(503); expect(statuses).toContain(202);
-    expect(blockedWriteChecked).toBe(true); expect(completed).toBe(true);
+    expect(blockedWriteChecked).toBe(true); expect(secondDeviceTraceChecked).toBe(true); expect(completed).toBe(true);
     for (const [collection, id] of aDocs) expect(await server.getDocument(collection, id), `${collection}/${id}`).toBeNull();
     for (let index = 0; index < bDocs.length; index += 1) {
       const [collection, id] = bDocs[index]; expect(await server.getDocument(collection, id)).toEqual(bBefore[index]);

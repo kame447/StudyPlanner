@@ -53,7 +53,8 @@ it('groups ordinary guidance in native disclosures and preserves the current ann
 it('exposes one account deletion action in the existing support area', () => {
   const onDeleteAccount = vi.fn();
   act(() => { renderer = create(<AppSettingsSupportPanel onDeleteAccount={onDeleteAccount} />); });
-  const buttons = renderer!.root.findAllByType('button').filter(button => button.children.includes('退会する'));
+  const buttons = renderer!.root.findAllByType('button')
+    .filter(button => button.findAllByType('span').some(span => span.children.includes('退会する')));
   expect(buttons).toHaveLength(1);
   act(() => buttons[0].props.onClick());
   expect(onDeleteAccount).toHaveBeenCalledOnce();

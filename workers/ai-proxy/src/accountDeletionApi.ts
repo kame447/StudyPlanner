@@ -7,6 +7,7 @@ import { deleteWeeklyPlanningTraces, type WeeklyPlanningTraceApiEnv } from './we
 import { ProductObservabilityStore } from './productObservabilityStore';
 import {
   AccountDeletionBudget,
+  AccountDeletionBusy,
   AccountDeletionReauthRequired,
   runAccountDeletionJob,
 } from './accountDeletionJob';
@@ -132,6 +133,7 @@ export async function handleAccountDeletionApi(
     return json(status === 'completed' ? 200 : 202, { status });
   } catch (error) {
     if (error instanceof AccountDeletionReauthRequired) return json(401, { errorCode: 'account_deletion_reauth_required' });
+    if (error instanceof AccountDeletionBusy) return json(409, { errorCode: 'account_deletion_in_progress', retryable: true });
     // Neither provider messages nor account/content data cross this boundary.
     return json(503, { errorCode: 'account_deletion_retryable', retryable: true });
   } finally { budget.logCompletion(); }

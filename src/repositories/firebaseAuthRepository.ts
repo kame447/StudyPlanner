@@ -141,11 +141,18 @@ async function ensureProfile(
   );
   // Restoring an unchanged profile is a read, not a login heartbeat. Avoid a
   // redundant write acknowledgement before the planner can start loading.
-  if (!unchanged && !(await getDoc(doc(firestoreDb, 'account_deletions', authUser.uid))).exists()) {
-    await upsertProfile(firestoreDb, {
-      ...nextProfile,
-      ...(!existingProfile ? { registeredAt: serverTimestamp() } : {}),
-    });
+  if (!unchanged) {
+    try {
+      await upsertProfile(firestoreDb, {
+        ...nextProfile,
+        ...(!existingProfile ? { registeredAt: serverTimestamp() } : {}),
+      });
+    } catch (error) {
+      // Rules refuse profile writes once account deletion has started (#917);
+      // signing in must still reach the deletion retry instead of failing.
+      if ((error as { code?: string }).code !== 'permission-denied'
+        || !(await getDoc(doc(firestoreDb, 'account_deletions', authUser.uid))).exists()) throw error;
+    }
   }
 
   return mapProfileDocToUser(nextProfile);

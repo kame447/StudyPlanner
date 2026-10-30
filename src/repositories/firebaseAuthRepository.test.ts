@@ -148,8 +148,15 @@ it('restores the auth identity without recreating a deleted profile while deleti
   mocks.getDoc.mockImplementation((reference: { collection: string }) => Promise.resolve({
     exists: () => reference.collection === 'account_deletions', data: () => ({ status: 'deleting' }),
   }));
+  // The Rules tombstone refuses the profile write; sign-in still succeeds.
+  mocks.setDoc.mockRejectedValue(Object.assign(new Error('denied'), { code: 'permission-denied' }));
   expect(await (await repository()).getCurrentUser()).toMatchObject({ id: 'owner' });
-  expect(mocks.setDoc).not.toHaveBeenCalled();
+});
+
+it('still surfaces a refused profile write when no deletion is pending', async () => {
+  mocks.getDoc.mockImplementation(() => Promise.resolve({ exists: () => false, data: () => undefined }));
+  mocks.setDoc.mockRejectedValue(Object.assign(new Error('denied'), { code: 'permission-denied' }));
+  await expect((await repository()).getCurrentUser()).rejects.toThrow();
 });
 
 it.each(['password', 'google.com'])('reauthenticates the current %s provider without profile writes', async provider => {

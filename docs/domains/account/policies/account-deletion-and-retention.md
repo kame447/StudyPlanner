@@ -18,15 +18,18 @@ Owner: Issue #917
 
 | 段階 | 処理 |
 | --- | --- |
-| 1 | 既存の週間計画trace削除処理を呼ぶ。旧形式も対象。アクセス監査は#45の境界を維持する |
-| 2 | 問い合わせ本文、受付が参照するR2添付、送信制限を削除する |
-| 3 | `userId == uid` の学習データと承認操作・その子文書を削除する |
-| 4 | UIDを文書キーに持つ設定、出欠、既読、個別最適化、記憶を子文書ごと削除する |
-| 5 | 利用者へ結び付く利用状況イベント、全環境の利用者別集計、日別利用者記録、集計途中のactorフラグを削除し、最後に対応表を削除する |
-| 6 | UIDで到達できるAI利用制限のDurable Objectを消去する |
-| 7 | プロフィールを削除する |
-| 8 | Firebase Authenticationの利用者を削除する |
-| 9 | ジョブに完了を記録する。応答を確認した端末は当該利用者のローカルデータを消去し、サインアウトする |
+| 1 | プロフィールを削除する。週間計画traceの記録開始・追記はプロフィールの同意記録を必要とし、同意の再登録もジョブ記録がある間は拒否するため、まだ開いている別端末がtraceを追加できなくなる |
+| 2 | 利用状況の対応表（UID → actor）を削除する。削除前にactor識別子をジョブ記録へ一時保存し、完了時に消す。ジョブ記録がある間は新しい対応表を作らない |
+| 3 | 既存の週間計画trace削除処理を呼ぶ。旧形式も対象。アクセス監査は#45の境界を維持する |
+| 4 | 問い合わせ本文、受付が参照するR2添付、送信制限を削除する |
+| 5 | `userId == uid` の学習データと承認操作・その子文書を削除する |
+| 6 | UIDを文書キーに持つ設定、出欠、既読、個別最適化、記憶を子文書ごと削除する |
+| 7 | 保存したactorに結び付く利用状況イベント、全環境の利用者別集計、日別利用者記録、集計途中のactorフラグを削除する |
+| 8 | UIDで到達できるAI利用制限のDurable Objectを消去する |
+| 9 | Firebase Authenticationの利用者を削除する |
+| 10 | ジョブに完了を記録する。応答を確認した端末は当該利用者のローカルデータを消去し、サインアウトする |
+
+同時に複数の退会リクエストが届いた場合は、ジョブ記録の条件付き書込みで1件だけが処理を進めます（`leaseUntil`、最大120秒）。他のリクエストは処理中として拒否され、利用者は少し後に再試行できます。
 
 各段階は再実行できるものとし、リクエストの処理上限に近づいたら進捗を保存して継続します。認証アカウントを先に削除して残りの処理を実行不能にしてはいけません。
 
@@ -38,24 +41,24 @@ Owner: Issue #917
 
 | 保存先 | キー・所有者 | 内容 | 退会時 |
 | --- | --- | --- | --- |
-| `plans`, `month_events` | 文書ID / `userId` | 旧予定・繰返し予定・メモ | 段階3。移行済み利用者の旧データも対象 |
-| `schedule_events` | 文書ID / `userId` | 現行予定・繰返し・旧予定参照 | 段階3 |
-| `actuals` | 文書ID / `userId` | 実績・進捗・教材や旧予定の参照 | 段階3。旧参照形式を理由に除外しない |
-| `day_notes`, `todos` | 文書ID / `userId` | 日記・課題・メモ | 段階3 |
-| `study_subjects`, `study_materials` | 文書ID / `userId` | 科目・個人の本棚・教材進捗 | 段階3。共有の書誌catalogとは別 |
-| `schedule_templates`, `timetable_terms`, `timetable_periods` | 文書ID / `userId` | 授業・時間割・期間 | 段階3 |
-| `weekly_planning_approval_operations/{id}/weekly_planning_approval_items/{id}` | 親子とも `userId` | 承認・保存済み項目・再実行制御 | 段階3。親だけ消して子を残さない |
-| `schedule_event_migrations/{uid}` | UIDキー | 移行状態 | 段階4 |
-| `class_attendance/{uid}/classes/{templateId}/records/{date}` | UIDの祖先パス | 授業ごとの出欠・日時 | 段階4。親文書が存在しない子孫も対象 |
-| `study_rest_days/{uid}` | UIDキー / `userId` | お休みチケット・利用日 | 段階4 |
-| `announcement_reads/{uid}/items/{id}` と親 | UIDキー | 個別既読と一括既読日時 | 段階4 |
-| `weekly_planning_personalization_profiles/{uid}` | UIDキー | 週開始・個別最適化設定 | 段階4 |
-| `user_planning_contexts/{uid}` | UIDキー / `ownerId`, `snapshot.ownerId` | 継続的な条件・記憶・履歴 | 段階4 |
-| `support_inquiries/{receipt}` | 受付ID / `userId` | 本文、受付日時、schema version、添付記述子。本文・画像に本人が含めた個人情報も対象 | 段階2 |
-| `support_inquiry_limits/{uid}` | UIDキー | 直近受付IDと送信日時 | 段階2 |
-| `weekly_planning_trace_sessions`, `weekly_planning_trace_entries` | HMAC由来ID / `traceSubjectToken`。2026-07-18より前は生の `userId` | 会話本文・条件・仮予定・診断情報 | 段階1。既存処理で全epochと旧 `userId` 形式を削除 |
-| `profiles/{uid}` | UIDキー | メール、表示名、画像、登録日時、同意記録 | 段階7 |
-| Firebase Authentication | UID | ログイン識別子、メール、プロバイダー連携 | 段階8 |
+| `plans`, `month_events` | 文書ID / `userId` | 旧予定・繰返し予定・メモ | 段階5。移行済み利用者の旧データも対象 |
+| `schedule_events` | 文書ID / `userId` | 現行予定・繰返し・旧予定参照 | 段階5 |
+| `actuals` | 文書ID / `userId` | 実績・進捗・教材や旧予定の参照 | 段階5。旧参照形式を理由に除外しない |
+| `day_notes`, `todos` | 文書ID / `userId` | 日記・課題・メモ | 段階5 |
+| `study_subjects`, `study_materials` | 文書ID / `userId` | 科目・個人の本棚・教材進捗 | 段階5。共有の書誌catalogとは別 |
+| `schedule_templates`, `timetable_terms`, `timetable_periods` | 文書ID / `userId` | 授業・時間割・期間 | 段階5 |
+| `weekly_planning_approval_operations/{id}/weekly_planning_approval_items/{id}` | 親子とも `userId` | 承認・保存済み項目・再実行制御 | 段階5。親だけ消して子を残さない |
+| `schedule_event_migrations/{uid}` | UIDキー | 移行状態 | 段階6 |
+| `class_attendance/{uid}/classes/{templateId}/records/{date}` | UIDの祖先パス | 授業ごとの出欠・日時 | 段階6。親文書が存在しない子孫も対象 |
+| `study_rest_days/{uid}` | UIDキー / `userId` | お休みチケット・利用日 | 段階6 |
+| `announcement_reads/{uid}/items/{id}` と親 | UIDキー | 個別既読と一括既読日時 | 段階6 |
+| `weekly_planning_personalization_profiles/{uid}` | UIDキー | 週開始・個別最適化設定 | 段階6 |
+| `user_planning_contexts/{uid}` | UIDキー / `ownerId`, `snapshot.ownerId` | 継続的な条件・記憶・履歴 | 段階6 |
+| `support_inquiries/{receipt}` | 受付ID / `userId` | 本文、受付日時、schema version、添付記述子。本文・画像に本人が含めた個人情報も対象 | 段階4 |
+| `support_inquiry_limits/{uid}` | UIDキー | 直近受付IDと送信日時 | 段階4 |
+| `weekly_planning_trace_sessions`, `weekly_planning_trace_entries` | HMAC由来ID / `traceSubjectToken`。2026-07-18より前は生の `userId` | 会話本文・条件・仮予定・診断情報 | 段階3。既存処理で全epochと旧 `userId` 形式を削除 |
+| `profiles/{uid}` | UIDキー | メール、表示名、画像、登録日時、同意記録 | 段階1 |
+| Firebase Authentication | UID | ログイン識別子、メール、プロバイダー連携 | 段階9 |
 | `admins/{uid}` | UIDキー / `enabled` | 管理者権限 | 自動退会を拒否し個別対応 |
 | `account_deletions/{uid}` | UIDキー | 削除進捗・再出現防止・最小限の監査 | 保持例外を参照 |
 
@@ -65,20 +68,20 @@ Owner: Issue #917
 
 | 保存先 | キー・結び付き | 内容 | 退会時・保持 |
 | --- | --- | --- | --- |
-| `observability_actor_directory` | UIDのHMACによる文書ID → `actorSubjectId` | アカウントと利用状況の対応 | 段階5。対象actorを解決してから対応を消す |
-| `observability_events` | イベントID / `actorSubjectId` | 操作・AI処理・失敗分類・会話等への相関ID | 段階5。通常は90日の期限と定期削除 |
-| `observability_actor_day` | 環境:日:actor / `actorSubjectId` | 日別の利用者活動 | 段階5。通常の期限フィールドは400日 |
-| `observability_user_summary_{environment}` | `actorSubjectId`。環境別にproduction / preview / development / test | 利用者別回数、日時、最終エラー等 | 段階5。自動期限はない |
+| `observability_actor_directory` | UIDのHMACによる文書ID → `actorSubjectId` | アカウントと利用状況の対応 | 段階2。対象actorを解決・保存してから対応を消す |
+| `observability_events` | イベントID / `actorSubjectId` | 操作・AI処理・失敗分類・会話等への相関ID | 段階7。通常は90日の期限と定期削除 |
+| `observability_actor_day` | 環境:日:actor / `actorSubjectId` | 日別の利用者活動 | 段階7。通常の期限フィールドは400日 |
+| `observability_user_summary_{environment}` | `actorSubjectId`。環境別にproduction / preview / development / test | 利用者別回数、日時、最終エラー等 | 段階7。自動期限はない |
 | `observability_planning_session_summary` | 環境:会話ID。元イベントと会話IDで結合可能 | 会話単位の到達フラグ・回数・バージョン | 保持例外 |
 | `observability_daily_rollups`, `observability_active_user_windows`, `observability_planning_daily_rollups` | 環境・日付等 | 利用者IDを含まない集計値 | 保持。期限フィールド400日。前2つは定期削除対象、planning dailyは現行対象外 |
-| `observability_active_user_snapshot_accumulator` | `main:{shard}` / `actorFlags`内のactor識別子 | 集計途中の利用者別フラグ | 段階5の `observability_active_user_accumulator`。64個の固定shardから対象actor行だけを除去し、他のactorを保持。更新時刻の条件付き書込みで競合を検出 |
+| `observability_active_user_snapshot_accumulator` | `main:{shard}` / `actorFlags`内のactor識別子 | 集計途中の利用者別フラグ | 段階7の `observability_active_user_accumulator`。64個の固定shardから対象actor行だけを除去し、他のactorを保持。更新時刻の条件付き書込みで競合を検出 |
 | `observability_active_user_snapshot_job` | `main` / actor-day文書へのcursor | 集計途中の読取位置 | 保持例外 |
 | `observability_profile_registration_backfill_state` | `main` / `profiles/{uid}`等へのcursor | 登録日時補完の位置・件数 | 保持例外 |
 | `observability_user_enrichment_backfill_state` | `main` / summaryへのcursor、`pendingRecentErrorScan.actorSubjectId` | 補完の読取位置・直近エラー走査状態 | 保持例外 |
 | `observability_rollup_state` | `main` / 元イベントへのcursor | 集計位置・件数・日付範囲 | 保持。本文を持たない運用参照 |
 | `weekly_planning_trace_access_audit` | ランダム監査ID / `actorToken`, `targetSessionId` | 調査・閲覧・削除の操作証跡 | #45の保持方針を参照 |
-| R2 `INQUIRY_ATTACHMENTS` | `inquiries/{receipt}/{slot}`。受付の `userId` が所有者 | 元画像と埋込metadata、ハッシュ | 段階2。受付削除前に添付を消す。通常の自動期限はない |
-| `AI_QUOTA` Durable Object | `uid:{encodeURIComponent(uid)}`（160文字上限）と `telemetry:uid:{encodeURIComponent(uid)}`、共有IPは `ip:{encodedIp}` | `quota-state`の窓ID・回数・resetAt | UIDとtelemetryの両方を段階6で削除。resetAtは回数のリセットでありストレージの自動消去ではない。共有IP分は保持例外 |
+| R2 `INQUIRY_ATTACHMENTS` | `inquiries/{receipt}/{slot}`。受付の `userId` が所有者 | 元画像と埋込metadata、ハッシュ | 段階4。受付削除前に添付を消す。通常の自動期限はない |
+| `AI_QUOTA` Durable Object | `uid:{encodeURIComponent(uid)}`（160文字上限）と `telemetry:uid:{encodeURIComponent(uid)}`、共有IPは `ip:{encodedIp}` | `quota-state`の窓ID・回数・resetAt | UIDとtelemetryの両方を段階8で削除。resetAtは回数のリセットでありストレージの自動消去ではない。共有IP分は保持例外 |
 | `AI_TURNS` Durable Object | `JSON.stringify([uid, conversationId])` | `turn:meta`, `turn:input`, `turn:output`, `turn:dispatch:*` | UIDで列挙しない。本文等24時間、識別記録は保持例外 |
 | `material_metadata_catalog` | ISBN等のcatalog ID | 外部提供の書誌・目次・取得元情報 | 共有資料として保持。UID・検索者情報は保存しない |
 | `app_catalogs`, `announcements`, `announcement_drafts` | catalog / お知らせID | 共有教材・運営発信内容 | 個人の所有データとして削除しない。管理者は個別対応 |
@@ -134,7 +137,7 @@ AI_TURNSの根拠は[処理レコード](../../../../workers/ai-proxy/src/durabl
 
 ## 監査証跡
 
-`account_deletions/{uid}` は削除進捗と再出現防止を兼ねる最小限の監査記録です。UID、受付・更新・完了日時、試行数、完了段階、削除件数、最終エラーコード、Worker revision、期限を保存します。メール、問い合わせ本文、学習内容、認証トークンは保存しません。クライアントは自分の記録の取得のみ可能で、作成・更新・削除や一覧取得はできません。
+`account_deletions/{uid}` は削除進捗と再出現防止を兼ねる最小限の監査記録です。UID、受付・更新・完了日時、試行数、完了段階、削除件数、最終エラーコード、Worker revision、期限を保存します。処理中だけ、実行権（`leaseUntil`）と利用状況actor識別子を一時的に持ち、完了時に消します。メール、問い合わせ本文、学習内容、認証トークンは保存しません。クライアントは自分の記録の取得のみ可能で、作成・更新・削除や一覧取得はできません。
 
 週間計画traceの削除操作は既存の#45アクセス監査を使います。別のtrace監査・削除方式を追加しません。匿名化済みという理由でこれらの記録を無期限に増やす運用はしません。
 
