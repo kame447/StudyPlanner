@@ -135,11 +135,12 @@ describe('experimental VNext typed transaction', () => {
     expect(replay.state).toBe(result.state);
   });
 
-  it('no-op patch preserves revision and graph identity', () => {
+  it('no-op patch preserves revision and facts, and records the turn so a replay is a duplicate (Astra D06)', () => {
     const state = setup();
-    const result = turn(state, delta({ patch: [amountPatch(state, 7)] }));
+    const result = turn(state, delta({ patch: [amountPatch(state, 7)] }), 'restate');
     expect(result.status).toBe('noop');
-    expect(result.state).toBe(state);
+    expect(result.state.graph).toEqual({ ...state.graph, appliedTurnKeys: [...state.graph.appliedTurnKeys, 'restate'] });
+    expect(turn(result.state, delta({ patch: [amountPatch(state, 9)] }), 'restate').status).toBe('duplicate');
   });
 
   it('no-op total estimate is unchanged, but restated minutes bind to a same-turn new quantity', () => {
@@ -148,7 +149,8 @@ describe('experimental VNext typed transaction', () => {
       changes: { minutes: 45, effortKind: null, unitCode: null, unitLabel: null, precision: null } };
     const noop = turn(state, delta({ patch: [patch] }));
     expect(noop.status).toBe('noop');
-    expect(noop.state).toBe(state);
+    // Unchanged facts and revision; only the processed turn is recorded.
+    expect({ ...noop.state.graph, appliedTurnKeys: state.graph.appliedTurnKeys }).toEqual(state.graph);
     const next = applied(state, delta({ patch: [patch, amountPatch(state, 8)] }));
     expect(activeEfforts(next)[0]).toMatchObject({ minutes: 45, workBinding: { boundAmount: 8 } });
   });
@@ -213,8 +215,13 @@ describe('experimental VNext typed transaction', () => {
     // Absolute dates are kept as stated; an unresolvable expression is rejected at that field, not guessed.
     const absolute = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due('2026-09-07')] }), context('2026-08-26'));
     expect(absolute.status === 'applied' && absolute.state.graph.temporalConstraints[0].dateExpression).toBe('2026-09-07');
-    expect(applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due('someday')] }), context('2026-08-26')))
-      .toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ path: 'add[1].dateExpression', localId: 'due' })] });
+    // Words are the model's to resolve: a non-canonical expression, in any language, goes back for repair (Astra D05).
+    for (const word of ['someday', '月曜日', 'custom:月曜日']) {
+      expect(applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due(word)] }), context('2026-08-26')))
+        .toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ path: 'add[1].dateExpression', localId: 'due' })] });
+    }
+    const monday = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due('weekday:monday')] }), context('2026-08-26'));
+    expect(monday.status === 'applied' && monday.state.graph.temporalConstraints[0].dateExpression).toBe('2026-08-31');
   });
 
   it('requires a rate stated about one workload to be in that work\'s unit (run 41004723952 native-multiturn-rate)', () => {

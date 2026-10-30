@@ -713,7 +713,7 @@ describe('VNext real API conversation fixture contract (offline)', () => {
         { task: 'report', role: 'completed', amount: 50, unitCode: 'custom', unitLabel: '%' },
       ]],
     });
-    expect(deadlineCase?.turns[4].oracle.workloadAlternatives).toHaveLength(3);
+    expect(deadlineCase?.turns[4].oracle.workloadAlternatives).toHaveLength(2);
     expect(deadlineCase?.turns[4].oracle.requireFutureWorkEstimate).toBe(true);
     expect(hasFutureWorkEstimate(['work_total'])).toBe(true);
     expect(hasFutureWorkEstimate(['direct_effort'])).toBe(true);
@@ -728,7 +728,7 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     expect(matchOracleWorkloads([
       observedPercentFacts[1],
       { ...observedPercentFacts[1], factId: 'remaining', role: 'remaining', amount: 50 },
-    ], deadlineCase!.turns[4].oracle).matched).toBe(true);
+    ], deadlineCase!.turns[4].oracle).matched).toBe(false);
     const timeboxCase = vnextRealApiConversations.find(({ id }) => id === 'timebox-only-work');
     expect(timeboxCase?.turns[0].oracle.workloads).toEqual([
       { task: 'reading-aloud', role: 'target', amount: 30, unitCode: 'minute', unitLabel: '分' },

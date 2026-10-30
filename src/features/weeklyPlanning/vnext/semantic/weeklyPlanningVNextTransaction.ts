@@ -411,7 +411,11 @@ export function applyWeeklyPlanningVNextTurn(
   if (errors.length) return reject();
   if (!diff.added.length && !diff.removed.length && !diff.superseded.length
     && JSON.stringify(next.workRelations) === JSON.stringify(state.workRelations)
-    && JSON.stringify(next.deferrals) === JSON.stringify(state.deferrals)) return { status: 'noop', state };
+    && JSON.stringify(next.deferrals) === JSON.stringify(state.deferrals)) {
+    // Nothing changes and the revision is kept, but the turn is processed: a replay (even on a
+    // later day, when its relative dates would resolve differently) is a duplicate.
+    return { status: 'noop', state: { ...state, graph: { ...state.graph, appliedTurnKeys: [...state.graph.appliedTurnKeys, context.turnKey] } } };
+  }
   graph.appliedTurnKeys.push(context.turnKey);
   return { status: 'applied', state: next, diff };
 }

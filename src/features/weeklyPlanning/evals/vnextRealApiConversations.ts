@@ -227,7 +227,6 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
           workloadAlternatives: [
             [workload('report', 'scope_total', 100, 'custom', '%'), workload('report', 'completed', 50, 'custom', '%')],
             [workload('report', 'completed', 50, 'custom', '%')],
-            [workload('report', 'completed', 50, 'custom', '%'), workload('report', 'remaining', 50, 'custom', '%')],
           ],
           requireFutureWorkEstimate: true,
         }) },
