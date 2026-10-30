@@ -45,6 +45,16 @@ async function waitForAuthSurface(page) {
     .not.toBe('pending');
 }
 
+// Playwright puts the filled value in its action log, so a failed fill would
+// print the credential. Replace the error with a fixed message.
+async function fillSecret(locator, value, label) {
+  try {
+    await locator.fill(value);
+  } catch {
+    throw new Error(`Could not enter the ${label}.`);
+  }
+}
+
 async function signIn(page, email = liveEmail, password = livePassword) {
   await page.goto('/');
 
@@ -58,13 +68,13 @@ async function signIn(page, email = liveEmail, password = livePassword) {
         'The production access gate is enabled, but STUDYPLANNER_LIVE_ACCESS_KEY is not configured.',
       );
     }
-    await page.getByLabel('閲覧キー').fill(liveAccessKey);
+    await fillSecret(page.getByLabel('閲覧キー'), liveAccessKey, 'access key');
     await page.getByRole('button', { name: 'キーを確認して進む' }).click();
   }
 
   await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
-  await page.getByLabel('メールアドレス').fill(email);
-  await page.getByLabel('パスワード', { exact: true }).fill(password);
+  await fillSecret(page.getByLabel('メールアドレス'), email, 'email');
+  await fillSecret(page.getByLabel('パスワード', { exact: true }), password, 'password');
   await page.getByRole('button', { name: 'ログインする' }).click();
 
   const authError = page.locator('.inline-error, .app-notice.error').first();
