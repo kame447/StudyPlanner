@@ -3,7 +3,11 @@ import {
   SEMANTIC_BASE_TEMPORAL_CONSTRAINT_KINDS_V5, SEMANTIC_COMPONENT_ROLES_V5,
   SEMANTIC_CONSTRAINT_LEVELS_V5, SEMANTIC_QUANTITY_ROLES_V5,
   SEMANTIC_TASK_CATEGORIES_V5, SEMANTIC_WORKLOAD_UNIT_CODES_V5,
+  SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5,
+  SEMANTIC_AVAILABILITY_KINDS_V5, SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5,
 } from '../../semantic/weeklyPlanningSemanticTypesV5';
+import { CANONICAL_WEEKDAY_DATE_EXPRESSIONS } from '../../semantic/weeklyPlanningCalendarResolver';
+import { WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5 } from '../../semantic/weeklyPlanningSemanticSchemaV5';
 import { isWeeklyPlanningNamedTimePeriodV5 } from '../../semantic/weeklyPlanningTemporalValueValidatorV5';
 import type { VNextPatch, VNextRemove, VNextTurnError } from '../weeklyPlanningVNextTypes';
 
@@ -21,8 +25,29 @@ const enumeration = (values: readonly string[]) => nullable({ type: 'string', en
   value => typeof value === 'string' && values.includes(value));
 const precision = enumeration(['exact', 'approximate', 'unspecified']);
 const unit = enumeration(SEMANTIC_WORKLOAD_UNIT_CODES_V5);
+const strings = nullable({ type: 'array', items: { type: 'string' } },
+  value => Array.isArray(value) && value.every(item => typeof item === 'string'));
 
-/** Only the five currently executable patch kinds are sent to a provider. */
+// These two vocabularies already live in V5's provider schema. Reuse their
+// fragments instead of creating another literal list or semantic parser.
+const v5 = WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.schema as {
+  properties: {
+    planningWindow: { anyOf: { properties: { kind: { enum: readonly string[] } } }[] };
+    relations: { items: { properties: { kind: { enum: readonly string[] } } } };
+  };
+};
+export const VNEXT_PLANNING_WINDOW_KINDS = v5.properties.planningWindow.anyOf[0].properties.kind.enum;
+export const VNEXT_TASK_RELATION_KINDS = v5.properties.relations.items.properties.kind.enum;
+
+export const VNEXT_PLANNING_WINDOW_REQUIREMENT = `planning_window uses windowKind ${VNEXT_PLANNING_WINDOW_KINDS.join(', ')}. For an absolute window state start/end; for a relative or named window state its canonical date value and null start/end. Code freezes its range when accepted. A patch stating a new value changes the effective window; do not copy old bounds into that correction.`;
+export const VNEXT_RECURRENCE_REQUIREMENT = `recurrenceKind is ${SEMANTIC_RECURRENCE_KINDS_V5.join(', ')}; count is positive for times_per_week, otherwise null unless stated. days uses canonical weekday tokens (${CANONICAL_WEEKDAY_DATE_EXPRESSIONS.join(', ')}); use [] when no specific weekdays were stated. One occurrence's amount belongs in a workload with perOccurrence true, plus this recurrence fact targeting that workload's task or component in the same task. The target is never a workload fact; V5 pairs the perOccurrence workload with its task/component owner. Never emit multiplied or expanded occurrence workloads.`;
+export const VNEXT_TASK_DATE_RULE_REQUIREMENT = `task_date_rule uses ruleKind ${SEMANTIC_TASK_DATE_RULE_KINDS_V5.join(', ')} and a hard constraintLevel. targetRef must name the same task as taskRef (not a workload or component). dateExpression is required. Keep weekday tokens symbolic; the existing scheduler applies every matching day inside the planning horizon.`;
+export const VNEXT_AVAILABILITY_REQUIREMENT = `availability_declaration has no task reference. availabilityKind is ${SEMANTIC_AVAILABILITY_KINDS_V5.join(', ')}; recurrenceKind is null or ${SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5.join(', ')}. State the date, named period, clocks or recurrence that scopes it. capacityMinutes is positive only for capacity; no_additional_constraint has no positive clocks/period/recurrence/days/capacity. Resolution status is assigned by code.`;
+export const VNEXT_TASK_RELATION_REQUIREMENT = `relation orders tasks using relationKind ${VNEXT_TASK_RELATION_KINDS.join(', ')} and fromTaskRef/toTaskRef. It is separate from relate, which decides whether two workloads are the same or distinct.`;
+
+const described = (rule: FieldRule, description: string): FieldRule => ({ ...rule, schema: { ...rule.schema, description } });
+
+/** The same field owner supplies standalone corrections and native provider patches. */
 const changesByKind = {
   task: { category: enumeration(SEMANTIC_TASK_CATEGORIES_V5), title: text },
   component: { role: enumeration(SEMANTIC_COMPONENT_ROLES_V5), label: text },
@@ -35,6 +60,18 @@ const changesByKind = {
     constraintLevel: enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5), dateExpression: text,
     namedTimePeriod: nullable({ type: 'string' }, isWeeklyPlanningNamedTimePeriodV5),
     startTime: text, endTime: text, precision },
+  planning_window: { windowKind: described(enumeration(VNEXT_PLANNING_WINDOW_KINDS), VNEXT_PLANNING_WINDOW_REQUIREMENT),
+    value: described(text, VNEXT_PLANNING_WINDOW_REQUIREMENT), start: described(text, VNEXT_PLANNING_WINDOW_REQUIREMENT), end: described(text, VNEXT_PLANNING_WINDOW_REQUIREMENT) },
+  recurrence: { recurrenceKind: described(enumeration(SEMANTIC_RECURRENCE_KINDS_V5), VNEXT_RECURRENCE_REQUIREMENT),
+    count: described(number, VNEXT_RECURRENCE_REQUIREMENT), days: described(strings, VNEXT_RECURRENCE_REQUIREMENT) },
+  task_date_rule: { ruleKind: described(enumeration(SEMANTIC_TASK_DATE_RULE_KINDS_V5), VNEXT_TASK_DATE_RULE_REQUIREMENT),
+    dateExpression: described(text, VNEXT_TASK_DATE_RULE_REQUIREMENT), constraintLevel: described(enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5), VNEXT_TASK_DATE_RULE_REQUIREMENT) },
+  availability_declaration: { availabilityKind: described(enumeration(SEMANTIC_AVAILABILITY_KINDS_V5), VNEXT_AVAILABILITY_REQUIREMENT), dateExpression: text,
+    namedTimePeriod: nullable({ type: 'string' }, isWeeklyPlanningNamedTimePeriodV5), startTime: text, endTime: text,
+    recurrenceKind: described(enumeration(SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5), VNEXT_AVAILABILITY_REQUIREMENT),
+    days: described(strings, VNEXT_AVAILABILITY_REQUIREMENT), capacityMinutes: described(number, VNEXT_AVAILABILITY_REQUIREMENT),
+    constraintLevel: enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5) },
+  relation: { relationKind: described(enumeration(VNEXT_TASK_RELATION_KINDS), VNEXT_TASK_RELATION_REQUIREMENT) },
 } satisfies Record<VNextPatch['kind'], Record<string, FieldRule>>;
 
 function objectSchema(properties: Record<string, unknown>): Record<string, unknown> {

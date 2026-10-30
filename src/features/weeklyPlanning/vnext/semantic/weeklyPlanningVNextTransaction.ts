@@ -27,6 +27,7 @@ import {
   vnextLineageIdByFactId,
 } from '../weeklyPlanningVNextWorkIdentity';
 import { fixVNextDateExpression, vnextTemporalBoundRepairFields } from '../weeklyPlanningVNextTemporalBound';
+import { isValidCalendarDate, resolveCanonicalDateExpression } from '../../semantic/weeklyPlanningCalendarResolver';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -43,7 +44,19 @@ export const VNEXT_PATCH_FIELDS = {
   workload: ['quantityRole', 'amount', 'unitCode', 'unitLabel', 'rangeStart', 'rangeEnd', 'perOccurrence', 'periodExpression'],
   effort_estimate: ['effortKind', 'minutes', 'unitCode', 'unitLabel', 'precision'],
   temporal_constraint: ['constraintKind', 'constraintLevel', 'dateExpression', 'namedTimePeriod', 'startTime', 'endTime', 'precision'],
+  planning_window: ['windowKind', 'value', 'start', 'end'],
+  recurrence: ['recurrenceKind', 'count', 'days'],
+  task_date_rule: ['ruleKind', 'dateExpression', 'constraintLevel'],
+  availability_declaration: ['availabilityKind', 'dateExpression', 'namedTimePeriod', 'startTime', 'endTime', 'recurrenceKind', 'days', 'capacityMinutes', 'constraintLevel'],
+  relation: ['relationKind'],
 } as const;
+
+const payloadKindFields: Partial<Record<VNextAddFact['kind'], string>> = {
+  effort_estimate: 'effortKind', temporal_constraint: 'constraintKind', planning_window: 'windowKind',
+  recurrence: 'recurrenceKind', task_date_rule: 'ruleKind', availability_declaration: 'availabilityKind', relation: 'relationKind',
+};
+const referenceFields = { taskId: 'taskRef', componentId: 'componentRef', parentComponentId: 'parentComponentRef',
+  targetFactId: 'targetRef', fromTaskId: 'fromTaskRef', toTaskId: 'toTaskRef' } as const;
 
 type FactRecord = { id: string; [key: string]: unknown };
 function allFacts(graph: WeeklyPlanningVNextGraph): { kind: WeeklyPlanningFactKindV5; fact: FactRecord }[] {
@@ -82,19 +95,24 @@ export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState 
 /** Every date the delta states, fixed to the turn's accepted date before anything reads it. */
 function fixDeltaDates(delta: VNextTurnDelta, acceptedDate: string,
   error: (code: VNextTurnError['code'], path: string, factId: string | null, localId: string | null) => void): VNextTurnDelta {
-  const fix = (expression: string | null, path: string, localId: string) => {
-    if (expression === null) return null;
+  const fix = <T extends string | null>(expression: T, path: string, localId: string): T => {
+    if (expression === null) return expression;
     const fixed = fixVNextDateExpression(expression, acceptedDate);
     if (fixed === null) error('invalid_value', path, null, localId);
-    return fixed ?? expression;
+    return (fixed ?? expression) as T;
   };
   return {
     ...delta,
-    add: delta.add.map((fact, index) => (fact.kind === 'temporal_constraint'
-      ? { ...fact, dateExpression: fix(fact.dateExpression, `add[${index}].dateExpression`, fact.localId) } : fact)),
-    patch: delta.patch.map((patch, index) => (patch.kind === 'temporal_constraint'
-      ? { ...patch, changes: { ...patch.changes,
-        dateExpression: fix(patch.changes.dateExpression, `patch[${index}].changes.dateExpression`, patch.localId) } } : patch)),
+    add: delta.add.map((fact, index) => {
+      const next = structuredClone(fact);
+      if ('dateExpression' in next) next.dateExpression = fix(next.dateExpression, `add[${index}].dateExpression`, next.localId);
+      return next;
+    }),
+    patch: delta.patch.map((patch, index) => {
+      const next = structuredClone(patch);
+      if ('dateExpression' in next.changes) next.changes.dateExpression = fix(next.changes.dateExpression, `patch[${index}].changes.dateExpression`, next.localId);
+      return next;
+    }),
   };
 }
 
@@ -108,7 +126,7 @@ export function applyWeeklyPlanningVNextTurn(
     localId: string | null = null) => errors.push({ code, path, factId, localId });
   const reject = (): VNextTurnResult => ({ status: 'rejected', state, errors });
   if (!context.turnKey.trim() || !context.conversationId.trim() || !context.turnId.trim() || !context.sourceText.trim()
-    || fixVNextDateExpression(context.acceptedDate, context.acceptedDate) !== context.acceptedDate) {
+    || !isValidCalendarDate(context.acceptedDate)) {
     error('invalid_value', 'context');
     return reject();
   }
@@ -173,6 +191,29 @@ export function applyWeeklyPlanningVNextTurn(
     if (!unit) error('unknown_ref', path, value.workLineageId);
     return unit ? stateResolver.lineageOf(unit.definingFactId) : '';
   };
+  // A planning window defines the horizon itself. Freeze its effective payload,
+  // including a relative correction of an already absolute stored window.
+  const freezeWindow = (payload: Record<string, unknown>, path: string, localId: string, valueStated = false): Record<string, unknown> => {
+    if (!['absolute', 'relative_day', 'relative_week', 'named_period'].includes(String(payload.kind))) return payload;
+    const range = (expression: unknown, field: string) => {
+      const fixed = typeof expression === 'string' ? fixVNextDateExpression(expression, context.acceptedDate) : null;
+      const resolved = fixed === null ? null : resolveCanonicalDateExpression({ expression: fixed, currentDate: context.acceptedDate });
+      if (resolved?.status === 'resolved') return resolved.range;
+      error('invalid_value', `${path}.${field}`, null, localId);
+      return null;
+    };
+    const fromValue = payload.kind !== 'absolute' || valueStated;
+    const value = fromValue ? range(payload.value, 'value') : null;
+    const start = fromValue ? value?.start : range(payload.start, 'start')?.start;
+    const end = fromValue ? value?.end : range(payload.end, 'end')?.end;
+    if (!start || !end) return payload;
+    if (start > end) {
+      error('invalid_value', `${path}.start`, null, localId);
+      error('invalid_value', `${path}.end`, null, localId);
+      return payload;
+    }
+    return { ...payload, kind: 'absolute', value: start === end ? start : `${start}/${end}`, start, end };
+  };
   const addPayload = (fact: VNextAddFact, path: string): Record<string, unknown> => {
     switch (fact.kind) {
       case 'task': return { category: fact.category, title: fact.title };
@@ -193,6 +234,16 @@ export function applyWeeklyPlanningVNextTurn(
         targetFactId: ref(fact.targetRef, `${path}.targetRef`), kind: fact.constraintKind,
         constraintLevel: fact.constraintLevel, dateExpression: fact.dateExpression, namedTimePeriod: fact.namedTimePeriod,
         startTime: fact.startTime, endTime: fact.endTime, precision: fact.precision };
+      case 'planning_window': return freezeWindow({ kind: fact.windowKind, value: fact.value, start: fact.start, end: fact.end }, path, fact.localId);
+      case 'recurrence': return { taskId: ref(fact.taskRef, `${path}.taskRef`), targetFactId: ref(fact.targetRef, `${path}.targetRef`),
+        kind: fact.recurrenceKind, count: fact.count, days: fact.days };
+      case 'task_date_rule': return { taskId: ref(fact.taskRef, `${path}.taskRef`), targetFactId: ref(fact.targetRef, `${path}.targetRef`),
+        kind: fact.ruleKind, dateExpression: fact.dateExpression, constraintLevel: fact.constraintLevel };
+      case 'availability_declaration': return { kind: fact.availabilityKind, dateExpression: fact.dateExpression,
+        namedTimePeriod: fact.namedTimePeriod, startTime: fact.startTime, endTime: fact.endTime, recurrenceKind: fact.recurrenceKind,
+        days: fact.days, capacityMinutes: fact.capacityMinutes, constraintLevel: fact.constraintLevel, resolutionStatus: 'unresolved' };
+      case 'relation': return { kind: fact.relationKind, fromTaskId: ref(fact.fromTaskRef, `${path}.fromTaskRef`),
+        toTaskId: ref(fact.toTaskRef, `${path}.toTaskRef`) };
     }
   };
   const touchedEfforts = new Set<string>();
@@ -228,7 +279,7 @@ export function applyWeeklyPlanningVNextTurn(
       if (!allowed.includes(key)) {
         // Even null identity fields are invalid: they are not part of this wire schema.
         error('invalid_value', `${path}.changes.${key}`, patch.targetFactId, patch.localId);
-      } else if (value !== null) changes[key === 'effortKind' || key === 'constraintKind' ? 'kind' : key] = value;
+      } else if (value !== null) changes[key === payloadKindFields[patch.kind] ? 'kind' : key] = value;
     }
     if ('amountDelta' in patch && patch.amountDelta !== null) {
       if (patch.kind !== 'workload' || typeof patch.amountDelta !== 'number' || !Number.isFinite(patch.amountDelta)
@@ -236,10 +287,14 @@ export function applyWeeklyPlanningVNextTurn(
       else changes.amount = Number(found.fact.amount) + patch.amountDelta;
     }
     if (Object.keys(changes).length === 0) { error('empty_patch', `${path}.changes`, patch.targetFactId, patch.localId); return; }
-    const sameValues = Object.entries(changes).every(([key, value]) => JSON.stringify(found.fact[key]) === JSON.stringify(value));
+    const payload = patch.kind === 'planning_window'
+      ? freezeWindow({ ...found.fact, ...changes }, `${path}.changes`, patch.localId,
+        'value' in changes && !('start' in changes) && !('end' in changes))
+      : { ...found.fact, ...changes };
+    const sameValues = Object.entries(payload).every(([key, value]) => JSON.stringify(found.fact[key]) === JSON.stringify(value));
     if (sameValues && patch.kind !== 'effort_estimate') return;
     const id = localIds.get(patch.localId)!;
-    appendFact(graph, patch.kind, { ...found.fact, ...changes, id, source: source(patch.localId), createdRevision: graph.revision });
+    appendFact(graph, patch.kind, { ...payload, id, source: source(patch.localId), createdRevision: graph.revision });
     terminalize(graph, patch.targetFactId, id);
     retirementPaths.set(patch.targetFactId, `${path}.targetFactId`);
     locations.set(id, { path: `${path}.changes`, localId: patch.localId });
@@ -366,12 +421,11 @@ export function applyWeeklyPlanningVNextTurn(
       const location = fact && locations.get(fact.id);
       let suffix = match[3];
       if (location && suffix.startsWith('.kind')) {
-        if (match[1] === 'effortEstimates') suffix = suffix.replace('.kind', '.effortKind');
-        if (match[1] === 'temporalConstraints') suffix = suffix.replace('.kind', '.constraintKind');
+        const kind = all.find(entry => entry.fact.id === fact.id)?.kind as VNextAddFact['kind'] | undefined;
+        if (kind && payloadKindFields[kind]) suffix = suffix.replace('.kind', `.${payloadKindFields[kind]}`);
       }
       if (location?.path.startsWith('add[')) {
-        for (const [field, wire] of Object.entries({ taskId: 'taskRef', componentId: 'componentRef',
-          parentComponentId: 'parentComponentRef', targetFactId: 'targetRef' })) {
+        for (const [field, wire] of Object.entries(referenceFields)) {
           if (suffix.startsWith(`.${field}`)) suffix = suffix.replace(`.${field}`, `.${wire}`);
         }
       }

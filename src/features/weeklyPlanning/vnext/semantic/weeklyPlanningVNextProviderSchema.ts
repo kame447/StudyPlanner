@@ -2,9 +2,13 @@ import type { JsonSchemaResponseFormat } from '../../../../services/ai/openAiCom
 import { SEMANTIC_BASE_TEMPORAL_CONSTRAINT_KINDS_V5, SEMANTIC_COMPONENT_ROLES_V5,
   SEMANTIC_CONSTRAINT_LEVELS_V5, SEMANTIC_NAMED_TIME_PERIODS_V5, SEMANTIC_QUANTITY_ROLES_V5, SEMANTIC_TASK_CATEGORIES_V5,
   SEMANTIC_WORKLOAD_UNIT_CODES_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
+import { SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5, SEMANTIC_AVAILABILITY_KINDS_V5,
+  SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import type { WeeklyPlanningVNextInterpretedAnswer } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnDelta, VNextTurnError } from '../weeklyPlanningVNextTypes';
-import { VNEXT_CORRECTION_RESPONSE_FORMAT } from './weeklyPlanningVNextCorrectionSchema';
+import { VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
+
+export { VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 
 type Schema = { type?: string; properties?: Record<string, Schema>; required?: string[];
   additionalProperties?: boolean; enum?: readonly unknown[]; anyOf?: Schema[]; items?: Schema; description?: string };
@@ -42,6 +46,24 @@ const add: Schema = { anyOf: [
     constraintLevel: { ...enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5), description: VNEXT_CONSTRAINT_LEVEL_REQUIREMENT }, dateExpression: nullable(text),
     namedTimePeriod: { ...nullable(text), description: VNEXT_NAMED_TIME_PERIOD_REQUIREMENT },
     startTime: nullable(text), endTime: nullable(text), precision }),
+  object({ kind: enumeration(['planning_window']), localId: text,
+    windowKind: { ...enumeration(VNEXT_PLANNING_WINDOW_KINDS), description: VNEXT_PLANNING_WINDOW_REQUIREMENT },
+    value: { ...text, description: VNEXT_PLANNING_WINDOW_REQUIREMENT }, start: nullable(text), end: nullable(text) }),
+  object({ kind: enumeration(['recurrence']), localId: text, taskRef: ref, targetRef: ref,
+    recurrenceKind: { ...enumeration(SEMANTIC_RECURRENCE_KINDS_V5), description: VNEXT_RECURRENCE_REQUIREMENT },
+    count: { ...nullable(number), description: VNEXT_RECURRENCE_REQUIREMENT },
+    days: { ...array(text), description: VNEXT_RECURRENCE_REQUIREMENT } }),
+  object({ kind: enumeration(['task_date_rule']), localId: text, taskRef: ref, targetRef: ref,
+    ruleKind: { ...enumeration(SEMANTIC_TASK_DATE_RULE_KINDS_V5), description: VNEXT_TASK_DATE_RULE_REQUIREMENT },
+    dateExpression: { ...text, description: VNEXT_TASK_DATE_RULE_REQUIREMENT }, constraintLevel: enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5) }),
+  object({ kind: enumeration(['availability_declaration']), localId: text,
+    availabilityKind: { ...enumeration(SEMANTIC_AVAILABILITY_KINDS_V5), description: VNEXT_AVAILABILITY_REQUIREMENT },
+    dateExpression: nullable(text), namedTimePeriod: { ...nullable(text), description: VNEXT_NAMED_TIME_PERIOD_REQUIREMENT },
+    startTime: nullable(text), endTime: nullable(text), recurrenceKind: nullable(enumeration(SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5)),
+    days: array(text), capacityMinutes: { ...nullable(number), description: VNEXT_AVAILABILITY_REQUIREMENT },
+    constraintLevel: enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5) }),
+  object({ kind: enumeration(['relation']), localId: text,
+    relationKind: { ...enumeration(VNEXT_TASK_RELATION_KINDS), description: VNEXT_TASK_RELATION_REQUIREMENT }, fromTaskRef: ref, toTaskRef: ref }),
 ] };
 const correction = VNEXT_CORRECTION_RESPONSE_FORMAT.json_schema.schema as Schema;
 const root = object({ delta: object({ add: array(add), patch: correction.properties!.patch,

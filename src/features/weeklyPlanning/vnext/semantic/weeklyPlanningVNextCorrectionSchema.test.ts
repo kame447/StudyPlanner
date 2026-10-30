@@ -7,6 +7,22 @@ const workload = () => ({ kind: 'workload', localId: 'r8', targetFactId: 'r', am
     rangeEnd: null, perOccurrence: null, periodExpression: null } });
 
 describe('VNext experimental provider correction fragment', () => {
+  it.each([
+    { kind: 'planning_window', changes: { windowKind: null, value: 'next_week', start: null, end: null } },
+    { kind: 'recurrence', changes: { recurrenceKind: 'weekly', count: null, days: ['weekday:monday'] } },
+    { kind: 'task_date_rule', changes: { ruleKind: 'excluded_date', dateExpression: 'weekday:friday', constraintLevel: null } },
+    { kind: 'availability_declaration', changes: { availabilityKind: null, dateExpression: null, namedTimePeriod: null,
+      startTime: null, endTime: null, recurrenceKind: 'weekly', days: ['weekday:monday'], capacityMinutes: null, constraintLevel: null } },
+    { kind: 'relation', changes: { relationKind: 'after' } },
+  ])('decodes $kind changes without allowing ownership or references to change', ({ kind, changes }) => {
+    const patch = { kind, localId: 'fix', targetFactId: 'stored', changes };
+    expect(parseVNextCorrections({ patch: [patch], remove: [] })).toEqual({ status: 'accepted', patch: [patch], remove: [] });
+    for (const key of ['taskRef', 'targetRef', 'fromTaskRef', 'toTaskRef']) {
+      expect(parseVNextCorrections({ patch: [{ ...patch, changes: { ...changes, [key]: null } }], remove: [] }))
+        .toMatchObject({ status: 'rejected', errors: expect.arrayContaining([expect.objectContaining({ path: `patch[0].changes.${key}`, localId: 'fix' })]) });
+    }
+  });
+
   it('accepts value-only patches with all unchanged fields null', () => {
     const value = { patch: [workload()], remove: [] };
     const result = parseVNextCorrections(value);
@@ -23,7 +39,7 @@ describe('VNext experimental provider correction fragment', () => {
     const root = VNEXT_CORRECTION_RESPONSE_FORMAT.json_schema.schema as Schema;
     expect(root.additionalProperties).toBe(false);
     const variants = root.properties!.patch.items!.anyOf!;
-    expect(variants).toHaveLength(5);
+    expect(variants).toHaveLength(10);
     for (const variant of variants) {
       const kind = variant.properties!.kind.enum![0] as keyof typeof VNEXT_PATCH_FIELDS;
       const changes = variant.properties!.changes;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { VNextAddFact, VNextPatch, VNextTurnDelta, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import { vnextLineageIdByFactId } from '../weeklyPlanningVNextWorkIdentity';
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from './weeklyPlanningVNextTransaction';
+import { resolveWeeklyPlanningDateExpressionsV5 } from '../../semantic/weeklyPlanningResolvedDateExpressionsV5';
 
 const delta = (parts: Partial<VNextTurnDelta> = {}): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [], defer: [], ...parts });
 const task: VNextAddFact = { kind: 'task', localId: 't', category: 'study', title: 'Math' };
@@ -37,7 +38,105 @@ const activeWorkloads = (state: WeeklyPlanningVNextState) => state.graph.workloa
 const activeEfforts = (state: WeeklyPlanningVNextState) => state.graph.effortEstimates.filter(fact =>
   state.graph.factLifecycles.some(entry => entry.factId === fact.id && entry.status === 'active'));
 
+const portedFacts: { fact: VNextAddFact; collection: 'planningWindows' | 'recurrences' | 'taskDateRules' | 'availabilityDeclarations' | 'relations';
+  patch: VNextPatch; added: Record<string, unknown>; changed: Record<string, unknown>; invalidField: string; invalidValue: unknown }[] = [
+  { fact: { kind: 'planning_window', localId: 'ported', windowKind: 'relative_week', value: 'next_week', start: null, end: null },
+    collection: 'planningWindows', patch: { kind: 'planning_window', localId: 'edit', targetFactId: '',
+      changes: { windowKind: null, value: 'tomorrow', start: null, end: null } },
+    added: { kind: 'absolute', value: '2026-11-09/2026-11-15', start: '2026-11-09', end: '2026-11-15' },
+    changed: { kind: 'absolute', value: '2026-11-03', start: '2026-11-03', end: '2026-11-03' }, invalidField: 'value', invalidValue: 'not-a-date' },
+  { fact: { kind: 'recurrence', localId: 'ported', taskRef: { localId: 't' }, targetRef: { localId: 't' }, recurrenceKind: 'daily', count: null, days: [] },
+    collection: 'recurrences', patch: { kind: 'recurrence', localId: 'edit', targetFactId: '', changes: { recurrenceKind: 'weekly', count: null, days: ['weekday:monday'] } },
+    added: { kind: 'daily', count: null, days: [] }, changed: { kind: 'weekly', days: ['weekday:monday'] }, invalidField: 'count', invalidValue: 0 },
+  { fact: { kind: 'task_date_rule', localId: 'ported', taskRef: { localId: 't' }, targetRef: { localId: 't' }, ruleKind: 'excluded_date', dateExpression: 'tomorrow', constraintLevel: 'hard' },
+    collection: 'taskDateRules', patch: { kind: 'task_date_rule', localId: 'edit', targetFactId: '', changes: { ruleKind: 'allowed_date', dateExpression: 'next_week', constraintLevel: null } },
+    added: { kind: 'excluded_date', dateExpression: '2026-11-03' }, changed: { kind: 'allowed_date', dateExpression: '2026-11-09/2026-11-15' },
+    invalidField: 'constraintLevel', invalidValue: 'soft' },
+  { fact: { kind: 'availability_declaration', localId: 'ported', availabilityKind: 'unavailable', dateExpression: 'tomorrow', namedTimePeriod: null,
+      startTime: '09:00', endTime: '10:00', recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard' },
+    collection: 'availabilityDeclarations', patch: { kind: 'availability_declaration', localId: 'edit', targetFactId: '', changes: { availabilityKind: 'available', dateExpression: 'next_week',
+      namedTimePeriod: null, startTime: null, endTime: null, recurrenceKind: null, days: null, capacityMinutes: null, constraintLevel: null } },
+    added: { kind: 'unavailable', dateExpression: '2026-11-03', resolutionStatus: 'unresolved' },
+    changed: { kind: 'available', dateExpression: '2026-11-09/2026-11-15', startTime: '09:00', endTime: '10:00', resolutionStatus: 'unresolved' },
+    invalidField: 'endTime', invalidValue: '99:00' },
+  { fact: { kind: 'relation', localId: 'ported', relationKind: 'before', fromTaskRef: { localId: 't' }, toTaskRef: { localId: 'other' } },
+    collection: 'relations', patch: { kind: 'relation', localId: 'edit', targetFactId: '', changes: { relationKind: 'after' } },
+    added: { kind: 'before' }, changed: { kind: 'after' }, invalidField: 'relationKind', invalidValue: 'invented' },
+];
+
 describe('experimental VNext typed transaction', () => {
+  it.each(['weekday:monday', 'tomorrow', '2026-02-30'])('rejects %s as the accepting clock date', acceptedDate => {
+    const state = createEmptyWeeklyPlanningVNextState();
+    const result = applyWeeklyPlanningVNextTurn(state, delta({ add: [task] }), { acceptedDate,
+      expectedRevision: 0, turnKey: 'clock', conversationId: 'c', turnId: 'clock', sourceText: 'user evidence' });
+    expect(result).toMatchObject({ status: 'rejected', errors: [{ code: 'invalid_value', path: 'context' }] });
+    expect(result.state).toBe(state);
+  });
+
+  it.each(portedFacts)('ports $collection add/patch/remove through the same transaction and lifecycle', fixture => {
+    const initial = createEmptyWeeklyPlanningVNextState();
+    const added = applied(initial, delta({ add: [task, { kind: 'task', localId: 'other', category: 'non_study', title: 'Other' }, fixture.fact] }));
+    const fact = added.graph[fixture.collection][0];
+    expect(fact).toMatchObject(fixture.added);
+    expect(fact.source).toMatchObject({ origin: 'user', sourceText: 'user evidence' });
+    expect(initial.graph.revision).toBe(0);
+    const changed = applied(added, delta({ patch: [{ ...fixture.patch, targetFactId: fact.id }] }));
+    const replacement = changed.graph[fixture.collection][1];
+    expect(replacement).toMatchObject(fixture.changed);
+    expect(changed.graph.factLifecycles.find(entry => entry.factId === fact.id)).toMatchObject({ status: 'superseded', supersededByFactId: replacement.id });
+    const removed = applied(changed, delta({ remove: [{ targetFactId: replacement.id }] }));
+    expect(removed.graph.factLifecycles.find(entry => entry.factId === replacement.id)?.status).toBe('removed');
+    expect(removed.graph.tasks).toHaveLength(2);
+  });
+
+  it.each(portedFacts)('returns field-addressed V5 validation errors for $collection additions and patches', fixture => {
+    const initial = createEmptyWeeklyPlanningVNextState();
+    const invalid = { ...fixture.fact, [fixture.invalidField]: fixture.invalidValue } as VNextAddFact;
+    const result = turn(initial, delta({ add: [task, { kind: 'task', localId: 'other', category: 'study', title: 'Other' }, invalid] }));
+    expect(result).toMatchObject({ status: 'rejected', state: initial });
+    if (result.status !== 'rejected') throw new Error('expected rejection');
+    expect(result.errors.some(error => error.path.startsWith(`add[2].${fixture.invalidField}`) && error.localId === 'ported')).toBe(true);
+    const added = applied(initial, delta({ add: [task, { kind: 'task', localId: 'other', category: 'study', title: 'Other' }, fixture.fact] }));
+    const badPatch = { ...fixture.patch, targetFactId: added.graph[fixture.collection][0].id,
+      changes: { ...fixture.patch.changes, [fixture.invalidField]: fixture.invalidValue } } as VNextPatch;
+    const patched = turn(added, delta({ patch: [badPatch] }));
+    expect(patched.status).toBe('rejected');
+    if (patched.status !== 'rejected') throw new Error('expected rejection');
+    expect(patched.state).toBe(added);
+    expect(patched.errors.some(error => error.path.startsWith(`patch[0].changes.${fixture.invalidField}`) && error.localId === 'edit')).toBe(true);
+  });
+
+  it('preserves V5 task/component recurrence ownership and rejects workload/date-rule component targets', () => {
+    const component: VNextAddFact = { kind: 'component', localId: 'component', taskRef: { localId: 't' }, parentComponentRef: null, role: 'material', label: 'Book' };
+    for (const [target, accepted] of [['t', true], ['component', true], ['work', false]] as const) {
+      const recurrence: VNextAddFact = { kind: 'recurrence', localId: 'repeat', taskRef: { localId: 't' }, targetRef: { localId: target }, recurrenceKind: 'daily', count: null, days: [] };
+      const result = turn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, component, workload('work', 20), recurrence] }));
+      expect(result.status).toBe(accepted ? 'applied' : 'rejected');
+      if (result.status === 'rejected') expect(result.errors).toContainEqual(expect.objectContaining({ path: 'add[3].targetRef' }));
+    }
+    const rule: VNextAddFact = { kind: 'task_date_rule', localId: 'rule', taskRef: { localId: 't' }, targetRef: { localId: 'component' }, ruleKind: 'excluded_date', dateExpression: 'tomorrow', constraintLevel: 'hard' };
+    expect(turn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, component, rule] }))).toMatchObject({ status: 'rejected', errors: expect.arrayContaining([expect.objectContaining({ path: 'add[2].targetRef' })]) });
+  });
+
+  it('keeps weekday filters in a multi-week horizon while a today-relative date remains frozen on a later turn', () => {
+    const state = applied(createEmptyWeeklyPlanningVNextState(), delta({ add: [task,
+      { kind: 'planning_window', localId: 'horizon', windowKind: 'absolute', value: '2026-11-09/2026-11-22', start: '2026-11-09', end: '2026-11-22' },
+      { kind: 'task_date_rule', localId: 'mondays', taskRef: { localId: 't' }, targetRef: { localId: 't' }, ruleKind: 'excluded_date', dateExpression: 'weekday:monday', constraintLevel: 'hard' },
+      { kind: 'temporal_constraint', localId: 'deadline', taskRef: { localId: 't' }, targetRef: { localId: 't' }, constraintKind: 'deadline', constraintLevel: 'hard',
+        dateExpression: 'weekday:friday', namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' },
+      { kind: 'availability_declaration', localId: 'tomorrow', availabilityKind: 'unavailable', dateExpression: 'tomorrow', namedTimePeriod: null,
+        startTime: '09:00', endTime: '10:00', recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard' },
+    ] }));
+    const later = applyWeeklyPlanningVNextTurn(state, delta({ add: [{ kind: 'task', localId: 'later', category: 'study', title: 'Later' }] }), {
+      expectedRevision: state.graph.revision, acceptedDate: '2026-11-10', turnKey: 'later', conversationId: 'c', turnId: 'later', sourceText: 'later statement',
+    });
+    if (later.status !== 'applied') throw new Error('setup');
+    expect(later.state.graph.availabilityDeclarations[0].dateExpression).toBe('2026-11-03');
+    const resolved = resolveWeeklyPlanningDateExpressionsV5({ graph: later.state.graph, currentDate: '2026-11-10',
+      planningWindow: { startDate: '2026-11-09', endDate: '2026-11-22' } });
+    expect(resolved.facts.find(fact => fact.factId === state.graph.taskDateRules[0].id)).toMatchObject({ dates: ['2026-11-09', '2026-11-16'] });
+    expect(resolved.facts.find(fact => fact.factId === state.graph.temporalConstraints[0].id)).toMatchObject({ range: { start: '2026-11-13', end: '2026-11-13' } });
+  });
   it('value-only R7→R8 keeps custom unit, range, recurrence period and original state', () => {
     const original = setup();
     const snapshot = structuredClone(original);
@@ -236,7 +335,8 @@ describe('experimental VNext typed transaction', () => {
         .toMatchObject({ status: 'rejected', errors: [expect.objectContaining({ path: 'add[1].dateExpression', localId: 'due' })] });
     }
     const monday = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), delta({ add: [task, due('weekday:monday')] }), context('2026-08-26'));
-    expect(monday.status === 'applied' && monday.state.graph.temporalConstraints[0].dateExpression).toBe('2026-08-31');
+    // A weekday is resolved in the fixed planning horizon; it is not anchored to this turn.
+    expect(monday.status === 'applied' && monday.state.graph.temporalConstraints[0].dateExpression).toBe('weekday:monday');
   });
 
   it('requires a rate stated about one workload to be in that work\'s unit (run 41004723952 native-multiturn-rate)', () => {

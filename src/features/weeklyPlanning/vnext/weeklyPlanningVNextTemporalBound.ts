@@ -37,8 +37,9 @@ export function vnextTemporalBoundRepairFields(bound: Bound): BoundField[] {
 /**
  * A date as stored: the model reads "明日" as a symbolic `tomorrow`; code fixes it to
  * the absolute date of the turn that stated it, so it never moves on a later day
- * (#918, design §18). Absolute dates pass through; null when it is not in the canonical
- * vocabulary (no word is interpreted here) or cannot be resolved.
+ * (#918, design §18). Weekdays remain filters for the fixed planning horizon.
+ * Absolute dates pass through; null when it is not in the canonical vocabulary
+ * (no word is interpreted here) or cannot be resolved.
  */
 const ABSOLUTE_DATE_OR_RANGE = /^\d{4}-\d{2}-\d{2}(?:\/\d{4}-\d{2}-\d{2})?$/;
 /** The model's date vocabulary: absolute dates or ranges and canonical tokens. Words in any language are the model's to resolve. */
@@ -47,6 +48,9 @@ const isCanonicalVNextDate = (expression: string) => ABSOLUTE_DATE_OR_RANGE.test
 
 export function fixVNextDateExpression(expression: string, acceptedDate: string): string | null {
   if (!isCanonicalVNextDate(expression)) return null;
+  // A weekday is a filter inside the session's fixed horizon, not a date
+  // relative to this turn. V5 resolves hard bounds and date-rule occurrences there.
+  if ((CANONICAL_WEEKDAY_DATE_EXPRESSIONS as readonly string[]).includes(expression)) return expression;
   const resolved = resolveCanonicalDateExpression({ expression, currentDate: acceptedDate });
   if (resolved.status !== 'resolved' || !resolved.range) return null;
   return resolved.range.start === resolved.range.end ? resolved.range.start : `${resolved.range.start}/${resolved.range.end}`;

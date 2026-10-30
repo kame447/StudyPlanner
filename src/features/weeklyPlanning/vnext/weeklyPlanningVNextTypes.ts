@@ -145,12 +145,49 @@ export interface VNextAddTemporal {
   precision: TemporalConstraintFactV5['precision'];
 }
 
+// Reuse each V5 collection's payload. VNext changes only the wire discriminant,
+// transaction-owned metadata, and references; the stored fact keeps its V5 shape.
+type StatedPayload<T> = Omit<T, 'id' | 'source' | 'createdRevision'>;
+type PlanningWindowPayload = StatedPayload<WeeklyPlanningFactGraphV5['planningWindows'][number]>;
+type RecurrencePayload = StatedPayload<WeeklyPlanningFactGraphV5['recurrences'][number]>;
+type TaskDateRulePayload = StatedPayload<WeeklyPlanningFactGraphV5['taskDateRules'][number]>;
+type AvailabilityPayload = StatedPayload<WeeklyPlanningFactGraphV5['availabilityDeclarations'][number]>;
+type RelationPayload = StatedPayload<WeeklyPlanningFactGraphV5['relations'][number]>;
+
+export type VNextAddPlanningWindow = Omit<PlanningWindowPayload, 'kind'> & {
+  kind: 'planning_window'; localId: string; windowKind: PlanningWindowPayload['kind'];
+};
+export type VNextAddRecurrence = Omit<RecurrencePayload, 'kind' | 'taskId' | 'targetFactId'> & {
+  kind: 'recurrence'; localId: string; recurrenceKind: RecurrencePayload['kind']; taskRef: VNextFactRef; targetRef: VNextFactRef;
+};
+export type VNextAddTaskDateRule = Omit<TaskDateRulePayload, 'kind' | 'taskId' | 'targetFactId'> & {
+  kind: 'task_date_rule'; localId: string; ruleKind: TaskDateRulePayload['kind']; taskRef: VNextFactRef; targetRef: VNextFactRef;
+};
+export type VNextAddAvailability = Omit<AvailabilityPayload, 'kind' | 'resolutionStatus' | 'capacityMinutes'> & {
+  kind: 'availability_declaration'; localId: string; availabilityKind: AvailabilityPayload['kind']; capacityMinutes: number | null;
+};
+export type VNextAddRelation = Omit<RelationPayload, 'kind' | 'fromTaskId' | 'toTaskId'> & {
+  kind: 'relation'; localId: string; relationKind: RelationPayload['kind']; fromTaskRef: VNextFactRef; toTaskRef: VNextFactRef;
+};
+
 export type VNextAddFact =
   | VNextAddTask
   | VNextAddComponent
   | VNextAddWorkload
   | VNextAddEffort
-  | VNextAddTemporal;
+  | VNextAddTemporal
+  | VNextAddPlanningWindow
+  | VNextAddRecurrence
+  | VNextAddTaskDateRule
+  | VNextAddAvailability
+  | VNextAddRelation;
+
+type NullableChanges<T> = { [K in keyof T]-?: T[K] | null };
+export type VNextPlanningWindowChanges = NullableChanges<Omit<VNextAddPlanningWindow, 'kind' | 'localId'>>;
+export type VNextRecurrenceChanges = NullableChanges<Omit<VNextAddRecurrence, 'kind' | 'localId' | 'taskRef' | 'targetRef'>>;
+export type VNextTaskDateRuleChanges = NullableChanges<Omit<VNextAddTaskDateRule, 'kind' | 'localId' | 'taskRef' | 'targetRef'>>;
+export type VNextAvailabilityChanges = NullableChanges<Omit<VNextAddAvailability, 'kind' | 'localId'>>;
+export type VNextRelationChanges = NullableChanges<Pick<VNextAddRelation, 'relationKind'>>;
 
 // In every `changes` object null means "unchanged". Identity fields (taskId,
 // componentId, targetFactId, id) are not patchable: change them by remove + add.
@@ -207,7 +244,12 @@ export type VNextPatch =
       amountDelta: number | null;
     }
   | { kind: 'effort_estimate'; localId: string; targetFactId: string; changes: VNextEffortChanges }
-  | { kind: 'temporal_constraint'; localId: string; targetFactId: string; changes: VNextTemporalChanges };
+  | { kind: 'temporal_constraint'; localId: string; targetFactId: string; changes: VNextTemporalChanges }
+  | { kind: 'planning_window'; localId: string; targetFactId: string; changes: VNextPlanningWindowChanges }
+  | { kind: 'recurrence'; localId: string; targetFactId: string; changes: VNextRecurrenceChanges }
+  | { kind: 'task_date_rule'; localId: string; targetFactId: string; changes: VNextTaskDateRuleChanges }
+  | { kind: 'availability_declaration'; localId: string; targetFactId: string; changes: VNextAvailabilityChanges }
+  | { kind: 'relation'; localId: string; targetFactId: string; changes: VNextRelationChanges };
 
 export interface VNextRemove {
   targetFactId: string;

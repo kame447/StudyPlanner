@@ -4,6 +4,26 @@ import type { VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
 
 const empty = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 describe('request-scoped provider reference vocabulary', () => {
+  it('decodes task-order and recurrence references through the same fact vocabulary', () => {
+    const references = createVNextProviderReferences();
+    references.encodeContext({ tasks: [{ id: 'first:["task"]' }, { id: 'second:["task"]' }] });
+    const reading: VNextProviderReading = { delta: { ...empty(), add: [
+      { kind: 'relation', localId: 'order', relationKind: 'before', fromTaskRef: { factId: 'F1' }, toTaskRef: { factId: 'F2' } },
+      { kind: 'recurrence', localId: 'repeat', taskRef: { factId: 'F1' }, targetRef: { factId: 'F1' }, recurrenceKind: 'daily', count: null, days: [] },
+    ] }, answer: null };
+    const result = references.decodeReading(reading);
+    expect(result).toMatchObject({ status: 'decoded', reading: { delta: { add: [
+      { fromTaskRef: { factId: 'first:["task"]' }, toTaskRef: { factId: 'second:["task"]' } },
+      { taskRef: { factId: 'first:["task"]' }, targetRef: { factId: 'first:["task"]' } },
+    ] } } });
+    const invalid = structuredClone(reading);
+    if (invalid.delta.add[0].kind !== 'relation') throw new Error('setup');
+    invalid.delta.add[0].toTaskRef = { factId: 'W1' };
+    expect(references.decodeReading(invalid)).toMatchObject({ status: 'rejected', errors: [
+      expect.objectContaining({ path: 'delta.add[0].toTaskRef.factId', localId: 'order' }),
+    ] });
+  });
+
   it('hides punctuation-bearing identities everywhere in context and returns exact stored IDs', () => {
     const references = createVNextProviderReferences();
     const raw = 'vnext:["synthetic:task","seed", "remaining"]';

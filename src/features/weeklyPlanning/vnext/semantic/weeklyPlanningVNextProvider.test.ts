@@ -11,6 +11,11 @@ import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_R
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
+import { SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5, SEMANTIC_AVAILABILITY_KINDS_V5,
+  SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
+import { WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5 } from '../../semantic/weeklyPlanningSemanticSchemaV5';
+import { VNEXT_RECURRENCE_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT,
+  VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 
 const emptyDelta = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const task = (localId = 'task', title = 'Math') => ({ kind: 'task', localId, category: 'study', title });
@@ -54,6 +59,64 @@ function changedUnitInput(): WeeklyPlanningVNextInterpretationInput {
 }
 
 describe('VNext native provider', () => {
+  it('reuses the five ported V5 vocabularies in its strict schema and shared prompt', () => {
+    type Schema = { properties?: Record<string, Schema>; enum?: readonly string[]; items?: Schema; anyOf?: Schema[] };
+    const root = VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.schema as Schema;
+    const variants = root.properties!.delta.properties!.add.items!.anyOf!;
+    const variant = (kind: string) => variants.find(schema => schema.properties!.kind.enum![0] === kind)!;
+    const v5 = WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.schema as Schema;
+    expect(variant('planning_window').properties!.windowKind.enum).toBe(v5.properties!.planningWindow.anyOf![0].properties!.kind.enum);
+    expect(variant('relation').properties!.relationKind.enum).toBe(v5.properties!.relations.items!.properties!.kind.enum);
+    expect(variant('recurrence').properties!.recurrenceKind.enum).toBe(SEMANTIC_RECURRENCE_KINDS_V5);
+    expect(variant('task_date_rule').properties!.ruleKind.enum).toBe(SEMANTIC_TASK_DATE_RULE_KINDS_V5);
+    expect(variant('availability_declaration').properties!.availabilityKind.enum).toBe(SEMANTIC_AVAILABILITY_KINDS_V5);
+    expect(variant('availability_declaration').properties!.recurrenceKind.anyOf![0].enum).toBe(SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5);
+    const prompt = buildWeeklyPlanningVNextProviderMessages(input([]))[0].content;
+    for (const requirement of [VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT,
+      VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT]) expect(prompt).toContain(requirement);
+  });
+
+  it('decodes and dry-runs all five ported fact shapes without a V5 state update', async () => {
+    const wire = output([task(), task('other', 'Other'), { ...workload('daily', 20), quantityRole: 'target', unitCode: 'minute', unitLabel: '分', perOccurrence: true },
+      { kind: 'planning_window', localId: 'window', windowKind: 'relative_week', value: 'next_week', start: null, end: null },
+      { kind: 'recurrence', localId: 'repeat', taskRef: { localId: 'task' }, targetRef: { localId: 'task' }, recurrenceKind: 'daily', count: null, days: [] },
+      { kind: 'task_date_rule', localId: 'exclude', taskRef: { localId: 'task' }, targetRef: { localId: 'task' }, ruleKind: 'excluded_date', dateExpression: 'weekday:friday', constraintLevel: 'hard' },
+      { kind: 'availability_declaration', localId: 'busy', availabilityKind: 'unavailable', dateExpression: 'tomorrow', namedTimePeriod: null,
+        startTime: '09:00', endTime: '10:00', recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard' },
+      { kind: 'relation', localId: 'order', relationKind: 'before', fromTaskRef: { localId: 'task' }, toTaskRef: { localId: 'other' } },
+    ]);
+    const params = input([JSON.stringify(wire)]);
+    const before = structuredClone(params.state);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 1, repairs: 0 } });
+    expect(params.state).toEqual(before);
+    if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+    const applied = applyWeeklyPlanningVNextTurn(params.state, result.delta, { expectedRevision: 0, acceptedDate: params.clock.currentDate,
+      turnKey: 'ported', conversationId: 'synthetic', turnId: 'turn', sourceText: 'synthetic typed port' });
+    if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
+    expect(applied.state.graph.planningWindows[0]).toMatchObject({ kind: 'absolute', start: '2026-11-02', end: '2026-11-08' });
+    expect(applied.state.graph.recurrences[0]).toMatchObject({ kind: 'daily', targetFactId: applied.state.graph.tasks[0].id });
+    expect(applied.state.graph.taskDateRules[0]).toMatchObject({ kind: 'excluded_date', dateExpression: 'weekday:friday' });
+    expect(applied.state.graph.availabilityDeclarations[0]).toMatchObject({ kind: 'unavailable', dateExpression: '2026-10-31', resolutionStatus: 'unresolved' });
+    expect(applied.state.graph.relations[0]).toMatchObject({ kind: 'before', fromTaskId: applied.state.graph.tasks[0].id, toTaskId: applied.state.graph.tasks[1].id });
+  });
+
+  it('repairs a ported recurrence field once using the same vocabulary, retaining its per-occurrence workload', async () => {
+    const repeat = { kind: 'recurrence', localId: 'repeat', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+      recurrenceKind: 'times_per_week', count: 0, days: [] };
+    const work = { ...workload('work', 20), quantityRole: 'target', unitCode: 'minute', unitLabel: '分', perOccurrence: true };
+    const params = input([JSON.stringify(output([task(), work, repeat])),
+      JSON.stringify(output([task(), { ...work, amount: 999 }, { ...repeat, count: 2 }]))]);
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    const messages = vi.mocked(params.client.createChatCompletion).mock.calls[1][0].messages;
+    const repair = JSON.parse(messages[messages.length - 1].content);
+    expect(repair.errors).toContainEqual(expect.objectContaining({ path: 'add[2].count', localId: 'repeat', requirement: VNEXT_RECURRENCE_REQUIREMENT }));
+    if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+    expect(result.delta.add[1]).toMatchObject({ amount: 20, perOccurrence: true });
+    expect(result.delta.add[2]).toMatchObject({ recurrenceKind: 'times_per_week', count: 2 });
+  });
+
   it('every synthetic observation seed is valid and has a projectable typed state before any API call', () => {
     expect(VNEXT_PROVIDER_SCENARIOS.length).toBe(24);
     expect(new Set(VNEXT_PROVIDER_SCENARIOS.map(scenario => scenario.id)).size).toBe(24);

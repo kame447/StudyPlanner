@@ -54,6 +54,8 @@ export function createVNextProviderReferences() {
       if ('componentRef' in fact && fact.componentRef) ref(fact.componentRef, `${path}.componentRef`, fact.localId);
       if ('parentComponentRef' in fact && fact.parentComponentRef) ref(fact.parentComponentRef, `${path}.parentComponentRef`, fact.localId);
       if ('targetRef' in fact) ref(fact.targetRef, `${path}.targetRef`, fact.localId);
+      if ('fromTaskRef' in fact) ref(fact.fromTaskRef, `${path}.fromTaskRef`, fact.localId);
+      if ('toTaskRef' in fact) ref(fact.toTaskRef, `${path}.toTaskRef`, fact.localId);
     });
     next.delta.patch.forEach((patch, index) => { patch.targetFactId = real('F', patch.targetFactId, `delta.patch[${index}].targetFactId`, patch.localId); });
     next.delta.remove.forEach((item, index) => { item.targetFactId = real('F', item.targetFactId, `delta.remove[${index}].targetFactId`, null); });
