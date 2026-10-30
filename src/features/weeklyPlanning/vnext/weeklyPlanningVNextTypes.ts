@@ -278,7 +278,9 @@ export type VNextQuestionCode =
   | 'remaining_inconsistent'
   | 'same_or_distinct_work'
   | 'missing_effort_estimate'
-  | 'effort_inconsistent';
+  | 'effort_inconsistent'
+  /** A stated task with no work, no total time and no fixed time: how much is to be done. */
+  | 'missing_schedulable_work';
 
 export interface VNextQuestionOption {
   optionId: string;

@@ -45,7 +45,7 @@ import {
   scheduleWeeklyPlanningStableV5Preview,
 } from '../weeklyPlanningVNextV5Boundary';
 import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
-import { bindWeeklyPlanningVNextAnswer } from './weeklyPlanningVNextAnswerBinding';
+import { resolveWeeklyPlanningVNextTurnDelta } from './weeklyPlanningVNextAnswerBinding';
 import {
   migrateWeeklyPlanningV5GraphToVNextSession,
   parseWeeklyPlanningVNextSessionCheckpoint,
@@ -95,6 +95,8 @@ export type WeeklyPlanningVNextExperimentalTurnOutcome =
   | 'answer_represented'
   | 'rejected'
   | 'interpretation_failed'
+  /** The checkpoint changed while the model was reading (another turn): nothing is written. */
+  | 'stale'
   | 'checkpoint_unreadable';
 
 export interface WeeklyPlanningVNextExperimentalTurn {
@@ -189,11 +191,13 @@ function taskTitle(state: WeeklyPlanningVNextState, taskId: string): string {
 function replyFor(state: WeeklyPlanningVNextState, question: VNextQuestion | null,
   preview: WeeklyPlanningVNextShownPreview | null, outcome: WeeklyPlanningVNextExperimentalTurnOutcome,
   previewBlockedBy: string[]): string {
+  if (outcome === 'stale') return '別の操作で会話が更新されました。最新の内容でもう一度送ってください。';
   if (outcome === 'interpretation_failed' || outcome === 'rejected') {
     return 'うまく反映できませんでした。もう一度、言い方を変えて教えてください。';
   }
   if (question) {
     const title = taskTitle(state, question.taskId);
+    if (question.code === 'missing_schedulable_work') return `「${title}」は、どれくらいやりますか？（時間や量）`;
     if (question.code === 'missing_effort_estimate' && question.forWork) {
       return `「${title}」の${question.forWork.amount}は、全部で何分くらいかかりそうですか？`;
     }
@@ -209,16 +213,6 @@ function replyFor(state: WeeklyPlanningVNextState, question: VNextQuestion | nul
   return '予定にする作業を教えてください。';
 }
 
-function mergeDeltas(left: VNextTurnDelta, right: VNextTurnDelta): VNextTurnDelta {
-  return {
-    add: [...left.add, ...right.add],
-    patch: [...left.patch, ...right.patch],
-    remove: [...left.remove, ...right.remove],
-    relate: [...left.relate, ...right.relate],
-    defer: [...left.defer, ...right.defer],
-  };
-}
-
 const isEmpty = (delta: VNextTurnDelta) =>
   delta.add.length + delta.patch.length + delta.remove.length + delta.relate.length + delta.defer.length === 0;
 
@@ -230,6 +224,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   userText: string;
 }): Promise<WeeklyPlanningVNextExperimentalTurn> {
   const { scope, ports } = params;
+  const rawBefore = ports.checkpoint.read();
   const read = readWeeklyPlanningVNextExperimentalSession(scope, ports);
   if (read.status !== 'ready') {
     return { outcome: 'checkpoint_unreadable', graphRevision: null, readiness: null, question: null, preview: null,
@@ -246,6 +241,14 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     client: ports.client, state, projection: before, presentedQuestion, userText: params.userText, clock: scope.clock,
   });
 
+  // The turn was read against `rawBefore`; if another turn saved meanwhile, applying
+  // this reading would overwrite it. Nothing is written; the user sends it again.
+  if (ports.checkpoint.read() !== rawBefore) {
+    return { outcome: 'stale', graphRevision: state.graph.revision, readiness: before.readiness, question: presentedQuestion,
+      preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [],
+      reply: replyFor(state, null, null, 'stale', []), interpretation, appliedDelta: null, errors: [] };
+  }
+
   let outcome: WeeklyPlanningVNextExperimentalTurnOutcome;
   let delta: VNextTurnDelta | null = null;
   let errors: VNextTurnError[] = [];
@@ -253,18 +256,15 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     outcome = 'interpretation_failed';
     errors = interpretation.errors;
   } else {
-    delta = interpretation.delta;
-    if (interpretation.answer) {
-      // The checkpoint stores the presented question with the reply it was shown in, so it is that reply's question.
-      const binding = bindWeeklyPlanningVNextAnswer({
-        presentationFresh: true,
-        presented,
-        projection: before,
-        lineageOf: createVNextLineageResolver(state.graph).lineageOf,
-        answer: interpretation.answer,
-      });
-      delta = binding.status === 'bound' ? mergeDeltas(binding.delta, interpretation.delta) : null;
-    }
+    // The checkpoint stores the presented question with the reply it was shown in, so it is that reply's question.
+    const resolution = resolveWeeklyPlanningVNextTurnDelta({
+      presentationFresh: true,
+      presented,
+      projection: before,
+      lineageOf: createVNextLineageResolver(state.graph).lineageOf,
+      interpreted: interpretation,
+    });
+    delta = resolution.status === 'delta' ? resolution.delta : null;
     if (delta === null) {
       outcome = 'answer_represented';
     } else if (isEmpty(delta)) {
@@ -285,9 +285,15 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
 
   const projection = projectWeeklyPlanningVNext(state);
   const question = projection.questions[0] ?? null;
-  const { preview, unplacedOwnerKeys, previewBlockedBy } = question
+  // A shown preview belongs to its revision: while the revision is current it is
+  // exactly what the user saw (and may have approved), so it is not made again.
+  const shown = read.checkpoint.preview;
+  const made = question
     ? { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] }
     : shownPreview(scope, state, projection);
+  const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision
+    ? { preview: shown, unplacedOwnerKeys: made.unplacedOwnerKeys, previewBlockedBy: [] }
+    : made;
   const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
     ownerId: scope.ownerId,
     weekStartDate: scope.weekStartDate,

@@ -154,6 +154,37 @@ describe('VNext experimental session end to end (offline)', () => {
     expect(readWeeklyPlanningVNextExperimentalSession(scope, h.ports)).toMatchObject({ checkpoint: { state: JSON.parse(before!).vnext.state } });
   });
 
+  it('keeps the shown preview while its revision is current, so approval saves exactly what was shown', async () => {
+    const minutes: VNextAddFact = { kind: 'workload', localId: 'w', taskRef: { localId: 'slides' }, componentRef: null, quantityRole: 'remaining',
+      amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null };
+    const h = harness([interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, minutes] }), interpreted({})]);
+    const shown = await turn(h.ports, 't1', 'ゼミ資料を60分');
+    // Later, on the same revision, nothing changes: the time of day moved, but the shown preview is not made again.
+    const later = await submitWeeklyPlanningVNextExperimentalTurn({ scope: { ...scope, notBeforeTime: '14:00' }, ports: h.ports, turnId: 't2', userText: 'うーん' });
+    expect(later).toMatchObject({ outcome: 'noop', graphRevision: shown.graphRevision });
+    expect(later.preview).toEqual(shown.preview);
+    await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports });
+    expect([...h.saved.values()].map((block) => block.startTime)).toEqual(shown.preview!.blocks.map((block) => block.startTime));
+  });
+
+  it('writes nothing when another turn saved while the model was reading', async () => {
+    const h = harness([]);
+    const releases: Array<() => void> = [];
+    h.ports.interpret = (input) => new Promise((resolve) => releases.push(() => resolve(interpreted({ add: [
+      { kind: 'task', localId: 'x', category: 'study', title: input.userText },
+    ] }))));
+    const first = turn(h.ports, 't1', '英語');
+    const second = turn(h.ports, 't2', '数学');
+    releases[0]();
+    expect(await first).toMatchObject({ outcome: 'applied', graphRevision: 1 });
+    const savedAfterFirst = h.slots.get('vnext');
+    releases[1]();
+    expect(await second).toMatchObject({ outcome: 'stale', appliedDelta: null });
+    expect(h.slots.get('vnext')).toBe(savedAfterFirst);
+    const read = readWeeklyPlanningVNextExperimentalSession(scope, h.ports);
+    expect(read.status === 'ready' && read.checkpoint.state.graph.tasks.map((task) => task.title)).toEqual(['英語']);
+  });
+
   it('migrates a saved V5 checkpoint without writing it, and refuses unreadable bytes without overwriting them', async () => {
     const graph: WeeklyPlanningFactGraphV5 = {
       ...createEmptyWeeklyPlanningFactGraphV5(), revision: 3,

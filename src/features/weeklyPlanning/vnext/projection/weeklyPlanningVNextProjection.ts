@@ -369,6 +369,20 @@ function projectTaskTotalOwner(
   };
 }
 
+/** A task with nothing to schedule yet: asks how much; the answer is an ordinary delta. */
+function missingWorkOwner(context: ProjectionContext, taskId: string): VNextOwnerProjection {
+  const ownerKey = context.resolver.ownerKeyOf({ taskId, componentId: null });
+  const lineageIds = [context.resolver.lineageOf(taskId)];
+  return {
+    ownerKey, taskId, componentId: null, status: 'question', work: [],
+    question: {
+      code: 'missing_schedulable_work',
+      key: questionKey({ code: 'missing_schedulable_work', ownerKey, lineageIds, values: [] }),
+      ownerKey, taskId, componentId: null, subjectLineageIds: lineageIds, forWork: null, options: [],
+    },
+  };
+}
+
 export function projectWeeklyPlanningVNext(state: WeeklyPlanningVNextState): WeeklyPlanningVNextProjection {
   const graph = state.graph;
   const resolver = createVNextLineageResolver(graph);
@@ -389,12 +403,20 @@ export function projectWeeklyPlanningVNext(state: WeeklyPlanningVNextState): Wee
     : estimateOwnerWork(context, owner, resolution.scheduled, allScheduled)));
 
   const tasks = filterActiveWeeklyPlanningFactsV5(graph, graph.tasks);
+  const activeBounds = filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints);
   for (const task of tasks) {
     const taskLineage = resolver.lineageOf(task.id);
     if (activeWorkloads.some((workload) => resolver.lineageOf(workload.taskId) === taskLineage)) continue;
     const totals = context.efforts.filter((effort) => effort.kind === 'total_duration'
       && resolver.lineageOf(effort.taskId) === taskLineage && resolver.lineageOf(effort.targetFactId) === taskLineage);
-    if (totals.length > 0) owners.push(projectTaskTotalOwner(context, task.id, totals));
+    if (totals.length > 0) {
+      owners.push(projectTaskTotalOwner(context, task.id, totals));
+      continue;
+    }
+    // Every stated task is accounted for: work, a total, a fixed time, or a question. Never silently nothing.
+    const fixed = activeBounds.some((bound) => bound.kind === 'fixed_interval' && bound.constraintLevel === 'hard'
+      && resolver.lineageOf(bound.taskId) === taskLineage);
+    if (!fixed) owners.push(missingWorkOwner(context, task.id));
   }
   const taskOrder = new Map(tasks.map((task, index) => [task.id, index]));
   owners.sort((left, right) => (taskOrder.get(left.taskId) ?? 0) - (taskOrder.get(right.taskId) ?? 0));

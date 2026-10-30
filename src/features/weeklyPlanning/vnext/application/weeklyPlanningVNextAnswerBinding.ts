@@ -100,3 +100,32 @@ export function bindWeeklyPlanningVNextAnswer(params: {
     ? { status: 'bound', question, delta: answer.delta }
     : { status: 'not_an_answer' };
 }
+
+function mergeDeltas(left: VNextTurnDelta, right: VNextTurnDelta): VNextTurnDelta {
+  return {
+    add: [...left.add, ...right.add],
+    patch: [...left.patch, ...right.patch],
+    remove: [...left.remove, ...right.remove],
+    relate: [...left.relate, ...right.relate],
+    defer: [...left.defer, ...right.defer],
+  };
+}
+
+/**
+ * What one interpreted turn applies: the reading's delta, plus the bound answer
+ * to the presented question when the words answer it. An answer that no longer
+ * binds re-presents the current question and applies nothing. The session and
+ * every evaluation harness use this one function.
+ */
+export function resolveWeeklyPlanningVNextTurnDelta(params: {
+  presentationFresh: boolean;
+  presented: WeeklyPlanningVNextPresentedQuestion | null;
+  projection: WeeklyPlanningVNextProjection;
+  lineageOf: (factId: string) => string;
+  interpreted: { delta: VNextTurnDelta; answer: Extract<WeeklyPlanningVNextAnswer, { kind: 'option' | 'estimate_minutes' }> | null };
+}): { status: 'delta'; delta: VNextTurnDelta } | { status: 'represent'; question: VNextQuestion | null } {
+  if (!params.interpreted.answer) return { status: 'delta', delta: params.interpreted.delta };
+  const binding = bindWeeklyPlanningVNextAnswer({ ...params, answer: params.interpreted.answer });
+  if (binding.status === 'bound') return { status: 'delta', delta: mergeDeltas(binding.delta, params.interpreted.delta) };
+  return { status: 'represent', question: binding.status === 'represent' ? binding.question : params.projection.questions[0] ?? null };
+}

@@ -159,6 +159,26 @@ describe('projectWeeklyPlanningVNext', () => {
     expect(projection.owners[0].taskId).not.toBe(state.graph.tasks[0].id);
   });
 
+  it('asks how much for a task with no work, total or fixed time; closes with stated work (run 41001146547 native-45-minute)', () => {
+    const session: VNextAddFact = { kind: 'effort_estimate', localId: 's', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+      effortKind: 'session_duration', minutes: 45, unitCode: 'minute', unitLabel: null, precision: 'exact' };
+    const asked = withTask([session]);
+    expect(projectWeeklyPlanningVNext(asked)).toMatchObject({ readiness: 'needs_resolution',
+      questions: [{ code: 'missing_schedulable_work', taskId: taskId(asked), forWork: null, options: [] }] });
+    // Closing path: an ordinary delta that states the work.
+    const answered = turn(asked, { add: [{ ...W('w', 'target', 90, 'minute', '分'), taskRef: { factId: taskId(asked) } }] });
+    expect(projectWeeklyPlanningVNext(answered)).toMatchObject({ readiness: 'ready', questions: [] });
+  });
+
+  it('does not ask for missing work when a task is a fixed event or reports progress only', () => {
+    const fixed = withTask([{ kind: 'temporal_constraint', localId: 'f', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+      constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+      startTime: '10:00', endTime: '11:00', precision: 'exact' }]);
+    expect(projectWeeklyPlanningVNext(fixed).questions).toEqual([]);
+    expect(projectWeeklyPlanningVNext(withTask([W('done', 'completed', 30, 'minute', '分')])))
+      .toMatchObject({ questions: [], owners: [{ status: 'nothing_to_schedule' }] });
+  });
+
   it('schedules a task with only a stated total time as minute work', () => {
     let state = withTask([]);
     state = turn(state, { add: [{ ...total(state, 'budget', taskId(state), 90), targetRef: { factId: taskId(state) } }] });

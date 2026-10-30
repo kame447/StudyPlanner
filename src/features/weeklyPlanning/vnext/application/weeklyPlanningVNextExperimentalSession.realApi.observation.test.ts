@@ -105,7 +105,8 @@ run('#926 VNext native session real API end to end', () => {
   it('asks, binds the answer, re-asks after a correction, saves with a resumed partial save, reloads, and leaves V5 data intact', async () => {
     const record: Record<string, unknown> = { scope, steps: [] };
     const steps = record.steps as unknown[];
-    const { ports, slots, saved, saveAttempts } = createPorts({ failSaveAttempt: 2 });
+    // The first save fails whatever the block count, so the receipt and its resume are always exercised.
+    const { ports, slots, saved, saveAttempts } = createPorts({ failSaveAttempt: 1 });
     const say = async (turnId: string, text: string) => {
       const turn = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId, userText: text });
       steps.push({ turnId, user: text, ...snapshot(turn), work: scheduledWork(ports) });
@@ -140,11 +141,11 @@ run('#926 VNext native session real API end to end', () => {
       const resumed = await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports });
       const again = await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports });
       record.approval = { blocks, partial, resumed, again, saveAttempts: saveAttempts(), saved: [...saved.keys()] };
-      if (blocks > 1) expect(partial).toMatchObject({ status: 'executed', operation: { status: 'partially_saved' } });
+      expect(partial).toMatchObject({ status: 'executed', operation: { status: blocks > 1 ? 'partially_saved' : 'failed' } });
       expect(resumed).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
       expect(again).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
       expect(saved.size).toBe(blocks);
-      expect(saveAttempts()).toBe(blocks + (blocks > 1 ? 1 : 0));
+      expect(saveAttempts()).toBe(blocks + 1);
 
       // Reload from the stored bytes alone reproduces the session.
       const reread = readWeeklyPlanningVNextExperimentalSession(scope, { checkpoint: { read: () => slots.get('vnext') ?? null, write: () => undefined }, legacyV5Checkpoint: { read: () => null } });
