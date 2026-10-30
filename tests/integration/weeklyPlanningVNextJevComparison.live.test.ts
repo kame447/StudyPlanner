@@ -187,6 +187,7 @@ async function captureCandidateRequest(testCase: VNextJevComparisonCase, repetit
   const seedDelta = taskSeedDelta(testCase);
   const seed = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), seedDelta, {
     expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate, weekStartsOn: scope.clock.weekStartsOn,
+    defaultPlanningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
     planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate }, turnKey: 'seed',
     conversationId: scope.conversationId, turnId: 'seed', sourceText: rawDev ? 'Synthetic development seed' : 'synthetic seed',
   });
@@ -563,6 +564,7 @@ function reconstructObservedState(testCase: VNextJevComparisonCase, observation:
   const scope = makeScope(testCase, observation.repetition);
   const seed = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), taskSeedDelta(testCase), {
     expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate, weekStartsOn: scope.clock.weekStartsOn,
+    defaultPlanningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
     planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
     turnKey: `${scope.conversationId}:seed`, conversationId: scope.conversationId,
     turnId: 'seed', sourceText: 'synthetic seed',
@@ -573,6 +575,7 @@ function reconstructObservedState(testCase: VNextJevComparisonCase, observation:
   const applied = applyWeeklyPlanningVNextTurn(seed.state, observation.appliedDelta as unknown as VNextTurnDelta, {
     expectedRevision: seed.state.graph.revision, acceptedDate: testCase.seed.acceptedDate,
     weekStartsOn: scope.clock.weekStartsOn,
+    defaultPlanningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
     planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
     turnKey: `${scope.conversationId}:reply`, conversationId: scope.conversationId,
     turnId: 'reply', sourceText: testCase.userText,
@@ -868,6 +871,7 @@ describe('VNext Jev comparison session controls (offline)', () => {
     const scope = makeScope(testCase, 1);
     const seeded = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), taskSeedDelta(testCase), {
       expectedRevision: 0, acceptedDate: testCase.seed.acceptedDate, weekStartsOn: scope.clock.weekStartsOn,
+      defaultPlanningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
       planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
       turnKey: `${scope.conversationId}:seed`,
       conversationId: scope.conversationId, turnId: 'seed', sourceText: 'synthetic seed',
@@ -889,6 +893,7 @@ describe('VNext Jev comparison session controls (offline)', () => {
       const result = applyWeeklyPlanningVNextTurn(seeded.state, delta, {
         expectedRevision: seeded.state.graph.revision, acceptedDate: testCase.seed.acceptedDate,
         weekStartsOn: scope.clock.weekStartsOn,
+        defaultPlanningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
         planningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate },
         turnKey: `${scope.conversationId}:${constraintKind}`, conversationId: scope.conversationId,
         turnId: constraintKind, sourceText: 'synthetic deadline meaning',

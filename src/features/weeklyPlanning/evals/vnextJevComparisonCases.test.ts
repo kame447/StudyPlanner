@@ -16,6 +16,7 @@ function seedState(testCase: VNextJevComparisonCase): WeeklyPlanningVNextState {
     add: [{ kind: 'task', localId: 'task', category: 'study', title: testCase.seed.taskTitle }, ...testCase.seed.facts],
     patch: [], remove: [], relate: [], defer: [],
   }, { acceptedDate: testCase.seed.acceptedDate, weekStartsOn: 'monday',
+    defaultPlanningHorizon: { startDate: testCase.seed.acceptedDate, endDate: '2026-11-08' },
     planningHorizon: { startDate: testCase.seed.acceptedDate, endDate: '2026-11-08' },
     turnKey: `${testCase.id}:seed`, expectedRevision: 0,
     conversationId: `jev-case:${testCase.id}`, turnId: `${testCase.id}:seed`, sourceText: 'synthetic seeded state' });
@@ -59,6 +60,7 @@ function appliedChoiceState(testCase: VNextJevComparisonCase, state: WeeklyPlann
   if (!option) throw new Error(`Expected menu choice missing for ${testCase.id}`);
   const result = applyWeeklyPlanningVNextTurn(state, option.delta, {
     acceptedDate: testCase.seed.acceptedDate, weekStartsOn: 'monday',
+    defaultPlanningHorizon: { startDate: testCase.seed.acceptedDate, endDate: '2026-11-08' },
     planningHorizon: { startDate: testCase.seed.acceptedDate, endDate: '2026-11-08' },
     turnKey: `${testCase.id}:choice`, expectedRevision: state.graph.revision,
     conversationId: `jev-case:${testCase.id}`, turnId: `${testCase.id}:choice`, sourceText: testCase.userText,

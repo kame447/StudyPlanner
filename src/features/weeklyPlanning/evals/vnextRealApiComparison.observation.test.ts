@@ -74,7 +74,9 @@ function clockFor(conversation: RealApiConversation) {
 function contextFor(conversation: RealApiConversation) {
   const clock = clockFor(conversation);
   return { currentDate: clock.currentDate, planningStartDate: clock.weekStartDate,
-    planningEndDate: clock.planningEndDate, timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' as const };
+    planningEndDate: clock.planningEndDate,
+    defaultPlanningHorizon: { startDate: clock.weekStartDate, endDate: clock.planningEndDate },
+    timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' as const };
 }
 
 interface ObservedWorkload {
