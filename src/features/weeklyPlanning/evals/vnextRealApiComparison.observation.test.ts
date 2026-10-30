@@ -53,7 +53,10 @@ import {
   type WeeklyPlanningVNextExperimentalTurn,
 } from '../vnext/application/weeklyPlanningVNextExperimentalSession';
 import { projectWeeklyPlanningVNext } from '../vnext/projection/weeklyPlanningVNextProjection';
+import type { WeeklyPlanningVNextInterpretationInput } from '../vnext/weeklyPlanningVNextInterpretationContract';
+import type { VNextTurnDelta } from '../vnext/weeklyPlanningVNextTypes';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../vnext/semantic/weeklyPlanningVNextProvider';
+import { createWeeklyPlanningStableV5DialogueRendererCore } from '../vnext/weeklyPlanningVNextV5Boundary';
 import type {
   RealApiConversation,
   RealApiConversationTurn,
@@ -209,6 +212,11 @@ interface VNextTurnObservation extends V5TurnObservation {
   previewBlockedBy: string[];
   deferredQuestionCodes: string[];
   questionForWork: ObservedQuestionWork | null;
+  shownReply: string | null;
+  typedQuestion: WeeklyPlanningVNextExperimentalTurn['question'];
+  presentedText: string | null;
+  presentedQuestion: WeeklyPlanningVNextInterpretationInput['presentedQuestion'];
+  replySource: WeeklyPlanningVNextExperimentalTurn['replySource'] | null;
 }
 
 interface ConversationObservation {
@@ -633,7 +641,12 @@ function vnextProjectedWorkEstimateBases(owners: ReturnType<typeof projectWeekly
   return owners.flatMap((owner) => owner.work.map((work) => work.estimateBasis));
 }
 
-async function runVNextConversation(conversation: RealApiConversation): Promise<VNextConversationObservation> {
+type VNextConversationOverrides = Partial<Pick<WeeklyPlanningVNextExperimentalPorts, 'client' | 'interpret' | 'createRenderer'>>;
+
+async function runVNextConversation(
+  conversation: RealApiConversation,
+  overrides: VNextConversationOverrides = {},
+): Promise<VNextConversationObservation> {
   const ownerId = `vnext-real-api-${conversation.id}`;
   const clock = clockFor(conversation);
   const scope: WeeklyPlanningVNextExperimentalScope = {
@@ -656,9 +669,20 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
   });
   const plans = new Map<string, string>();
   let rawProviderCalls: RawProviderCallObservation[] = [];
+  const client = overrides.client ?? captureProviderCalls(createOpenAiCompatibleClient(getAiConfig()), () => rawProviderCalls);
+  const rendererFactory = overrides.createRenderer
+    ?? ((options) => createWeeklyPlanningStableV5DialogueRendererCore(client, options));
+  const interpreter = overrides.interpret ?? createWeeklyPlanningVNextProviderInterpreter();
+  let rendererCalls = 0;
+  let presentedText: string | null = null;
+  let presentedQuestion: WeeklyPlanningVNextInterpretationInput['presentedQuestion'] = null;
   const ports: WeeklyPlanningVNextExperimentalPorts = {
-    client: captureProviderCalls(createOpenAiCompatibleClient(getAiConfig()), () => rawProviderCalls),
-    interpret: createWeeklyPlanningVNextProviderInterpreter(),
+    client,
+    async interpret(input) {
+      presentedText = input.presentedText;
+      presentedQuestion = input.presentedQuestion;
+      return interpreter(input);
+    },
     checkpoint: slot('vnext'),
     legacyV5Checkpoint: { read: () => null },
     approvalLedger: slot('ledger'),
@@ -671,8 +695,13 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
       },
     },
     calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }),
-    // This comparison measures interpretation; the reply text is not compared.
-    createRenderer: () => ({ render: async () => ({ status: 'rendered' as const, text: '（説明）', rawResponse: '' }) }),
+    createRenderer: (options) => {
+      const renderer = rendererFactory(options);
+      return { async render(input) {
+        rendererCalls += 1;
+        return renderer.render(input);
+      } };
+    },
     now: () => `${clock.currentDate}T09:00:00.000Z`,
   };
   const turns: VNextTurnObservation[] = [];
@@ -685,6 +714,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
   for (let index = 0; index < conversation.turns.length; index += 1) {
     const fixtureTurn = conversation.turns[index];
     rawProviderCalls = [];
+    rendererCalls = 0;
     const startedAt = performance.now();
     let error: string | null = null;
     let outcome = 'not_reached';
@@ -699,6 +729,13 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
     let workEstimateBases: Array<string | null> = [];
     let deferredQuestionCodes: string[] = [];
     let questionForWork: ObservedQuestionWork | null = null;
+    let shownReply: string | null = null;
+    let typedQuestion: WeeklyPlanningVNextExperimentalTurn['question'] = null;
+    let turnPresentedText: string | null = null;
+    let turnPresentedQuestion: WeeklyPlanningVNextInterpretationInput['presentedQuestion'] = null;
+    let replySource: WeeklyPlanningVNextExperimentalTurn['replySource'] | null = null;
+    presentedText = null;
+    presentedQuestion = null;
     let interpretation: WeeklyPlanningVNextExperimentalTurn['interpretation'] = null;
     let transactionErrors: WeeklyPlanningVNextExperimentalTurn['errors'] = [];
     let appliedDelta: WeeklyPlanningVNextExperimentalTurn['appliedDelta'] = null;
@@ -715,7 +752,11 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
       previewBlockedBy = result.previewBlockedBy;
       calls = result.interpretation?.metrics.calls ?? 0;
       repairs = result.interpretation?.metrics.repairs ?? 0;
-      latencyMs = result.interpretation?.metrics.latencyMs ?? Math.round(performance.now() - startedAt);
+      shownReply = result.reply;
+      typedQuestion = result.question;
+      replySource = result.replySource;
+      turnPresentedText = presentedText;
+      turnPresentedQuestion = presentedQuestion;
       if (result.outcome === 'interpretation_failed' || result.outcome === 'checkpoint_unreadable' || result.outcome === 'rejected') {
         error = `${result.outcome}:${result.interpretation?.status === 'failed' ? result.interpretation.reason : result.errors.map(({ code }) => code).join(',') || 'session'}`;
       }
@@ -762,6 +803,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
       const signature = question === null ? null : JSON.stringify({ question, workloads: facts.workloads });
       if (fixtureTurn.oracle.inVNextScope && question !== null) clarificationCount += 1;
       if (signature !== null && signature === previousQuestionSignature && !fixtureTurn.oracle.preservePreviousTypedState) repeatedQuestionCount += 1;
+      latencyMs = Math.round(performance.now() - startedAt);
       turns.push({
         turn: index + 1,
         status: !fixtureTurn.oracle.inVNextScope ? 'out_of_scope' : error || differences.length > 0 ? 'fail' : 'pass',
@@ -777,7 +819,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         workEstimateBases,
         previewMinutes: minutes,
         aiCalls: calls,
-        rendererCalls: 0,
+        rendererCalls,
         latencyMs,
         clarificationCount,
         wrongAcceptance,
@@ -792,11 +834,18 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         previewBlockedBy,
         deferredQuestionCodes,
         questionForWork,
+        shownReply,
+        typedQuestion,
+        presentedText: turnPresentedText,
+        presentedQuestion: turnPresentedQuestion,
+        replySource,
       } as VNextTurnObservation);
       previousQuestionSignature = signature;
     } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause);
       latencyMs = Math.round(performance.now() - startedAt);
+      turnPresentedText = presentedText;
+      turnPresentedQuestion = presentedQuestion;
       turns.push({
         turn: index + 1,
         status: !fixtureTurn.oracle.inVNextScope ? 'out_of_scope' : 'fail',
@@ -812,7 +861,7 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         workEstimateBases,
         previewMinutes: minutes,
         aiCalls: calls,
-        rendererCalls: 0,
+        rendererCalls,
         latencyMs,
         clarificationCount,
         wrongAcceptance: false,
@@ -827,6 +876,11 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         previewBlockedBy,
         deferredQuestionCodes,
         questionForWork,
+        shownReply,
+        typedQuestion,
+        presentedText: turnPresentedText,
+        presentedQuestion: turnPresentedQuestion,
+        replySource,
       } as VNextTurnObservation);
     }
   }
@@ -848,6 +902,7 @@ function summarize(observations: readonly ConversationObservation[]) {
     outOfScopeTurns: turns.length - inScope.length,
     aiCalls: turns.reduce((sum, turn) => sum + turn.aiCalls, 0),
     rendererCalls: turns.reduce((sum, turn) => sum + turn.rendererCalls, 0),
+    providerCalls: turns.reduce((sum, turn) => sum + turn.aiCalls + turn.rendererCalls, 0),
     totalLatencyMs: turns.reduce((sum, turn) => sum + (turn.latencyMs ?? 0), 0),
     clarificationPrompts: observations.reduce((sum, conversation) =>
       sum + (conversation.turns[conversation.turns.length - 1]?.clarificationCount ?? 0), 0),
@@ -884,6 +939,59 @@ describe('real API provider call capture (offline)', () => {
 });
 
 describe('VNext real API conversation fixture contract (offline)', () => {
+  it('feeds a stubbed renderer reply and typed question into the next interpretation', async () => {
+    const shownText = '質問です。35問を解くのに何分かかりますか？';
+    const typedWork = { task: 'math', role: 'target' as const, amount: 35, unitCode: 'problem' as const, unitLabel: '問' };
+    const conversation: RealApiConversation = {
+      id: 'renderer-context-contract', source: 'offline contract test', description: 'renderer context wiring',
+      turns: [
+        { userText: '数学の問題を35問やる', oracle: {
+          inVNextScope: true, workloads: [typedWork], efforts: [], temporal: [],
+          questionCode: 'missing_effort_estimate', projectedMinutes: null, questionForWork: typedWork,
+        } },
+        { userText: '1問あたり2分です', oracle: {
+          inVNextScope: true, workloads: [typedWork],
+          efforts: [{ task: 'math', kind: 'duration_per_unit', minutes: 2, unitCode: 'problem', unitLabel: '問', forRole: 'target' }],
+          temporal: [], questionCode: null, projectedMinutes: 70,
+        } },
+      ],
+    };
+    const inputs: WeeklyPlanningVNextInterpretationInput[] = [];
+    const emptyDelta: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
+    const initialDelta: VNextTurnDelta = { ...emptyDelta, add: [
+      { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+      { kind: 'workload', localId: 'problems', taskRef: { localId: 'math' }, componentRef: null,
+        quantityRole: 'target', amount: 35, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null },
+    ] };
+    const interpreter: WeeklyPlanningVNextExperimentalPorts['interpret'] = async (input) => {
+      inputs.push(input);
+      return inputs.length === 1
+        ? { status: 'interpreted', delta: initialDelta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }
+        : { status: 'interpreted', delta: emptyDelta, answer: { kind: 'estimate_minutes', minutes: 2, per: 'unit' },
+          metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
+    };
+    const renderer: WeeklyPlanningVNextExperimentalPorts['createRenderer'] = () => ({
+      async render() { return { status: 'rendered', text: shownText, rawResponse: '' }; },
+    });
+    const client: OpenAiCompatibleClient = { async createChatCompletion() { throw new Error('offline renderer test must not call a provider'); } };
+
+    const observed = await runVNextConversation(conversation, { client, interpret: interpreter, createRenderer: renderer });
+
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0].presentedText).toBeNull();
+    expect(inputs[1].presentedText).toBe(shownText);
+    expect(inputs[1].presentedQuestion).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 35, unitCode: 'problem' } });
+    expect(observed.turns[0]).toMatchObject({
+      shownReply: shownText,
+      typedQuestion: { code: 'missing_effort_estimate', forWork: { amount: 35, unitCode: 'problem' } },
+      rendererCalls: 1,
+      replySource: 'renderer',
+    });
+    expect(observed.turns[1]).toMatchObject({ presentedText: shownText, rendererCalls: 1 });
+    expect(summarize([observed])).toMatchObject({ aiCalls: 2, rendererCalls: 2, providerCalls: 4 });
+  });
+
   it('contains only synthetic turns and typed per-turn oracles', () => {
     expect(vnextRealApiConversations).toHaveLength(14);
     expect(new Set(vnextRealApiConversations.map(({ id }) => id)).size).toBe(vnextRealApiConversations.length);
@@ -1098,7 +1206,15 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
             turn: vnextTurn.turn,
             v5: v5Turn?.status ?? 'not_reached',
             vnext: vnextTurn.status,
-            providerCalls: { v5: v5Turn ? v5Turn.aiCalls + v5Turn.rendererCalls : null, vnext: vnextTurn.aiCalls },
+            providerCalls: { v5: v5Turn ? v5Turn.aiCalls + v5Turn.rendererCalls : null,
+              vnext: vnextTurn.aiCalls + vnextTurn.rendererCalls },
+            conversationContext: {
+              shownReply: vnextTurn.shownReply,
+              typedQuestion: vnextTurn.typedQuestion,
+              presentedText: vnextTurn.presentedText,
+              presentedQuestion: vnextTurn.presentedQuestion,
+              replySource: vnextTurn.replySource,
+            },
             questions: { v5: v5Turn?.questionCode ?? null, vnext: vnextTurn.questionCode, vnextDeferred: vnextTurn.deferredQuestionCodes, vnextForWork: vnextTurn.questionForWork },
             workMinutes: { v5: v5Turn?.workMinutes ?? null, vnext: vnextTurn.workMinutes },
             workEstimateBases: { v5: v5Turn?.workEstimateBases ?? [], vnext: vnextTurn.workEstimateBases },
@@ -1122,7 +1238,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
     writeFileSync(`${artifactDir}/v5-baseline.json`, `${JSON.stringify({ summary: v5Summary, conversations: observations }, null, 2)}\n`);
     writeFileSync(`${artifactDir}/vnext-native.json`, `${JSON.stringify({ summary: vnextSummary, conversations: vnextObservations }, null, 2)}\n`);
     writeFileSync(`${artifactDir}/comparison.json`, `${JSON.stringify({ v5: v5Summary, vnext: vnextSummary, conversations: comparison }, null, 2)}\n`);
-    writeFileSync(`${artifactDir}/comparison.md`, `# V5 / VNext real-provider comparison\n\nThe same synthetic turns are run independently through both paths. VNext replies are deterministic and do not call a renderer model; provider-call totals cover interpretation.\n\n## Counts\n\n| Metric | V5 | VNext |\n| --- | ---: | ---: |\n| In-scope turns passed | ${v5Summary.passedOracle} | ${vnextSummary.passedOracle} |\n| In-scope turns failed | ${v5Summary.failedOracle} | ${vnextSummary.failedOracle} |\n| Not reached | ${v5Summary.notReached} | ${vnextSummary.notReached} |\n| Out of scope | ${v5Summary.outOfScopeTurns} | ${vnextSummary.outOfScopeTurns} |\n| Wrong acceptance | ${v5Summary.wrongAcceptance} | ${vnextSummary.wrongAcceptance} |\n| Wrong rejection | ${v5Summary.wrongRejection} | ${vnextSummary.wrongRejection} |\n| Semantic provider calls | ${v5Summary.aiCalls} | ${vnextSummary.aiCalls} |\n| Clarification prompts | ${v5Summary.clarificationPrompts} | ${vnextSummary.clarificationPrompts} |\n| Repeated questions | ${v5Summary.repeatedQuestions} | ${vnextSummary.repeatedQuestions} |\n| Total semantic latency (ms) | ${v5Summary.totalLatencyMs} | ${vnextSummary.totalLatencyMs} |\n\n**Metric scope:** “Wrong acceptance” counts only in-scope turns where the oracle expects a clarification and the observed question is absent. It does not count other typed-oracle mismatches such as missing or duplicated facts, wrong work bindings, or incorrect estimates; inspect passed/failed oracle totals and per-turn differences for those. This comparison does not exercise save or approval lifecycle outcomes.\n\nPer-turn typed observations are in comparison.json.\n`);
+    writeFileSync(`${artifactDir}/comparison.md`, `# V5 / VNext real-provider comparison\n\nThe same synthetic turns are run independently through both paths. Both use the Stable V5 dialogue renderer; its prose is captured for context but is not an oracle. Provider calls include semantic interpretation and dialogue rendering.\n\n## Counts\n\n| Metric | V5 | VNext |\n| --- | ---: | ---: |\n| In-scope turns passed | ${v5Summary.passedOracle} | ${vnextSummary.passedOracle} |\n| In-scope turns failed | ${v5Summary.failedOracle} | ${vnextSummary.failedOracle} |\n| Not reached | ${v5Summary.notReached} | ${vnextSummary.notReached} |\n| Out of scope | ${v5Summary.outOfScopeTurns} | ${vnextSummary.outOfScopeTurns} |\n| Wrong acceptance | ${v5Summary.wrongAcceptance} | ${vnextSummary.wrongAcceptance} |\n| Wrong rejection | ${v5Summary.wrongRejection} | ${vnextSummary.wrongRejection} |\n| Semantic provider calls | ${v5Summary.aiCalls} | ${vnextSummary.aiCalls} |\n| Dialogue renderer calls | ${v5Summary.rendererCalls} | ${vnextSummary.rendererCalls} |\n| Total provider calls | ${v5Summary.providerCalls} | ${vnextSummary.providerCalls} |\n| Clarification prompts | ${v5Summary.clarificationPrompts} | ${vnextSummary.clarificationPrompts} |\n| Repeated questions | ${v5Summary.repeatedQuestions} | ${vnextSummary.repeatedQuestions} |\n| Total turn latency (ms) | ${v5Summary.totalLatencyMs} | ${vnextSummary.totalLatencyMs} |\n\n**Metric scope:** “Wrong acceptance” counts only in-scope turns where the oracle expects a clarification and the observed question is absent. It does not count other typed-oracle mismatches such as missing or duplicated facts, wrong work bindings, or incorrect estimates; inspect passed/failed oracle totals and per-turn differences for those. This comparison does not exercise save or approval lifecycle outcomes.\n\nPer-turn typed observations, including rendered and presented conversation context, are in comparison.json.\n`);
   });
 
   it.each(vnextRealApiConversations)('$id', async (conversation) => {
@@ -1206,6 +1322,11 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           previewBlockedBy: [],
           deferredQuestionCodes: [],
           questionForWork: null,
+          shownReply: null,
+          typedQuestion: null,
+          presentedText: null,
+          presentedQuestion: null,
+          replySource: null,
         } as VNextTurnObservation)),
         error,
       });
