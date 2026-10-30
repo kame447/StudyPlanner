@@ -5,7 +5,7 @@ import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextPro
 import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT,
-  VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT,
+  VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT,
   VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
@@ -213,6 +213,81 @@ describe('VNext native provider', () => {
     expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
   });
 
+  it.each([true, false])('replays the correction + invalid relation: empty reread=%s', async emptyReread => {
+    // Run 41021877992 rep 1: the relation used W aliases in localId; the reread lost the entire correction.
+    const params = input([]);
+    const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [
+      { kind: 'task', localId: 'slides', category: 'study', title: 'Slides' },
+      { ...workload('slide-work'), kind: 'workload', quantityRole: 'remaining', amount: 10, taskRef: { localId: 'slides' }, unitCode: 'page' },
+      { kind: 'task', localId: 'files', category: 'study', title: 'Files' },
+      { ...workload('file-work'), kind: 'workload', quantityRole: 'remaining', amount: 30, taskRef: { localId: 'files' }, unitCode: 'minute', unitLabel: '分' },
+    ] }, { expectedRevision: 0, acceptedDate: params.clock.currentDate, turnKey: 'separate-seed',
+      conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
+    if (seeded.status !== 'applied') throw new Error(JSON.stringify(seeded));
+    params.state = seeded.state;
+    params.projection = projectWeeklyPlanningVNext(params.state);
+    params.presentedQuestion = params.projection.questions[0];
+    params.userText = 'それは別の仕事です。スライドは残り8枚に訂正し、1枚6分です。';
+    const before = structuredClone(params.state);
+    params.client = { createChatCompletion: vi.fn(async request => {
+      if (request.messages.length > 2 && emptyReread) return JSON.stringify(output());
+      const context = JSON.parse(request.messages[1].content);
+      const [slides, files] = context.activeFacts.workloads;
+      const repaired = request.messages.length > 2;
+      return JSON.stringify({ delta: { ...emptyDelta(), patch: [{ kind: 'workload', localId: 'p1',
+        targetFactId: slides.id, amountDelta: null, changes: { amount: 8, unitCode: null, unitLabel: null,
+          quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }],
+        relate: [{ kind: 'distinct',
+          a: repaired ? { factId: slides.id } : { localId: context.presentedQuestion.forWork.workLineageId },
+          b: repaired ? { factId: files.id } : { localId: context.projectedOwners[1].work[0].workLineageId } }] },
+      answer: { kind: 'estimate_minutes', optionId: null, minutes: 6, per: 'unit' } });
+    }) };
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result.metrics).toMatchObject({ calls: 2, repairs: 1 });
+    expect(params.state).toEqual(before);
+    const messages = vi.mocked(params.client.createChatCompletion).mock.calls[1][0].messages;
+    const repair = JSON.parse(messages[messages.length - 1].content);
+    expect(repair.instruction).toContain('Keep every clause of the first reading and fix only the reported problems');
+    expect(repair.errors).toEqual(expect.arrayContaining(['a', 'b'].map(side => expect.objectContaining({
+      path: `relate[0].${side}`, requirement: VNEXT_RELATE_REFERENCE_REQUIREMENT,
+    }))));
+    expect(messages[0].content).toContain(VNEXT_RELATE_REFERENCE_REQUIREMENT);
+    if (emptyReread) {
+      expect(result).toMatchObject({ status: 'failed', reason: 'rejected_after_repair',
+        errors: expect.arrayContaining([expect.objectContaining({ path: 'relate[0]' })]) });
+    } else {
+      if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));
+      const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
+        presented: { questionKey: params.presentedQuestion.key, graphRevision: params.projection.graphRevision },
+        projection: params.projection, graph: params.state.graph, interpreted: result });
+      if (resolved.status !== 'delta') throw new Error(JSON.stringify(resolved));
+      const applied = applyWeeklyPlanningVNextTurn(params.state, resolved.delta, { expectedRevision: params.state.graph.revision,
+        acceptedDate: params.clock.currentDate, turnKey: 'corrected', conversationId: 'synthetic', turnId: 'turn', sourceText: params.userText });
+      if (applied.status !== 'applied') throw new Error(JSON.stringify(applied));
+      const projection = projectWeeklyPlanningVNext(applied.state);
+      for (const [title, amount, minutes] of [['Slides', 8, 48], ['Files', 30, 30]] as const) {
+        const taskId = applied.state.graph.tasks.find(task => task.title === title)!.id;
+        expect(projection.owners.find(owner => owner.taskId === taskId)!.work).toEqual([
+          expect.objectContaining({ amount, minutes }),
+        ]);
+      }
+      expect(applied.state.workRelations).toEqual([expect.objectContaining({ kind: 'distinct' })]);
+    }
+  });
+
+  it('rejects losing an answer-only first reading in a whole reread', async () => {
+    const params = input([JSON.stringify(output([], { kind: 'estimate_minutes', optionId: null, minutes: 6, per: null })),
+      JSON.stringify(output())]);
+    expect(await createWeeklyPlanningVNextProviderInterpreter()(params)).toMatchObject({ status: 'failed',
+      reason: 'rejected_after_repair', metrics: { calls: 2, repairs: 1 } });
+  });
+
+  it('allows an empty reread when the first malformed document had no contributions', async () => {
+    expect(await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify({ delta: null, answer: null }),
+      JSON.stringify(output())]))).toMatchObject({ status: 'interpreted', delta: emptyDelta(), answer: null,
+      metrics: { calls: 2, repairs: 1 } });
+  });
+
   it('rereads an element-level temporal error once rather than dropping its entire clause through a splice', async () => {
     const first = output([task(), { kind: 'temporal_constraint', localId: 'bad-interval', taskRef: { localId: 'task' },
       targetRef: { localId: 'task' }, constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: 'this_week',
@@ -222,7 +297,7 @@ describe('VNext native provider', () => {
     expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
     if (result.status === 'interpreted') expect(result.delta.add[1]).toMatchObject({ kind: 'workload', amount: 7 });
     const calls = vi.mocked(params.client.createChatCompletion).mock.calls;
-    expect(JSON.parse(calls[1][0].messages[calls[1][0].messages.length - 1].content).instruction).toContain('Discard the prior reading');
+    expect(JSON.parse(calls[1][0].messages[calls[1][0].messages.length - 1].content).instruction).toContain('Keep every clause of the first reading and fix only the reported problems');
   });
 
   it('a second non-field failure cannot trigger a second reread or commit state', async () => {
@@ -256,7 +331,7 @@ describe('VNext native provider', () => {
     const messages = calls[1][0].messages;
     const repair = JSON.parse(messages[messages.length - 1].content);
     expect(repair.errors).toEqual([{ path: `${collection}[${collection === 'add' ? 1 : 0}]`, localId: 'again' }]);
-    expect(repair.instruction).toContain('Discard the prior reading');
+    expect(repair.instruction).toContain('Keep every clause of the first reading and fix only the reported problems');
     expect(repair.instruction).toContain("State the asked work's estimate once: as the answer, or as a fact, not both.");
     expect(params.state).toEqual(before);
     if (result.status !== 'interpreted') throw new Error(JSON.stringify(result));

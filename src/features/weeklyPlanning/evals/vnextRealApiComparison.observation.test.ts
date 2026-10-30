@@ -115,6 +115,13 @@ interface ObservedFacts {
   temporal: ObservedTemporal[];
 }
 
+interface ObservedQuestionWork {
+  taskId: string;
+  amount: number;
+  unitCode: RealApiWorkUnit;
+  unitLabel: string;
+}
+
 type ChatCompletionRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
 interface RawProviderCallObservation {
   request: Pick<ChatCompletionRequest, 'messages' | 'responseFormat' | 'purpose' | 'temperature' | 'maxCompletionTokens'>;
@@ -198,6 +205,8 @@ interface VNextTurnObservation extends V5TurnObservation {
   transactionErrors: WeeklyPlanningVNextExperimentalTurn['errors'];
   appliedDelta: WeeklyPlanningVNextExperimentalTurn['appliedDelta'];
   previewBlockedBy: string[];
+  deferredQuestionCodes: string[];
+  questionForWork: ObservedQuestionWork | null;
 }
 
 interface ConversationObservation {
@@ -378,17 +387,39 @@ function effortIsBoundToWork(
   work: ObservedWorkload,
   observed: ObservedFacts,
   projectedBoundWork: ObservedWorkload | undefined,
+  task: string,
 ): boolean {
   if (fact.taskId !== work.taskId) return false;
-  return fact.forRole === work.role
+  const bindingMatches = fact.forRole === work.role
     || (fact.forRole === 'task' && observed.workloads.filter((candidate) => candidate.taskId === work.taskId
       && ['remaining', 'target', 'declared'].includes(candidate.role)).length === 1)
     || (projectedBoundWork?.taskId === fact.taskId
       && (fact.forRole === 'scope_total' || fact.bindingKind === 'future_work'));
+  if (!bindingMatches) return false;
+  if (fact.kind === 'duration_per_unit') return effortUnitMatchesWork(fact, work, task);
+  return fact.unitCode === null || fact.unitCode === 'minute';
+}
+
+interface OracleObservationContext {
+  questionForWork?: ObservedQuestionWork | null;
+  deferredQuestionCodes?: readonly string[];
+  checkQuestionForWork?: boolean;
+}
+
+function isExpectedQuestionDeferred(
+  oracle: RealApiTurnOracle,
+  question: string | null,
+  deferredQuestionCodes: readonly string[] = [],
+): boolean {
+  return oracle.allowQuestionDeferral === true
+    && question === null
+    && oracle.questionCode !== null
+    && deferredQuestionCodes.includes(oracle.questionCode);
 }
 
 function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question: string | null, workMinutes: number | null,
-  oracle: RealApiTurnOracle, projectedWorkloads: readonly ObservedWorkload[] = [], workEstimateBases: readonly (string | null)[] = []): string[] {
+  oracle: RealApiTurnOracle, projectedWorkloads: readonly ObservedWorkload[] = [],
+  workEstimateBases: readonly (string | null)[] = [], observationContext: OracleObservationContext = {}): string[] {
   if (!oracle.inVNextScope) return [];
   const differences: string[] = [];
   const workloads = matchOracleWorkloads(observed.workloads, oracle);
@@ -409,7 +440,19 @@ function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question
     const right = workloads.pairs[rightIndex]?.[1];
     if (!left || !right || left.taskId !== right.taskId) differences.push(`work owner identity differs at ${leftIndex}/${rightIndex}`);
   }
-  if (question !== oracle.questionCode) differences.push(`question expected=${oracle.questionCode ?? 'none'} observed=${question ?? 'none'}`);
+  const deferredExpectedQuestion = isExpectedQuestionDeferred(oracle, question, observationContext.deferredQuestionCodes);
+  if (question !== oracle.questionCode && !deferredExpectedQuestion) {
+    differences.push(`question expected=${oracle.questionCode ?? 'none'} observed=${question ?? 'none'}`);
+  }
+  if (observationContext.checkQuestionForWork && oracle.questionForWork) {
+    const expectedWork = workloads.pairs.find(([expected]) => expected.task === oracle.questionForWork?.task)?.[1];
+    const askedWork = observationContext.questionForWork;
+    if (!expectedWork || !askedWork || askedWork.taskId !== expectedWork.taskId
+      || askedWork.amount !== oracle.questionForWork.amount
+      || !sameUnitIdentity(askedWork, oracle.questionForWork, oracle.questionForWork.task)) {
+      differences.push('question forWork differs');
+    }
+  }
   if (workMinutes !== oracle.projectedMinutes) differences.push(`work minutes expected=${oracle.projectedMinutes ?? 'none'} observed=${workMinutes ?? 'none'}`);
   if (oracle.requireFutureWorkEstimate && !hasFutureWorkEstimate(workEstimateBases)) {
     differences.push(`future work estimate required; observed bases=${workEstimateBases.join(',') || 'none'}`);
@@ -433,11 +476,22 @@ function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question
     if (matching.length !== 1) {
       differences.push(`effort expected exactly one ${wanted.kind}/${wanted.minutes}/${wanted.forRole}; observed=${matching.length}`);
     }
-    const unexpected = observed.efforts.some((fact) => effortIsBoundToWork(fact, boundWork, observed, projectedBoundWork)
+    const unexpected = observed.efforts.some((fact) => effortIsBoundToWork(fact, boundWork, observed, projectedBoundWork, wanted.task)
       && !expectedForWork.some((candidate) => effortMatchesOracle(
         fact, candidate, boundWork, observed, projectedBoundWork,
       )));
     if (unexpected) differences.push(`unexpected active effort for ${wanted.task}/${wanted.forRole}`);
+  }
+  if (oracle.expectNoApplicableEffort && oracle.questionForWork) {
+    const expected = oracle.questionForWork;
+    const askedWork = workloads.pairs.find(([candidate]) => candidate.task === expected.task
+      && candidate.role === expected.role && candidate.amount === expected.amount
+      && sameUnitIdentity(candidate, expected, expected.task))?.[1];
+    if (askedWork && observed.efforts.some((fact) => effortIsBoundToWork(
+      fact, askedWork, observed, undefined, expected.task,
+    ))) {
+      differences.push(`unexpected applicable effort for ${expected.task}/${expected.role}`);
+    }
   }
   if (oracle.checkTemporal !== false) {
     if (observed.temporal.length !== oracle.temporal.length) differences.push('temporal fact count differs');
@@ -635,6 +689,8 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
     let minutes: number | null = null;
     let workMinutes: number | null = null;
     let workEstimateBases: Array<string | null> = [];
+    let deferredQuestionCodes: string[] = [];
+    let questionForWork: ObservedQuestionWork | null = null;
     let interpretation: WeeklyPlanningVNextExperimentalTurn['interpretation'] = null;
     let transactionErrors: WeeklyPlanningVNextExperimentalTurn['errors'] = [];
     let appliedDelta: WeeklyPlanningVNextExperimentalTurn['appliedDelta'] = null;
@@ -661,6 +717,16 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
       const observed = observedFacts(state.graph);
       facts = observed;
       question = projection.questions[0]?.code ?? null;
+      deferredQuestionCodes = projection.deferredQuestions.map(({ code }) => code);
+      const observedQuestion = projection.questions[0]
+        ?? projection.deferredQuestions.find(({ code }) => code === fixtureTurn.oracle.questionCode);
+      const askedWork = observedQuestion?.forWork;
+      questionForWork = askedWork ? {
+        taskId: observedQuestion.taskId,
+        amount: askedWork.amount,
+        unitCode: askedWork.unitCode,
+        unitLabel: askedWork.unitLabel,
+      } : null;
       readiness = projection.readiness;
       minutes = vnextPreviewMinutes(result.preview?.blocks ?? null);
       workMinutes = vnextProjectedWorkMinutes(projection.owners);
@@ -675,9 +741,14 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         perOccurrence: work.perOccurrence,
         periodExpression: work.periodExpression,
       })));
-      const differences = error ? [error] : compareTypedOracle(facts, question, workMinutes, fixtureTurn.oracle, projectedWorkloads, workEstimateBases);
+      const differences = error ? [error] : compareTypedOracle(
+        facts, question, workMinutes, fixtureTurn.oracle, projectedWorkloads, workEstimateBases,
+        { questionForWork, deferredQuestionCodes, checkQuestionForWork: true },
+      );
       const expectedClarification = fixtureTurn.oracle.questionCode !== null;
-      const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification && question === null;
+      const deferredExpectedQuestion = isExpectedQuestionDeferred(fixtureTurn.oracle, question, deferredQuestionCodes);
+      const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification
+        && question === null && !deferredExpectedQuestion;
       const wrongRejection = fixtureTurn.oracle.inVNextScope && !expectedClarification && question !== null;
       const signature = question === null ? null : JSON.stringify({ question, workloads: facts.workloads });
       if (fixtureTurn.oracle.inVNextScope && question !== null) clarificationCount += 1;
@@ -710,6 +781,8 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         transactionErrors,
         appliedDelta,
         previewBlockedBy,
+        deferredQuestionCodes,
+        questionForWork,
       } as VNextTurnObservation);
       previousQuestionSignature = signature;
     } catch (cause) {
@@ -743,6 +816,8 @@ async function runVNextConversation(conversation: RealApiConversation): Promise<
         transactionErrors,
         appliedDelta,
         previewBlockedBy,
+        deferredQuestionCodes,
+        questionForWork,
       } as VNextTurnObservation);
     }
   }
@@ -859,9 +934,20 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     const separateWorkCase = vnextRealApiConversations.find(({ id }) => id === 'separate-work-then-correction');
     expect(separateWorkCase?.turns[0].oracle).toMatchObject({ questionCode: 'missing_effort_estimate', projectedMinutes: 30 });
     const progressCase = vnextRealApiConversations.find(({ id }) => id === 'issue881-final-c-corrected-completion');
-    expect(progressCase?.turns[2].oracle.projectedWorkloads).toEqual([
+    expect(progressCase?.turns[2].oracle).toMatchObject({
+      questionCode: 'missing_effort_estimate',
+      questionForWork: { task: 'slides', role: 'remaining', amount: 8, unitCode: 'custom', unitLabel: '枚' },
+    });
+    expect(progressCase?.turns[2].oracle.projectedWorkloads).toBeUndefined();
+    expect(progressCase?.turns[3].oracle.projectedWorkloads).toEqual([
       { task: 'slides', role: 'remaining', amount: 8, unitCode: 'custom', unitLabel: '枚' },
     ]);
+    const omittedEffortCase = vnextRealApiConversations.find(({ id }) => id === 'omitted-effort-answer');
+    expect(omittedEffortCase?.turns[1].oracle).toMatchObject({
+      allowQuestionDeferral: true,
+      expectNoApplicableEffort: true,
+      questionForWork: { task: 'math', role: 'remaining', amount: 8, unitCode: 'custom', unitLabel: '問' },
+    });
     const yesterdayCase = vnextRealApiConversations.find(({ id }) => id === 'yesterday-math-completed-30-minutes');
     expect(yesterdayCase?.clock?.currentDate).toBe('2026-10-30');
     expect(yesterdayCase?.turns[0].userText).toBe('昨日は数学を30分勉強しました。');
@@ -910,10 +996,61 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     const observed: ObservedFacts = { taskIds: ['cards-task'], workloads: [work], efforts: [statedRate], temporal: [] };
 
     expect(compareTypedOracle(observed, null, 40, oracle)).toEqual([]);
+    const oldUnitRate: ObservedEffort = {
+      factId: 'old-page-rate', taskId: 'cards-task', kind: 'duration_per_unit', minutes: 8,
+      unitCode: 'custom', unitLabel: '枚', forRole: 'remaining',
+    };
+    expect(compareTypedOracle({ ...observed, efforts: [oldUnitRate, statedRate] }, null, 40, oracle)).toEqual([]);
     expect(compareTypedOracle({ ...observed, efforts: [statedRate, { ...statedRate, factId: 'patch-rate' }] }, null, 40, oracle))
       .toContain('effort expected exactly one duration_per_unit/20/remaining; observed=2');
     expect(compareTypedOracle({ ...observed, efforts: [statedRate, { ...statedRate, factId: 'wrong-rate', minutes: 25 }] }, null, 40, oracle))
       .toContain('unexpected active effort for cards/remaining');
+  });
+
+  it('checks asked work on clarification turns and accepts a preserved deferral', () => {
+    const correction = vnextRealApiConversations.find(({ id }) => id === 'issue881-final-c-corrected-completion')!;
+    const oracle = correction.turns[2].oracle;
+    const total: ObservedWorkload = {
+      factId: 'total', taskId: 'slides-task', role: 'scope_total', amount: 20,
+      unitCode: 'custom', unitLabel: '枚', perOccurrence: false, periodExpression: null,
+    };
+    const completed: ObservedWorkload = {
+      factId: 'completed', taskId: 'slides-task', role: 'completed', amount: 12,
+      unitCode: 'custom', unitLabel: '枚', perOccurrence: false, periodExpression: null,
+    };
+    const facts: ObservedFacts = { taskIds: ['slides-task'], workloads: [total, completed], efforts: [], temporal: [] };
+    const context: OracleObservationContext = {
+      checkQuestionForWork: true,
+      questionForWork: { taskId: 'slides-task', amount: 8, unitCode: 'custom', unitLabel: '枚' },
+    };
+    expect(compareTypedOracle(facts, 'missing_effort_estimate', null, oracle, [], [], context)).toEqual([]);
+    expect(compareTypedOracle(facts, 'missing_effort_estimate', null, oracle, [], [], {
+      ...context, questionForWork: { ...context.questionForWork!, amount: 7 },
+    })).toContain('question forWork differs');
+
+    const omitted = vnextRealApiConversations.find(({ id }) => id === 'omitted-effort-answer')!;
+    const deferredOracle = omitted.turns[1].oracle;
+    const mathWork: ObservedWorkload = {
+      factId: 'math-work', taskId: 'math-task', role: 'remaining', amount: 8,
+      unitCode: 'custom', unitLabel: '問', perOccurrence: false, periodExpression: null,
+    };
+    const deferredFacts: ObservedFacts = { taskIds: ['math-task'], workloads: [mathWork], efforts: [], temporal: [] };
+    const deferredCodes = ['missing_effort_estimate'];
+    const deferredContext: OracleObservationContext = {
+      deferredQuestionCodes: deferredCodes,
+      questionForWork: { taskId: 'math-task', amount: 8, unitCode: 'custom', unitLabel: '問' },
+      checkQuestionForWork: true,
+    };
+    expect(compareTypedOracle(deferredFacts, 'missing_effort_estimate', null, deferredOracle)).toEqual([]);
+    expect(compareTypedOracle(deferredFacts, null, null, deferredOracle, [], [], deferredContext)).toEqual([]);
+    const inventedRate: ObservedEffort = {
+      factId: 'invented-rate', taskId: 'math-task', kind: 'duration_per_unit', minutes: 5,
+      unitCode: 'custom', unitLabel: '問', forRole: 'remaining',
+    };
+    expect(compareTypedOracle({ ...deferredFacts, efforts: [inventedRate] }, null, null, deferredOracle, [], [], deferredContext))
+      .toContain('unexpected applicable effort for math/remaining');
+    expect(isExpectedQuestionDeferred(deferredOracle, null, deferredCodes)).toBe(true);
+    expect(isExpectedQuestionDeferred(deferredOracle, null, [])).toBe(false);
   });
 
   it('compares equivalent unit encodings while rejecting a changed custom unit', () => {
@@ -953,7 +1090,7 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
             v5: v5Turn?.status ?? 'not_reached',
             vnext: vnextTurn.status,
             providerCalls: { v5: v5Turn ? v5Turn.aiCalls + v5Turn.rendererCalls : null, vnext: vnextTurn.aiCalls },
-            questions: { v5: v5Turn?.questionCode ?? null, vnext: vnextTurn.questionCode },
+            questions: { v5: v5Turn?.questionCode ?? null, vnext: vnextTurn.questionCode, vnextDeferred: vnextTurn.deferredQuestionCodes, vnextForWork: vnextTurn.questionForWork },
             workMinutes: { v5: v5Turn?.workMinutes ?? null, vnext: vnextTurn.workMinutes },
             workEstimateBases: { v5: v5Turn?.workEstimateBases ?? [], vnext: vnextTurn.workEstimateBases },
             previewMinutes: { v5: v5Turn?.previewMinutes ?? null, vnext: vnextTurn.previewMinutes },
@@ -1058,6 +1195,8 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           transactionErrors: [],
           appliedDelta: null,
           previewBlockedBy: [],
+          deferredQuestionCodes: [],
+          questionForWork: null,
         } as VNextTurnObservation)),
         error,
       });

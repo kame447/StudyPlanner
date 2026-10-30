@@ -11,6 +11,11 @@ import { createVNextProviderReferences } from './weeklyPlanningVNextProviderRefe
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+function hasContributions(value: unknown): boolean {
+  return record(value) && ((value.answer !== null && value.answer !== undefined)
+    || (record(value.delta) && Object.values(value.delta).some(items => Array.isArray(items) && items.length > 0)));
+}
+
 interface Address { collection: string; index: number; field: string[]; localId: string | null }
 function repairAddress(error: VNextTurnError, original: RecordValue): Address | null {
   // Paths describe typed JSON fields, never Japanese source text.
@@ -104,7 +109,7 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
     messages.push({ role: 'assistant', content: raw }, { role: 'user', content: JSON.stringify({
       instruction: formal
         ? 'Formal repair only. Return the full schema document with exactly these addressed fields corrected. Keep every other field unchanged. Match elements by localId, not array position. Do not re-read meaning or add/remove clauses.'
-        : `Discard the prior reading. Interpret the whole original utterance again against the supplied state and clock. Return a new full schema document, retaining all independent contributions of that utterance. Use only the same supplied short reference aliases. ${VNEXT_ESTIMATE_ANSWER_REQUIREMENT} This is the single allowed new reading.`,
+        : `Re-read the original utterance against the supplied state and clock. Keep every clause of the first reading and fix only the reported problems. Return a new full schema document, retaining all independent contributions of that utterance. Use only the same supplied short reference aliases. ${VNEXT_ESTIMATE_ANSWER_REQUIREMENT} This is the single allowed new reading.`,
       errors: errors.map(({ path, localId }) => {
         const requirement = describeVNextProviderField(path, original);
         return { path, localId, ...(requirement ? { requirement } : {}) };
@@ -119,6 +124,9 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
     const spliced = formal ? spliceRepair(original, repaired, errors) : repaired;
     if (!spliced) return finish({ status: 'failed', reason: 'rejected_after_repair', errors });
     const final = decode(spliced);
+    if (!formal && final.status === 'decoded' && hasContributions(original) && !hasContributions(final.reading)) {
+      return finish({ status: 'failed', reason: 'rejected_after_repair', errors });
+    }
     const finalErrors = final.status === 'rejected' ? final.errors : validateReading(input, final.reading);
     return final.status === 'decoded' && !finalErrors.length
       ? finish({ status: 'interpreted', ...final.reading })

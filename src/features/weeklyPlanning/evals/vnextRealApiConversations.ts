@@ -62,6 +62,12 @@ export interface RealApiTurnOracle {
   expectedTaskCount?: number;
   /** Derived VNext projection workload expectations; never treated as stored facts. */
   projectedWorkloads?: readonly RealApiWorkloadOracle[];
+  /** A missing-estimate question asks about this work even before it is schedulable. */
+  questionForWork?: RealApiWorkloadOracle;
+  /** VNext may preserve an unanswered question as deferred while keeping its work unscheduled. */
+  allowQuestionDeferral?: boolean;
+  /** No active estimate applicable to this work should exist after an unanswered response. */
+  expectNoApplicableEffort?: boolean;
   /** Some regression cases intentionally isolate a different semantic failure. */
   checkTemporal?: boolean;
 }
@@ -113,10 +119,14 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
   },
   {
     id: 'omitted-effort-answer', source: 'implementation-contract.md §5, §28省略回答',
-    description: '作業量の質問への保留回答は新事実を作らず、確認を維持する。',
+    description: '作業量を今は答えられない場合、新事実を作らず質問を開いたままか保留する。',
     turns: [
       { userText: '数学の問題は残り8問です。', oracle: q('missing_effort_estimate', [workload('math', 'remaining', 8, 'custom', '問')]) },
-      { userText: 'その時間は今は分かりません。', oracle: { ...q('missing_effort_estimate', [workload('math', 'remaining', 8, 'custom', '問')]), preservePreviousTypedState: true } },
+      { userText: 'その時間は今は分かりません。', oracle: {
+        ...q('missing_effort_estimate', [workload('math', 'remaining', 8, 'custom', '問')]),
+        preservePreviousTypedState: true, allowQuestionDeferral: true, expectNoApplicableEffort: true,
+        questionForWork: workload('math', 'remaining', 8, 'custom', '問'),
+      } },
     ],
   },
   {
@@ -255,7 +265,7 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
         checkTemporal: false,
         expectedTaskCount: 1,
         sameWorkloadPairs: [[0, 1]],
-        projectedWorkloads: [workload('slides', 'remaining', 8, 'custom', '枚')],
+        questionForWork: workload('slides', 'remaining', 8, 'custom', '枚'),
       } },
       { userText: '1枚あたりだいたい8分くらいです', oracle: ready(64,
         [workload('slides', 'scope_total', 20, 'custom', '枚'), workload('slides', 'completed', 12, 'custom', '枚')],

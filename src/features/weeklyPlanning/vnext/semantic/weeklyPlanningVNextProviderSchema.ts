@@ -12,6 +12,7 @@ export const VNEXT_QUANTITY_ROLE_REQUIREMENT = 'target = an amount the user inte
 export const VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT = 'A workload unitLabel is a required non-empty unit word for its amount, even when unitCode is a standard code. Preserve the user-language unit wording (for example 分, 時間, ページ). It is never null or an empty string. This requirement is separate from nullable effort-estimate units.';
 export const VNEXT_CONSTRAINT_LEVEL_REQUIREMENT = 'hard = a constraint that must be met, including a deadline or fixed commitment; soft = a preference; unknown = the words do not establish the level. Do not use unknown merely because a required deadline was not explicitly called hard.';
 export const VNEXT_TEMPORAL_TARGET_REQUIREMENT = 'A temporal_constraint targetRef must name its task or a component in that same task, using a supplied fact alias or a new localId. It cannot target a workload, estimate or projected work.';
+export const VNEXT_RELATE_REFERENCE_REQUIREMENT = 'relate a/b reference workload facts: an existing workload uses its supplied F alias in factId; a workload added in this delta uses its localId. For derived work use the F alias of its total workload fact (definingFactId). W aliases and workLineageId are not valid relation references; never put a W alias in localId.';
 export const VNEXT_ESTIMATE_ANSWER_REQUIREMENT = 'An estimate answer concerns the asked work itself: whole_work = minutes for all of that work; unit = minutes for one unit in the unitCode/unitLabel shown in presentedQuestion.forWork. Return the stated minutes without multiplying or computing a total. Time already spent on completed work or time for another task is not an answer to this work question; represent it as an ordinary delta fact. State the asked work\'s estimate once: as the answer, or as a fact, not both. For an option answer, per is null.';
 const text: Schema = { type: 'string' }, number: Schema = { type: 'number' };
 const object = (properties: Record<string, Schema>): Schema => ({ type: 'object', properties,
@@ -43,7 +44,9 @@ const add: Schema = { anyOf: [
 const correction = VNEXT_CORRECTION_RESPONSE_FORMAT.json_schema.schema as Schema;
 const root = object({ delta: object({ add: array(add), patch: correction.properties!.patch,
   remove: correction.properties!.remove,
-  relate: array(object({ kind: enumeration(['same', 'distinct']), a: ref, b: ref })),
+  relate: array({ ...object({ kind: enumeration(['same', 'distinct']),
+    a: { ...ref, description: VNEXT_RELATE_REFERENCE_REQUIREMENT }, b: { ...ref, description: VNEXT_RELATE_REFERENCE_REQUIREMENT } }),
+    description: VNEXT_RELATE_REFERENCE_REQUIREMENT }),
   defer: array(object({ questionKey: text })),
 }), answer: nullable(object({ kind: enumeration(['option', 'estimate_minutes']), optionId: nullable(text), minutes: nullable(number),
   per: { ...nullable(enumeration(['whole_work', 'unit'])), description: VNEXT_ESTIMATE_ANSWER_REQUIREMENT } })) });
