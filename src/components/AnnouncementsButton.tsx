@@ -26,6 +26,7 @@ function AnnouncementLoadFailure({ detailId, onBack }: FailureNavigation) {
     <button ref={back} type="button" className="ghost-button" onClick={onBack}>
       {detailId ? 'お知らせ一覧へ戻る' : 'ホームへ戻る'}
     </button>
+    <button type="button" className="primary-button" onClick={() => window.location.reload()}>再読み込み</button>
   </dialog>, document.body);
 }
 

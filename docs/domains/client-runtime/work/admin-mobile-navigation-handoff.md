@@ -40,3 +40,15 @@ Next: focused regression red/green, exact fresh verify, browser-free native disc
 - Bundle checking remains failed on the same six acknowledged capacity metrics: JS total raw/gzip 2420.7/658.9 KiB; CSS total raw/gzip 506.8/87.7 KiB and largest raw/gzip 423.8/69.2 KiB. Per-JS-chunk and appearance checks pass. Thresholds are untouched; this is not a claim that every quality gate is green.
 
 Evidence: `/workspace/shared/laplans-admin-mobile-verification/final/`, with earlier red/green and initial proof in its parent directory. Final acceptance still requires separate publication approval and actual native results. Document reload is avoided, but ordinary app bootstrap/data reads may occur on return. Real signed-in production accounts and physical iPhone remain unverified. No new production permissions, dependency or workflow is introduced.
+
+## 2026-10-29 follow-up — mobile drawer, stable return and readable metrics
+
+The October 14 native-select/root-rebootstrap checkpoint above is historical; it is not the current design contract. New work starts from main `efbdb29eca9f171a2f1e4f48e08141e0706a879d` on `fix/admin-mobile-navigation-layout`.
+
+- Audit the user-provided narrow-screen screenshots first. Replace the mobile select with the existing shared navigation in a left drawer and shift the content/header right. Reuse focus trapping and threshold swipe handling; reserve OS edge gestures and leave inputs, other dialogs, and horizontal data scrolling alone. Desktop sidebar stays unchanged; reduced/off modes do not animate the slide.
+- Keep the return action outside the auth/access guards. Retain a previously started ordinary planner on Admin entry, including its existing auth prop identity, owner boundaries, scroll and focus restoration. Direct Admin entry must not bootstrap a hidden planner. This supersedes the old allowance for return bootstrap/data reads; it does not weaken administrator checks.
+- Constrain the shared Overview/AI/Planning date controls at their labels/input boundaries rather than clipping all content. Tables remain locally scrollable. Audit all Admin routes at 320, 390 and desktop widths.
+- Users trend adds an integer count axis/grid and an exact daily table. Missing dates inside the observed range remain unknown, never fabricated zeroes; actual zero values have zero bar height. No API/read-model change.
+- Consumer announcement lazy-load failure gets an explicit page reload action, alongside return. The original intermittent failure cause is not established; this is a recovery path, not proof that its cause is fixed.
+
+Local focused suites and full verification are recorded in the task receipts. New native browser cases cover both Chromium and WebKit, but test discovery alone is not rendered acceptance. Physical iPhone, actual OS edge navigation, and production data remain outside synthetic fixture proof. No upstream publication or merge is implied by this local checkpoint.
