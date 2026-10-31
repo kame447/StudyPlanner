@@ -107,6 +107,62 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # The live-account spec, unchanged, against a production build backed by the Firebase emulators
+  # and the repository's firestore.rules (#947). No production URL, account or secret is used.
+  emulator-account:
+    name: emulator-account (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Install the locked Firebase CLI
+        run: npm ci --prefix tools/firebase-tools --ignore-scripts
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Install Chromium
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Run the live-account spec against the emulators
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.emulator.config.mjs
+
+      - name: Upload emulator-account artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: emulator-account-${{ github.sha }}
+          path: |
+            artifacts/playwright-emulator-results/
+            artifacts/playwright-emulator-results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   chromium:
     name: chromium
     needs: chromium-shard
