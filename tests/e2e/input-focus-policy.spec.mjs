@@ -96,6 +96,11 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
   // so new text-control or unrestricted focus in the same file still fails this guard.
   // Browser tests assert the actual heading/tab/button or checked native radio.
   const allowedFocusStatements = new Map([
+    // Returning from Admin restores only a visible header button/link, never a text input.
+    // The real Admin-entry browser regression asserts the non-text header target.
+    ['src/components/ApplicationRouteRoot.tsx', new Set([
+      "planner.current?.querySelector<HTMLElement>('.primary-app-header button, .primary-app-header a')?.focus({ preventScroll: true });",
+    ])],
     // Selecting a catalog result may hand its focus to the non-text summary.
     // A later user focus change cancels that request; material browser cases
     // assert both the summary handoff and preservation of a newer input focus.
@@ -178,6 +183,12 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
   ]);
   const hasUnexpectedFocus = (fileName, line) => line.includes('.focus(')
     && !allowedFocusFiles.has(fileName) && !allowedFocusStatements.get(fileName)?.has(line.trim());
+
+  for (const statement of [
+    "planner.current?.querySelector<HTMLElement>('.primary-app-header input')?.focus({ preventScroll: true });",
+    "planner.current?.querySelector<HTMLElement>('[tabindex]')?.focus({ preventScroll: true });",
+    "planner.current?.querySelector<HTMLElement>('.primary-app-header button, .primary-app-header a')?.focus();",
+  ]) expect(hasUnexpectedFocus('src/components/ApplicationRouteRoot.tsx', statement)).toBe(true);
 
   // The radio exception must not permit text inputs, unchecked radios or generic focus.
   for (const statement of [

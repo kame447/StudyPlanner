@@ -27,7 +27,7 @@ beforeEach(() => {
   vi.clearAllMocks(); view.fail = false; location.pathname = '/admin/users';
   fake = createFakeAuthSession(); listeners = new Map();
   vi.mocked(subscribeAdminStatus).mockImplementation((_id, listener) => { emitAccess = listener; return () => {}; });
-  vi.stubGlobal('window', { location,
+  vi.stubGlobal('window', { location, dispatchEvent: (event: Event) => { listeners.get(event.type)?.forEach(listener => listener()); return true; },
     history: { pushState: vi.fn((_state, _title, path) => { location.pathname = path; }) },
     addEventListener: (type: string, fn: () => void) => { const group = listeners.get(type) ?? new Set(); group.add(fn); listeners.set(type, group); },
     removeEventListener: (type: string, fn: () => void) => listeners.get(type)?.delete(fn) });

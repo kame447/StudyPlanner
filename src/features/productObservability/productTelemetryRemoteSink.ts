@@ -1,3 +1,4 @@
+import { accountClientWritesPaused } from '../../services/accountDeletionClientState';
 import { getCloudflareAiProxyUrl } from '../../lib/aiConfig';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
 import type { ProductObservabilityTelemetryDraft } from '../../../shared/productObservabilityContract';
@@ -16,11 +17,14 @@ export function createRemoteProductTelemetrySink(options: {
   endpoint: string;
   getIdToken: () => Promise<string>;
   fetcher?: typeof fetch;
+  canWrite?: () => boolean;
 }): ProductTelemetrySink {
   const fetcher = options.fetcher ?? fetch;
   return {
     async write(event: ProductObservabilityTelemetryDraft): Promise<void> {
+      if (options.canWrite?.() === false) return;
       const idToken = await options.getIdToken();
+      if (options.canWrite?.() === false) return;
       const response = await fetcher(options.endpoint, {
         method: 'POST',
         headers: {
@@ -42,6 +46,10 @@ export function createFirebaseProductTelemetrySink(): ProductTelemetrySink | nul
 
   return createRemoteProductTelemetrySink({
     endpoint: buildProductObservabilityEventsEndpoint(proxyUrl),
+    canWrite: () => {
+      const uid = getFirebaseAuth()?.currentUser?.uid;
+      return Boolean(uid && !accountClientWritesPaused(uid));
+    },
     async getIdToken() {
       const currentUser = getFirebaseAuth()?.currentUser;
       if (!currentUser) throw new Error('Product telemetry authentication is unavailable.');

@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -723,11 +724,11 @@ describe('material admission settlement and authoritative repair', () => {
       await repair.entered.promise;
     });
     // The public local repository reports failed compensation as its own Error.
-    // The hook must preserve that exact rejection rather than replace it with
-    // a repair outcome or pretend the partially persisted create was undone.
+    // The hook preserves the failed outcome and recovery state, but exposes only
+    // a safe presentation error rather than persistence or compensation details.
     expect(repositoryFailure).toBeInstanceOf(Error);
     expect((repositoryFailure as Error).message).toContain(rollbackFailure.message);
-    expect(await saving).toBe(repositoryFailure);
+    expect(await saving).toEqual(new UserFacingError("記録を保存できませんでした。"));
     const persistedActuals = await fixture.repository.getActuals('owner');
     expect(persistedActuals).toHaveLength(1);
     expect(persistedActuals[0]).toMatchObject({ planId: null, materialProgressUpdates: [{ materialId: ONE.id, deltaUnits: 5 }] });
@@ -735,7 +736,7 @@ describe('material admission settlement and authoritative repair', () => {
     expect(state.actuals).toEqual([]);
     await rejected(() => edit(current(), { name: 'Blocked until authoritative inspection' }));
     expect(fixture.saveMaterial).not.toHaveBeenCalled();
-    expect(await finish(repair, saving)).toBe(repositoryFailure);
+    expect(await finish(repair, saving)).toEqual(new UserFacingError('記録を保存できませんでした。'));
     expect(materialRead).toHaveBeenCalled();
     expect(state.plannerDataRecovery).toBeNull();
     expect(state.actuals).toEqual(persistedActuals);
@@ -747,7 +748,7 @@ describe('material admission settlement and authoritative repair', () => {
     await expectStored(fixture);
   });
 
-  it.each(['actual', 'save', 'delete', 'fanout'] as const)('unknown post-write %s rejection reads authoritative Actual/material data and preserves the original error', async writer => {
+  it.each(['actual', 'save', 'delete', 'fanout'] as const)('unknown post-write %s rejection reads authoritative Actual/material data and preserves the failure outcome with a safe message', async writer => {
     const fixture = await mount();
     const method = writer === 'actual' ? 'upsertActualWithMaterialProgress' : writer === 'save' ? 'upsertStudyMaterial'
       : writer === 'delete' ? 'deleteStudyMaterial' : 'upsertStudySubjectWithMaterials';
@@ -759,7 +760,7 @@ describe('material admission settlement and authoritative repair', () => {
     const actualRead = vi.spyOn(boundary.repository, 'getActuals');
     const materialRead = vi.spyOn(boundary.repository, 'getStudyMaterials');
     const failure = new Error('Acknowledgement lost after persistence');
-    expect(await finish(gate, done, failure)).toBe(failure);
+    expect(await finish(gate, done, failure)).toEqual(new UserFacingError(({ actual: '記録を保存できませんでした。', save: '教材を保存できませんでした。', delete: '教材を削除できませんでした。', fanout: '教科を保存できませんでした。' })[writer]));
     expect(actualRead).toHaveBeenCalledTimes(1);
     expect(materialRead).toHaveBeenCalledTimes(1);
     expect(state.plannerDataRecovery).toBeNull();
@@ -779,7 +780,7 @@ describe('material admission settlement and authoritative repair', () => {
     const { done } = await start(() => state.saveStandaloneActual(draft([ONE.id, TWO.id])), gate);
     vi.spyOn(boundary.repository, 'getActuals').mockRejectedValueOnce(new Error('Actual repair offline'));
     const failure = new Error('Actual acknowledgement lost');
-    expect(await finish(gate, done, failure)).toBe(failure);
+    expect(await finish(gate, done, failure)).toEqual(new UserFacingError("記録を保存できませんでした。"));
     expect(state.plannerDataRecovery).toMatchObject({ phase: 'failed', canRetry: true });
     await rejected(() => edit(current(ONE.id), { name: 'First stale write' }));
     await rejected(() => edit(current(TWO.id), { name: 'Second stale write' }));
@@ -796,7 +797,7 @@ describe('material admission settlement and authoritative repair', () => {
     await expectStored(fixture);
   });
 
-  it.each(['getActuals', 'getStudyMaterials'] as const)('failed %s repair retains affected claims until retry and does not replace the original rejection', async failedGetter => {
+  it.each(['getActuals', 'getStudyMaterials'] as const)('failed %s repair retains affected claims until retry and does not replace the write failure with a repair success', async failedGetter => {
     const fixture = await mount();
     const original = current();
     const baseline = state.captureStudyMaterialBaseline(original);
@@ -806,7 +807,7 @@ describe('material admission settlement and authoritative repair', () => {
     const materialRead = vi.spyOn(boundary.repository, 'getStudyMaterials');
     (failedGetter === 'getActuals' ? actualRead : materialRead).mockRejectedValueOnce(new Error('Repair offline'));
     const failure = new Error('Material acknowledgement unavailable');
-    expect(await finish(gate, done, failure)).toBe(failure);
+    expect(await finish(gate, done, failure)).toEqual(new UserFacingError("教材を保存できませんでした。"));
     expect(state.plannerDataRecovery).toMatchObject({ phase: 'failed', canRetry: true });
     expect(current().currentUnit).toBe(10);
     await rejected(() => state.saveStandaloneActual(draft()));
@@ -835,7 +836,7 @@ describe('material admission settlement and authoritative repair', () => {
     vi.spyOn(boundary.repository, 'getStudyMaterials').mockRejectedValueOnce(new Error('Undo repair offline'));
     const failure = new Error('Undo acknowledgement unavailable');
     expect(await finish(gate, done, failure)).toBeUndefined();
-    expect(showNotice.mock.calls.some(call => call[0] === failure.message && call[1] === 'error')).toBe(true);
+    expect(showNotice).toHaveBeenCalledWith('復元できませんでした。', 'error');
     expect(state.plannerDataRecovery).toMatchObject({ phase: 'failed', canRetry: true });
     await rejected(() => state.saveStandaloneActual(draft()));
     await act(async () => { await state.retryPlannerData(); });
@@ -943,7 +944,7 @@ describe('material claims across read authority lifetimes', () => {
       await rejected(() => state.saveStandaloneActual(draft()));
     }
     const fullFailure = new Error('Current full read failed');
-    expect(await finish(second, secondLoading, secondFails ? fullFailure : undefined)).toBe(secondFails ? fullFailure : undefined);
+    expect(await finish(second, secondLoading, secondFails ? fullFailure : undefined)).toEqual(secondFails ? new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。") : undefined);
     await act(async () => { await repair.entered.promise; });
     await rejected(() => state.saveStandaloneActual(draft()));
     await rejected(() => edit(current(), { name: 'Before detached repair' }));
@@ -978,7 +979,7 @@ describe('material claims across read authority lifetimes', () => {
     const { done } = await start(() => edit(current(), { currentUnit: 45 }), writer);
     const repair = hold('getStudyMaterials', true);
     const failure = new Error('Unknown material save outcome');
-    expect(await finish(writer, done, failure)).toBe(failure);
+    expect(await finish(writer, done, failure)).toEqual(new UserFacingError("教材を保存できませんでした。"));
     await act(async () => { await repair.entered.promise; });
     await fixture.repository.upsertStudyMaterial({ ...ONE, currentUnit: 70, name: 'Later authoritative row' });
     const full = hold('getActuals', true);
@@ -1002,7 +1003,7 @@ describe('material claims across read authority lifetimes', () => {
     const { done } = await start(() => state.saveStudySubject({ ...MATH, name: 'Persisted subject rename' }, MATH.id), writer);
     const subjectRead = vi.spyOn(boundary.repository, 'getStudySubjects').mockRejectedValueOnce(new Error('Subject repair offline'));
     const failure = new Error('Subject acknowledgement lost');
-    expect(await finish(writer, done, failure)).toBe(failure);
+    expect(await finish(writer, done, failure)).toEqual(new UserFacingError("教科を保存できませんでした。"));
     expect(state.plannerDataRecovery).toMatchObject({ phase: 'failed', canRetry: true });
     expect(state.studyMaterials).toBe(originalMaterials);
     expect(state.studySubjects.find(subject => subject.id === MATH.id)?.name).toBe(MATH.name);
@@ -1035,7 +1036,7 @@ describe('selective subject repair dependencies', () => {
     const { done } = await start(() => state.saveStandaloneActual(draft()), writer);
     const subjectRead = vi.spyOn(boundary.repository, 'getStudySubjects');
     const failure = new Error('Actual-only acknowledgement unavailable');
-    expect(await finish(writer, done, failure)).toBe(failure);
+    expect(await finish(writer, done, failure)).toEqual(new UserFacingError("記録を保存できませんでした。"));
     expect(subjectRead).not.toHaveBeenCalled();
     expect(state.plannerDataRecovery).toBeNull();
     expect(current().currentUnit).toBe(15);
@@ -1049,14 +1050,14 @@ describe('selective subject repair dependencies', () => {
     const oldRepair = hold('getActuals', true);
     const subjectRead = vi.spyOn(boundary.repository, 'getStudySubjects');
     const actualFailure = new Error('Actual acknowledgement unavailable');
-    expect(await finish(actualWriter, savingActual, actualFailure)).toBe(actualFailure);
+    expect(await finish(actualWriter, savingActual, actualFailure)).toEqual(new UserFacingError("記録を保存できませんでした。"));
     await act(async () => { await oldRepair.entered.promise; });
     expect(subjectRead).not.toHaveBeenCalled();
     const fanout = hold('upsertStudySubjectWithMaterials', true);
     const { done: renaming } = await start(() => state.saveStudySubject({ ...SCIENCE, name: 'Late science rename' }, SCIENCE.id), fanout);
     subjectRead.mockRejectedValueOnce(new Error('New subject dependency offline'));
     const subjectFailure = new Error('Fanout acknowledgement unavailable');
-    expect(await finish(fanout, renaming, subjectFailure)).toBe(subjectFailure);
+    expect(await finish(fanout, renaming, subjectFailure)).toEqual(new UserFacingError('教科を保存できませんでした。'));
     await act(async () => { oldRepair.release.resolve(); await microtasks(); });
     expect(subjectRead).toHaveBeenCalledTimes(1);
     expect(state.plannerDataRecovery).toMatchObject({ phase: 'failed', canRetry: true });

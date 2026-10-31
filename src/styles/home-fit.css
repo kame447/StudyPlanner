@@ -368,3 +368,26 @@
     overflow: visible;
   }
 }
+
+/* Keep the measured subtree in its final slot until its first fit commits. */
+.home-dashboard-default[data-initial-layout-pending] > :not(.home-initial-layout-placeholder) {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.home-initial-layout-placeholder {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: var(--surface-muted);
+  pointer-events: none;
+}
+
+.home-initial-layout-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

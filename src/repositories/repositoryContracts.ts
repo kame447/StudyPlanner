@@ -61,6 +61,7 @@ export interface PlannerStorageGateway {
 }
 
 export interface AuthRepository {
+  reauthenticate?(password?: string): Promise<void>;
   // Optional read-only optimization. It must not restore, normalize or write a user.
   observeStartupProfile?(expectedOwner: string, scope: StartupSessionCapability): () => void;
   signUpWithPassword(email: string, password: string, username: string): Promise<void>;

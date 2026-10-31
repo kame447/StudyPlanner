@@ -14,6 +14,7 @@ import type {
 import type {
   ObservabilityDailyRollup,
 } from '../../shared/productObservabilityReadModel';
+import { shiftObservabilityDate } from '../../shared/productObservabilityDateRange';
 import { useAdminDataLoader } from '../hooks/useAdminData';
 import {
   getAdminObservabilityUsers,
@@ -70,26 +71,67 @@ function initialSort(): UserSort {
 }
 
 function UserTrend({ daily }: { daily: ObservabilityDailyRollup[] }) {
-  const max = Math.max(1, ...daily.map((entry) => entry.activeActorCount));
   if (daily.length === 0) {
     return <p className="admin-overview-empty">直近30日の利用データはまだありません。</p>;
   }
+  const observed = [...daily].sort((a, b) => a.localDate.localeCompare(b.localDate));
+  const firstDate = observed[0].localDate;
+  const lastDate = observed[observed.length - 1].localDate;
+  const counts = new Map(observed.map((entry) => [entry.localDate, entry.activeActorCount]));
+  const days: Array<{ localDate: string; count: number | undefined }> = [];
+  // Missing rollups are unknown, not zero. Only fill gaps inside the known range.
+  for (let date = firstDate; date <= lastDate; date = shiftObservabilityDate(date, 1)) {
+    days.push({ localDate: date, count: counts.get(date) });
+  }
+  const max = Math.max(1, ...observed.map((entry) => entry.activeActorCount));
+  const step = Math.max(1, Math.ceil(max / 4));
+  const axisMax = Math.ceil(max / step) * step;
+  const ticks = Array.from({ length: axisMax / step + 1 }, (_, index) => index * step);
   return (
     <div className="admin-users-trend" aria-label="直近30日の利用ユーザー推移">
-      <div className="admin-users-trend-bars">
-        {daily.map((entry) => (
-          <span
-            key={entry.localDate}
-            style={{ height: `${Math.max(4, (entry.activeActorCount / max) * 100)}%` }}
-            title={`${shortDate(entry.localDate)}: ${entry.activeActorCount}人`}
-          />
-        ))}
+      <div className="admin-users-trend-chart" aria-hidden="true">
+        <div className="admin-users-trend-count-axis">
+          {ticks.map((tick) => <span key={tick}>{tick}人</span>)}
+        </div>
+        <div className="admin-users-trend-plot">
+          <div className="admin-users-trend-grid">
+            {ticks.map((tick) => <i key={tick} style={{ bottom: `${tick / axisMax * 100}%` }} />)}
+          </div>
+          <div className="admin-users-trend-bars">
+            {days.map(({ localDate, count }) => (
+              <span
+                key={localDate}
+                data-date={localDate}
+                data-missing={count === undefined ? 'true' : undefined}
+                style={{ height: `${count === undefined ? 0 : count / axisMax * 100}%` }}
+                title={`${shortDate(localDate)}: ${count === undefined ? 'データなし' : `${count}人`}`}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="admin-users-trend-axis">
+          <span>{shortDate(firstDate)}</span>
+          <span>{shortDate(lastDate)}</span>
+        </div>
       </div>
-      <div className="admin-users-trend-axis">
-        <span>{shortDate(daily[0].localDate)}</span>
-        <span>1日ごとの利用ユーザー数</span>
-        <span>{shortDate(daily[daily.length - 1].localDate)}</span>
-      </div>
+      <p className="admin-users-trend-note">1日ごとの利用ユーザー数。データなしは0人とは限りません。</p>
+      <details className="admin-users-trend-details">
+        <summary>日別の人数を表示</summary>
+        <div className="admin-users-trend-table-wrap" data-swipe-ignore="true">
+          <table>
+            <caption>記録のある期間の日別利用ユーザー数</caption>
+            <thead><tr><th scope="col">日付</th><th scope="col">人数</th></tr></thead>
+            <tbody>
+              {days.map(({ localDate, count }) => (
+                <tr key={localDate}>
+                  <th scope="row">{localDate}</th>
+                  <td>{count === undefined ? 'データなし' : `${count}人`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { buildTimetableDisplayModel, formatTimetablePeriodRange, DEFAULT_PERIODS, WEEKDAY_OPTIONS, type DisplayPeriod } from '../lib/timetableDisplayModel';
 import { TimetableClassDetail } from './TimetableClassDetail';
 import { classAttendanceRepository } from '../repositories';
 import { useDialogFocus } from '../hooks/useDialogFocus';
@@ -7,9 +8,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ChangeEvent,
   type FormEvent,
   type PointerEvent,
+  type SyntheticEvent,
 } from 'react';
 import {
   createTimetableOcrFilePayload,
@@ -69,10 +72,6 @@ interface TimetableViewProps {
   onDeleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
 }
 
-type DisplayPeriod = TimetablePeriodDraft & {
-  id?: string;
-};
-
 interface PeriodFormState {
   id?: string;
   label: string;
@@ -81,24 +80,6 @@ interface PeriodFormState {
   usesAlternatingWeeks: boolean;
   alternatingWeekAnchorDate: string;
 }
-
-const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
-  { value: 'mon', label: '月' },
-  { value: 'tue', label: '火' },
-  { value: 'wed', label: '水' },
-  { value: 'thu', label: '木' },
-  { value: 'fri', label: '金' },
-  { value: 'sat', label: '土' },
-];
-
-const DEFAULT_PERIODS: DisplayPeriod[] = [
-  { userId: '', termId: 'default', periodNumber: 1, label: '1', startTime: '08:40', endTime: '10:10' },
-  { userId: '', termId: 'default', periodNumber: 2, label: '2', startTime: '10:20', endTime: '11:50' },
-  { userId: '', termId: 'default', periodNumber: 3, label: '3', startTime: '12:45', endTime: '14:15' },
-  { userId: '', termId: 'default', periodNumber: 4, label: '4', startTime: '14:25', endTime: '15:55' },
-  { userId: '', termId: 'default', periodNumber: 5, label: '5', startTime: '16:05', endTime: '17:35' },
-  { userId: '', termId: 'default', periodNumber: 6, label: '6', startTime: '18:00', endTime: '19:30' },
-];
 
 const TIMETABLE_IMPORT_FILE_ACCEPT = 'image/png,image/jpeg,.png,.jpg,.jpeg,.pdf,application/pdf';
 const EMPTY_CELL_DOUBLE_TAP_DELAY_MS = 320;
@@ -135,14 +116,6 @@ function createPeriodForm(term: TimetableTerm | null): PeriodFormState {
     usesAlternatingWeeks: term.usesAlternatingWeeks === true,
     alternatingWeekAnchorDate: term.alternatingWeekAnchorDate ?? term.startDate ?? '',
   };
-}
-
-function formatPeriodRange(term: TimetableTerm | null): string {
-  if (!term?.startDate && !term?.endDate) {
-    return '期間未設定';
-  }
-
-  return `${term.startDate ?? '開始日未設定'} 〜 ${term.endDate ?? '終了日未設定'}`;
 }
 
 function createTemplateDraft(
@@ -191,10 +164,6 @@ function createTemplateDraftFromTemplate(
     memo: template.memo,
     active: template.active,
   };
-}
-
-function comparePeriods(left: DisplayPeriod, right: DisplayPeriod): number {
-  return left.periodNumber - right.periodNumber;
 }
 
 function getTemplatePatternLabel(template: ScheduleTemplate): string {
@@ -265,20 +234,9 @@ export function TimetableView({
   );
   const usesAlternatingWeeks = activeTerm?.usesAlternatingWeeks === true;
   const selectedTermLabel = activeTerm?.label ?? '時間割の期間を設定';
-  const savedPeriodsForTerm = useMemo(
-    () =>
-      timetablePeriods
-        .filter((period) => period.termId === activeTermId)
-        .map((period) => ({ ...period }))
-        .sort(comparePeriods),
-    [activeTermId, timetablePeriods],
-  );
-  const termTemplates = useMemo(
-    () =>
-      scheduleTemplates.filter(
-        (template) => getTemplateTermId(template) === activeTermId,
-      ),
-    [activeTermId, scheduleTemplates],
+  const { savedPeriodsForTerm, termTemplates, displayPeriods, gridRows } = useMemo(
+    () => buildTimetableDisplayModel({ userId, activeTermId, timetablePeriods, scheduleTemplates, usesAlternatingWeeks }),
+    [userId, activeTermId, timetablePeriods, scheduleTemplates, usesAlternatingWeeks],
   );
   const visibleTermTemplates = useMemo(
     () =>
@@ -287,36 +245,6 @@ export function TimetableView({
       ),
     [alternatingWeekView, termTemplates, usesAlternatingWeeks],
   );
-  const displayPeriods = useMemo(() => {
-    const basePeriods =
-      savedPeriodsForTerm.length > 0
-        ? savedPeriodsForTerm
-        : DEFAULT_PERIODS.map((period) => ({
-            ...period,
-            userId,
-            termId: activeTermId,
-          }));
-    const periods = new Map<number, DisplayPeriod>();
-
-    basePeriods.forEach((period) => {
-      periods.set(period.periodNumber, period);
-    });
-
-    termTemplates.forEach((template) => {
-      if (template.periodNumber && !periods.has(template.periodNumber)) {
-        periods.set(template.periodNumber, {
-          userId,
-          termId: activeTermId,
-          periodNumber: template.periodNumber,
-          label: String(template.periodNumber),
-          startTime: template.startTime,
-          endTime: template.endTime,
-        });
-      }
-    });
-
-    return Array.from(periods.values()).sort(comparePeriods);
-  }, [activeTermId, savedPeriodsForTerm, termTemplates, userId]);
   const templateByCell = useMemo(() => {
     const map = new Map<string, ScheduleTemplate[]>();
 
@@ -779,43 +707,27 @@ export function TimetableView({
     }
   }
 
+  function finishEntryOnInteraction(event: SyntheticEvent<HTMLElement>) {
+    // Finish only this route's entry before a child opens an overlay. Restoring
+    // its CSS duration after a quick close must not expose unfinished opacity.
+    for (const animation of event.currentTarget.getAnimations?.() ?? []) {
+      if ('animationName' in animation && animation.animationName === 'ui-surface-fade' && animation.playState === 'running') animation.finish();
+    }
+  }
+
   return (
-    <section className="panel timetable-view timetable-period-based-view">
+    <section className="panel timetable-view timetable-period-based-view"
+      onPointerDownCapture={finishEntryOnInteraction} onClickCapture={finishEntryOnInteraction}>
       <div className="section-header timetable-header">
         <div className="timetable-title-block">
           <button
             className="timetable-period-trigger"
+            aria-label={`期間を編集: ${selectedTermLabel}、${formatTimetablePeriodRange(activeTerm)}`}
             onClick={() => openPeriodSheet()}
             type="button"
           >
             <span>{selectedTermLabel}</span>
-            <small>{formatPeriodRange(activeTerm)}</small>
-          </button>
-        </div>
-        <div className="timetable-term-control">
-          <input
-            ref={importFileInputRef}
-            accept={TIMETABLE_IMPORT_FILE_ACCEPT}
-            className="timetable-import-file-input"
-            onChange={(event) => {
-              void handleTimetableImportFileChange(event);
-            }}
-            type="file"
-          />
-          <button
-            className="ghost-button timetable-ocr-button"
-            disabled={isReadingTimetableFile}
-            onClick={() => importFileInputRef.current?.click()}
-            type="button"
-          >
-            {isReadingTimetableFile ? '読み取り中...' : '画像/PDF'}
-          </button>
-          <button
-            className="ghost-button timetable-term-switch"
-            onClick={() => openPeriodSheet()}
-            type="button"
-          >
-            期間
+            <small title={formatTimetablePeriodRange(activeTerm)}>{formatTimetablePeriodRange(activeTerm, true)}</small>
           </button>
         </div>
       </div>
@@ -847,7 +759,8 @@ export function TimetableView({
           className="timetable-grid"
           style={{
             gridTemplateColumns: `var(--timetable-period-column-width) repeat(${WEEKDAY_OPTIONS.length}, minmax(0, 1fr))`,
-          }}
+            '--timetable-grid-rows': gridRows,
+          } as CSSProperties}
         >
           <div className="timetable-corner-cell" />
           {WEEKDAY_OPTIONS.map((weekday) => (
@@ -987,6 +900,24 @@ export function TimetableView({
       </div>
 
       <div className="row-actions timetable-grid-actions">
+          <input
+            ref={importFileInputRef}
+            accept={TIMETABLE_IMPORT_FILE_ACCEPT}
+            className="timetable-import-file-input"
+            onChange={(event) => {
+              void handleTimetableImportFileChange(event);
+            }}
+            type="file"
+          />
+          <button
+            className="ghost-button timetable-ocr-button"
+            disabled={isReadingTimetableFile}
+            onClick={() => importFileInputRef.current?.click()}
+            type="button"
+          >
+            {isReadingTimetableFile ? '読み取り中...' : '画像/PDF'}
+          </button>
+
         <button
           className="ghost-button"
           disabled={savingPeriods || displayPeriods.length <= 1}
@@ -1077,7 +1008,7 @@ export function TimetableView({
               onSelect={() => {
                 void selectExistingPeriod(term);
               }}
-              rangeLabel={formatPeriodRange(term)}
+              rangeLabel={formatTimetablePeriodRange(term)}
               term={term}
             />
           ))}

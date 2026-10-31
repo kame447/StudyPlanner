@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useAuthSessionState } from '../hooks/useAuthSessionState';
@@ -32,9 +33,10 @@ it('shows failure instead of saved feedback and preserves the draft for an expli
   act(() => name().props.onChange({ target: { value: 'Edited' } }));
   auth.updateUserProfile.mockRejectedValueOnce(new Error('profile storage unavailable'));
   await act(async () => { save().props.onClick(); });
-  expect(notice).toHaveBeenCalledWith('profile storage unavailable', 'error');
+  expect(notice).toHaveBeenCalledWith('プロフィールの更新結果を確認できませんでした。再読み込みして内容を確認してください。', 'error');
   expect(JSON.stringify(renderer.toJSON())).not.toContain('保存しました。');
-  expect(JSON.stringify(renderer.toJSON())).toContain('profile storage unavailable');
+  expect(JSON.stringify(renderer.toJSON())).toContain('プロフィールの更新結果を確認できませんでした。再読み込みして内容を確認してください。');
+  expect(JSON.stringify(renderer.toJSON())).not.toContain('profile storage unavailable');
   expect(name().props.value).toBe('Edited');
   auth.updateUserProfile.mockResolvedValueOnce({ ...user, username: 'Edited' });
   await act(async () => { save().props.onClick(); });
@@ -53,7 +55,7 @@ it.each(['close', 'choice'] as const)('does not put a late save error into a new
     act(() => renderer.root.findByProps({ className: 'collapsible-toggle' }).props.onClick());
     act(() => renderer.root.findAllByType('button').find(button => button.props.children === '🚀')!.props.onClick());
   }
-  await act(async () => { gate.reject(new Error('old save error')); });
+  await act(async () => { gate.reject(new UserFacingError('old save error')); });
   expect(JSON.stringify(renderer.toJSON())).not.toContain('old save error');
   expect(JSON.stringify(renderer.toJSON())).not.toContain('保存しました。');
 });
@@ -61,7 +63,7 @@ it.each(['close', 'choice'] as const)('does not put a late save error into a new
 it('handles a non-Error failure and rejects a save without an authenticated user', async () => {
   auth.updateUserProfile.mockRejectedValueOnce('unavailable');
   await act(async () => { save().props.onClick(); });
-  expect(JSON.stringify(renderer.toJSON())).toContain('プロフィールを更新できませんでした。');
+  expect(JSON.stringify(renderer.toJSON())).toContain('プロフィールの更新結果を確認できませんでした。再読み込みして内容を確認してください。');
   expect(JSON.stringify(renderer.toJSON())).not.toContain('保存しました。');
   auth.getCurrentUser.mockResolvedValueOnce(null);
   await act(async () => { await state.bootstrapSession(async () => undefined); });
@@ -103,7 +105,7 @@ it('does not label a newer username draft with an older save error', async () =>
   const gate = deferred<User>(); auth.updateUserProfile.mockReturnValueOnce(gate.promise);
   act(() => save().props.onClick());
   act(() => name().props.onChange({ target: { value: 'Later' } }));
-  await act(async () => { gate.reject(new Error('old save failure')); });
+  await act(async () => { gate.reject(new UserFacingError('old save failure')); });
   expect(name().props.value).toBe('Later');
   expect(JSON.stringify(renderer.toJSON())).not.toContain('old save failure');
 });
@@ -162,7 +164,7 @@ it('suppresses an older duplicate-save error after the newer submission succeeds
   act(() => save().props.onClick());
   act(() => save().props.onClick());
   await act(async () => { newer.resolve(user); });
-  await act(async () => { older.reject(new Error('stale duplicate error')); });
+  await act(async () => { older.reject(new UserFacingError('stale duplicate error')); });
   expect(JSON.stringify(renderer.toJSON())).toContain('保存しました。');
   expect(JSON.stringify(renderer.toJSON())).not.toContain('stale duplicate error');
 });

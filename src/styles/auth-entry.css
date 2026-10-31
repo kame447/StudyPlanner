@@ -26,7 +26,7 @@ html:has(#root .auth-entry-shell) :is(body, #root) {
   isolation: isolate;
   grid-template-columns: minmax(0, 380px);
   justify-content: center;
-  align-content: center;
+  align-content: start;
   min-height: 100vh;
   min-height: 100svh;
   gap: 0;
@@ -326,4 +326,20 @@ html:has(#root .auth-entry-shell) :is(body, #root) {
 @media (max-width: 380px), (max-height: 700px) {
   .auth-entry-brand { margin-bottom: 20px; }
   .auth-entry-modes { margin-bottom: 22px; }
+}
+
+/* Switching the existing panel restarts only its opacity, not its inputs. */
+.auth-entry-panel {
+  animation: auth-sign-in-fade var(--motion-duration-slow) var(--motion-ease-standard) both;
+}
+.auth-entry-panel[data-intent='sign-up'] {
+  animation-name: auth-sign-up-fade;
+}
+@keyframes auth-sign-in-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes auth-sign-up-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

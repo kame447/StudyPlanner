@@ -14,6 +14,9 @@ export {
   resolveAdminObservabilityUserIdentity,
 };
 
+// Capture the harness input before page URL synchronization removes query flags.
+const mobileAdminFixture = new URLSearchParams(window.location.search).get('view') === 'mobile-admin';
+
 function enrichUserPage(page) {
   return {
     ...page,
@@ -36,7 +39,15 @@ function enrichUserPage(page) {
 }
 
 export async function getAdminObservabilityUsers() {
-  return enrichUserPage(await getLegacyUsers());
+  const page = enrichUserPage(await getLegacyUsers());
+  if (mobileAdminFixture) {
+    page.trend.daily = [
+      { ...page.trend.daily[0], localDate: '2026-08-23', activeActorCount: 3 },
+      { ...page.trend.daily[0], localDate: '2026-08-24', activeActorCount: 0 },
+      { ...page.trend.daily[0], localDate: '2026-08-26', activeActorCount: 7 },
+    ];
+  }
+  return page;
 }
 
 export async function getAdminObservabilityUsersPage() {

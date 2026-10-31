@@ -1,7 +1,7 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
-async function seedHome(page) {
-  await page.addInitScript(() => {
+async function seedHome(page, rowCount = 1) {
+  await page.addInitScript((rowCount) => {
     const today = new Date().toLocaleDateString('sv-SE');
     const now = new Date().toISOString();
     const user = {
@@ -44,11 +44,11 @@ async function seedHome(page) {
 
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
-    localStorage.setItem('studyplanner.plans', JSON.stringify(plans));
+    localStorage.setItem('studyplanner.plans', JSON.stringify(Array.from({ length: rowCount }, (_, index) => ({ ...plans[0], id: `home-stability-plan-${index}`, seriesId: `home-stability-plan-${index}` }))));
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify([material]));
-  });
+  }, rowCount);
 }
 
 async function sampleStableLayout(page) {
@@ -189,3 +189,85 @@ test.describe('iPad Mini-like 1280x800 emulation', () => {
     expectStableSamples(result);
   });
 });
+
+// Record from document creation, not after the fitter's first visible frames.
+for (const variant of [
+  { width: 390, rows: 1, colorScheme: 'light', reducedMotion: 'no-preference' },
+  { width: 390, rows: 5, colorScheme: 'light', reducedMotion: 'no-preference' },
+  { width: 1280, rows: 1, colorScheme: 'light', reducedMotion: 'no-preference' },
+  { width: 1280, rows: 5, colorScheme: 'light', reducedMotion: 'no-preference' },
+  { width: 390, rows: 1, colorScheme: 'dark', reducedMotion: 'no-preference' },
+  { width: 390, rows: 1, colorScheme: 'light', reducedMotion: 'reduce' },
+]) {
+  test(`Home first visible geometry and AI return ${JSON.stringify(variant)}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: variant.width, height: 844 });
+    await page.emulateMedia({ colorScheme: variant.colorScheme, reducedMotion: variant.reducedMotion });
+    await seedHome(page, variant.rows);
+    await page.addInitScript(mode => localStorage.setItem('study-planner-theme-mode', mode), variant.colorScheme);
+    await page.addInitScript(() => {
+      const mounts = [];
+      let current;
+      window.__homeFirstFrames = mounts;
+      window.__homeCaptureActive = true;
+      const capture = () => {
+        if (!window.__homeCaptureActive) return;
+        const dashboard = document.querySelector('.home-main > .home-dashboard-default');
+        if (dashboard) {
+          if (current?.node !== dashboard) {
+            current = { node: dashboard, frames: [], pendingInteractive: false };
+            mounts.push(current);
+          }
+          const today = dashboard.querySelector('.home-today-panel');
+          const pending = dashboard.hasAttribute('data-initial-layout-pending');
+          if (pending && !dashboard.inert) current.pendingInteractive = true;
+          if (!pending && !dashboard.inert && today?.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
+            const frame = {};
+            for (const [key, selector] of Object.entries({ today: '.home-today-panel', list: '.home-schedule-list', next: '.home-next-card', header: '.primary-app-header', nav: '.primary-bottom-nav' })) {
+              const element = document.querySelector(selector);
+              const box = element?.getBoundingClientRect();
+              frame[key] = box ? { y: box.y, height: box.height } : null;
+            }
+            frame.overflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+            current.frames.push(frame);
+          }
+        }
+        requestAnimationFrame(capture);
+      };
+      requestAnimationFrame(capture);
+    });
+    try {
+    await page.goto('/');
+    const assertFirstMount = async (mountCount) => {
+      await expect.poll(() => page.evaluate(() => window.__homeFirstFrames.filter(mount => mount.frames.length >= 20).length)).toBe(mountCount);
+      const result = await page.evaluate(() => {
+        const mount = window.__homeFirstFrames.at(-1);
+        return { frames: mount.frames, pendingInteractive: mount.pendingInteractive };
+      });
+      expect(result.pendingInteractive).toBe(false);
+      await expect(page.locator('.home-main > .home-dashboard-default')).not.toHaveAttribute('data-initial-layout-pending');
+      await expect(page.locator('.home-main > .home-dashboard-default')).not.toHaveAttribute('inert');
+      for (const key of ['today', 'list', 'next', 'header', 'nav']) {
+        expect(result.frames.every(frame => frame[key] !== null), key).toBe(true);
+        for (const dimension of ['y', 'height']) {
+          expect(maxSpread(result.frames.map(frame => frame[key][dimension])), `${key}.${dimension}`).toBeLessThanOrEqual(1);
+        }
+      }
+      expect(result.frames.every(frame => frame.overflow <= 1)).toBe(true);
+      await expect(page.locator('.home-today-panel .home-schedule-row')).toHaveCount(variant.rows);
+    };
+    await expect(page.locator('.home-today-panel')).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', variant.colorScheme);
+    await assertFirstMount(1);
+    await page.getByRole('navigation').getByRole('button', { name: 'AI計画', exact: true }).click();
+    await expect(page.locator('.home-today-panel')).toHaveCount(0);
+    await page.getByRole('navigation').getByRole('button', { name: 'ホーム', exact: true }).click();
+    await assertFirstMount(2);
+    } finally {
+      const evidence = await page.evaluate(() => {
+        window.__homeCaptureActive = false;
+        return window.__homeFirstFrames?.map(({ frames, pendingInteractive }) => ({ frames, pendingInteractive }));
+      }).catch(() => null);
+      await testInfo.attach('home-first-visible-frames', { body: JSON.stringify({ variant, evidence }), contentType: 'application/json' });
+    }
+  });
+}

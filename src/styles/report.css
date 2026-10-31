@@ -1,4 +1,4 @@
-.app-shell:has(.learning-report-view) {
+.app-shell.report-workspace-shell {
   width: min(96vw, 1040px);
   max-width: 1040px;
   margin: 0 auto;
@@ -6,12 +6,12 @@
   padding-inline: clamp(10px, 2.4vw, 28px);
 }
 
-.app-shell:has(.learning-report-view) > .primary-app-header,
-.app-shell:has(.learning-report-view) > .app-view-switcher {
+.app-shell.report-workspace-shell > .primary-app-header,
+.app-shell.report-workspace-shell > .app-view-switcher {
   display: none;
 }
 
-.app-shell:has(.learning-report-view) > main {
+.app-shell.report-workspace-shell > main {
   display: block;
   min-width: 0;
 }
@@ -660,7 +660,7 @@
 }
 
 @media (max-width: 520px) {
-  .app-shell:has(.learning-report-view) { width: 100%; padding-inline: 10px; }
+  .app-shell.report-workspace-shell { width: 100%; padding-inline: 10px; }
   .learning-report-summary-grid { gap: 6px; }
   .learning-report-summary-card { min-height: 50px; padding: 6px 8px; }
   .learning-report-chart { padding-inline: 0; }

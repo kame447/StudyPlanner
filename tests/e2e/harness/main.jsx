@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthScreen } from '../../../src/components/AuthScreen';
+import { installMotionPreference } from '../../../src/lib/motionPreference';
 import { QuickEntryModal } from '../../../src/components/QuickEntryModal';
 import '../../../src/styles.css';
 
@@ -176,6 +177,9 @@ function Harness() {
     />
   );
 }
+
+// Match the real entrypoint before the first authentication render.
+if (scenario === 'auth') installMotionPreference();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   scenario === 'auth' ? <AuthHarness /> : <Harness />,
