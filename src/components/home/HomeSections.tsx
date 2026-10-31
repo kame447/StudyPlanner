@@ -133,47 +133,28 @@ export function GettingStartedSection({
   onOpenBookshelf: () => void;
 }) {
   const startStudySession = useStudySessionLauncher();
-  const actions = [
-    {
-      id: 'start',
-      title: '勉強を開始',
-      detail: '予定なしで今から学習する',
-      icon: BookOpen,
-      onClick: () => startStudySession?.({ kind: 'unplanned' }),
-      primary: true,
-    },
+  const mainActions = [
     {
       id: 'ai',
       title: 'AIで学習計画を作る',
-      detail: '目標や教材から予定を組み立てる',
+      detail: '目標や空き時間から考える',
       icon: MessageCircle,
       onClick: onOpenAiPlanning,
-      primary: false,
+      primary: true,
     },
     {
-      id: 'material',
-      title: '教材を登録',
-      detail: '進捗を記録する教材を追加する',
+      id: 'start',
+      title: '勉強を開始',
+      detail: '計画がなくても記録できる',
       icon: BookOpen,
-      onClick: onOpenBookshelf,
+      onClick: () => startStudySession?.({ kind: 'unplanned' }),
       primary: false,
     },
-    {
-      id: 'schedule',
-      title: '予定を追加',
-      detail: '学習やその他の予定を登録する',
-      icon: CalendarDays,
-      onClick: onOpenSchedule,
-      primary: false,
-    },
-    {
-      id: 'todo',
-      title: 'Todoを追加',
-      detail: '締切のある課題を登録する',
-      icon: CircleAlert,
-      onClick: onOpenTodo,
-      primary: false,
-    },
+  ] as const;
+  const otherActions = [
+    { id: 'material', title: '教材を登録', onClick: onOpenBookshelf },
+    { id: 'schedule', title: '予定を追加', onClick: onOpenSchedule },
+    { id: 'todo', title: 'Todoを追加', onClick: onOpenTodo },
   ] as const;
 
   return (
@@ -181,12 +162,13 @@ export function GettingStartedSection({
       <div className="home-setup-heading">
         <span className="home-setup-mark"><BookOpen size={22} aria-hidden="true" /></span>
         <div>
-          <p>はじめに</p>
-          <h1 id="home-getting-started-title">Laplanceを準備する</h1>
+          <p>ホーム</p>
+          <h1 id="home-getting-started-title">ここから少しずつ</h1>
         </div>
       </div>
+      <p className="home-setup-copy">計画も記録も、必要になったときに始められます。</p>
       <div className="home-setup-actions">
-        {actions.map(({ id, title, detail, icon: Icon, onClick, primary }) => (
+        {mainActions.map(({ id, title, detail, icon: Icon, onClick, primary }) => (
           <button
             className={primary ? 'home-setup-action primary' : 'home-setup-action'}
             type="button"
@@ -200,6 +182,11 @@ export function GettingStartedSection({
             </span>
             <ChevronRight size={18} aria-hidden="true" />
           </button>
+        ))}
+      </div>
+      <div className="home-setup-quick-links">
+        {otherActions.map(({ id, title, onClick }) => (
+          <button key={id} type="button" onClick={onClick}>{title}</button>
         ))}
       </div>
     </section>

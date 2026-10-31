@@ -136,6 +136,7 @@ export function HomeView({
     plans.length === 0 &&
     actuals.length === 0 &&
     todos.length === 0 &&
+    (monthEvents?.length ?? 0) === 0 &&
     studyMaterials.length === 0;
   const activeStudyMaterials = useMemo(
     () =>

@@ -125,6 +125,23 @@
   color: #718097;
 }
 
+.home-setup-quick-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.home-setup-quick-links button {
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--home-line-soft);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--home-muted);
+  font: inherit;
+  font-size: .72rem;
+  cursor: pointer;
+}
+
 .home-material-panel {
   padding: calc(10px + var(--home-relax-material-side, 0px)) 12px calc(9px + var(--home-relax-material-side, 0px));
 }

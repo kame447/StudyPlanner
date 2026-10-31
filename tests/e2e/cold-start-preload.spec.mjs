@@ -1,4 +1,4 @@
-import { expect, test, installStartupSkip } from './support/startup-ready.mjs';
+import { expect, test, installStartupSkip, installFirstRunTutorialSkip } from './support/startup-ready.mjs';
 
 // Use a real performance clock (no date-dependent assertions). A fresh Playwright
 // context has an empty HTTP cache. Reload reuses that context; record actual
@@ -73,6 +73,7 @@ for (const width of [1280, 390]) {
     const homeContext = await browser.newContext({ viewport: { width, height: 900 } });
     const homePage = await homeContext.newPage();
     await installStartupSkip(homePage);
+    await installFirstRunTutorialSkip(homePage);
     homePage.on('pageerror', error => errors.push(String(error)));
     try {
       await instrument(homePage, true);

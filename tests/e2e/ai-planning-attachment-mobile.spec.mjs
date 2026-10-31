@@ -13,6 +13,7 @@ async function seedHome(page) {
 
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
+    localStorage.setItem(`laplance-first-run-tour-v1:${encodeURIComponent(user.id)}`, 'done');
     localStorage.setItem('studyplanner.plans', '[]');
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
