@@ -40,7 +40,7 @@ describe('VNext experimental provider correction fragment', () => {
     const root = VNEXT_CORRECTION_RESPONSE_FORMAT.json_schema.schema as Schema;
     expect(root.additionalProperties).toBe(false);
     const variants = root.properties!.patch.items!.anyOf!;
-    expect(variants).toHaveLength(11);
+    expect(variants).toHaveLength(12);
     for (const variant of variants) {
       const kind = variant.properties!.kind.enum![0] as keyof typeof VNEXT_PATCH_FIELDS;
       const changes = variant.properties!.changes;

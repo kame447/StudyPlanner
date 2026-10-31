@@ -1,4 +1,7 @@
 import type { JsonSchemaResponseFormat } from '../../../../services/ai/openAiCompatibleClientTypes';
+import { SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
+import { VNEXT_CONSTRAINT_SOURCE_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
+export { VNEXT_CONSTRAINT_SOURCE_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 import { SEMANTIC_BASE_TEMPORAL_CONSTRAINT_KINDS_V5, SEMANTIC_COMPONENT_ROLES_V5,
   SEMANTIC_CONSTRAINT_LEVELS_V5, SEMANTIC_NAMED_TIME_PERIODS_V5, SEMANTIC_QUANTITY_ROLES_V5, SEMANTIC_TASK_CATEGORIES_V5,
   SEMANTIC_WORKLOAD_UNIT_CODES_V5, SEMANTIC_STUDY_PURPOSES_V5, SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
@@ -70,6 +73,10 @@ const add: Schema = { anyOf: [
     constraintLevel: enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5) }),
   object({ kind: enumeration(['relation']), localId: text,
     relationKind: { ...enumeration(VNEXT_TASK_RELATION_KINDS), description: VNEXT_TASK_RELATION_REQUIREMENT }, fromTaskRef: ref, toTaskRef: ref }),
+  object({ kind: enumeration(['constraint_source_request']), localId: text,
+    sourceKind: { ...enumeration(SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5), description: VNEXT_CONSTRAINT_SOURCE_REQUIREMENT },
+    selector: { ...enumeration(['active']), description: VNEXT_CONSTRAINT_SOURCE_REQUIREMENT },
+    requestedAction: { ...enumeration(['use', 'stop_using']), description: VNEXT_CONSTRAINT_SOURCE_REQUIREMENT } }),
 ] };
 const correction = VNEXT_CORRECTION_RESPONSE_FORMAT.json_schema.schema as Schema;
 const root = object({ delta: object({ add: array(add), patch: correction.properties!.patch,

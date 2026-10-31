@@ -169,6 +169,7 @@ type RecurrencePayload = StatedPayload<WeeklyPlanningFactGraphV5['recurrences'][
 type TaskDateRulePayload = StatedPayload<WeeklyPlanningFactGraphV5['taskDateRules'][number]>;
 type AvailabilityPayload = StatedPayload<WeeklyPlanningFactGraphV5['availabilityDeclarations'][number]>;
 type RelationPayload = StatedPayload<WeeklyPlanningFactGraphV5['relations'][number]>;
+type ConstraintSourcePayload = StatedPayload<WeeklyPlanningFactGraphV5['constraintSourceRequests'][number]>;
 
 export type VNextAddStudyContext = Omit<StatedPayload<VNextStudyContextFact>, 'taskId'> & {
   kind: 'study_context'; localId: string; taskRef: VNextFactRef;
@@ -189,6 +190,10 @@ export type VNextAddRelation = Omit<RelationPayload, 'kind' | 'fromTaskId' | 'to
   kind: 'relation'; localId: string; relationKind: RelationPayload['kind']; fromTaskRef: VNextFactRef; toTaskRef: VNextFactRef;
 };
 
+export type VNextAddConstraintSource = Omit<ConstraintSourcePayload, 'kind' | 'resolutionStatus'> & {
+  kind: 'constraint_source_request'; localId: string; sourceKind: ConstraintSourcePayload['kind'];
+};
+
 export type VNextAddFact =
   | VNextAddTask
   | VNextAddStudyContext
@@ -200,7 +205,8 @@ export type VNextAddFact =
   | VNextAddRecurrence
   | VNextAddTaskDateRule
   | VNextAddAvailability
-  | VNextAddRelation;
+  | VNextAddRelation
+  | VNextAddConstraintSource;
 
 type NullableChanges<T> = { [K in keyof T]-?: T[K] | null };
 export type VNextStudyContextChanges = NullableChanges<Omit<VNextAddStudyContext, 'kind' | 'localId' | 'taskRef'>>;
@@ -209,6 +215,7 @@ export type VNextRecurrenceChanges = NullableChanges<Omit<VNextAddRecurrence, 'k
 export type VNextTaskDateRuleChanges = NullableChanges<Omit<VNextAddTaskDateRule, 'kind' | 'localId' | 'taskRef' | 'targetRef'>>;
 export type VNextAvailabilityChanges = NullableChanges<Omit<VNextAddAvailability, 'kind' | 'localId'>>;
 export type VNextRelationChanges = NullableChanges<Pick<VNextAddRelation, 'relationKind'>>;
+export type VNextConstraintSourceChanges = NullableChanges<Omit<VNextAddConstraintSource, 'kind' | 'localId'>>;
 
 // In every `changes` object null means "unchanged". Identity fields (taskId,
 // componentId, targetFactId, id) are not patchable: change them by remove + add.
@@ -271,7 +278,8 @@ export type VNextPatch =
   | { kind: 'recurrence'; localId: string; targetFactId: string; changes: VNextRecurrenceChanges }
   | { kind: 'task_date_rule'; localId: string; targetFactId: string; changes: VNextTaskDateRuleChanges }
   | { kind: 'availability_declaration'; localId: string; targetFactId: string; changes: VNextAvailabilityChanges }
-  | { kind: 'relation'; localId: string; targetFactId: string; changes: VNextRelationChanges };
+  | { kind: 'relation'; localId: string; targetFactId: string; changes: VNextRelationChanges }
+  | { kind: 'constraint_source_request'; localId: string; targetFactId: string; changes: VNextConstraintSourceChanges };
 
 export interface VNextRemove {
   targetFactId: string;

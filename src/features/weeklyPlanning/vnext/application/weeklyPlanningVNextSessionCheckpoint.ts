@@ -94,7 +94,7 @@ function validState(value: unknown, conversationId: string): value is WeeklyPlan
   if (!Array.isArray(graph.effortEstimates) || !graph.effortEstimates.every(validEffortExtension)) return false;
   if (!graph.studyContexts.every((context) => (SEMANTIC_STUDY_ACTIVITY_KINDS_V5 as readonly unknown[]).includes(context.activityKind))) return false;
   const sources = [graph.tasks, graph.components, graph.workloads, graph.effortEstimates, graph.temporalConstraints,
-    graph.planningWindows, graph.recurrences, graph.taskDateRules, graph.availabilityDeclarations, graph.relations]
+    graph.planningWindows, graph.recurrences, graph.taskDateRules, graph.availabilityDeclarations, graph.relations, graph.constraintSourceRequests]
     .flat().map((fact) => fact.source.conversationId);
   if (sources.some((id) => id !== conversationId)) return false;
   const relationsOk = value.workRelations.every((relation) => isRecord(relation)

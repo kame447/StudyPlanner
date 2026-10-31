@@ -20,7 +20,7 @@ import {
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import { resolveWeeklyPlanningDateExpressionsV5 } from '../../semantic/weeklyPlanningResolvedDateExpressionsV5';
 import { resolveWeeklyPlanningTemporalConstraintsV5 } from '../../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
-import type { EffortEstimateFactV5, WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
+import type { EffortEstimateFactV5, WorkloadFactV5, ExternalConstraintSourceSnapshot } from '../weeklyPlanningVNextV5Boundary';
 import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
@@ -70,6 +70,7 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
   state: WeeklyPlanningVNextState;
   projection: WeeklyPlanningVNextProjection;
   context: GenericSchedulerInputContext;
+  externalSources?: ExternalConstraintSourceSnapshot[];
 }): WeeklyPlanningVNextSchedulerCompilation {
   const { state, projection } = params;
   if (projection.readiness !== 'ready' || projection.graphRevision !== state.graph.revision) return { status: 'not_ready' };
@@ -126,7 +127,7 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
     }), ...sessionPolicies],
   };
 
-  const compiled = compileGenericSchedulerInput({ graph, context: params.context });
+  const compiled = compileGenericSchedulerInput({ graph, context: params.context, externalSources: params.externalSources });
   const toCanonical = (ids: readonly string[]) => [...new Set(ids.flatMap((id) => canonical.get(id) ?? [id]))];
   const compilation: GenericSchedulerInputCompilationResult = compiled.input
     ? {

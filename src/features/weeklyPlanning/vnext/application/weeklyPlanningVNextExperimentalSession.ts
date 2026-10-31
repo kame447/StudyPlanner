@@ -49,6 +49,7 @@ import type {
 } from '../weeklyPlanningVNextTypes';
 import {
   parseWeeklyPlanningStableV5PersistedSession,
+  createStableV5ExternalConstraintSources,
   scheduleWeeklyPlanningStableV5Preview,
   RENDERER_PREVIEW_CONTINGENCY,
   RENDERER_TECHNICAL_STOP,
@@ -216,7 +217,14 @@ function shownPreview(
   state: WeeklyPlanningVNextState,
   projection: WeeklyPlanningVNextProjection,
 ): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[] } {
-  const compiled = compileWeeklyPlanningVNextSchedulerInput({ state, projection, context: schedulingContext(scope, ports, state) });
+  const context = schedulingContext(scope, ports, state);
+  // V5 resolves source selection; placement still enforces raw calendar busy time after stop_using.
+  // ConstraintSources tests guard the use/stop and unavailable-source controls through this boundary.
+  const externalSources = createStableV5ExternalConstraintSources({ ownerId: scope.ownerId,
+    plans: calendar.plans, monthEvents: calendar.monthEvents, templates: calendar.scheduleTemplates,
+    timetableTermId: calendar.timetableTermId,
+    horizon: { startDate: context.planningStartDate, endDate: context.planningEndDate }, timeZone: context.timeZone });
+  const compiled = compileWeeklyPlanningVNextSchedulerInput({ state, projection, context, externalSources });
   if (compiled.status !== 'compiled') return { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] };
   if (!compiled.compilation.input) {
     const codes = compiled.compilation.issues.filter((issue) => issue.blocking).map((issue) => issue.code);

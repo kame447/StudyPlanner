@@ -21,6 +21,8 @@ export {
   WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
 } from '../application/weeklyPlanningStableV5SessionCodec';
 export { scheduleWeeklyPlanningStableV5Preview } from '../semantic/weeklyPlanningStableV5PlacementEngine';
+export { createStableV5ExternalConstraintSources } from '../application/weeklyPlanningStableV5ExternalSources';
+export type { ExternalConstraintSourceSnapshot } from '../semantic/weeklyPlanningAvailabilityResolver';
 export { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
 export {
   questionIntentForStableV5Dialogue,

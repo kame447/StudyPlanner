@@ -52,11 +52,13 @@ export const VNEXT_PATCH_FIELDS = {
   task_date_rule: ['ruleKind', 'dateExpression', 'constraintLevel'],
   availability_declaration: ['availabilityKind', 'dateExpression', 'namedTimePeriod', 'startTime', 'endTime', 'recurrenceKind', 'days', 'capacityMinutes', 'constraintLevel'],
   relation: ['relationKind'],
+  constraint_source_request: ['sourceKind', 'selector', 'requestedAction'],
 } as const;
 
 const payloadKindFields: Partial<Record<VNextAddFact['kind'], string>> = {
   effort_estimate: 'effortKind', temporal_constraint: 'constraintKind', planning_window: 'windowKind',
   recurrence: 'recurrenceKind', task_date_rule: 'ruleKind', availability_declaration: 'availabilityKind', relation: 'relationKind',
+  constraint_source_request: 'sourceKind',
 };
 const referenceFields = { taskId: 'taskRef', componentId: 'componentRef', parentComponentId: 'parentComponentRef',
   targetFactId: 'targetRef', fromTaskId: 'fromTaskRef', toTaskId: 'toTaskRef' } as const;
@@ -250,6 +252,8 @@ export function applyWeeklyPlanningVNextTurn(
         days: fact.days, capacityMinutes: fact.capacityMinutes, constraintLevel: fact.constraintLevel, resolutionStatus: 'unresolved' };
       case 'relation': return { kind: fact.relationKind, fromTaskId: ref(fact.fromTaskRef, `${path}.fromTaskRef`),
         toTaskId: ref(fact.toTaskRef, `${path}.toTaskRef`) };
+      case 'constraint_source_request': return { kind: fact.sourceKind, selector: fact.selector,
+        requestedAction: fact.requestedAction, resolutionStatus: 'unresolved' };
     }
   };
   const touchedEfforts = new Set<string>();

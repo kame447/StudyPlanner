@@ -6,6 +6,7 @@ import {
   SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5,
   SEMANTIC_AVAILABILITY_KINDS_V5, SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5,
   SEMANTIC_STUDY_PURPOSES_V5, SEMANTIC_STUDY_ACTIVITY_KINDS_V5,
+  SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5,
 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { CANONICAL_WEEKDAY_DATE_EXPRESSIONS } from '../../semantic/weeklyPlanningCalendarResolver';
 import { WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5 } from '../../semantic/weeklyPlanningSemanticSchemaV5';
@@ -48,6 +49,8 @@ export const VNEXT_TASK_DATE_RULE_REQUIREMENT = `task_date_rule uses ruleKind ${
 export const VNEXT_AVAILABILITY_REQUIREMENT = `availability_declaration has no task reference. availabilityKind is ${SEMANTIC_AVAILABILITY_KINDS_V5.join(', ')}; recurrenceKind is null or ${SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5.join(', ')}. State the date, named period, clocks or recurrence that scopes it. capacityMinutes is positive only for capacity; no_additional_constraint has no positive clocks/period/recurrence/days/capacity. Resolution status is assigned by code.`;
 export const VNEXT_TASK_RELATION_REQUIREMENT = `relation orders tasks using relationKind ${VNEXT_TASK_RELATION_KINDS.join(', ')} and fromTaskRef/toTaskRef. It is separate from relate, which decides whether two workloads are the same or distinct.`;
 
+export const VNEXT_CONSTRAINT_SOURCE_REQUIREMENT = `constraint_source_request states whether to use an external constraint source: sourceKind is ${SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5.join(', ')}, selector is active, requestedAction is use or stop_using. It has no task reference. Resolution belongs to the existing V5 source resolver; an unavailable source is not an empty calendar. Stopping a source does not authorize overlapping existing commitments.`;
+
 const described = (rule: FieldRule, description: string): FieldRule => ({ ...rule, schema: { ...rule.schema, description } });
 
 /** The same field owner supplies standalone corrections and native provider patches. */
@@ -77,6 +80,8 @@ const changesByKind = {
     days: described(strings, VNEXT_AVAILABILITY_REQUIREMENT), capacityMinutes: described(number, VNEXT_AVAILABILITY_REQUIREMENT),
     constraintLevel: enumeration(SEMANTIC_CONSTRAINT_LEVELS_V5) },
   relation: { relationKind: described(enumeration(VNEXT_TASK_RELATION_KINDS), VNEXT_TASK_RELATION_REQUIREMENT) },
+  constraint_source_request: { sourceKind: described(enumeration(SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5), VNEXT_CONSTRAINT_SOURCE_REQUIREMENT),
+    selector: enumeration(['active']), requestedAction: described(enumeration(['use', 'stop_using']), VNEXT_CONSTRAINT_SOURCE_REQUIREMENT) },
 } satisfies Record<VNextPatch['kind'], Record<string, FieldRule>>;
 
 function objectSchema(properties: Record<string, unknown>): Record<string, unknown> {
