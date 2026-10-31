@@ -29,6 +29,7 @@ import {
 import { fixVNextDateExpression, vnextTemporalBoundRepairFields } from '../weeklyPlanningVNextTemporalBound';
 import { isValidCalendarDate, resolveCanonicalDateExpression } from '../../semantic/weeklyPlanningCalendarResolver';
 import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
+import { vnextQuestionKeyAllowsProvisionalTimebox } from '../projection/weeklyPlanningVNextProjection';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -438,7 +439,13 @@ export function applyWeeklyPlanningVNextTurn(
   });
   delta.defer.forEach((deferral, index) => {
     if (!deferral.questionKey.trim()) error('invalid_value', `defer[${index}].questionKey`);
-    else if (!next.deferrals.some(item => item.questionKey === deferral.questionKey)) next.deferrals.push({ ...deferral, createdRevision: graph.revision });
+    else if (deferral.allocation !== 'none' && (deferral.allocation !== 'provisional_timebox'
+      || !vnextQuestionKeyAllowsProvisionalTimebox(deferral.questionKey))) error('invalid_value', `defer[${index}].allocation`);
+    else if (!next.deferrals.some(item => item.questionKey === deferral.questionKey && item.allocation === deferral.allocation)) {
+      // A later statement about the same question replaces its allocation (e.g. deferred, then "place it provisionally").
+      next.deferrals = next.deferrals.filter(item => item.questionKey !== deferral.questionKey);
+      next.deferrals.push({ ...deferral, createdRevision: graph.revision });
+    }
   });
 
   const validated = validateWeeklyPlanningFactGraphValueV5(graph);

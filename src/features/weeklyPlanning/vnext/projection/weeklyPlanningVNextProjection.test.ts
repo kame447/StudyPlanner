@@ -145,7 +145,7 @@ describe('projectWeeklyPlanningVNext', () => {
   it('hides only the deferred question key', () => {
     let state = withTask([W('t', 'scope_total', 20), W('c', 'completed', 10)]);
     const key = projectWeeklyPlanningVNext(state).questions[0].key;
-    state = turn(state, { defer: [{ questionKey: key }] });
+    state = turn(state, { defer: [{ questionKey: key, allocation: 'none' }] });
     expect(projectWeeklyPlanningVNext(state)).toMatchObject({ questions: [], deferredQuestions: [{ key }] });
   });
 
@@ -276,7 +276,7 @@ describe('projectWeeklyPlanningVNext', () => {
 
     it('A12 a deferred inconsistency returns when the values it asked about change', () => {
       let state = withTask([page('t', 'scope_total', 20), page('c', 'completed', 10), page('r', 'remaining', 7)]);
-      state = turn(state, { defer: [{ questionKey: projectWeeklyPlanningVNext(state).questions[0].key }] });
+      state = turn(state, { defer: [{ questionKey: projectWeeklyPlanningVNext(state).questions[0].key, allocation: 'none' }] });
       expect(projectWeeklyPlanningVNext(state).questions).toEqual([]);
       state = turn(state, { patch: [amountPatch('c12', active(state, 'completed'), 12)] });
       expect(projectWeeklyPlanningVNext(state).questions[0]?.code).toBe('remaining_inconsistent');

@@ -198,7 +198,7 @@ function toDelta(state: WeeklyPlanningVNextState, turn: FixtureTurn, turnIndex: 
   }
   if (turn.answer?.value === 'defer') {
     const question = projectWeeklyPlanningVNext(state).questions.find((candidate) => candidate.code === turn.answer?.question);
-    if (question) delta.defer.push({ questionKey: question.key });
+    if (question) delta.defer.push({ questionKey: question.key, allocation: 'none' });
   } else if (turn.answer?.value === 'estimate_60_minutes') {
     const question = projectWeeklyPlanningVNext(state).questions.find((candidate) => candidate.code === turn.answer?.question);
     if (question?.forWork) delta.add.push({ kind: 'effort_estimate', localId: `answer-${turnIndex}-estimate`,

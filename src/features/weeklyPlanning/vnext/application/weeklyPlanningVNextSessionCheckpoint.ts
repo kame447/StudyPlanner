@@ -78,6 +78,13 @@ function withStatedActivity(value: unknown): unknown {
     (isRecord(context) && !('activityKind' in context) ? { ...context, activityKind: 'unknown' } : context)) } };
 }
 
+/** A deferral saved before deferrals carried an allocation (#926) let nothing be placed: 'none'. */
+function withDeferralAllocation(value: unknown): unknown {
+  if (!isRecord(value) || !Array.isArray(value.deferrals)) return value;
+  return { ...value, deferrals: value.deferrals.map((deferral) =>
+    (isRecord(deferral) && !('allocation' in deferral) ? { ...deferral, allocation: 'none' } : deferral)) };
+}
+
 function validState(value: unknown, conversationId: string): value is WeeklyPlanningVNextState {
   if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals'])
     || value.version !== WEEKLY_PLANNING_VNEXT_STATE_VERSION || !isRecord(value.graph)
@@ -96,7 +103,8 @@ function validState(value: unknown, conversationId: string): value is WeeklyPlan
     && relation.lineageIds.every((id) => typeof id === 'string')
     && Number.isInteger(relation.createdRevision));
   const deferralsOk = value.deferrals.every((deferral) => isRecord(deferral)
-    && typeof deferral.questionKey === 'string' && Number.isInteger(deferral.createdRevision));
+    && typeof deferral.questionKey === 'string' && Number.isInteger(deferral.createdRevision)
+    && (deferral.allocation === 'none' || deferral.allocation === 'provisional_timebox'));
   return relationsOk && deferralsOk;
 }
 
@@ -147,7 +155,7 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
       || typeof value.conversationId !== 'string' || !value.conversationId.trim()
       || typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))
       || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion', 'preview', 'messages'])) return null;
-    const state = withStatedActivity(value.vnext.state);
+    const state = withDeferralAllocation(withStatedActivity(value.vnext.state));
     if (!validState(state, value.conversationId) || !validPreview(value.vnext.preview)
       || !validMessages(value.vnext.messages)) return null;
     const presented = value.vnext.presentedQuestion;

@@ -47,7 +47,7 @@ describe('request-scoped provider reference vocabulary', () => {
     expect(context.activeFacts[0]).toMatchObject({ id: 'F1', taskId: 'F1', title: 'Keep F1 literal title' });
     const reading: VNextProviderReading = { delta: { ...empty(), add: [{ kind: 'effort_estimate', localId: 'F1',
       taskRef: { factId: 'F1' }, targetRef: { workLineageId: 'W1' }, effortKind: 'total_duration',
-      minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' }], defer: [{ questionKey: 'Q1' }] },
+      minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' }], defer: [{ questionKey: 'Q1', allocation: 'none' }] },
     answer: { kind: 'option', optionId: 'O1' } };
     const result = references.decodeReading(reading);
     expect(result.status).toBe('decoded');

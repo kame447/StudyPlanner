@@ -66,8 +66,16 @@ export interface VNextWorkRelation {
   createdRevision: number;
 }
 
+/**
+ * What a deferral lets the scheduler do meanwhile. provisional_timebox is Stable V5's scheduler
+ * permission (#305): the effort is unknown and the user asks to place a provisional block anyway.
+ * It never states an amount or estimate; only missing-estimate and missing-work questions take it.
+ */
+export type VNextDeferralAllocation = 'none' | 'provisional_timebox';
+
 export interface VNextQuestionDeferral {
   questionKey: string;
+  allocation: VNextDeferralAllocation;
   createdRevision: number;
 }
 
@@ -277,6 +285,7 @@ export interface VNextRelate {
 
 export interface VNextDefer {
   questionKey: string;
+  allocation: VNextDeferralAllocation;
 }
 
 export interface VNextTurnDelta {
@@ -380,7 +389,8 @@ export type VNextEstimateBasis =
   | 'observed_pace'
   | 'observed_memory_pace'
   | 'session_duration'
-  | 'task_total';
+  | 'task_total'
+  | 'provisional_timebox';
 
 export interface VNextWorkItem {
   workLineageId: string;

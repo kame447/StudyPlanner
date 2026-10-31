@@ -52,7 +52,7 @@ describe('VNext → Stable V5 scheduler bridge', () => {
       task('other', '英語'), { ...minutesWork('o', 'other', 5), unitCode: 'page', unitLabel: 'ページ' },
     ] });
     const [question] = projectWeeklyPlanningVNext(state).questions;
-    state = turn(state, { defer: [{ questionKey: question.key }] });
+    state = turn(state, { defer: [{ questionKey: question.key, allocation: 'none' }] });
     const result = compile(state);
     expect(result.compilation.status).toBe('ready');
     expect(result.compilation.input!.movableWorkItems.map((item) => item.baseEstimatedMinutes)).toEqual([30]);

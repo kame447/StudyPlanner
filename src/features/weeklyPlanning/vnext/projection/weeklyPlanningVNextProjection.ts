@@ -8,6 +8,7 @@
 // completed…", "binds a same-turn quantity and total correction in either order",
 // "never silently drops or double-counts other-basis work…").
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
+import { WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5 } from '../../intake/weeklyPlanningProvisionalTimeboxStateV5';
 import type { WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
 import type {
   VNextEffortEstimateFact,
@@ -52,6 +53,13 @@ function questionKey(params: {
     .join(':');
 }
 
+/** Questions whose deferral may carry Stable V5's provisional timebox: the work exists, its effort is unknown. */
+const PROVISIONAL_TIMEBOX_QUESTION_CODES: readonly VNextQuestionCode[] = ['missing_effort_estimate', 'missing_schedulable_work'];
+
+export function vnextQuestionKeyAllowsProvisionalTimebox(key: string): boolean {
+  return (PROVISIONAL_TIMEBOX_QUESTION_CODES as readonly string[]).includes(key.split(':', 1)[0]);
+}
+
 /**
  * Minutes per unit observed in the user's recorded memory-pace sessions, by unit identity
  * (`vnextUnitIdentity`: the code, and the label of a custom unit — 首 is not 項目): derived each turn
@@ -69,6 +77,8 @@ interface ProjectionContext {
   /** Task lineages whose stated study activity is memorization. */
   memorizationTasks: Set<string>;
   observedMemoryPace: WeeklyPlanningVNextObservedMemoryPace;
+  /** Keys of questions the user deferred with a provisional timebox. */
+  provisionalKeys: Set<string>;
 }
 
 function hasRelation(
@@ -337,7 +347,13 @@ function estimateOwnerWork(
         work.push(workItem(unit, { minutes: unit.amount * minutesPerUnit, basis: 'observed_memory_pace', effortIds: [] }));
         continue;
       }
-      return ownerQuestion(owner, 'missing_effort_estimate', [unit.workLineageId], { forWork, values: [unit.amount] });
+      const missing = ownerQuestion(owner, 'missing_effort_estimate', [unit.workLineageId], { forWork, values: [unit.amount] });
+      // As in Stable V5, a provisional timebox places Stable V5's fixed block for the asked work; a stated estimate wins.
+      if (context.provisionalKeys.has(missing.question!.key)) {
+        work.push(workItem(unit, { minutes: WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5, basis: 'provisional_timebox', effortIds: [] }));
+        continue;
+      }
+      return missing;
     }
     if (candidates.some((candidate) => !sameMinutes(candidate.minutes, candidates[0].minutes))) {
       const effortLineages = candidates.flatMap((candidate) => candidate.effortIds.map(context.resolver.lineageOf));
@@ -400,11 +416,25 @@ function projectTaskTotalOwner(
 function missingWorkOwner(context: ProjectionContext, taskId: string): VNextOwnerProjection {
   const ownerKey = context.resolver.ownerKeyOf({ taskId, componentId: null });
   const lineageIds = [context.resolver.lineageOf(taskId)];
+  const key = questionKey({ code: 'missing_schedulable_work', ownerKey, lineageIds, values: [] });
+  if (context.provisionalKeys.has(key)) {
+    // Stable V5 gives an open-ended task with no work the same provisional block (its wptb_ workload).
+    const minutes = WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5;
+    return {
+      ownerKey, taskId, componentId: null, status: 'ready', question: null,
+      work: [{
+        workLineageId: lineageIds[0], definingFactId: taskId, ownerKey, taskId, componentId: null,
+        quantityRole: 'target', derivedFromTotal: false, amount: minutes, unitCode: 'minute', unitLabel: '分',
+        rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
+        minutes, estimateBasis: 'provisional_timebox', estimateFactIds: [],
+      }],
+    };
+  }
   return {
     ownerKey, taskId, componentId: null, status: 'question', work: [],
     question: {
       code: 'missing_schedulable_work',
-      key: questionKey({ code: 'missing_schedulable_work', ownerKey, lineageIds, values: [] }),
+      key,
       ownerKey, taskId, componentId: null, subjectLineageIds: lineageIds, forWork: null, options: [],
     },
   };
@@ -427,6 +457,8 @@ export function projectWeeklyPlanningVNext(
       .filter((study) => study.activityKind === 'memorization_retrieval')
       .map((study) => resolver.lineageOf(study.taskId))),
     observedMemoryPace,
+    provisionalKeys: new Set(state.deferrals
+      .filter((deferral) => deferral.allocation === 'provisional_timebox').map((deferral) => deferral.questionKey)),
   };
 
   // Settle which work is scheduled first, so scope-wide totals see the final work set.

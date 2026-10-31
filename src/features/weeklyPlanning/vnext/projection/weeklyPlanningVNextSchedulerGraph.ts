@@ -89,9 +89,11 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
   const workloads: WorkloadFactV5[] = [];
   const estimates: EffortEstimateFactV5[] = [];
   for (const item of readyOwners.flatMap((owner) => owner.work)) {
-    const taskTotal = item.estimateBasis === 'task_total' && item.definingFactId === item.taskId;
-    const id = taskTotal ? `vnext-task-total:${current(item.taskId)}` : current(item.definingFactId);
-    if (taskTotal) canonical.set(id, item.estimateFactIds); // a task total stands for its stated totals
+    // Task-level work (a stated task total, or a provisional block for a task with no work) needs its own id.
+    const taskLevel = item.definingFactId === item.taskId;
+    const id = taskLevel ? `vnext-task-total:${current(item.taskId)}` : current(item.definingFactId);
+    // A task total stands for its stated totals; a provisional block only for its task.
+    if (taskLevel) canonical.set(id, item.estimateBasis === 'task_total' ? item.estimateFactIds : [current(item.taskId)]);
     projectedEstimates.set(id, item.estimateFactIds);
     const source = sources.get(item.definingFactId)!;
     workloads.push({
