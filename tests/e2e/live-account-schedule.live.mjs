@@ -141,9 +141,12 @@ async function createTestEvent(page) {
   const modal = page.locator('.month-event-modal-overlay');
   await modal.getByLabel('タイトル').fill(eventTitle);
 
+  // Click the visible switch, not the hidden input with force: a forced click skips the stability
+  // check and, while the dialog still animates in, can land on the time field instead (#947).
   const allDay = modal.locator('.month-event-all-day-switch input[type="checkbox"]');
   if (!(await allDay.isChecked())) {
-    await allDay.check({ force: true });
+    await modal.locator('.month-event-all-day-switch').click();
+    await expect(allDay).toBeChecked();
   }
 
   await modal.getByRole('button', { name: '保存', exact: true }).click();
