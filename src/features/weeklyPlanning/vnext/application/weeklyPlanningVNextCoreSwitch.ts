@@ -1,6 +1,6 @@
 // The only way VNext could become the conversation core: one user-facing switch
 // that requires every part of the replacement together (design §9.2). Any
-// missing part keeps Stable V5. The local runtime allowance never enables production.
+// missing part keeps Stable V5. The local runtime allowance never enables a production host.
 import { isLocalDevelopmentHost } from '../../../../lib/devAuthShortcut';
 
 export type WeeklyPlanningVNextSwitchPart =
@@ -38,18 +38,18 @@ export function resolveWeeklyPlanningConversationCore(params: {
 }
 
 /** One page load chooses one hook and storage namespace. Change the query and reload on the same
- * origin to roll back; the build flag only permits that explicit local choice. LocalRuntime tests
- * guard default-off, production exclusion and separate V5/VNext checkpoint bytes.
+ * origin to roll back; the build flag only permits that explicit local choice. A production build
+ * may run locally so the existing PROD-only trace transport is reachable. LocalRuntime tests guard
+ * default-off, production-host exclusion and separate V5/VNext checkpoint bytes.
  */
 export function resolveLocalWeeklyPlanningConversationCore(params: {
-  developmentBuild: boolean;
   allowance: string | undefined;
   hostname: string;
   search: string;
   readyParts: ReadonlySet<WeeklyPlanningVNextSwitchPart>;
 }): WeeklyPlanningConversationCore {
   return resolveWeeklyPlanningConversationCore({ readyParts: params.readyParts,
-    vnextRequested: params.developmentBuild && params.allowance === 'true'
+    vnextRequested: params.allowance === 'true'
       && isLocalDevelopmentHost(params.hostname)
       && new URLSearchParams(params.search).get('weeklyPlanningCore') === 'vnext' });
 }

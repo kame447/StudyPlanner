@@ -47,18 +47,36 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     setWeeklyPlanningTraceRepositoryForTests(createInMemoryWeeklyPlanningTraceRepository()); });
   afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined;
     resetWeeklyPlanningStableV5RuntimeSessionsForTest(); resetWeeklyPlanningStableV5TraceRuntimeForTest();
-    setWeeklyPlanningTraceRepositoryForTests(undefined); restore(); });
+    setWeeklyPlanningTraceRepositoryForTests(undefined); vi.unstubAllEnvs(); restore(); });
 
   it.each([
-    { developmentBuild: true, allowance: 'true', hostname: 'localhost', search: '?weeklyPlanningCore=vnext', expected: 'vnext' },
-    { developmentBuild: true, allowance: 'true', hostname: 'localhost', search: '', expected: 'stable_v5' },
-    { developmentBuild: true, allowance: undefined, hostname: 'localhost', search: '?weeklyPlanningCore=vnext', expected: 'stable_v5' },
-    { developmentBuild: true, allowance: 'true', hostname: 'studyplanner.example', search: '?weeklyPlanningCore=vnext', expected: 'stable_v5' },
-    { developmentBuild: false, allowance: 'true', hostname: 'localhost', search: '?weeklyPlanningCore=vnext', expected: 'stable_v5' },
-    { developmentBuild: true, allowance: 'true', hostname: 'localhost', search: '?weeklyPlanningCore=v5', expected: 'stable_v5' },
-  ])('resolves $hostname, dev=$developmentBuild, allowance=$allowance, $search to $expected', ({ expected, ...params }) => {
+    { allowance: 'true', hostname: 'localhost', search: '?weeklyPlanningCore=vnext', expected: 'vnext' },
+    { allowance: 'true', hostname: 'localhost', search: '', expected: 'stable_v5' },
+    { allowance: undefined, hostname: 'localhost', search: '?weeklyPlanningCore=vnext', expected: 'stable_v5' },
+    { allowance: 'true', hostname: 'studyplanner.example', search: '?weeklyPlanningCore=vnext', expected: 'stable_v5' },
+    { allowance: 'false', hostname: 'localhost', search: '?weeklyPlanningCore=vnext', expected: 'stable_v5' },
+    { allowance: 'true', hostname: 'localhost', search: '?weeklyPlanningCore=v5', expected: 'stable_v5' },
+  ])('resolves $hostname, allowance=$allowance, $search to $expected', ({ expected, ...params }) => {
     expect(resolveLocalWeeklyPlanningConversationCore({ ...params, readyParts }).core).toBe(expected);
     expect(resolveLocalWeeklyPlanningConversationCore({ ...params, readyParts: new Set() }).core).toBe('stable_v5');
+  });
+
+  it.each([
+    { allowance: 'true', hostname: 'localhost', expected: 'vnext' },
+    { allowance: undefined, hostname: 'localhost', expected: 'stable_v5' },
+    { allowance: 'true', hostname: 'laplance.com', expected: 'stable_v5' },
+  ])('production-build composition on $hostname, allowance=$allowance chooses $expected', async ({ allowance, hostname, expected }) => {
+    vi.stubEnv('DEV', false); vi.stubEnv('PROD', true);
+    vi.stubEnv('VITE_ENABLE_WEEKLY_PLANNING_VNEXT', allowance ?? '');
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname, search: '?weeklyPlanningCore=vnext' } });
+    // The composition chooses once per page load; reload its real entry under these build inputs.
+    vi.resetModules();
+    const [entry, vnext, stable] = await Promise.all([
+      import('../../application/useWeeklyPlanningConversationApplication'),
+      import('./useWeeklyPlanningVNextApplication'), import('../../application/useWeeklyPlanningApplication'),
+    ]);
+    expect(entry.useWeeklyPlanningConversationApplication).toBe(expected === 'vnext'
+      ? vnext.useWeeklyPlanningVNextApplication : stable.useWeeklyPlanningApplication);
   });
 
   function fixture(interpret: WeeklyPlanningVNextLocalApplicationServices['interpret'] = () => async () => seed) {
@@ -112,7 +130,7 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     expect(storage.storage.getItem(v5Key)).toBe(v5Bytes);
 
     await act(async () => renderer!.unmount()); renderer = undefined;
-    expect(resolveLocalWeeklyPlanningConversationCore({ developmentBuild: true, allowance: 'true', hostname: 'localhost', search: '', readyParts }).core).toBe('stable_v5');
+    expect(resolveLocalWeeklyPlanningConversationCore({ allowance: 'true', hostname: 'localhost', search: '', readyParts }).core).toBe('stable_v5');
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     await act(async () => { renderer = create(<V5Harness ref={ref} {...input} />); });
     expect(ref.current!.state.messages).toEqual(v5State.messages);
@@ -124,7 +142,7 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     expect(resumed.conversationId).toBe(original.conversationId);
     expect(memory.plans.size).toBe(1);
     await act(async () => renderer!.unmount()); renderer = undefined;
-    expect(resolveLocalWeeklyPlanningConversationCore({ developmentBuild: true, allowance: 'true', hostname: 'localhost',
+    expect(resolveLocalWeeklyPlanningConversationCore({ allowance: 'true', hostname: 'localhost',
       search: '?weeklyPlanningCore=vnext', readyParts }).core).toBe('vnext');
     await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
     expect(local.readCheckpoint()!.vnext.state).toEqual(core.vnext.state);

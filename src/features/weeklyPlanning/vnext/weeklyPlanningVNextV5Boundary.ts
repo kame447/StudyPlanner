@@ -6,7 +6,7 @@
 // contingency texts, and the recovery evidence for a failed turn; the renderer
 // core is created without V5's prompt trace).
 // Read-only; VNext never writes V5 state, preview, trace or storage through this seam.
-// The sole external composition entry permits VNext only in an explicitly enabled local dev runtime.
+// The sole external composition entry permits VNext only in an explicitly enabled local runtime.
 export {
   createEmptyWeeklyPlanningFactGraphV5,
   type EffortEstimateFactV5,
