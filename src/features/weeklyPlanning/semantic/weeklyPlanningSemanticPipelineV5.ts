@@ -288,6 +288,8 @@ export function createWeeklyPlanningSemanticPipelineV5(
             targetFactId: contextualTargetFactId,
           }
         : pendingQuestion;
+      const calendarContext = { currentDate: input.schedulerContext.currentDate,
+        weekStartsOn: input.schedulerContext.weekStartsOn };
       const contextualAnswer = contextualPendingQuestion && contextualAnswerEligible
         ? applyWeeklyPlanningStableV5ContextualAnswer({
             graph,
@@ -297,6 +299,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
             turnId: input.turnId,
             expectedRevision: input.expectedRevision,
             userText: input.userText,
+            calendarContext,
           })
         : null;
       recordWeeklyPlanningStableV5DebugTrace({
@@ -319,6 +322,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         expectedRevision: input.expectedRevision,
         userText: input.userText,
         supplementalContext: input.supplementalContext,
+        calendarContext,
       };
       const baseCanonicalization = contextualAnswer
         ?? canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({

@@ -936,7 +936,7 @@ it.each([false, true])('persists actual validator-addressed date repair through 
   resetSelfReferenceWorld();
   const turn = await generatedSelfReferenceTurn('date_repair', oversized);
   expect(turn.result.normalization.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
-  expect(turn.result.graph.temporalConstraints[0].dateExpression).toBe('tomorrow');
+  expect(turn.result.graph.temporalConstraints[0].dateExpression).toBe('2026-10-11');
   const { entry, stored } = await persistGeneratedSelfReference(turn);
   expect(entry.aiInterpreter.input.requests.map(request => request.attempt)).toEqual(['initial', 'repair']);
   expect(entry.aiInterpreter.rawResponses[0].text).toContain('明日');
@@ -958,7 +958,7 @@ it.each([false, true])('persists the actual fixed-interval repair directive thro
   const turn = await generatedSelfReferenceTurn('fixed_interval_repair', oversized);
   expect(turn.result.normalization.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
   expect(turn.result.graph.temporalConstraints[0]).toMatchObject({
-    kind: 'fixed_interval', constraintLevel: 'hard', dateExpression: 'tomorrow',
+    kind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-10-11',
     startTime: '13:00', endTime: '14:00', precision: 'approximate',
   });
   const { entry, stored } = await persistGeneratedSelfReference(turn);

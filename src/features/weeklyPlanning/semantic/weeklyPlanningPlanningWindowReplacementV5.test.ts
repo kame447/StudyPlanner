@@ -361,7 +361,7 @@ it.each(['replace', 'modify'] as const)('applies explicit %s of tomorrow while t
   expect(second.canonicalization?.errors).toEqual([]);
   expect(second.canonicalization?.status).toBe('applied');
   expect(createWeeklyPlanningActiveSchedulerGraphViewV5(second.graph).planningWindows).toEqual([
-    expect.objectContaining({ value: 'today' }),
+    expect.objectContaining({ kind: 'absolute', value: '2026-07-27', start: '2026-07-27', end: '2026-07-27' }),
   ]);
   expect(second.graph.tasks).toEqual([]);
   expect(first.graph).toEqual(original);
@@ -425,6 +425,8 @@ it.each(['replace', 'modify'] as const)('finalizes an explicit window %s through
     }, schedulerContext });
   expect(result.canonicalization?.errors).toEqual([]);
   expect(result.canonicalization?.status).toBe('applied');
-  expect(createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph).planningWindows).toEqual([expect.objectContaining({ value: 'today' })]);
+  expect(createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph).planningWindows).toEqual([
+    expect.objectContaining({ kind: 'absolute', value: '2026-07-27', start: '2026-07-27', end: '2026-07-27' }),
+  ]);
   expect(result.graph.factLifecycles.find(entry => entry.factId === 'date-uncertainty')?.status).toBe('removed');
 });

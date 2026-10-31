@@ -26,10 +26,10 @@ function fixture(statusA = ['Killed'], statusB = ['Survived']) {
 describe('complete mutation partition', () => {
   it('derives inclusive boundaries from current top-level functions and retains both related roots', () => {
     const ranges = partitionRanges(sources, ts);
-    expect(ranges.a).toEqual([{ file: targets[0], start: 1, end: 52 }, { file: targets[1], start: 184, end: 458 }]);
-    expect(ranges.b).toEqual([{ file: targets[0], start: 53, end: 58 }, { file: targets[1], start: 1, end: 183 }, { file: targets[1], start: 459, end: 716 }]);
+    expect(ranges.a).toEqual([{ file: targets[0], start: 1, end: 52 }, { file: targets[1], start: 186, end: 460 }]);
+    expect(ranges.b).toEqual([{ file: targets[0], start: 53, end: 58 }, { file: targets[1], start: 1, end: 185 }, { file: targets[1], start: 461, end: 719 }]);
     const moved = { ...sources, [targets[1]]: '\n' + sources[targets[1]] };
-    expect(partitionRanges(moved, ts).a[1]).toMatchObject({ start: 185, end: 459 });
+    expect(partitionRanges(moved, ts).a[1]).toMatchObject({ start: 187, end: 461 });
   });
   it('rejects missing anchors rather than losing a source tail', () => {
     expect(() => partitionRanges({ ...sources, [targets[0]]: 'export const missing = 1;' }, ts)).toThrow('anchor');
