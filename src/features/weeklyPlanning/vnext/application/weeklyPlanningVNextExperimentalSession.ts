@@ -22,6 +22,7 @@ import {
   createWeeklyPlanningPreviewDisplayBlock,
 } from '../../preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyPlanDraftBlock } from '../../types';
+import type { WeeklyDraftCandidate } from '../../scheduling/weeklyDraftCandidateGenerator';
 import { projectWeeklyPlanningVNext, type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
 import { vnextUnitIdentity } from '../weeklyPlanningVNextWorkIdentity';
 import type { Actual, MonthEvent, Plan, ScheduleTemplate } from '../../../../types/domain';
@@ -152,6 +153,8 @@ export type WeeklyPlanningVNextExperimentalTurnOutcome =
   | 'checkpoint_unreadable';
 
 export interface WeeklyPlanningVNextExperimentalTurn {
+  /** Exact V5 placement candidates for the ordinary preview UI, never rebuilt from blocks. */
+  draftCandidates?: WeeklyDraftCandidate[];
   outcome: WeeklyPlanningVNextExperimentalTurnOutcome;
   graphRevision: number | null;
   readiness: WeeklyPlanningVNextProjection['readiness'] | null;
@@ -217,7 +220,7 @@ function shownPreview(
   calendar: WeeklyPlanningVNextCalendar,
   state: WeeklyPlanningVNextState,
   projection: WeeklyPlanningVNextProjection,
-): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[] } {
+): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[]; draftCandidates?: WeeklyDraftCandidate[] } {
   const context = schedulingContext(scope, ports, state);
   // V5 resolves source selection; placement still enforces raw calendar busy time after stop_using.
   // ConstraintSources tests guard the use/stop and unavailable-source controls through this boundary.
@@ -253,6 +256,7 @@ function shownPreview(
   const previewId = blocks[0]?.behaviorMetadata?.previewMetadata?.previewId;
   return {
     preview: previewId ? { previewId, graphRevision: state.graph.revision, blocks } : null,
+    draftCandidates: scheduled.candidates,
     unplacedOwnerKeys: compiled.unplacedOwnerKeys,
     previewBlockedBy: [],
   };
@@ -286,6 +290,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   ports: WeeklyPlanningVNextExperimentalPorts;
   turnId: string;
   userText: string;
+  supplementalContext?: string;
   /**
    * Graph revision of the reply the user is answering (`graphRevision` of the turn shown), or null
    * before any reply. Another tab may have moved the conversation on since; then the stored question is
@@ -320,6 +325,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     defaultPlanningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate } };
   const interpretation = await ports.interpret({
     client: ports.client, state, projection: before, presentedQuestion, userText: params.userText, clock,
+    ...(params.supplementalContext === undefined ? {} : { supplementalContext: params.supplementalContext }),
     observedMemoryPace: pace,
     // The reply the question was shown in: what the user's words answer (e.g. an ordinal over its options).
     presentedText: presentedQuestion ? presented!.shownText : null,
@@ -476,6 +482,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     readiness: projection.readiness,
     question,
     preview,
+    draftCandidates: preview === made.preview ? made.draftCandidates ?? [] : [],
     unplacedOwnerKeys,
     previewBlockedBy,
     reply,

@@ -5,8 +5,8 @@
 // turn's result (its typed input, the context helpers that build it, and V5's
 // contingency texts, and the recovery evidence for a failed turn; the renderer
 // core is created without V5's prompt trace).
-// Read-only; VNext never writes V5 state, preview, trace or storage, and no
-// production module imports VNext.
+// Read-only; VNext never writes V5 state, preview, trace or storage through this seam.
+// The sole external composition entry permits VNext only in an explicitly enabled local dev runtime.
 export {
   createEmptyWeeklyPlanningFactGraphV5,
   type EffortEstimateFactV5,
@@ -22,6 +22,7 @@ export {
 } from '../application/weeklyPlanningStableV5SessionCodec';
 export { scheduleWeeklyPlanningStableV5Preview } from '../semantic/weeklyPlanningStableV5PlacementEngine';
 export { createStableV5ExternalConstraintSources } from '../application/weeklyPlanningStableV5ExternalSources';
+export { getWeeklyPlanningStableV5StorageSnapshot } from '../application/weeklyPlanningStableV5SessionStorage';
 export type { ExternalConstraintSourceSnapshot } from '../semantic/weeklyPlanningAvailabilityResolver';
 export { evaluateWeeklyPlanningLearningStrategyProposalsV5 } from '../application/weeklyPlanningStableV5LearningStrategyProposal';
 export {

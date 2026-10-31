@@ -17,7 +17,7 @@ const empty = (): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [
 /** Translate only the presented slot. Projected work is not misrepresented as a stored fact. */
 function contextualInput(input: WeeklyPlanningVNextInterpretationInput, requestId: string): WeeklyPlanningSemanticNormalizerInputV5 | null {
   const question = input.presentedQuestion;
-  if (!question || input.presentedText === null || input.projection.graphRevision !== input.state.graph.revision
+  if (input.supplementalContext || !question || input.presentedText === null || input.projection.graphRevision !== input.state.graph.revision
     || !input.projection.questions.some(item => item.key === question.key)
     || !['missing_effort_estimate', 'quantity_role_unresolved'].includes(question.code)
     || question.effortMeasurement === 'session_duration') return null;

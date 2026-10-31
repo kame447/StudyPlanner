@@ -54,7 +54,7 @@ export interface WeeklyPlanningTurnApplicationServices {
   outcomeLifecycle: WeeklyPlanningTurnOutcomeLifecycle;
 }
 
-const defaultServices: WeeklyPlanningTurnApplicationServices = {
+export const weeklyPlanningTurnApplicationServices: WeeklyPlanningTurnApplicationServices = {
   candidateDomains: weeklyPlanningRegisteredCandidateDomains,
   submitControlledTurn: submitWeeklyPlanningControlledTurn,
   runtimeGateway: weeklyPlanningTurnRuntimeGateway,
@@ -93,7 +93,7 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
 
 export function submitWeeklyPlanningApplicationTurn(
   params: SubmitWeeklyPlanningApplicationTurnParams,
-  services: WeeklyPlanningTurnApplicationServices = defaultServices,
+  services: WeeklyPlanningTurnApplicationServices = weeklyPlanningTurnApplicationServices,
 ): Promise<WeeklyPlanningTurnSubmissionResult> {
   if (!isPlannerDataReadyForOwner(params.plannerDataAvailability, params.userId)) {
     return Promise.resolve({ accepted: false, draftCandidates: [] });

@@ -36,6 +36,8 @@ export interface WeeklyPlanningVNextInterpretationInput {
   /** The actual assistant message that displayed this question; null iff no question is presented. */
   presentedText: string | null;
   userText: string;
+  /** Attachment-derived supplemental evidence; userText remains the user's source/intent channel. */
+  supplementalContext?: string;
   clock: WeeklyPlanningVNextInterpretationClock;
 }
 

@@ -143,7 +143,7 @@ export function createWeeklyPlanningVNextOptionChoiceInterpreter(params: {
         latencyMs: Math.max(0, Date.now() - started), optionChoice: diagnostic(reason) } };
     };
     // Jev chooses only against the reply the user actually saw; without it, the full reading reads the words.
-    if (!question || input.presentedText === null || !(VNEXT_OPTION_CHOICE_CODES as readonly string[]).includes(question.code)
+    if (input.supplementalContext || !question || input.presentedText === null || !(VNEXT_OPTION_CHOICE_CODES as readonly string[]).includes(question.code)
       || question.options.length === 0) {
       return params.fullReading(input);
     }

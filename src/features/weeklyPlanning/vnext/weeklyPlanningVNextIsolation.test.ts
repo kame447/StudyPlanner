@@ -16,11 +16,16 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe('VNext isolation (Issue #926)', () => {
-  it('is not imported by any production module outside vnext/, so Stable V5 stays the only runtime', () => {
+  it('has exactly one external composition entry, whose explicit local allowance keeps production on V5', () => {
     const importers = sourceFiles(join(repository, 'src'))
       .map((path) => relative(repository, path).split(sep).join('/'))
       .filter((path) => !path.startsWith(vnextRoot) && !testSupport.test(path))
       .filter((path) => /from\s+['"][^'"]*\/vnext\//.test(readFileSync(join(repository, path), 'utf8')));
-    expect(importers).toEqual([]);
+    expect(importers).toEqual(['src/features/weeklyPlanning/application/useWeeklyPlanningConversationApplication.ts']);
+    const entry = readFileSync(join(repository, importers[0]), 'utf8');
+    expect(entry).toContain('developmentBuild: import.meta.env.DEV');
+    expect(entry).toContain('resolveLocalWeeklyPlanningConversationCore(');
+    // Executable local/production controls live in LocalRuntime.integration; this test
+    // prevents a second direct entry from bypassing that one gate.
   });
 });
