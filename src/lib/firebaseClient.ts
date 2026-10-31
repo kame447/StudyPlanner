@@ -45,6 +45,8 @@ export function getFirebaseAuth(): Auth | null {
   }
 
   firebaseAuth = getAuth(app);
+  // Verification/reset emails and Firebase's action page follow this locale.
+  firebaseAuth.languageCode = 'ja';
   return firebaseAuth;
 }
 
