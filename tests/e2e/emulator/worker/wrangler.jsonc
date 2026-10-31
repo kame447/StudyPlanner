@@ -1,0 +1,17 @@
+// Local-only Worker for the isolated E2E target (#947): run by start.mjs with `wrangler dev`, never deployed.
+// Durable Objects and migrations mirror workers/ai-proxy/wrangler.jsonc; variables are passed by start.mjs.
+{
+  "name": "studyplanner-ai-proxy-e2e-emulator",
+  "main": "emulatorWorker.mjs",
+  "compatibility_date": "2026-04-10",
+  "durable_objects": {
+    "bindings": [
+      { "name": "AI_QUOTA", "class_name": "AiQuotaDurableObject" },
+      { "name": "AI_TURNS", "class_name": "WeeklyPlanningTurnDurableObject" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["AiQuotaDurableObject"] },
+    { "tag": "v2", "new_sqlite_classes": ["WeeklyPlanningTurnDurableObject"] }
+  ]
+}

@@ -59,6 +59,22 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
+      // Synthetic AI provider: answers only what a test scripts (tests/e2e/emulator/syntheticProvider.mjs).
+      command: 'node tests/e2e/emulator/syntheticProvider.mjs',
+      cwd: repoRoot,
+      url: 'http://127.0.0.1:18790/__synthetic/health',
+      reuseExistingServer: !isCi,
+      timeout: 30_000,
+    },
+    {
+      // The production Worker on wrangler dev, redirected to the emulators and the synthetic provider.
+      command: 'node tests/e2e/emulator/worker/start.mjs',
+      cwd: repoRoot,
+      wait: { stdout: /Ready on http:\/\/127\.0\.0\.1:18787/ },
+      gracefulShutdown: { signal: 'SIGINT', timeout: 20_000 },
+      timeout: 120_000,
+    },
+    {
       command: 'node ./node_modules/vite/bin/vite.js build --config tests/e2e/emulator/vite.config.mjs'
         + ' && node ./node_modules/vite/bin/vite.js preview --config tests/e2e/emulator/vite.config.mjs',
       cwd: repoRoot,

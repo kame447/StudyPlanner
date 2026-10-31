@@ -1,8 +1,8 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
-// The live spec expects a returning account: verified, with a week start chosen and the first-run tour
-// done (trace consent is off without the Worker). Register through the real sign-up screen, apply the
+// The live spec expects a returning account: verified, trace consent given (through the local Worker into
+// Firestore), a week start chosen and the first-run tour done. Register through the real sign-up screen, apply the
 // verification code the emulator issues instead of a mail (it delivers none), sign in, and answer what
 // the app asks, so production code writes every document itself. The tour's completion lives only in
 // this browser's storage, so the live spec starts with that flag and, as against production, signed out.
@@ -39,6 +39,11 @@ test('register and prepare the emulator account through the real screens', async
     await page.getByLabel('パスワード', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'ログインする' }).click();
   }
+
+  // A new account gives the weekly-planning trace consent once; the Worker records it in Firestore.
+  await expect(page.getByRole('heading', { name: '初回利用の確認' })).toBeVisible();
+  await page.getByRole('checkbox', { name: '上記のデータ保存と利用目的を確認し、同意します。' }).check();
+  await page.getByRole('button', { name: '同意して利用を開始する' }).click();
 
   // The app asks for a week start only when it has none for this account; answer it if asked.
   const weekStart = page.getByRole('heading', { name: '1週間の始まりを選択' });

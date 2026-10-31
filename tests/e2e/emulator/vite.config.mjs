@@ -1,7 +1,7 @@
 // The real application as a production build on a local preview server, backed by the Firebase Auth and Firestore emulators (#947).
 // No production URL, project or credential is reachable from this target: the Firebase config is the
-// emulator-only demo project and the AI proxy is unset, so nothing leaves the machine. Without the Worker,
-// weekly-planning trace (and its consent, which the Worker records) is off; trace stays with the deployed checks.
+// emulator-only demo project and the AI proxy is the local Worker (tests/e2e/emulator/worker), whose own
+// outbound requests go only to the emulators and the synthetic provider, so nothing leaves the machine.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mergeConfig } from 'vite';
@@ -21,8 +21,9 @@ Object.assign(process.env, {
   VITE_FIREBASE_STORAGE_BUCKET: '',
   VITE_FIREBASE_MESSAGING_SENDER_ID: '',
   VITE_FIREBASE_MEASUREMENT_ID: '',
-  VITE_CLOUDFLARE_AI_PROXY_URL: '',
-  VITE_WEEKLY_PLANNING_TRACE_ENABLED: 'false',
+  VITE_CLOUDFLARE_AI_PROXY_URL: 'http://127.0.0.1:18787',
+  VITE_WEEKLY_PLANNING_TRACE_ENABLED: 'true',
+  VITE_DURABLE_WEEKLY_TURNS: 'disabled',
   // Ports from firebase.emulator-e2e.json, apart from the defaults other local tools often hold.
   VITE_E2E_AUTH_EMULATOR_HOST: '127.0.0.1:9199',
   VITE_E2E_FIRESTORE_EMULATOR_HOST: '127.0.0.1:8180',
