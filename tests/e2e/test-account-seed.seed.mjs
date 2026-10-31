@@ -169,8 +169,13 @@ async function ensureMaterial(page, fixture) {
   await fieldControl(dialog, '教材名', 'input').fill(fixture.name);
   await fieldControl(dialog, '教科', 'select').selectOption({ label: fixture.subject });
 
+  // Click the visible switch, not the hidden input with force: a forced click skips the stability
+  // check and can land on another control while the dialog animates in (#947).
   const paceToggle = dialog.locator('.material-pace-toggle input[type="checkbox"]');
-  if (!(await paceToggle.isChecked())) await paceToggle.check({ force: true });
+  if (!(await paceToggle.isChecked())) {
+    await dialog.locator('.material-pace-toggle').click();
+    await expect(paceToggle).toBeChecked();
+  }
 
   await fieldControl(dialog, '単位', 'select').selectOption({ label: fixture.unit });
   await fieldControl(dialog, '総量', 'input').fill(String(fixture.total));
@@ -303,7 +308,10 @@ async function ensureMonthEvent(page, fixture) {
 
   await modal.getByLabel('タイトル', { exact: true }).fill(fixture.title);
   const allDay = modal.locator('.month-event-all-day-switch input[type="checkbox"]');
-  if (fixture.allDay && !(await allDay.isChecked())) await allDay.check({ force: true });
+  if (fixture.allDay && !(await allDay.isChecked())) {
+    await modal.locator('.month-event-all-day-switch').click();
+    await expect(allDay).toBeChecked();
+  }
   await modal.getByRole('button', { name: '保存', exact: true }).click();
 
   await expect(modal).not.toBeVisible();

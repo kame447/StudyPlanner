@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
-// Runs the existing live-account spec unchanged against the real application on a local server,
+// Runs the existing live-account and test-account seed specs against the real application on a local server,
 // backed by the Firebase Auth and Firestore emulators with the repository's firestore.rules (#947).
 // The account is created on the emulator; no production URL, account or secret is used. Values set
 // here replace any live credentials that happen to be in the environment.
@@ -40,10 +40,10 @@ export default defineConfig({
     { name: 'emulator-account-setup', testMatch: 'emulator/account.setup.mjs', use: { ...devices['Desktop Chrome'] } },
     {
       name: 'chromium-emulator-account',
-      // test-account-seed.seed.mjs fails here while adding its second material; it has never run
-      // anywhere, and its triage is a separate #947 item, so it is not counted as covered.
-      testMatch: 'live-account-schedule.live.mjs',
+      testMatch: ['live-account-schedule.live.mjs', 'test-account-seed.seed.mjs'],
       dependencies: ['emulator-account-setup'],
+      // The seed spec registers several fixtures through the UI; same budget as its own config.
+      timeout: 10 * 60_000,
       use: { ...devices['Desktop Chrome'], storageState: process.env.STUDYPLANNER_E2E_EMULATOR_STATE },
     },
   ],
