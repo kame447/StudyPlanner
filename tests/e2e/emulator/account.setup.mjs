@@ -1,16 +1,20 @@
-import { writeFile } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
-// The live spec expects a returning account: verified, trace consent given (through the local Worker into
+// The live specs expect returning accounts: verified, trace consent given (through the local Worker into
 // Firestore), a week start chosen and the first-run tour done. Register through the real sign-up screen, apply the
 // verification code the emulator issues instead of a mail (it delivers none), sign in, and answer what
 // the app asks, so production code writes every document itself. The tour's completion lives only in
-// this browser's storage, so the live spec starts with that flag and, as against production, signed out.
-const email = process.env.STUDYPLANNER_LIVE_EMAIL;
-const password = process.env.STUDYPLANNER_LIVE_PASSWORD;
+// this browser's storage, so the live specs start with that flag and, as against production, signed out.
+// As in production, the live account is a trace reader and the dedicated trace account is not (#947).
+const accounts = [
+  { email: process.env.STUDYPLANNER_LIVE_EMAIL, password: process.env.STUDYPLANNER_LIVE_PASSWORD, traceReader: true },
+  { email: process.env.STUDYPLANNER_TRACE_E2E_EMAIL, password: process.env.STUDYPLANNER_TRACE_E2E_PASSWORD, traceReader: false },
+];
 const authEmulator = `http://${process.env.STUDYPLANNER_E2E_AUTH_EMULATOR_HOST}`;
+const firestoreEmulator = `http://${process.env.STUDYPLANNER_E2E_FIRESTORE_EMULATOR_HOST}`;
 
-test('register and prepare the emulator account through the real screens', async ({ page, request }) => {
+async function prepareAccount(page, request, { email, password }) {
   await page.goto('/');
   await page.getByRole('tab', { name: '新規会員登録', exact: true }).click();
   await page.getByLabel('メールアドレス').fill(email);
@@ -57,10 +61,43 @@ test('register and prepare the emulator account through the real screens', async
   await tour.getByRole('button', { name: 'スキップ' }).click();
   await expect(tour).toBeHidden();
   await expect(primaryNav).toBeVisible();
-  const state = await page.context().storageState();
+  return page.context().storageState();
+}
+
+// Admin documents are written only by the Admin SDK (firestore.rules); the emulator accepts its owner token.
+async function grantTraceReader(request, { email, password }) {
+  const signedIn = await request.post(`${authEmulator}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=demo-api-key`,
+    { data: { email, password, returnSecureToken: true } });
+  expect(signedIn.ok()).toBe(true);
+  const { localId } = await signedIn.json();
+  const written = await request.patch(
+    `${firestoreEmulator}/v1/projects/demo-studyplanner/databases/(default)/documents/admins/${localId}`,
+    { headers: { Authorization: 'Bearer owner' },
+      data: { fields: { enabled: { booleanValue: true }, weeklyPlanningTraceReader: { booleanValue: true } } } });
+  expect(written.ok()).toBe(true);
+}
+
+test('register and prepare the emulator accounts through the real screens', async ({ browser, request }, testInfo) => {
+  await rm(process.env.STUDYPLANNER_E2E_TRACE_SESSION_FILE, { force: true });
+  const { baseURL, timezoneId, viewport } = testInfo.project.use;
+  const tourFlags = new Map();
+  for (const account of accounts) {
+    // One fresh context per account, so neither sign-in sees the other's session.
+    const context = await browser.newContext({ baseURL, timezoneId, viewport });
+    try {
+      const state = await prepareAccount(await context.newPage(), request, account);
+      for (const origin of state.origins) {
+        const flags = tourFlags.get(origin.origin) ?? [];
+        flags.push(...origin.localStorage.filter(({ name }) => name.startsWith('laplance-first-run-tour-v1:')));
+        tourFlags.set(origin.origin, flags);
+      }
+    } finally {
+      await context.close();
+    }
+    if (account.traceReader) await grantTraceReader(request, account);
+  }
   await writeFile(process.env.STUDYPLANNER_E2E_EMULATOR_STATE, JSON.stringify({
     cookies: [],
-    origins: state.origins.map((origin) => ({ origin: origin.origin,
-      localStorage: origin.localStorage.filter(({ name }) => name.startsWith('laplance-first-run-tour-v1:')) })),
+    origins: [...tourFlags].map(([origin, localStorage]) => ({ origin, localStorage })),
   }));
 });
