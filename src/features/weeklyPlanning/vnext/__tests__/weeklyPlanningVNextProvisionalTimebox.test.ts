@@ -58,9 +58,21 @@ describe('VNext provisional timebox (Stable V5 parity)', () => {
       minutes: WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5, estimateBasis: 'provisional_timebox', estimateFactIds: [] });
     expect(factCount(state)).toBe(facts);
     const [item] = compiled(state).movableWorkItems;
+    // The placed block is V5's exact timebox: no estimate buffer on top (Astra P02).
     expect(item.baseEstimatedMinutes).toBe(WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5);
+    expect(item.estimatedMinutes).toBe(WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5);
     expect(item.estimateSourceFactIds).toEqual([]);
     expect(item.sourceFactRefs).toContain(state.graph.workloads[0].id);
+  });
+
+  it('keeps the ordinary buffer for an estimate the user actually states', () => {
+    let state = turn(createEmptyWeeklyPlanningVNextState(), { add: [task('t', '数学プリント'), pages('w', 't', 'target', 8)] });
+    state = turn(state, { add: [{ kind: 'effort_estimate', localId: 'total', taskRef: { factId: state.graph.tasks[0].id },
+      targetRef: { factId: state.graph.workloads[0].id }, effortKind: 'total_duration', minutes: 60,
+      unitCode: null, unitLabel: null, precision: 'exact' }] });
+    const [item] = compiled(state).movableWorkItems;
+    expect(item.baseEstimatedMinutes).toBe(60);
+    expect(item.estimatedMinutes).toBeGreaterThan(60);
   });
 
   it('lets a later stated estimate replace the provisional block', () => {

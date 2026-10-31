@@ -99,11 +99,17 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
     if (taskLevel) canonical.set(id, item.estimateBasis === 'task_total' ? item.estimateFactIds : [current(item.taskId)]);
     projectedEstimates.set(id, item.estimateFactIds);
     const source = sources.get(item.definingFactId)!;
+    // A provisional block is scheduler-only minute work, as V5's projectWeeklyPlanningProvisionalTimeboxGraphV5
+    // makes it: an estimate attached to the stated quantity would get the ordinary buffer (60 → 70, Astra P02).
+    const timebox = item.estimateBasis === 'provisional_timebox';
     workloads.push({
       id, taskId: current(item.taskId), componentId: currentOrNull(item.componentId), quantityRole: 'target',
-      amount: item.amount, unitCode: item.unitCode, unitLabel: item.unitLabel,
-      rangeStart: item.rangeStart, rangeEnd: item.rangeEnd, perOccurrence: item.perOccurrence,
-      periodExpression: item.periodExpression, source, createdRevision: state.graph.revision,
+      ...(timebox
+        ? { amount: item.minutes ?? 0, unitCode: 'minute' as const, unitLabel: '分', rangeStart: null, rangeEnd: null,
+            perOccurrence: false, periodExpression: null }
+        : { amount: item.amount, unitCode: item.unitCode, unitLabel: item.unitLabel, rangeStart: item.rangeStart,
+            rangeEnd: item.rangeEnd, perOccurrence: item.perOccurrence, periodExpression: item.periodExpression }),
+      source, createdRevision: state.graph.revision,
     });
     const estimateId = `vnext-estimate:${id}`;
     canonical.set(estimateId, item.estimateFactIds);
