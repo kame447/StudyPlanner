@@ -47,6 +47,8 @@ export interface RealApiFixedEventRegistrationOracle {
   endTime: string;
   /** Exact count of unsaved fixed-event candidates in the VNext preview. */
   candidateCount: 0 | 1;
+  /** Require the interval to be unavailable in V5's compiled scheduler input. */
+  requireBusyInterval?: boolean;
 }
 
 export interface RealApiTurnOracle {
@@ -143,28 +145,37 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
     id: 'fixed-event-busy-information-only', source: '#926 fixed-event registration negative control',
     description: '固定予定の共有だけで登録依頼はせず、学習配置を妨げる時間として保持する。',
     turns: [{ userText: '11月3日16時から17時半まではゼミなので、その間は勉強できません。', oracle: {
-      ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
-      fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0 },
+      ...ready(0, [], [], [], { projectedMinutes: null, checkTemporal: false }),
+      fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
     } }],
   },
   {
     id: 'fixed-event-registration-negated', source: '#926 fixed-event registration negative control',
     description: '明示的な登録拒否を尊重し、予定表には追加しない。',
     turns: [{ userText: '11月3日16時から17時半までゼミがありますが、予定表には入れなくていいです。', oracle: {
-      ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
-      fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0 },
+      ...ready(0, [], [], [], { projectedMinutes: null, checkTemporal: false }),
+      fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
     } }],
   },
   {
-    id: 'fixed-event-yes-after-rendered-offer', source: '#926 fixed-event contextual acceptance',
-    description: '固定予定を伝えた後、VNextの実際の返信が登録を申し出た場合に限り、その申し出への短い承諾を解釈する。',
+    id: 'fixed-event-yes-after-rendered-offer',
+    source: '#926 fixed-event contextual acceptance; out of scope: no registration offer exists in V5/VNext; user decision 2026-11-01',
+    description: '登録の申し出を受けた後の承諾を扱うケースだが、V5/VNextに登録の申し出は存在しないため対象外（user decision 2026-11-01）。',
     turns: [
       { userText: '11月3日16時から17時半までゼミがあります。', oracle: {
-        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
+        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], {
+          inVNextScope: false,
+          outOfScopeReason: 'no registration offer exists in V5/VNext; contextual acceptance after an offer is not applicable (user decision 2026-11-01)',
+          projectedMinutes: null,
+        }),
         fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0 },
       } },
       { userText: 'うん、お願い。', oracle: {
-        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
+        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], {
+          inVNextScope: false,
+          outOfScopeReason: 'no registration offer exists in V5/VNext; contextual acceptance after an offer is not applicable (user decision 2026-11-01)',
+          projectedMinutes: null,
+        }),
         fixedEventRegistration: { requested: true, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 1 },
       } },
     ],
@@ -176,8 +187,11 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
       { userText: '英語の音読を20分したいです。', oracle: ready(20,
         [workload('reading-aloud', 'target', 20, 'minute', '分')]) },
       { userText: '11月3日16時から17時半までゼミがあります。うん、お願い。', oracle: {
-        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
-        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0 },
+        ...ready(20, [workload('reading-aloud', 'target', 20, 'minute', '分')], [], [], {
+          projectedMinutes: 20,
+          checkTemporal: false,
+        }),
+        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
       } },
     ],
   },

@@ -41,10 +41,17 @@ import {
 import {
   compileGenericSchedulerInput,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import { resolveWeeklyPlanningAvailabilityWithFullDayRules } from '../semantic/weeklyPlanningAvailabilityFullDayAdapter';
+import { createWeeklyPlanningAvailabilityResolverGraphV5 } from '../semantic/weeklyPlanningSchedulerAvailabilityProjectionV5';
+import { resolveWeeklyPlanningDateExpressionsV5 } from '../semantic/weeklyPlanningResolvedDateExpressionsV5';
+import { resolveWeeklyPlanningTaskCommitmentsWithDateRules } from '../semantic/weeklyPlanningTaskCommitmentDateRuleAdapter';
+import type { AvailabilityWindowFact } from '../semantic/weeklyPlanningAvailabilityResolver';
+import type { TaskCommitmentReservation } from '../semantic/weeklyPlanningTaskCommitmentResolver';
 import {
   scheduleWeeklyPlanningStableV5Preview,
 } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import {
   readWeeklyPlanningVNextExperimentalSession,
   submitWeeklyPlanningVNextExperimentalTurn,
@@ -55,6 +62,7 @@ import {
 import { projectWeeklyPlanningVNext } from '../vnext/projection/weeklyPlanningVNextProjection';
 import type { WeeklyPlanningVNextInterpretationInput } from '../vnext/weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnDelta } from '../vnext/weeklyPlanningVNextTypes';
+import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from '../vnext/semantic/weeklyPlanningVNextTransaction';
 import { decodeVNextProviderOutput } from '../vnext/semantic/weeklyPlanningVNextProviderSchema';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../vnext/semantic/weeklyPlanningVNextProvider';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../vnext/weeklyPlanningVNextV5Boundary';
@@ -580,14 +588,84 @@ function compareFixedEventRegistrationOracle(
     }
   }
   if (saveWritesBeforeApproval !== 0) differences.push(`save writes before approval expected=0 observed=${saveWritesBeforeApproval}`);
-  const eventIsBusy = temporal.some(fact => fact.kind === 'fixed_interval' && fact.dateExpression === oracle.eventDate
-    && fact.startTime === oracle.startTime && fact.endTime === oracle.endTime);
-  if (!eventIsBusy) differences.push('fixed event interval is not retained as busy time');
   if (candidates.some(candidate => candidate.source === 'weekly_exam_prep' && candidate.date === oracle.eventDate
     && candidate.startTime < oracle.endTime && candidate.endTime > oracle.startTime)) {
     differences.push('study candidate overlaps fixed event interval');
   }
   return differences;
+}
+
+interface V5BusyConstraints {
+  availabilityWindows: AvailabilityWindowFact[];
+  fixedTaskReservations: TaskCommitmentReservation[];
+}
+
+function compareBusyIntervalOracle(
+  oracle: RealApiTurnOracle['fixedEventRegistration'],
+  busyConstraints: V5BusyConstraints | null,
+): string[] {
+  if (!oracle?.requireBusyInterval) return [];
+  return busyConstraints && schedulerInputHasBusyInterval(
+    busyConstraints, oracle.eventDate, oracle.startTime, oracle.endTime,
+  ) ? [] : ['fixed event interval is not retained as busy time'];
+}
+
+/** Resolve the same V5 availability and task-commitment views used by its scheduler compiler. */
+function resolveV5BusyConstraints(
+  graph: WeeklyPlanningFactGraphV5,
+  conversation: RealApiConversation,
+): V5BusyConstraints {
+  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+  const context = {
+    ownerId: `vnext-real-api-${conversation.id}`,
+    ...contextFor(conversation),
+  };
+  const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+    graph: activeGraph,
+    currentDate: context.currentDate,
+    weekStartsOn: context.weekStartsOn,
+    planningWindow: activeGraph.planningWindows.length === 1 ? {
+      startDate: context.planningStartDate,
+      endDate: context.planningEndDate,
+    } : null,
+  });
+  const availability = resolveWeeklyPlanningAvailabilityWithFullDayRules({
+    graph: createWeeklyPlanningAvailabilityResolverGraphV5({
+      revision: activeGraph.revision,
+      availabilityDeclarations: activeGraph.availabilityDeclarations,
+      constraintSourceRequests: activeGraph.constraintSourceRequests,
+    }),
+    context,
+    resolvedDateExpressions,
+  });
+  const commitments = resolveWeeklyPlanningTaskCommitmentsWithDateRules({
+    graph: activeGraph,
+    context,
+    resolvedDateExpressions,
+  });
+  return {
+    availabilityWindows: availability.windows,
+    fixedTaskReservations: commitments.commitments.reservations,
+  };
+}
+
+function schedulerInputHasBusyInterval(
+  input: V5BusyConstraints,
+  date: string,
+  startTime: string,
+  endTime: string,
+): boolean {
+  const fixedReservations = input.fixedTaskReservations.map(reservation => ({
+    kind: 'occupied' as const,
+    start: reservation.start,
+    end: reservation.end,
+    constraintLevel: reservation.constraintLevel,
+  }));
+  return [...input.availabilityWindows, ...fixedReservations].some(window =>
+    (window.kind === 'occupied' || window.kind === 'unavailable')
+    && window.constraintLevel === 'hard'
+    && window.start.date === date && window.end.date === date
+    && window.start.time <= startTime && window.end.time >= endTime);
 }
 
 function hasFutureWorkEstimate(bases: readonly (string | null)[]): boolean {
@@ -665,6 +743,7 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     const resultForDiagnostics = capturedResult as WeeklyPlanningTurnExecutionResult | null;
     const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
     const graph = runtime?.graph;
+    const busyConstraints = graph ? resolveV5BusyConstraints(graph, conversation) : null;
     const facts: ObservedFacts = graph ? observedFacts(graph) : { taskIds: [], workloads: [], efforts: [], temporal: [] };
     const currentQuestion = questionCode(store.getState().intakeState?.lastQuestionContext ?? null);
     if (fixtureTurn.oracle.inVNextScope && currentQuestion !== null) clarificationCount += 1;
@@ -672,6 +751,7 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     if (questionSignature !== null && questionSignature === previousQuestionSignature && !fixtureTurn.oracle.preservePreviousTypedState) repeatedQuestionCount += 1;
     const preview = graph ? previewMinutes(graph, conversation) : { status: 'no_graph', minutes: null, workMinutes: null, workEstimateBases: [] };
     const oracleDifferences = error ? [error] : graph ? compareTypedOracle(facts, currentQuestion, preview.workMinutes, fixtureTurn.oracle, [], preview.workEstimateBases) : ['typed state unavailable'];
+    oracleDifferences.push(...compareBusyIntervalOracle(fixtureTurn.oracle.fixedEventRegistration, busyConstraints));
     const expectedClarification = fixtureTurn.oracle.questionCode !== null;
     const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification && currentQuestion === null;
     const wrongRejection = fixtureTurn.oracle.inVNextScope && !expectedClarification && currentQuestion !== null;
@@ -848,6 +928,7 @@ async function runVNextConversation(
       const state = read.checkpoint.state;
       const projection = projectWeeklyPlanningVNext(state);
       const observed = observedFacts(state.graph);
+      const busyConstraints = resolveV5BusyConstraints(state.graph, conversation);
       facts = observed;
       question = projection.questions[0]?.code ?? null;
       deferredQuestionCodes = projection.deferredQuestions.map(({ code }) => code);
@@ -881,6 +962,7 @@ async function runVNextConversation(
       differences.push(...compareFixedEventRegistrationOracle(
         fixtureTurn.oracle.fixedEventRegistration, interpretation, finalCandidates, saveWritesBeforeApproval, observed.temporal,
       ));
+      differences.push(...compareBusyIntervalOracle(fixtureTurn.oracle.fixedEventRegistration, busyConstraints));
       const expectedClarification = fixtureTurn.oracle.questionCode !== null;
       const deferredExpectedQuestion = isExpectedQuestionDeferred(fixtureTurn.oracle, question, deferredQuestionCodes);
       const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification
@@ -1107,22 +1189,38 @@ describe('VNext real API conversation fixture contract (offline)', () => {
       'fixed-event-yes-without-registration-offer',
     ]);
     expect(fixedEventCases.flatMap(conversation => conversation.turns)
-      .filter(turn => turn.oracle.fixedEventRegistration?.requested)).toHaveLength(3);
+      .filter(turn => turn.oracle.inVNextScope && turn.oracle.fixedEventRegistration?.requested)).toHaveLength(2);
     expect(fixedEventCases.flatMap(conversation => conversation.turns)
-      .filter(turn => turn.oracle.fixedEventRegistration && !turn.oracle.fixedEventRegistration.requested)).toHaveLength(4);
+      .filter(turn => turn.oracle.inVNextScope && turn.oracle.fixedEventRegistration && !turn.oracle.fixedEventRegistration.requested)).toHaveLength(3);
     for (const conversation of fixedEventCases) {
       for (const turn of conversation.turns.filter(turn => turn.oracle.fixedEventRegistration)) {
         expect(turn.oracle.fixedEventRegistration).toMatchObject({
           eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30',
           candidateCount: turn.oracle.fixedEventRegistration!.requested ? 1 : 0,
         });
-        expect(turn.oracle.temporal).toContainEqual({
-          task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03',
-          time: '16:00', endTime: '17:30', level: 'hard',
-        });
       }
     }
-    expect(fixedEventCases.find(({ id }) => id === 'fixed-event-yes-after-rendered-offer')?.turns[1].userText).toBe('うん、お願い。');
+    for (const id of ['fixed-event-busy-information-only', 'fixed-event-registration-negated']) {
+      const oracle = fixedEventCases.find(({ id: caseId }) => caseId === id)!.turns[0].oracle;
+      expect(oracle.temporal).toEqual([]);
+      expect(oracle.checkTemporal).toBe(false);
+      expect(oracle.fixedEventRegistration?.requireBusyInterval).toBe(true);
+    }
+    const noOfferControl = fixedEventCases.find(({ id }) => id === 'fixed-event-yes-without-registration-offer')!;
+    expect(noOfferControl.turns[1].oracle).toMatchObject({
+      workloads: [{ task: 'reading-aloud', role: 'target', amount: 20, unitCode: 'minute', unitLabel: '分' }],
+      projectedMinutes: 20,
+      temporal: [],
+      checkTemporal: false,
+      fixedEventRegistration: { requested: false, candidateCount: 0, requireBusyInterval: true },
+    });
+    expect(noOfferControl.turns[1].oracle.workloads).toEqual(noOfferControl.turns[0].oracle.workloads);
+    const renderedOfferCase = fixedEventCases.find(({ id }) => id === 'fixed-event-yes-after-rendered-offer')!;
+    expect(renderedOfferCase.turns[1].userText).toBe('うん、お願い。');
+    expect(renderedOfferCase.source).toContain('no registration offer exists in V5/VNext');
+    expect(renderedOfferCase.turns.map(({ oracle }) => oracle.inVNextScope)).toEqual([false, false]);
+    expect(renderedOfferCase.turns.every(({ oracle }) => oracle.outOfScopeReason ===
+      'no registration offer exists in V5/VNext; contextual acceptance after an offer is not applicable (user decision 2026-11-01)')).toBe(true);
     expect(fixedEventCases.find(({ id }) => id === 'fixed-event-yes-without-registration-offer')?.turns[1].userText)
       .toBe('11月3日16時から17時半までゼミがあります。うん、お願い。');
     const deadlineCase = vnextRealApiConversations.find(({ id }) => id === 'issue881-final-b-deadline-at-13');
@@ -1195,6 +1293,103 @@ describe('VNext real API conversation fixture contract (offline)', () => {
       workloads: [{ task: 'math', role: 'completed', amount: 30, unitCode: 'minute', unitLabel: '分' }],
       temporal: [],
     });
+  });
+
+  it('checks busy-only fixed-event meaning on V5-compiled scheduler input', () => {
+    const fixedReservation = {
+      id: 'fixed', taskId: 'seminar', temporalConstraintFactId: 'fixed',
+      start: { date: '2026-11-03', time: '16:00' }, end: { date: '2026-11-03', time: '17:30' },
+      timeZone: 'Asia/Tokyo', constraintLevel: 'hard' as const, sourceKind: 'user_commitment' as const,
+      sourceRef: 'user', graphRevision: 1,
+    };
+    const busyInput = (availabilityWindows: AvailabilityWindowFact[] = [],
+      fixedTaskReservations: TaskCommitmentReservation[] = []): V5BusyConstraints => ({ availabilityWindows, fixedTaskReservations });
+    const oracleForBusyCase = vnextRealApiConversations.find(({ id }) => id === 'fixed-event-busy-information-only')!.turns[0].oracle;
+    const compareRegistration = (facts: ObservedFacts) => compareFixedEventRegistrationOracle(
+      oracleForBusyCase.fixedEventRegistration, null, [], 0, facts.temporal,
+    );
+    const fixedIntervalFacts: ObservedFacts = {
+      taskIds: ['seminar'], workloads: [], efforts: [], temporal: [{
+        taskId: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03',
+        constraintLevel: 'hard', startTime: '16:00', endTime: '17:30',
+      }],
+    };
+    const unavailableFacts: ObservedFacts = { taskIds: [], workloads: [], efforts: [], temporal: [] };
+    const compareTyped = (facts: ObservedFacts) => compareTypedOracle(facts, null, null, oracleForBusyCase);
+    const compareFullTurn = (facts: ObservedFacts, input: V5BusyConstraints | null) => [
+      ...compareTyped(facts), ...compareRegistration(facts),
+      ...compareBusyIntervalOracle(oracleForBusyCase.fixedEventRegistration, input),
+    ];
+    expect(compareTyped(fixedIntervalFacts)).toEqual([]);
+    expect(compareTyped(unavailableFacts)).toEqual([]);
+    expect(compareFullTurn(fixedIntervalFacts, busyInput([], [fixedReservation]))).toEqual([]);
+
+    const conversation = vnextRealApiConversations.find(({ id }) => id === 'fixed-event-busy-information-only')!;
+    const unavailableState = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), {
+      add: [{ kind: 'availability_declaration', localId: 'busy', availabilityKind: 'unavailable',
+        dateExpression: '2026-11-03', namedTimePeriod: null, startTime: '16:00', endTime: '17:30',
+        recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard' }],
+      patch: [], remove: [], relate: [], defer: [],
+    }, {
+      expectedRevision: 0, acceptedDate: '2026-11-02', weekStartsOn: 'monday',
+      planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' },
+      defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' },
+      turnKey: 'busy-only', conversationId: 'busy-only', turnId: 'busy-only', sourceText: 'busy interval',
+    });
+    if (unavailableState.status !== 'applied') throw new Error('unavailable-only test delta was rejected');
+    const emptyCompilation = compileGenericSchedulerInput({
+      graph: createWeeklyPlanningActiveSchedulerGraphViewV5(unavailableState.state.graph),
+      context: { ownerId: 'busy-only', ...contextFor(conversation) },
+    });
+    expect(emptyCompilation).toMatchObject({ status: 'empty', input: null });
+    expect(compareFullTurn(unavailableFacts, resolveV5BusyConstraints(unavailableState.state.graph, conversation))).toEqual([]);
+
+    const emptyVNext = resolveV5BusyConstraints(createEmptyWeeklyPlanningVNextState().graph, conversation);
+    const emptyV5 = resolveV5BusyConstraints(createEmptyWeeklyPlanningFactGraphV5(), conversation);
+    const compareV5Turn = (facts: ObservedFacts, input: V5BusyConstraints | null) => [
+      ...compareTyped(facts), ...compareBusyIntervalOracle(oracleForBusyCase.fixedEventRegistration, input),
+    ];
+    expect(compareFullTurn(unavailableFacts, emptyVNext)).toContain('fixed event interval is not retained as busy time');
+    expect(compareV5Turn(unavailableFacts, emptyV5)).toContain('fixed event interval is not retained as busy time');
+
+    const wrongTimeState = applyWeeklyPlanningVNextTurn(createEmptyWeeklyPlanningVNextState(), {
+      add: [
+        { kind: 'task', localId: 'seminar', category: 'study', title: 'ゼミ' },
+        { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'seminar' }, targetRef: { localId: 'seminar' },
+          constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+          startTime: '16:30', endTime: '17:30', precision: 'exact' },
+      ],
+      patch: [], remove: [], relate: [], defer: [],
+    }, {
+      expectedRevision: 0, acceptedDate: '2026-11-02', weekStartsOn: 'monday',
+      planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' },
+      defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' },
+      turnKey: 'wrong-time', conversationId: 'wrong-time', turnId: 'wrong-time', sourceText: 'fixed event at 16:30',
+    });
+    if (wrongTimeState.status !== 'applied') throw new Error('wrong-time fixed-event test delta was rejected');
+    const wrongTimeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(wrongTimeState.state.graph);
+    expect(compileGenericSchedulerInput({ graph: wrongTimeGraph, context: { ownerId: 'wrong-time', ...contextFor(conversation) } }).status)
+      .toBe('ready');
+    const wrongTimeFacts = observedFacts(wrongTimeState.state.graph);
+    const wrongTimeConstraints = resolveV5BusyConstraints(wrongTimeState.state.graph, conversation);
+    expect(compareFullTurn(wrongTimeFacts, wrongTimeConstraints)).toContain('fixed event interval is not retained as busy time');
+    expect(compareV5Turn(wrongTimeFacts, wrongTimeConstraints)).toContain('fixed event interval is not retained as busy time');
+
+    for (const input of [
+      busyInput(),
+      busyInput([{
+        id: 'soft', kind: 'unavailable', start: { date: '2026-11-03', time: '16:00' },
+        end: { date: '2026-11-03', time: '17:30' }, timeZone: 'Asia/Tokyo', constraintLevel: 'soft',
+        sourceKind: 'user_declaration', sourceRef: 'busy', ownerId: 'owner', graphRevision: 1,
+      }]),
+      busyInput([{
+        id: 'wrong-time', kind: 'unavailable', start: { date: '2026-11-03', time: '16:30' },
+        end: { date: '2026-11-03', time: '17:30' }, timeZone: 'Asia/Tokyo', constraintLevel: 'hard',
+        sourceKind: 'user_declaration', sourceRef: 'busy', ownerId: 'owner', graphRevision: 1,
+      }]),
+    ]) {
+      expect(compareFullTurn(unavailableFacts, input)).toContain('fixed event interval is not retained as busy time');
+    }
   });
 
   it('requires every expected workload to be present in the actual set', () => {
