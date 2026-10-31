@@ -1,5 +1,6 @@
 import type { ChatMessage } from '../../../../services/ai/openAiCompatibleClientTypes';
 import { VNEXT_CONSTRAINT_SOURCE_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
+import { VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 import type { WeeklyPlanningVNextInterpretationInput } from '../weeklyPlanningVNextInterpretationContract';
 import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 import { createVNextProviderReferences, type VNextProviderReferences } from './weeklyPlanningVNextProviderReferences';
@@ -25,6 +26,7 @@ Only emit facts stated in this current utterance. Keep independent tasks, correc
 add creates task/study_context/component/workload/effort_estimate/temporal_constraint/planning_window/recurrence/task_date_rule/availability_declaration/relation/constraint_source_request. localId is unique within this delta; reference new facts with {localId}. Existing fact references use the supplied short F aliases, projected work references use W aliases, question keys use Q aliases, and optionId uses O aliases. These are this request's complete reference vocabulary: copy them exactly, never construct or expand an ID. For total effort about projected work without its own stored fact use {workLineageId} from the supplied projection. Never bind amounts yourself.
 ${VNEXT_STUDY_CONTEXT_REQUIREMENT}
 ${VNEXT_CONSTRAINT_SOURCE_REQUIREMENT}
+${VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT}
 ${VNEXT_PLANNING_WINDOW_REQUIREMENT} ${VNEXT_RECURRENCE_REQUIREMENT} ${VNEXT_TASK_DATE_RULE_REQUIREMENT} ${VNEXT_AVAILABILITY_REQUIREMENT} ${VNEXT_TASK_RELATION_REQUIREMENT}
 Corrections use patch on the exact active factId. changes has every schema field; null means UNCHANGED. Set only fields the user changes, preserving unit, range, perOccurrence and period otherwise. A correction applies only to the fact the user restates: changing a workload's unit does not restate any existing estimate or authorize changing its unit. Leave every other fact unchanged even when its old estimate will no longer apply; never relabel a rate merely to keep it applicable. Identity/owner/target fields cannot be patched: remove then add if meaning changes that identity. Remove only an explicitly retracted existing fact. amountDelta expresses an explicit increment/decrement; do not also set changes.amount.
 Quantity roles: ${VNEXT_QUANTITY_ROLE_REQUIREMENT} Never calculate a remaining, sum, percentage remainder or converted amount and emit it as a stated fact. For '20 total, 12 completed' emit two stated quantities, not a computed remaining 8. A stated remaining 7 stays independent, even if it conflicts. Use custom with the user's unitLabel for units not in the closed unit set; percentages use custom and '%'. ${VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT}

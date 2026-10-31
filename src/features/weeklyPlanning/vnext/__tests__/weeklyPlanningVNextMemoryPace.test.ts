@@ -143,6 +143,7 @@ function harness(script: ScriptStep[], options: { calendar?: Calendar; legacyV5?
   const saved = new Map<string, WeeklyPlanDraftBlock>();
   let saveCalls = 0;
   let shownRevision: number | null = null;
+  let declineProposalId: string | null = null;
   const slot = (key: string) => ({
     read: () => storage.get(key) ?? null,
     write: (raw: string) => { storage.set(key, raw); },
@@ -150,6 +151,11 @@ function harness(script: ScriptStep[], options: { calendar?: Calendar; legacyV5?
   const ports: WeeklyPlanningVNextExperimentalPorts = {
     client: {} as OpenAiCompatibleClient,
     async interpret(input) {
+      if (declineProposalId) {
+        const proposalId = declineProposalId;
+        declineProposalId = null;
+        return { ...interpreted(emptyDelta()), answer: { kind: 'proposal_decision', proposalId, decision: 'reject' } };
+      }
       const step = script.shift();
       if (!step) throw new Error('VNext memory-pace script exhausted');
       return interpreted(typeof step === 'function' ? step(input) : step);
@@ -177,10 +183,20 @@ function harness(script: ScriptStep[], options: { calendar?: Calendar; legacyV5?
   return {
     ports, scope: sessionScope, storage, saved, saveCalls: () => saveCalls,
     async turn(turnId: string, userText: string) {
-      const result = await submitWeeklyPlanningVNextExperimentalTurn({
+      let result = await submitWeeklyPlanningVNextExperimentalTurn({
         scope: sessionScope, ports, turnId, userText, shownRevision,
       });
       if (result.graphRevision !== null) shownRevision = result.graphRevision;
+      // These fixtures isolate observed pace, not session-strategy adoption. V5 also offers
+      // spacing with known pace (MemoryObservedPaceConversationV5: "uses observed pace…").
+      // Decline it explicitly through the shown question, binder, transaction and checkpoint.
+      if (result.question?.code === 'learning_strategy_proposal') {
+        expect(result.question.proposal).toMatchObject({ kind: 'spaced_memory_practice', status: 'pending' });
+        declineProposalId = result.question.proposal!.id;
+        result = await submitWeeklyPlanningVNextExperimentalTurn({ scope: sessionScope, ports,
+          turnId: `${turnId}:decline-spacing`, userText: '間隔を空ける提案は今回は使いません', shownRevision });
+        if (result.graphRevision !== null) shownRevision = result.graphRevision;
+      }
       return result;
     },
   };

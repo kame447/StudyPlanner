@@ -26,6 +26,8 @@ export interface WeeklyPlanningVNextInterpretationClock {
 }
 
 export interface WeeklyPlanningVNextInterpretationInput {
+  /** Same turn-scoped pace used by projection and validation; not a persisted fact. */
+  observedMemoryPace?: Readonly<Record<string, number>>;
   client: OpenAiCompatibleClient;
   state: WeeklyPlanningVNextState;
   projection: WeeklyPlanningVNextProjection;
@@ -39,6 +41,8 @@ export interface WeeklyPlanningVNextInterpretationInput {
 
 /** What the words say about the presented question, in the binder's vocabulary. */
 export type WeeklyPlanningVNextInterpretedAnswer =
+  | { kind: 'proposal_decision'; proposalId: string; decision: 'accept' | 'reject' }
+  | { kind: 'session_minutes'; minutes: number }
   | { kind: 'option'; optionId: string }
   /**
    * Minutes the words state for the asked work itself: for the whole of it, or for one of

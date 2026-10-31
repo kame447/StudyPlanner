@@ -30,6 +30,8 @@ import { fixVNextDateExpression, vnextTemporalBoundRepairFields } from '../weekl
 import { isValidCalendarDate, resolveCanonicalDateExpression } from '../../semantic/weeklyPlanningCalendarResolver';
 import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { vnextQuestionKeyAllowsProvisionalTimebox } from '../projection/weeklyPlanningVNextProjection';
+import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
+import { evaluateVNextLearningStrategy } from '../application/weeklyPlanningVNextLearningStrategy';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -93,7 +95,7 @@ function terminalize(graph: WeeklyPlanningVNextGraph, factId: string, replacemen
 export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState {
   return { version: WEEKLY_PLANNING_VNEXT_STATE_VERSION,
     graph: { ...createEmptyWeeklyPlanningFactGraphV5(), effortEstimates: [], studyContexts: [] },
-    workRelations: [], deferrals: [] };
+    workRelations: [], deferrals: [], learningStrategyProposalRecords: [] };
 }
 
 /**
@@ -103,6 +105,8 @@ export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState 
  * accepted dates again later relaxes deadlines (VP02). Extend the typed payload and
  * validation mappings here, never add a second update path or interpret source text.
  * Transaction.test.ts guards replacement equivalence, selected defaults and stable deadlines.
+ * Learning-strategy decisions use this same commit; V5's pure policy updates the proposal
+ * records only after validation (LearningStrategy.test.ts), never from the session or renderer.
  */
 export function applyWeeklyPlanningVNextTurn(
   state: WeeklyPlanningVNextState,
@@ -131,7 +135,7 @@ export function applyWeeklyPlanningVNextTurn(
     error('stale_revision', 'context.expectedRevision');
     return reject();
   }
-  if (![delta.add, delta.patch, delta.remove, delta.relate, delta.defer].some(items => items.length)) {
+  if (!delta.proposalDecision && ![delta.add, delta.patch, delta.remove, delta.relate, delta.defer].some(items => items.length)) {
     error('empty_delta', 'delta');
     return reject();
   }
@@ -510,9 +514,21 @@ export function applyWeeklyPlanningVNextTurn(
     }
   }
   if (errors.length) return reject();
+  if (statedDelta.proposalDecision) {
+    const decision = statedDelta.proposalDecision;
+    const question = projectWeeklyPlanningVNext(state, context.observedMemoryPace).questions.find(item => item.key === decision.questionKey);
+    if (question?.code !== 'learning_strategy_proposal' || question.proposal?.id !== decision.proposalId
+      || (decision.decision !== 'accept' && decision.decision !== 'reject')) {
+      error('invalid_value', 'proposalDecision');
+      return reject();
+    }
+  }
+  next.learningStrategyProposalRecords = evaluateVNextLearningStrategy({ state: next,
+    projection: projectWeeklyPlanningVNext(next, context.observedMemoryPace), turnId: context.turnId, decision: statedDelta.proposalDecision }).records;
   if (!diff.added.length && !diff.removed.length && !diff.superseded.length
     && JSON.stringify(next.workRelations) === JSON.stringify(state.workRelations)
-    && JSON.stringify(next.deferrals) === JSON.stringify(state.deferrals)) {
+    && JSON.stringify(next.deferrals) === JSON.stringify(state.deferrals)
+    && JSON.stringify(next.learningStrategyProposalRecords) === JSON.stringify(state.learningStrategyProposalRecords)) {
     // Nothing changes and the revision is kept, but the turn is processed: a replay (even on a
     // later day, when its relative dates would resolve differently) is a duplicate.
     return { status: 'noop', state: { ...state, graph: { ...state.graph, appliedTurnKeys: [...state.graph.appliedTurnKeys, context.turnKey] } } };

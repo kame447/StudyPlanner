@@ -5,6 +5,7 @@ import type {
   WeeklyPlanningFactDiffV5,
   WeeklyPlanningFactGraphV5,
   TemporalConstraintFactV5,
+  WeeklyPlanningLearningStrategyProposalRecord,
 } from './weeklyPlanningVNextV5Boundary';
 import type {
   SemanticComponentRoleV5,
@@ -84,6 +85,7 @@ export interface WeeklyPlanningVNextState {
   graph: WeeklyPlanningVNextGraph;
   workRelations: VNextWorkRelation[];
   deferrals: VNextQuestionDeferral[];
+  learningStrategyProposalRecords: WeeklyPlanningLearningStrategyProposalRecord[];
 }
 
 // ---- one turn = one typed delta, applied as one transaction -------------------
@@ -296,7 +298,16 @@ export interface VNextDefer {
   allocation: VNextDeferralAllocation;
 }
 
+/** Bound only from a fresh presented proposal; the transaction is its sole writer. */
+export interface VNextProposalDecision {
+  proposalId: string;
+  decision: 'accept' | 'reject';
+  questionKey: string;
+}
+
 export interface VNextTurnDelta {
+  /** Internal control produced by answer binding, not part of the provider's fact delta. */
+  proposalDecision?: VNextProposalDecision;
   add: VNextAddFact[];
   patch: VNextPatch[];
   remove: VNextRemove[];
@@ -305,6 +316,8 @@ export interface VNextTurnDelta {
 }
 
 export interface VNextTurnContext {
+  /** Read-only observations for this turn, never stored as stated effort or proposal policy. */
+  observedMemoryPace?: Readonly<Record<string, number>>;
   /** Idempotency key; a key already in graph.appliedTurnKeys is a duplicate. */
   turnKey: string;
   /** Local date (YYYY-MM-DD) the turn is accepted on; relative dates in it are fixed against this (#918). */
@@ -351,6 +364,7 @@ export type VNextTurnResult =
 // ---- projection: recomputed every turn, never stored --------------------------
 
 export type VNextQuestionCode =
+  | 'learning_strategy_proposal'
   | 'quantity_role_unresolved'
   | 'quantity_basis_invalid'
   | 'duplicate_quantity'
@@ -372,6 +386,8 @@ export interface VNextQuestionOption {
 
 export interface VNextQuestion {
   code: VNextQuestionCode;
+  proposal?: WeeklyPlanningLearningStrategyProposalRecord;
+  effortMeasurement?: 'total_duration' | 'session_duration';
   /** Deterministic from code, owner, subject lineages and work amount. */
   key: string;
   ownerKey: string;
@@ -428,9 +444,16 @@ export interface VNextOwnerProjection {
   status: 'ready' | 'question' | 'nothing_to_schedule';
   work: VNextWorkItem[];
   question: VNextQuestion | null;
+  /** Explicitly accepted measurement trial; V5's calibration compiler owns its work item. */
+  calibration?: { workloadFactId: string; sessionMinutes: number };
 }
 
 export interface WeeklyPlanningVNextProjection {
+  /** V5's scalar relevant-workload policy, derived here once for the scheduler. */
+  learningStrategy?: {
+    acceptedSpacedProposal: WeeklyPlanningLearningStrategyProposalRecord | null;
+    acceptedCalibrationProposal: WeeklyPlanningLearningStrategyProposalRecord | null;
+  };
   graphRevision: number;
   owners: VNextOwnerProjection[];
   /** Open questions, excluding deferred ones. */

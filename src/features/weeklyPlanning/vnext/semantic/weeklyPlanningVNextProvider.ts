@@ -73,6 +73,7 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
   }
   if (!Object.values(reading.delta).some(items => items.length)) return [];
   const result = applyWeeklyPlanningVNextTurn(input.state, reading.delta, {
+    observedMemoryPace: input.observedMemoryPace,
     expectedRevision: input.state.graph.revision,
     acceptedDate: input.clock.currentDate,
     weekStartsOn: input.clock.weekStartsOn,

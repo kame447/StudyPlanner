@@ -15,6 +15,7 @@ export { VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNE
 
 type Schema = { type?: string; properties?: Record<string, Schema>; required?: string[];
   additionalProperties?: boolean; enum?: readonly unknown[]; anyOf?: Schema[]; items?: Schema; description?: string };
+export const VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT = 'When presentedQuestion.code is learning_strategy_proposal, answer an explicit acceptance or rejection with kind proposal_decision, its exact proposal.id as proposalId, and decision accept or reject. The application owns the proposal and its effect; never add workloads or estimates to implement it. When a presented effort question has effortMeasurement session_duration, answer kind session_minutes with the stated minutes per sitting. This is not total time or a rate. Do not answer these questions with estimate_minutes or repeat their answer in delta. Independent facts still belong in delta.';
 export const VNEXT_QUANTITY_ROLE_REQUIREMENT = 'remaining = an amount stated as what is left of a bounded whole, even when the user also intends to do it in this planning period; target = an amount intended for this planning period that is not stated as a remainder; scope_total = the whole size of a bounded task or material; completed = an amount already done. declared/unknown are only for a stated quantity whose role the words do not establish; they are not the default for an explicit planned amount. Roles are meanings, not calculations.';
 export const VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT = 'A workload unitLabel is a required non-empty unit word for its amount, even when unitCode is a standard code. Preserve the user-language unit wording (for example 分, 時間, ページ). It is never null or an empty string. This requirement is separate from nullable effort-estimate units.';
 export const VNEXT_CONSTRAINT_LEVEL_REQUIREMENT = 'hard = a constraint that must be met, including a deadline or fixed commitment; soft = a preference; unknown = the words do not establish the level. Do not use unknown merely because a required deadline was not explicitly called hard.';
@@ -86,8 +87,11 @@ const root = object({ delta: object({ add: array(add), patch: correction.propert
     description: VNEXT_RELATE_REFERENCE_REQUIREMENT }),
   defer: array(object({ questionKey: text,
     allocation: { ...enumeration(['none', 'provisional_timebox']), description: VNEXT_DEFER_ALLOCATION_REQUIREMENT } })),
-}), answer: nullable(object({ kind: enumeration(['option', 'estimate_minutes']), optionId: nullable(text), minutes: nullable(number),
-  per: { ...nullable(enumeration(['whole_work', 'unit'])), description: VNEXT_ESTIMATE_ANSWER_REQUIREMENT } })) });
+}), answer: { anyOf: [object({ kind: enumeration(['option', 'estimate_minutes']), optionId: nullable(text), minutes: nullable(number),
+  per: { ...nullable(enumeration(['whole_work', 'unit'])), description: VNEXT_ESTIMATE_ANSWER_REQUIREMENT } }),
+  object({ kind: enumeration(['proposal_decision']), proposalId: { ...text, description: VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT },
+    decision: { ...enumeration(['accept', 'reject']), description: VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT } }),
+  object({ kind: enumeration(['session_minutes']), minutes: { ...number, description: VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT } }), { type: 'null' }] } });
 
 export const VNEXT_PROVIDER_RESPONSE_FORMAT: JsonSchemaResponseFormat = { type: 'json_schema',
   json_schema: { name: 'weekly_planning_vnext_native_v1', strict: true, schema: root as Record<string, unknown> } };
@@ -161,12 +165,15 @@ export function decodeVNextProviderOutput(value: unknown):
   | { status: 'rejected'; errors: VNextTurnError[] } {
   const errors = validate(root, value, '', null);
   if (errors.length) return { status: 'rejected', errors };
-  const wire = structuredClone(value) as { delta: VNextTurnDelta; answer: {
-    kind: 'option' | 'estimate_minutes'; optionId: string | null; minutes: number | null; per: 'whole_work' | 'unit' | null;
-  } | null };
+  const wire = structuredClone(value) as { delta: VNextTurnDelta; answer: Record<string, unknown> | null };
   let answer: WeeklyPlanningVNextInterpretedAnswer | null = null;
   if (wire.answer) {
-    if (wire.answer.kind === 'option' && typeof wire.answer.optionId === 'string' && wire.answer.minutes === null && wire.answer.per === null) {
+    if (wire.answer.kind === 'proposal_decision' && typeof wire.answer.proposalId === 'string'
+      && (wire.answer.decision === 'accept' || wire.answer.decision === 'reject')) {
+      answer = { kind: 'proposal_decision', proposalId: wire.answer.proposalId, decision: wire.answer.decision };
+    } else if (wire.answer.kind === 'session_minutes' && typeof wire.answer.minutes === 'number') {
+      answer = { kind: 'session_minutes', minutes: wire.answer.minutes };
+    } else if (wire.answer.kind === 'option' && typeof wire.answer.optionId === 'string' && wire.answer.minutes === null && wire.answer.per === null) {
       answer = { kind: 'option', optionId: wire.answer.optionId };
     } else if (wire.answer.kind === 'estimate_minutes' && typeof wire.answer.minutes === 'number' && wire.answer.optionId === null
       && (wire.answer.per === 'whole_work' || wire.answer.per === 'unit')) {

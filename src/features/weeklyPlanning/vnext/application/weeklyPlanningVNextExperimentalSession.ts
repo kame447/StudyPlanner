@@ -50,6 +50,7 @@ import type {
 import {
   parseWeeklyPlanningStableV5PersistedSession,
   createStableV5ExternalConstraintSources,
+  deriveWeeklyPlanningEstimateCalibration,
   scheduleWeeklyPlanningStableV5Preview,
   RENDERER_PREVIEW_CONTINGENCY,
   RENDERER_TECHNICAL_STOP,
@@ -224,7 +225,9 @@ function shownPreview(
     plans: calendar.plans, monthEvents: calendar.monthEvents, templates: calendar.scheduleTemplates,
     timetableTermId: calendar.timetableTermId,
     horizon: { startDate: context.planningStartDate, endDate: context.planningEndDate }, timeZone: context.timeZone });
-  const compiled = compileWeeklyPlanningVNextSchedulerInput({ state, projection, context, externalSources });
+  const estimateCalibration = deriveWeeklyPlanningEstimateCalibration({ plans: calendar.plans, actuals: calendar.actuals });
+  const compiled = compileWeeklyPlanningVNextSchedulerInput({ state, projection, context, externalSources,
+    estimateCalibrationMultiplier: estimateCalibration.multiplier });
   if (compiled.status !== 'compiled') return { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] };
   if (!compiled.compilation.input) {
     const codes = compiled.compilation.issues.filter((issue) => issue.blocking).map((issue) => issue.code);
@@ -265,7 +268,7 @@ function systemReply(outcome: WeeklyPlanningVNextExperimentalTurnOutcome, previe
 }
 
 const isEmpty = (delta: VNextTurnDelta) =>
-  delta.add.length + delta.patch.length + delta.remove.length + delta.relate.length + delta.defer.length === 0;
+  !delta.proposalDecision && delta.add.length + delta.patch.length + delta.remove.length + delta.relate.length + delta.defer.length === 0;
 
 /**
  * One user turn. Every step reads from and writes to the checkpoint slot, so a reload is the normal path.
@@ -317,6 +320,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     defaultPlanningHorizon: { startDate: scope.clock.planningStartDate, endDate: scope.clock.planningEndDate } };
   const interpretation = await ports.interpret({
     client: ports.client, state, projection: before, presentedQuestion, userText: params.userText, clock,
+    observedMemoryPace: pace,
     // The reply the question was shown in: what the user's words answer (e.g. an ordinal over its options).
     presentedText: presentedQuestion ? presented!.shownText : null,
   });
@@ -354,6 +358,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       outcome = 'noop';
     } else {
       const result = applyWeeklyPlanningVNextTurn(state, delta, {
+        observedMemoryPace: pace,
         turnKey: `${scope.conversationId}:${params.turnId}`,
         acceptedDate: scope.clock.currentDate,
         // Dates are fixed against the same horizon and week the model read them with.

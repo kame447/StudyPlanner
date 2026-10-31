@@ -21,6 +21,7 @@ import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../../semantic/w
 import { resolveWeeklyPlanningDateExpressionsV5 } from '../../semantic/weeklyPlanningResolvedDateExpressionsV5';
 import { resolveWeeklyPlanningTemporalConstraintsV5 } from '../../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
 import type { EffortEstimateFactV5, WorkloadFactV5, ExternalConstraintSourceSnapshot } from '../weeklyPlanningVNextV5Boundary';
+import { applyAcceptedMemorySessionProjectionV5, compileWeeklyPlanningMemoryCalibrationSchedulerInputV5 } from '../weeklyPlanningVNextV5Boundary';
 import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
@@ -71,6 +72,7 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
   projection: WeeklyPlanningVNextProjection;
   context: GenericSchedulerInputContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
+  estimateCalibrationMultiplier?: number;
 }): WeeklyPlanningVNextSchedulerCompilation {
   const { state, projection } = params;
   if (projection.readiness !== 'ready' || projection.graphRevision !== state.graph.revision) return { status: 'not_ready' };
@@ -110,6 +112,9 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
       minutes: item.minutes ?? 0, unitCode: null, precision: 'exact', source, createdRevision: state.graph.revision,
     });
   }
+  // Projection uses V5's single relevant-workload selection, not every historical accepted trial.
+  const calibration = readyOwners.find(owner => owner.calibration)?.calibration;
+  workloads.push(...base.workloads.filter(workload => workload.id === calibration?.workloadFactId));
   const scheduledIds = new Set([...workloads.map((workload) => workload.id), ...base.tasks.map((task) => task.id),
     ...base.components.map((component) => component.id)]);
   const sessionPolicies = base.effortEstimates
@@ -127,7 +132,14 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
     }), ...sessionPolicies],
   };
 
-  const compiled = compileGenericSchedulerInput({ graph, context: params.context, externalSources: params.externalSources });
+  let compiled = (calibration ? compileWeeklyPlanningMemoryCalibrationSchedulerInputV5({ graph, context: params.context,
+    externalSources: params.externalSources, workloadFactId: calibration.workloadFactId, sessionMinutes: calibration.sessionMinutes,
+    estimateCalibrationMultiplier: params.estimateCalibrationMultiplier }) : null)
+    ?? compileGenericSchedulerInput({ graph, context: params.context, externalSources: params.externalSources,
+      estimateCalibrationMultiplier: params.estimateCalibrationMultiplier });
+  compiled = applyAcceptedMemorySessionProjectionV5({ compilation: compiled, graph,
+    acceptedSpacedProposal: projection.learningStrategy?.acceptedSpacedProposal ?? null,
+    acceptedCalibrationProposal: projection.learningStrategy?.acceptedCalibrationProposal ?? null });
   const toCanonical = (ids: readonly string[]) => [...new Set(ids.flatMap((id) => canonical.get(id) ?? [id]))];
   const compilation: GenericSchedulerInputCompilationResult = compiled.input
     ? {

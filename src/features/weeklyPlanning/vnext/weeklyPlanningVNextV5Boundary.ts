@@ -23,6 +23,13 @@ export {
 export { scheduleWeeklyPlanningStableV5Preview } from '../semantic/weeklyPlanningStableV5PlacementEngine';
 export { createStableV5ExternalConstraintSources } from '../application/weeklyPlanningStableV5ExternalSources';
 export type { ExternalConstraintSourceSnapshot } from '../semantic/weeklyPlanningAvailabilityResolver';
+export { evaluateWeeklyPlanningLearningStrategyProposalsV5 } from '../application/weeklyPlanningStableV5LearningStrategyProposal';
+export { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
+export type { WeeklyPlanningLearningStrategyProposalRecord } from '../intake/weeklyPlanningIntakeTypes';
+export { applyAcceptedMemorySessionProjectionV5 } from '../semantic/weeklyPlanningAcceptedMemorySessionProjectionV5';
+export { compileWeeklyPlanningMemoryCalibrationSchedulerInputV5 } from '../semantic/weeklyPlanningMemoryCalibrationSchedulerInputV5';
+export { deriveWeeklyPlanningEstimateCalibration } from '../personalization/weeklyPlanningEstimateCalibration';
+export { learningStrategyProposalIntentForStableV5Dialogue } from '../dialogue/weeklyPlanningStableV5DialogueContext';
 export { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
 export {
   questionIntentForStableV5Dialogue,

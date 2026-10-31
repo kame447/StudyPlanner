@@ -85,8 +85,14 @@ function withDeferralAllocation(value: unknown): unknown {
     (isRecord(deferral) && !('allocation' in deferral) ? { ...deferral, allocation: 'none' } : deferral)) };
 }
 
+/** Older experimental checkpoints had no proposal flow; they contain no proposal decisions. */
+function withLearningStrategyRecords(value: unknown): unknown {
+  return isRecord(value) && !('learningStrategyProposalRecords' in value)
+    ? { ...value, learningStrategyProposalRecords: [] } : value;
+}
+
 function validState(value: unknown, conversationId: string): value is WeeklyPlanningVNextState {
-  if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals'])
+  if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals', 'learningStrategyProposalRecords'])
     || value.version !== WEEKLY_PLANNING_VNEXT_STATE_VERSION || !isRecord(value.graph)
     || !Array.isArray(value.workRelations) || !Array.isArray(value.deferrals)) return false;
   const graph = value.graph as unknown as WeeklyPlanningVNextState['graph'];
@@ -105,7 +111,20 @@ function validState(value: unknown, conversationId: string): value is WeeklyPlan
   const deferralsOk = value.deferrals.every((deferral) => isRecord(deferral)
     && typeof deferral.questionKey === 'string' && Number.isInteger(deferral.createdRevision)
     && (deferral.allocation === 'none' || deferral.allocation === 'provisional_timebox'));
-  return relationsOk && deferralsOk;
+  const recordsOk = Array.isArray(value.learningStrategyProposalRecords) && value.learningStrategyProposalRecords.every(record =>
+    isRecord(record) && typeof record.id === 'string' && record.id.length > 0
+    && ['spaced_memory_practice', 'calibrate_memory_pace'].includes(record.kind as string)
+    && ['pending', 'accepted', 'rejected'].includes(record.status as string) && record.scope === 'week'
+    && graph.tasks.some(task => task.id === record.taskId) && graph.workloads.some(workload => workload.id === record.workloadFactId)
+    && isRecord(record.suggestedSessionMinutes) && typeof record.suggestedSessionMinutes.min === 'number'
+    && Number.isFinite(record.suggestedSessionMinutes.min) && record.suggestedSessionMinutes.min > 0
+    && typeof record.suggestedSessionMinutes.max === 'number' && Number.isFinite(record.suggestedSessionMinutes.max)
+    && record.suggestedSessionMinutes.max >= record.suggestedSessionMinutes.min
+    && (record.selectedSessionMinutes === null || record.selectedSessionMinutes === undefined
+      || (typeof record.selectedSessionMinutes === 'number' && Number.isFinite(record.selectedSessionMinutes) && record.selectedSessionMinutes > 0))
+    && Number.isInteger(record.createdRevision) && typeof record.proposedAtTurnId === 'string'
+    && (record.decidedAtTurnId === null || typeof record.decidedAtTurnId === 'string'));
+  return relationsOk && deferralsOk && recordsOk;
 }
 
 function validPreview(value: unknown): boolean {
@@ -155,7 +174,7 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
       || typeof value.conversationId !== 'string' || !value.conversationId.trim()
       || typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))
       || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion', 'preview', 'messages'])) return null;
-    const state = withDeferralAllocation(withStatedActivity(value.vnext.state));
+    const state = withLearningStrategyRecords(withDeferralAllocation(withStatedActivity(value.vnext.state)));
     if (!validState(state, value.conversationId) || !validPreview(value.vnext.preview)
       || !validMessages(value.vnext.messages)) return null;
     const presented = value.vnext.presentedQuestion;

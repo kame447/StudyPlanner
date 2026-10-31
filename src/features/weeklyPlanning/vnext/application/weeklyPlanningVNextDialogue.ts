@@ -18,6 +18,7 @@ import {
   questionTargetForStableV5Dialogue,
   RENDERER_TECHNICAL_STOP,
   requiredLabelsForStableV5Dialogue,
+  learningStrategyProposalIntentForStableV5Dialogue,
   WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL,
   type WeeklyPlanningStableV5DialogueQuestionIntent,
   type WeeklyPlanningStableV5DialogueRenderInput,
@@ -36,10 +37,12 @@ export interface WeeklyPlanningVNextMessage {
 
 function questionIntent(state: WeeklyPlanningVNextState, question: VNextQuestion,
   planningInformation: Record<string, unknown>, targetFactId: string): WeeklyPlanningStableV5DialogueQuestionIntent | null {
+  if (question.proposal) return learningStrategyProposalIntentForStableV5Dialogue({ questionCode: question.code,
+    actionId: question.proposal.id, proposalRecords: state.learningStrategyProposalRecords });
   if (question.code === 'missing_effort_estimate' && question.forWork) {
     // Asked work is a target, or what remains (stated, or the total less what is done).
     const defining = state.graph.workloads.find((workload) => workload.id === question.forWork!.definingFactId);
-    return { kind: 'effort_measurement', measurement: 'total_duration',
+    return { kind: 'effort_measurement', measurement: question.effortMeasurement ?? 'total_duration',
       quantityRole: defining?.quantityRole === 'target' ? 'target' : 'remaining',
       targetFactId, amount: question.forWork.amount, unitCode: null, unitLabel: question.forWork.unitLabel };
   }

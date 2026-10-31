@@ -8,6 +8,7 @@
 // completed…", "binds a same-turn quantity and total correction in either order",
 // "never silently drops or double-counts other-basis work…").
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
+import { evaluateVNextLearningStrategy } from '../application/weeklyPlanningVNextLearningStrategy';
 import { WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5 } from '../../intake/weeklyPlanningProvisionalTimeboxStateV5';
 import type { WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
 import type {
@@ -487,13 +488,55 @@ export function projectWeeklyPlanningVNext(
   const taskOrder = new Map(tasks.map((task, index) => [task.id, index]));
   owners.sort((left, right) => (taskOrder.get(left.taskId) ?? 0) - (taskOrder.get(right.taskId) ?? 0));
 
+  const learning = evaluateVNextLearningStrategy({ state, projection: { owners }, turnId: `projection:${graph.revision}` });
+  // Records come from V5's pure proposal policy through the one transaction.
+  // They never supply an effort estimate: only an accepted measurement trial can bypass it.
+  for (const owner of owners) {
+    const records = state.learningStrategyProposalRecords.filter(record => {
+      const workload = graph.workloads.find(fact => fact.id === resolver.leafOf(record.workloadFactId));
+      return workload && resolver.lineageOf(record.taskId) === resolver.lineageOf(owner.taskId)
+        && owner.ownerKey === resolver.ownerKeyOf(workload);
+    });
+    const pending = records.find(record => record.id === learning.pendingProposal?.id);
+    if (pending) {
+      owner.status = 'question'; owner.work = [];
+      owner.question = { code: 'learning_strategy_proposal', key: `learning_strategy_proposal:${pending.id}`,
+        ownerKey: owner.ownerKey, taskId: owner.taskId, componentId: owner.componentId,
+        subjectLineageIds: [resolver.lineageOf(pending.workloadFactId)], forWork: null, options: [], proposal: pending };
+      continue;
+    }
+    const calibration = records.find(record => record.id === learning.acceptedCalibrationProposal?.id);
+    if (calibration?.selectedSessionMinutes) {
+      owner.status = 'ready'; owner.work = []; owner.question = null;
+      owner.calibration = { workloadFactId: resolver.leafOf(calibration.workloadFactId)!, sessionMinutes: calibration.selectedSessionMinutes };
+      continue;
+    }
+    const spaced = records.find(record => record.id === learning.acceptedSpacedProposal?.id);
+    if (spaced) {
+      const id = resolver.leafOf(spaced.workloadFactId)!;
+      const sessions = context.efforts.filter(effort => effort.kind === 'session_duration'
+        && resolver.lineageOf(effort.targetFactId) === resolver.lineageOf(id) && effort.minutes > 0);
+      if (sessions.length === 0) {
+        const workload = graph.workloads.find(fact => fact.id === id)!;
+        owner.status = 'question'; owner.work = [];
+        owner.question = { code: 'missing_effort_estimate', key: `memory_session_duration:${spaced.id}`,
+          ownerKey: owner.ownerKey, taskId: owner.taskId, componentId: owner.componentId,
+          subjectLineageIds: [resolver.lineageOf(id)], options: [], effortMeasurement: 'session_duration',
+          forWork: { workLineageId: resolver.lineageOf(id), definingFactId: id, amount: workload.amount,
+            unitCode: workload.unitCode, unitLabel: workload.unitLabel } };
+      }
+    }
+  }
+
   const deferredKeys = new Set(state.deferrals.map((deferral) => deferral.questionKey));
   const allQuestions = owners.flatMap((owner) => (owner.question ? [owner.question] : []));
   const questions = allQuestions.filter((question) => !deferredKeys.has(question.key));
   const deferredQuestions = allQuestions.filter((question) => deferredKeys.has(question.key));
-  const hasWork = owners.some((owner) => owner.work.length > 0);
+  const hasWork = owners.some((owner) => owner.work.length > 0 || owner.calibration);
   return {
     graphRevision: graph.revision,
+    ...(learning.acceptedSpacedProposal || learning.acceptedCalibrationProposal ? { learningStrategy: {
+      acceptedSpacedProposal: learning.acceptedSpacedProposal, acceptedCalibrationProposal: learning.acceptedCalibrationProposal } } : {}),
     owners,
     questions,
     deferredQuestions,

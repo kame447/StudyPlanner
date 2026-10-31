@@ -5,6 +5,7 @@ type Namespace = 'F' | 'W' | 'Q' | 'O' | 'R';
 const fields: Record<string, Namespace> = {
   id: 'F', factId: 'F', taskId: 'F', componentId: 'F', parentComponentId: 'F', targetFactId: 'F',
   fromTaskId: 'F', toTaskId: 'F', replacementFactId: 'F', lineageId: 'F', definingFactId: 'F',
+  proposalId: 'F', workloadFactId: 'F',
   workLineageId: 'W', key: 'Q', questionKey: 'Q', optionId: 'O', ownerKey: 'R',
 };
 const lists = new Set(['subjectLineageIds', 'lineageIds', 'estimateFactIds']);
@@ -64,6 +65,7 @@ export function createVNextProviderReferences() {
     });
     next.delta.defer.forEach((item, index) => { item.questionKey = real('Q', item.questionKey, `delta.defer[${index}].questionKey`, null); });
     if (next.answer?.kind === 'option') next.answer.optionId = real('O', next.answer.optionId, 'answer.optionId', null);
+    if (next.answer?.kind === 'proposal_decision') next.answer.proposalId = real('F', next.answer.proposalId, 'answer.proposalId', null);
     return errors.length ? { status: 'rejected', errors } : { status: 'decoded', reading: next };
   };
   return { encodeContext, decodeReading };
