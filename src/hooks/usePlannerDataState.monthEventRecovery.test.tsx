@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
@@ -269,7 +270,7 @@ describe.each(['legacy', 'canonical'] as const)('MonthEvent refresh recovery wit
     const op = await start(() => edit('Durable after failed later full'));
     await act(async () => { await state.loadPlannerData('owner'); });
     const scheduleRead = vi.spyOn(boundary.repository, 'getScheduleSnapshot').mockRejectedValueOnce(Error('full failed'));
-    await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('full failed'); });
+    await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow(new UserFacingError("学習データを読み込めませんでした。接続を確認して再読み込みしてください。")); });
     const upsert = vi.spyOn(boundary.repository, 'upsertMonthEvent');
     const monthRead = vi.spyOn(boundary.repository, 'getMonthEvents');
     await write(writer); await ack(writer, op);

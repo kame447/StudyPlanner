@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPlanDraftFromPlan } from '../domain/planner';
@@ -169,7 +170,7 @@ describe('compound Plan / Actual shared admission', () => {
     expect(fixture.remove).not.toHaveBeenCalled();
     await saveUnrelated();
     const failure = new Error('Plan deletion failed');
-    expect(await finish(gate, done, failDelete ? failure : undefined)).toBe(failDelete ? failure : undefined);
+    expect(await finish(gate, done, failDelete ? failure : undefined)).toEqual(failDelete ? new UserFacingError("予定を削除できませんでした。") : undefined);
     if (failDelete) {
       expect(state.getActualActionBlockReason(LINKED)).toBeNull();
       await act(async () => { await state.saveActual(A, draft(), LINKED.id); });

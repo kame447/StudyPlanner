@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ProductObservabilityRetentionService } from './productObservabilityRetention';
+import {
+  ProductObservabilityRetentionService,
+  WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS,
+} from './productObservabilityRetention';
 
 type Row = Record<string, unknown> & {
   id: string;
@@ -9,15 +12,17 @@ type Row = Record<string, unknown> & {
 class MemoryRetentionFirestore {
   readonly rows = new Map<string, Row[]>();
   readonly deleted: string[] = [];
+  readonly preconditions: Array<string | undefined> = [];
   commitFails = false;
   readonly queries: Array<{ collection: string; limit: number }> = [];
   afterQuery: ((collection: string, limit: number) => void) | null = null;
 
-  add(collection: string, id: string, expireAt: string): void {
+  add(collection: string, id: string, expireAt: string, updateTime?: string): void {
     const current = this.rows.get(collection) ?? [];
     current.push({
       id,
       expireAt,
+      ...(updateTime ? { updateTime } : {}),
       documentName: `projects/test/databases/(default)/documents/${collection}/${id}`,
     });
     current.sort((left, right) =>
@@ -40,10 +45,16 @@ class MemoryRetentionFirestore {
   }
 
   async commitWrites(
-    writes: readonly Array<{ collection: string; id: string; delete: true }>,
+    writes: readonly Array<{
+      collection: string;
+      id: string;
+      delete: true;
+      currentDocument?: { updateTime: string };
+    }>,
   ): Promise<void> {
     if (this.commitFails) throw new Error('injected bulk delete failure');
-    for (const { collection, id } of writes) {
+    for (const { collection, id, currentDocument } of writes) {
+      this.preconditions.push(currentDocument?.updateTime);
       this.deleted.push(`${collection}/${id}`);
       this.rows.set(
         collection,
@@ -53,7 +64,10 @@ class MemoryRetentionFirestore {
   }
 }
 
-function service(firestore: MemoryRetentionFirestore): ProductObservabilityRetentionService {
+function service(
+  firestore: MemoryRetentionFirestore,
+  collections?: readonly string[],
+): ProductObservabilityRetentionService {
   return new ProductObservabilityRetentionService(
     {
       FIREBASE_PROJECT_ID: 'test',
@@ -62,10 +76,52 @@ function service(firestore: MemoryRetentionFirestore): ProductObservabilityReten
     },
     firestore as never,
     () => new Date('2026-08-28T12:00:00.000Z'),
+    collections,
   );
 }
 
 describe('ProductObservabilityRetentionService', () => {
+  it('compares Firestore timestamps at nanosecond precision', async () => {
+    const atNow = new MemoryRetentionFirestore();
+    atNow.add('observability_events', 'at-now', '2026-08-28T12:00:00Z');
+    expect(await service(atNow).runBatch(100)).toEqual({ deleted: 1, hasMore: false });
+
+    const later = new MemoryRetentionFirestore();
+    later.add('observability_events', 'one-microsecond-later', '2026-08-28T12:00:00.000001Z');
+    expect(await service(later).runBatch(100)).toEqual({ deleted: 0, hasMore: false });
+    expect(later.deleted).toEqual([]);
+  });
+
+  it('deletes with the read updateTime as a precondition', async () => {
+    const firestore = new MemoryRetentionFirestore();
+    firestore.add('weekly_planning_trace_sessions', 'expired', '2026-08-28T11:00:00.000000Z',
+      '2026-08-28T11:30:00.123456Z');
+
+    await service(firestore, WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS).runBatch(20);
+    expect(firestore.preconditions).toEqual(['2026-08-28T11:30:00.123456Z']);
+  });
+
+  it('sweeps expired trace sessions, entries and audits only when given the trace collections', async () => {
+    const firestore = new MemoryRetentionFirestore();
+    firestore.add('weekly_planning_trace_sessions', 'expired-session', '2026-08-28T11:00:00.000Z');
+    firestore.add('weekly_planning_trace_sessions', 'live-session', '2027-02-24T11:00:00.000Z');
+    firestore.add('weekly_planning_trace_entries', 'expired-entry', '2026-08-27T11:00:00.000Z');
+    firestore.add('weekly_planning_trace_access_audit', 'expired-audit', '2026-08-28T10:00:00.000Z');
+    firestore.add('observability_events', 'expired-event', '2026-08-28T11:00:00.000Z');
+
+    expect(await service(firestore).runBatch(100)).toEqual({ deleted: 1, hasMore: false });
+    expect(await service(firestore, WEEKLY_PLANNING_TRACE_RETENTION_COLLECTIONS).runBatch(100))
+      .toEqual({ deleted: 3, hasMore: false });
+    expect(firestore.deleted).toEqual([
+      'observability_events/expired-event',
+      'weekly_planning_trace_sessions/expired-session',
+      'weekly_planning_trace_entries/expired-entry',
+      'weekly_planning_trace_access_audit/expired-audit',
+    ]);
+    expect(firestore.rows.get('weekly_planning_trace_sessions')?.map((row) => row.id))
+      .toEqual(['live-session']);
+  });
+
   it('deletes only the expired ordered prefix from retained observability collections', async () => {
     const firestore = new MemoryRetentionFirestore();
     firestore.add('observability_events', 'expired-event', '2026-08-28T11:00:00.000Z');

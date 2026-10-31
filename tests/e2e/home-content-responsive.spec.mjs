@@ -61,26 +61,32 @@ async function readableProgress(page, info, minimumFontSize) {
 }
 async function readableDarkStartAction(page, info) {
   const button = page.locator('.home-start-button');
-  const paint = await button.evaluate(element => {
-    const style = getComputedStyle(element);
-    const foregroundColor = style.getPropertyValue('-webkit-text-fill-color') || style.color;
-    const match = foregroundColor.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
-    if (!match) throw new Error(`Unsupported foreground color: ${foregroundColor}`);
-    const foreground = [...match.slice(1, 4).map(Number), match[4] === undefined ? 1 : Number(match[4])];
-    if (foreground.slice(0, 3).some(channel => channel < 0 || channel > 255) || foreground[3] !== 1) throw new Error('Expected opaque, valid foreground');
-    const labels = [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).flatMap(node => {
-      const range = document.createRange(); range.selectNodeContents(node);
-      return [...range.getClientRects()].map(rect => rect.toJSON());
+  // Contrast is a settled-paint contract; the valid route-entry fade may still
+  // be running after geometry is ready. Poll the same snapshot we will measure.
+  let paint;
+  await expect.poll(async () => {
+    paint = await button.evaluate(element => {
+      const style = getComputedStyle(element);
+      const foregroundColor = style.getPropertyValue('-webkit-text-fill-color') || style.color;
+      const match = foregroundColor.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
+      if (!match) throw new Error(`Unsupported foreground color: ${foregroundColor}`);
+      const foreground = [...match.slice(1, 4).map(Number), match[4] === undefined ? 1 : Number(match[4])];
+      if (foreground.slice(0, 3).some(channel => channel < 0 || channel > 255) || foreground[3] !== 1) throw new Error('Expected opaque, valid foreground');
+      const labels = [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).flatMap(node => {
+        const range = document.createRange(); range.selectNodeContents(node);
+        return [...range.getClientRects()].map(rect => rect.toJSON());
+      });
+      const ancestors = [];
+      for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+        const computed = getComputedStyle(ancestor);
+        ancestors.push({ opacity: computed.opacity, filter: computed.filter });
+      }
+      return { foreground, foregroundColor, textShadow: style.textShadow, labels, ancestors,
+        button: element.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight, scrollX, scrollY },
+        backgroundColor: style.backgroundColor, backgroundImage: style.backgroundImage };
     });
-    const ancestors = [];
-    for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
-      const computed = getComputedStyle(ancestor);
-      ancestors.push({ opacity: computed.opacity, filter: computed.filter });
-    }
-    return { foreground, foregroundColor, textShadow: style.textShadow, labels, ancestors,
-      button: element.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight, scrollX, scrollY },
-      backgroundColor: style.backgroundColor, backgroundImage: style.backgroundImage };
-  });
+    return paint.ancestors.filter(ancestor => ancestor.opacity !== '1' || ancestor.filter !== 'none');
+  }).toEqual([]);
   // Pin the CSS-pixel capture origin explicitly. Element screenshots enclose
   // fractional backend bounds differently; their PNG can exceed raw width by >1px.
   if (![...Object.values(paint.button), ...Object.values(paint.viewport)].every(Number.isFinite) || paint.button.width <= 0 || paint.button.height <= 0) throw new Error('Invalid capture bounds');

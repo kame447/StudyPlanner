@@ -88,14 +88,15 @@ describe('weekly planning trace admin entry page loader', () => {
     expect(JSON.stringify(page.entries)).toContain('英語を3時間');
   });
 
-  it('does not recursively redact raw schema v2 diagnostic text during admin retrieval', async () => {
+  it('masks contact details in stored schema v2 diagnostic text without truncating it', async () => {
+    const longRawResponse = `raw person@example.com${' '.repeat(5_000)}end`;
     const firestore = batchReader(() => storedEntry(0, {
       traceSubjectToken: 'wpt_internal-secret',
       traceSubjectEpoch: '100',
       kind: 'turn_diagnostic',
       schemaVersion: 2,
-      userInput: { text: 'person@example.comへ確認' },
-      aiInterpreter: { rawResponses: [{ text: 'raw person@example.com' }] },
+      userInput: { text: 'person@example.comへ確認 090-1234-5678' },
+      aiInterpreter: { rawResponses: [{ text: longRawResponse }] },
     }));
 
     const page = await loadWeeklyPlanningTraceAdminEntryPage(
@@ -106,8 +107,14 @@ describe('weekly planning trace admin entry page loader', () => {
       20,
     );
     const output = JSON.stringify(page.entries);
+    const entry = page.entries[0] as Record<string, any>;
 
-    expect(output).toContain('person@example.com');
+    expect(output).not.toContain('person@example.com');
+    expect(output).not.toContain('090-1234-5678');
+    expect(entry.userInput.text).toBe('[EMAIL]へ確認 [PHONE]');
+    expect(entry.aiInterpreter.rawResponses[0].text)
+      .toBe(longRawResponse.replace('person@example.com', '[EMAIL]'));
+    expect(entry.id).toBe(`${SESSION_ID}-00000000`);
     expect(output).not.toContain('wpt_internal-secret');
     expect(output).not.toContain('traceSubjectEpoch');
     expect(output).toContain('subjectAlias');

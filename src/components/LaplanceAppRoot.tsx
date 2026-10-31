@@ -245,7 +245,8 @@ function LaplanceAppRootContent({
   }, [authSession]);
 
   if (!traceEnabled || !authSession.available) {
-    return <App />;
+    // Retain ordinary navigation, but never retain another auth lifetime's state.
+    return <App key={session.epoch} />;
   }
 
   const currentPresentation = presentation?.session === session ? presentation.value : null;

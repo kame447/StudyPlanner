@@ -242,9 +242,11 @@ body {
 
 html:has(.modal-overlay),
 html:has(.quick-entry-overlay),
+html:has(.bookshelf-sheet-overlay),
 html:has(.timetable-term-sheet-overlay),
 body:has(.modal-overlay),
 body:has(.quick-entry-overlay),
+body:has(.bookshelf-sheet-overlay),
 body:has(.timetable-term-sheet-overlay) {
   overflow: hidden;
   overscroll-behavior: contain;

@@ -17,7 +17,7 @@ class TimetableLoadBoundary extends Component<PropsWithChildren, { failed: boole
 // Keep app navigation and data owners mounted if optional delivery fails.
 export function DeferredTimetableView(props: TimetableViewProps) {
   return <TimetableLoadBoundary key={props.userId}>
-    <Suspense fallback={<RouteSkeleton view="timetable" />}>
+    <Suspense fallback={<RouteSkeleton view="timetable" timetable={props} />}>
       <TimetableView {...props} />
     </Suspense>
   </TimetableLoadBoundary>;

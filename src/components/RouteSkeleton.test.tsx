@@ -19,11 +19,11 @@ describe('route loading presentation', () => {
     act(() => renderer.unmount());
   });
   it('reserves different calendar, card, report, form and conversation layouts', () => {
-    const expected = { month: 'calendar', week: 'calendar', timetable: 'calendar', day: 'list', todo: 'list', bookshelf: 'books', report: 'chart', contact: 'input', 'ai-planning': 'composer' } as const;
+    const expected = { month: 'calendar', week: 'calendar', timetable: 'timetable-grid', day: 'list', todo: 'list', bookshelf: 'books', report: 'chart', contact: 'input', 'ai-planning': 'composer' } as const;
     for (const view of views) {
       let renderer!: ReturnType<typeof create>;
       act(() => { renderer = create(<RouteSkeleton view={view} />); });
-      expect(renderer.root.findAll(node => typeof node.type === 'string' && node.props.className?.split(' ').includes(`route-skeleton__${expected[view]}`))).toHaveLength(1);
+      expect(renderer.root.findAll(node => typeof node.type === 'string' && node.props.className?.split(' ').includes(view === 'timetable' ? 'timetable-grid' : `route-skeleton__${expected[view]}`))).toHaveLength(1);
       act(() => renderer.unmount());
     }
   });
@@ -41,8 +41,32 @@ describe('route loading presentation', () => {
     expect(app).toContain('return <SplashScreen fixedLight />');
     for (const [name, view] of [['Month', 'month'], ['Day', 'day'], ['Bookshelf', 'bookshelf'], ['Report', 'report'], ['Timetable', 'timetable']]) {
       const source = readFileSync(new URL(`./Deferred${name}View.tsx`, import.meta.url), 'utf8');
-      expect(source).toContain(`fallback={<RouteSkeleton view="${view}" />}`);
+      expect(source).toContain(view === 'timetable' ? 'fallback={<RouteSkeleton view="timetable" timetable={props} />}' : `fallback={<RouteSkeleton view="${view}" />}`);
       expect(source).toContain('role="alert"');
     }
   });
+});
+
+it('reserves four Report metrics and both Bookshelf filter rows using loaded chrome', () => {
+  for (const [view, className, count] of [['report', 'learning-report-summary-card', 4], ['bookshelf', 'bookshelf-category-chips', 2]] as const) {
+    let renderer!: ReturnType<typeof create>;
+    act(() => { renderer = create(<RouteSkeleton view={view} />); });
+    expect(renderer.root.findAllByProps({ className })).toHaveLength(count);
+    act(() => renderer.unmount());
+  }
+});
+it('reserves configured timetable rows and alternating-week control without focusable controls', () => {
+  const activeTerm = { id: 'term', userId: 'owner', year: 2026, kind: 'custom' as const, label: 'Term', isActive: true, usesAlternatingWeeks: true, createdAt: '', updatedAt: '' };
+  const timetablePeriods = [2, 5].map(periodNumber => ({ id: String(periodNumber), userId: 'owner', termId: 'term', periodNumber, label: String(periodNumber), startTime: null, endTime: null, createdAt: '', updatedAt: '' }));
+  let renderer!: ReturnType<typeof create>;
+  act(() => { renderer = create(<RouteSkeleton view="timetable" timetable={{ userId: 'owner', activeTerm, timetablePeriods, scheduleTemplates: [] }} />); });
+  expect(renderer.root.findAllByProps({ className: 'timetable-row-contents' })).toHaveLength(2);
+  expect(renderer.root.findAllByProps({ className: 'timetable-weekday-cell' })).toHaveLength(6);
+  expect(renderer.root.findAllByProps({ className: 'timetable-grid-cell' })).toHaveLength(12);
+  expect(renderer.root.findAllByProps({ className: 'timetable-alternating-control' })).toHaveLength(1);
+  expect(renderer.root.findAll(node => ['button', 'input', 'a'].includes(String(node.type)))).toHaveLength(0);
+  act(() => renderer.update(<RouteSkeleton view="timetable" />));
+  expect(renderer.root.findAllByProps({ className: 'timetable-row-contents' })).toHaveLength(6);
+  expect(renderer.root.findAllByProps({ className: 'timetable-alternating-control' })).toHaveLength(0);
+  act(() => renderer.unmount());
 });

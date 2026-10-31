@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { BookshelfView } from './BookshelfView';
 import { BookshelfMaterialDialog } from './BookshelfMaterialDialog';
 import { BookshelfSubjectDialog } from './BookshelfSubjectDialog';
@@ -175,7 +176,7 @@ it('each Study Session launch fences old success and exit callbacks even for the
   expect(renderer!.root.findAllByProps({ role: 'dialog' })).toHaveLength(1);
 });
 
-it('Study Session keeps original uncertain-write error and progress input, and requires inspection instead of replay', async () => {
+it('Study Session keeps safe uncertain-write guidance and progress input, and requires inspection instead of replay', async () => {
   await mount();
   const original = boundary.repository.upsertActualWithMaterialProgress;
   const failure = new Error('Firebase acknowledgement lost');
@@ -186,8 +187,9 @@ it('Study Session keeps original uncertain-write error and progress input, and r
   expect(state.studyMaterials[0].currentUnit).toBe(15);
   expect(currentProgress().props.value).toBe('5');
   const error = renderer!.root.findByProps({ role: 'alert' }).children.join('');
-  expect(error).toContain(failure.message);
+  expect(error).not.toContain(failure.message);
   expect(error).toContain('開き直');
+  expect(error).toContain('保存できませんでした');
   expect(button('記録を保存').props.disabled).toBe(true);
   await click('記録を保存');
   await back(); await click('終了する');
@@ -254,7 +256,7 @@ it('real Bookshelf captures one immutable baseline, preserves busy/stale absolut
   expect((await boundary.repository.getStudyMaterials('owner'))[0].currentUnit).toBe(12);
 });
 
-it('uncertain material save preserves fields and original error while preventing blind save/delete replay', async () => {
+it('uncertain material save preserves fields and safe error while preventing blind save/delete replay', async () => {
   await mountBookshelf(); await openMaterialEditor();
   const original = boundary.repository.upsertStudyMaterial;
   const failure = new Error('Material acknowledgement lost');
@@ -264,7 +266,8 @@ it('uncertain material save preserves fields and original error while preventing
   await submitMaterial();
   expect(materialNameInput().props.value).toBe('Saved but uncertain');
   const error = renderer!.root.findByProps({ className: 'inline-error' }).children.join('');
-  expect(error).toContain(failure.message); expect(error).toContain('開き直');
+  expect(error).not.toContain(failure.message); expect(error).toContain('開き直');
+  expect(error).toContain('保存できませんでした');
   expect(button('保存').props.disabled).toBe(true);
   expect(button('削除').props.disabled).toBe(true);
   await submitMaterial(); await click('削除');
@@ -272,8 +275,8 @@ it('uncertain material save preserves fields and original error while preventing
   expect((await boundary.repository.getStudyMaterials('owner'))[0].name).toBe('Saved but uncertain');
 });
 
-it('subject editor retains original uncertain fanout error and input, requiring inspect/reopen before resubmission', async () => {
-  const failure = new Error('Subject acknowledgement lost');
+it('subject editor retains controlled uncertain fanout guidance and input, requiring inspect/reopen before resubmission', async () => {
+  const failure = new UserFacingError('教科の保存結果を確認できませんでした。');
   const save = vi.fn(async () => { throw failure; });
   await act(async () => { renderer = create(<BookshelfSubjectDialog userId="owner" subject={subject}
     onClose={noop} onSave={save} onDelete={async () => {}} hasMaterials />); });

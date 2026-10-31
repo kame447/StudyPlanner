@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useRootManagedAuthentication } from '../components/RootManagedAuthenticationContext';
@@ -121,7 +122,7 @@ export function useAuthSessionState({
           if (!isCurrent()) return;
           startupOutcome = 'error';
           showNotice(
-            error instanceof Error
+            error instanceof UserFacingError
               ? error.message
               : '学習データの読み込みに失敗しました。',
             'error',
@@ -132,7 +133,7 @@ export function useAuthSessionState({
         startupOutcome = 'error';
         profileFailed = Boolean(expectedUserId && isSessionCurrent);
         showNotice(
-          error instanceof Error
+          error instanceof UserFacingError
             ? error.message
             : 'セッションの復元に失敗しました。',
           'error',
@@ -170,7 +171,7 @@ export function useAuthSessionState({
         return true;
       } catch (error) {
         showNotice(
-          error instanceof Error ? error.message : '新規登録に失敗しました。',
+          error instanceof UserFacingError ? error.message : '新規登録に失敗しました。',
           'error',
         );
         return false;
@@ -195,7 +196,7 @@ export function useAuthSessionState({
         return currentUser;
       } catch (error) {
         showNotice(
-          error instanceof Error ? error.message : 'ログインに失敗しました。',
+          error instanceof UserFacingError ? error.message : 'ログインに失敗しました。',
           'error',
         );
         return null;
@@ -219,7 +220,7 @@ export function useAuthSessionState({
       return currentUser;
     } catch (error) {
       showNotice(
-        error instanceof Error ? error.message : 'Googleログインに失敗しました。',
+        error instanceof UserFacingError ? error.message : 'Googleログインに失敗しました。',
         'error',
       );
       return null;
@@ -236,7 +237,7 @@ export function useAuthSessionState({
         );
       } catch (error) {
         showNotice(
-          error instanceof Error
+          error instanceof UserFacingError
             ? error.message
             : 'パスワード再設定メールを送信できませんでした。',
           'error',
@@ -266,13 +267,11 @@ export function useAuthSessionState({
         return nextUser;
       } catch (error) {
         if (!isCurrent()) throw new ProfileSaveScopeExpiredError();
-        showNotice(
-          error instanceof Error
-            ? error.message
-            : 'プロフィールを更新できませんでした。',
-          'error',
+        const failure = error instanceof UserFacingError ? error : new UserFacingError(
+          'プロフィールの更新結果を確認できませんでした。再読み込みして内容を確認してください。',
         );
-        throw error;
+        showNotice(failure.message, 'error');
+        throw failure;
       }
     },
     [showNotice, user],

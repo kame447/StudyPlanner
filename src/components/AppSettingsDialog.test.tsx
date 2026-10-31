@@ -97,6 +97,22 @@ describe('standalone readable settings', () => {
     expect(renderer.root.findByProps({ role: 'tabpanel' }).props['aria-labelledby']).toBe('app-settings-tab-settings');
   });
 
+  it('reopens on settings with heading focus and discards the previous memory editor', () => {
+    mount(); selectTab('memory');
+    act(() => button('追加').props.onClick());
+    act(() => renderer.root.findByType('textarea').props.onChange({ target: { value: '未保存の記憶' } }));
+    selectTab('support');
+    expect(renderer.root.findByProps({ role: 'tabpanel' }).props['aria-labelledby']).toBe('app-settings-tab-support');
+    act(() => renderer.update(<AppSettingsDialog {...props} open={false} />));
+    focus.mockClear();
+    act(() => renderer.update(<AppSettingsDialog {...props} />));
+    expect(renderer.root.findByProps({ role: 'tabpanel' }).props['aria-labelledby']).toBe('app-settings-tab-settings');
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    selectTab('memory');
+    expect(renderer.root.findAllByType('textarea')).toHaveLength(0);
+    expect(state.memory.saveNaturalLanguage).not.toHaveBeenCalled();
+  });
+
   it('moves ordinary help into support while retaining errors, non-obvious effects and valid accessible references', () => {
     mount();
     act(() => renderer.update(<AppSettingsDialog {...props}

@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
@@ -144,7 +145,7 @@ it.each([
   const actualRead = vi.spyOn(boundary.repository, 'getActuals').mockRejectedValueOnce(Error('delete repair offline'));
   await act(async () => {
     gate.resolve();
-    expect(await deleting).toBe(outcome === 'success' ? undefined : failure);
+    expect(await deleting).toEqual(outcome === 'success' ? undefined : new UserFacingError("記録を削除できませんでした。"));
   });
   expect(actualRead).toHaveBeenCalledTimes(1);
   expect(state.plannerDataRecovery).toMatchObject({ phase: 'failed', canRetry: true });

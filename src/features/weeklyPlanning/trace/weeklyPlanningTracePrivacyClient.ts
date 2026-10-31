@@ -1,3 +1,4 @@
+import { accountClientWritesPaused } from '../../../services/accountDeletionClientState';
 import {
   WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING,
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
@@ -206,7 +207,9 @@ async function authenticatedTraceRequest(
     );
   }
 
+  if (accountClientWritesPaused(currentUser.uid)) throw new Error('Account deletion is in progress.');
   const idToken = await currentUser.getIdToken();
+  if (accountClientWritesPaused(currentUser.uid)) throw new Error('Account deletion is in progress.');
   // A token can finish after a policy deadline or owner retirement. Do not
   // dispatch that retired read after the caller has already stopped waiting.
   if (init.signal?.aborted) throw init.signal.reason;

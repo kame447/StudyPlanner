@@ -28,15 +28,10 @@
 .route-skeleton__calendar { gap: 1px; background: var(--border); border: 1px solid var(--border); }
 .route-skeleton__cell { min-height: 84px; padding: 10px; background: var(--surface-strong); }
 .route-skeleton__cell > span { width: 24px; max-width: 100%; height: 12px; }
-.route-skeleton--week .route-skeleton__cell, .route-skeleton--timetable .route-skeleton__cell { min-height: 100px; }
+.route-skeleton--week .route-skeleton__cell { min-height: 100px; }
 .route-skeleton__filters { width: 65%; height: 32px; }
-.route-skeleton__books { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
-.route-skeleton__book { display: grid; gap: 16px; }
-.route-skeleton__cover { height: 220px; }
 .route-skeleton__line { width: 75%; height: 16px; }
-.route-skeleton__summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.route-skeleton__metric { height: 100px; }
-.route-skeleton__chart { height: 280px; }
+.route-skeleton__chart { min-height: 190px; }
 .route-skeleton__input { height: 192px; }
 .route-skeleton__attachment { height: 100px; }
 .route-skeleton__suggestions { display: grid; gap: 16px; }
@@ -52,10 +47,6 @@
   .route-skeleton { padding: 12px; border-radius: 16px; }
   .route-skeleton__layout { gap: 16px; }
   .route-skeleton__cell { min-height: 70px; padding: 6px; }
-  .route-skeleton__books { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-  .route-skeleton__cover { height: 180px; }
-  .route-skeleton__summary { gap: 8px; }
-  .route-skeleton__metric { height: 90px; }
   .route-skeleton--contact { padding: 0; }
 }
 /* Month owns the remaining schedule viewport, as does the loaded six-row grid. */
@@ -69,3 +60,22 @@
 .route-skeleton--week .route-skeleton__layout { height: 100%; min-height: 0; grid-template-rows: 34px 32px minmax(0, 1fr); gap: 6px; }
 .route-skeleton--week .route-skeleton__calendar { grid-template-rows: repeat(4, minmax(0, 1fr)); }
 .route-skeleton--week .route-skeleton__cell { min-height: 0; overflow: hidden; }
+
+/* These routes use the same local chrome and grid tokens before and after delivery. */
+.route-skeleton:is(.route-skeleton--bookshelf, .route-skeleton--report, .route-skeleton--timetable) {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  pointer-events: none;
+}
+.route-skeleton:is(.route-skeleton--bookshelf, .route-skeleton--report, .route-skeleton--timetable) > .route-skeleton__layout { display: contents; }
+.route-skeleton__book-edit { padding: 4px 7px; font-size: 0.75rem; font-weight: 900; }
+.route-skeleton__chip { flex: 0 0 96px; height: 38px; border-radius: 999px; }
+.route-skeleton--report .learning-report-summary-copy > span { width: 5em; height: 1.5em; }
+.route-skeleton--report .learning-report-summary-copy > strong { height: 1.2em; }
+.route-skeleton__report-tabs { grid-column: 1 / -1; min-height: 44px; }
+.route-skeleton--timetable .timetable-grid-cell { display: grid; place-items: center; }
+@media (max-width: 440px) {
+  .route-skeleton__chip { height: 34px; }
+}

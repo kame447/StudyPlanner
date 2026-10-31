@@ -14,6 +14,7 @@ import {
   createWeeklyPlanningTraceSubject,
   isWeeklyPlanningLegacyTraceSessionHandle,
   isWeeklyPlanningTraceSessionId,
+  redactWeeklyPlanningTurnDiagnosticDocument,
   resolveWeeklyPlanningTraceHmacSecretRing,
   resolveWeeklyPlanningTraceEpoch,
   weeklyPlanningTraceExpireAt,
@@ -266,7 +267,9 @@ function documentForAdmin(document: Record<string, unknown>): Record<string, unk
   const subjectAlias = typeof traceSubjectToken === 'string'
     ? `subject-${traceSubjectToken.slice(-12)}`
     : undefined;
-  return subjectAlias ? { ...safe, subjectAlias } : safe;
+  // Entries stored before save-time masking are masked when read.
+  const masked = redactWeeklyPlanningTurnDiagnosticDocument(safe);
+  return subjectAlias ? { ...masked, subjectAlias } : masked;
 }
 
 function boundedEntries(

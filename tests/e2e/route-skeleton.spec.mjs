@@ -58,12 +58,93 @@ for (const width of [390, 1280]) for (const mode of ['light', 'dark']) for (cons
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         expect(await skeleton.locator('.route-skeleton__block').first().evaluate(node => ({ animation: getComputedStyle(node).animationName, background: getComputedStyle(node).backgroundColor }))).toEqual({ animation: 'none', background: mode === 'dark' ? 'rgba(225, 240, 236, 0.12)' : 'rgba(31, 43, 43, 0.1)' });
         await testInfo.attach(`${view}-${width}-${mode}`, { body: await page.screenshot(), contentType: 'image/png' });
+        if (['bookshelf', 'report', 'timetable'].includes(view)) {
+          await page.evaluate(view => {
+            const selectors = ['.app-shell', '.primary-app-header', '.app-view-switcher', 'main', ...{
+              bookshelf: ['.bookshelf-page-header', '.bookshelf-page-title-row', '.bookshelf-page-header > .bookshelf-category-chips', '.bookshelf-category-filter-row'],
+              report: ['.learning-report-header', '.learning-report-summary-grid', '.learning-report-controls', '.learning-report-period-navigation'],
+              timetable: ['.timetable-header', '.timetable-grid-shell', '.timetable-grid', '.timetable-weekday-cell', '.timetable-period-cell'],
+            }[view]];
+            const sample = () => ({ t: performance.now(), loaded: !document.querySelector(`.route-skeleton--${view}`),
+              anchors: selectors.map(selector => ({ selector, rects: [...document.querySelectorAll(selector)].map(node => {
+                const r = node.getBoundingClientRect(); return { box: node.getClientRects().length > 0, x: r.x, y: r.y, width: r.width, height: r.height };
+              }) })) });
+            const before = sample(); const frames = []; let frame;
+            const tick = () => { frames.push(sample()); frame = requestAnimationFrame(tick); };
+            window.__routeFirstFrames = { before, frames, stop: () => cancelAnimationFrame(frame) };
+            frame = requestAnimationFrame(tick);
+          }, view);
+        }
         release();
         await expect(skeleton).toHaveCount(0);
+        if (['bookshelf', 'report', 'timetable'].includes(view)) {
+          await page.waitForFunction(() => window.__routeFirstFrames.frames.filter(frame => frame.loaded).length >= 8);
+          const capture = await page.evaluate(() => {
+            window.__routeFirstFrames.stop();
+            return { before: window.__routeFirstFrames.before, frames: window.__routeFirstFrames.frames };
+          });
+          for (const anchor of capture.before.anchors.slice(4)) expect(anchor.rects.length, `${anchor.selector}: reserved anchor exists`).toBeGreaterThan(0);
+          const loaded = capture.frames.filter(frame => frame.loaded);
+          expect(loaded.length).toBeGreaterThanOrEqual(8);
+          for (const frame of loaded) for (let i = 0; i < capture.before.anchors.length; i++) {
+            const original = capture.before.anchors[i]; const current = frame.anchors[i];
+            expect(current.rects.length, `${original.selector}: anchors stay present`).toBe(original.rects.length);
+            // Data-dependent Bookshelf/Report body height is intentionally not fixed.
+            const dimensions = view !== 'timetable' && ['.app-shell', 'main'].includes(original.selector)
+              ? ['x', 'y', 'width'] : ['x', 'y', 'width', 'height'];
+            for (let j = 0; j < original.rects.length; j++) {
+              expect(current.rects[j].box, `${original.selector}: visibility`).toBe(original.rects[j].box);
+              for (const dimension of dimensions) expect(Math.abs(current.rects[j][dimension] - original.rects[j][dimension]), `${original.selector}[${j}] ${dimension}`).toBeLessThanOrEqual(1);
+            }
+          }
+        }
         await expect(shell).toBeVisible();
         const after = await shell.boundingBox();
         expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
         expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
-      } finally { release(); }
+      } finally {
+        release();
+        const evidence = await page.evaluate(() => {
+          const recorder = window.__routeFirstFrames; if (!recorder) return null;
+          recorder.stop(); return { before: recorder.before, frames: recorder.frames };
+        }).catch(() => null);
+        if (evidence) await testInfo.attach('route-first-visible-frames.json', { body: Buffer.from(JSON.stringify(evidence)), contentType: 'application/json' });
+      }
+  });
+}
+
+for (const width of [390, 1280]) {
+  test(`settings reopens on settings in its first visible frame at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await prepare(page, 'light', 'report');
+    await page.goto('/');
+    const menu = page.getByRole('button', { name: 'メニューを開く', exact: true });
+    const settings = page.locator('.app-settings-page');
+    await menu.click();
+    await settings.getByRole('tab', { name: 'サポート', exact: true }).click();
+    await settings.getByRole('button', { name: '戻る', exact: true }).click();
+    await expect(settings).toHaveCount(0);
+    await page.evaluate(() => {
+      const frames = []; let frame;
+      const tick = () => {
+        const panel = document.querySelector('.app-settings-content');
+        if (panel?.getClientRects().length && panel.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) frames.push({ t: performance.now(), labelledBy: panel.getAttribute('aria-labelledby') });
+        frame = requestAnimationFrame(tick);
+      };
+      window.__settingsFirstFrames = { frames, stop: () => cancelAnimationFrame(frame) };
+      frame = requestAnimationFrame(tick);
+    });
+    try {
+      await menu.click();
+      await expect(settings).toBeVisible();
+      await page.waitForFunction(() => window.__settingsFirstFrames.frames.length >= 8);
+      const frames = await page.evaluate(() => window.__settingsFirstFrames.frames);
+      expect(frames.length).toBeGreaterThanOrEqual(8);
+      expect(frames.every(frame => frame.labelledBy === 'app-settings-tab-settings')).toBe(true);
+      await expect(settings.getByRole('tab', { name: '設定', exact: true })).toHaveAttribute('aria-selected', 'true');
+    } finally {
+      const frames = await page.evaluate(() => { window.__settingsFirstFrames.stop(); return window.__settingsFirstFrames.frames; }).catch(() => null);
+      if (frames) await testInfo.attach('settings-first-visible-frames.json', { body: Buffer.from(JSON.stringify(frames)), contentType: 'application/json' });
+    }
   });
 }

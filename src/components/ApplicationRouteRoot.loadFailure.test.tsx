@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   listeners = new Map();
   location.pathname = '/';
-  vi.stubGlobal('window', { location, history: { pushState },
+  vi.stubGlobal('window', { location, history: { pushState }, dispatchEvent: (event: Event) => { listeners.get(event.type)?.(); return true; },
     addEventListener: (type: string, fn: () => void) => listeners.set(type, fn),
     removeEventListener: (type: string) => listeners.delete(type) });
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -53,7 +53,7 @@ describe('Admin delivery failure recovery', () => {
     expect(pushState).toHaveBeenCalledExactlyOnceWith({}, '', '/');
     expect(text()).toContain('Normal');
     expect(renderer.root.findAllByProps({ role: 'alert' })).toHaveLength(0);
-    expect(mocks.normal).toHaveBeenLastCalledWith(session);
+    expect(mocks.normal).toHaveBeenLastCalledWith(undefined);
     await navigate('/admin/users');
     expect(renderer.root.findByProps({ role: 'alert' })).toBeDefined();
     await navigate('/');

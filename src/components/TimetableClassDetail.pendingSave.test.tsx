@@ -86,7 +86,8 @@ it.each(['reject-before', 'reject-after'] as const)('reads actual persisted hist
 
 it('releases the barrier even for a synchronously throwing repository and allows a fresh save', async () => {
   const f = await pendingFixture('sync-throw');
-  expect(ui.root.findByProps({ role: 'alert' }).children).toContain('synchronous write failure');
+  expect(ui.root.findByProps({ role: 'alert' }).children).toContain('出欠の保存結果を確認できませんでした。再読み込みして記録を確認してください。');
+  expect(JSON.stringify(ui.toJSON())).not.toContain('synchronous write failure');
   await closeAndReopen();
   expect(f.list).toHaveBeenCalledTimes(2);
   expect(counts()).toEqual(['0', '0', '0']);

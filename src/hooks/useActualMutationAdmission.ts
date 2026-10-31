@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import type { Actual, MonthEvent, Plan, StudyMaterial, StudySubject } from '../types/domain';
 import type { usePlannerMutationScope } from './usePlannerMutationScope';
@@ -13,7 +14,7 @@ export const materialUncertainMessage = '保存結果を確認できません。
 const materialPendingMessage = 'この教材は保存・更新中です。入力内容は保持されています。完了してからもう一度保存してください。';
 export const materialRefreshMessage = '教材の最新状態を確認できていません。データを再読み込みし、保存結果を確認して開き直してください。';
 
-export class ActualMutationAdmissionError extends Error {}
+export class ActualMutationAdmissionError extends UserFacingError {}
 export class MaterialMutationAdmissionError extends ActualMutationAdmissionError {}
 declare const materialBaselineBrand: unique symbol;
 /** Opaque, immutable, same-owner edit-session evidence; never a storage revision. */
