@@ -15,9 +15,12 @@ import {
   type CandidateBasis,
   type CandidateChoiceRequest,
 } from '../../application/candidateSelection';
+import { createCandidateChoiceClient, type CandidateSemanticGatePolicy } from '../../../../services/ai/candidateChoiceClient';
+import type { CandidateChoiceEvaluation } from '../../../../../shared/candidateChoiceDecision';
 import type {
   WeeklyPlanningVNextInterpretation,
   WeeklyPlanningVNextInterpreter,
+  WeeklyPlanningVNextOptionChoiceDiagnostic,
 } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextQuestion, VNextQuestionCode } from '../weeklyPlanningVNextTypes';
 import { presentWeeklyPlanningVNextQuestion, type WeeklyPlanningVNextQuestionPresentation } from './weeklyPlanningVNextQuestionText';
@@ -28,7 +31,23 @@ export const VNEXT_OPTION_CHOICE_CODES = ['remaining_inconsistent', 'same_or_dis
 export interface WeeklyPlanningVNextOptionChoicePort {
   /** Calibrated per menu shape; an uncalibrated menu is never chosen from. */
   policy: CalibratedChoicePolicy;
-  choose(request: CandidateChoiceRequest, beforeDispatch: () => void): Promise<unknown>;
+  choose(request: CandidateChoiceRequest, beforeDispatch: () => void,
+    observe?: (evaluation: CandidateChoiceEvaluation, policy: CandidateSemanticGatePolicy) => void): Promise<unknown>;
+}
+
+/** Reuse the authenticated client's validated observation, without widening its strict gate response.
+ * A client per invocation keeps diagnostics local even when turns overlap. Diagnostics tests guard
+ * the existing gate outcomes and full-input fallback; extend those when adding an outcome reason.
+ */
+export function createWeeklyPlanningVNextOptionChoicePort(params: {
+  policy: CalibratedChoicePolicy;
+  client: Omit<Parameters<typeof createCandidateChoiceClient>[0], 'onEvaluation'>;
+}): WeeklyPlanningVNextOptionChoicePort {
+  const semanticPolicy = Object.freeze({ ...params.client.semanticPolicy });
+  return { policy: params.policy, choose: (request, beforeDispatch, observe) =>
+    createCandidateChoiceClient({ ...params.client, semanticPolicy,
+      onEvaluation: (_request, evaluation) => observe?.(evaluation, semanticPolicy),
+    }).choose(request, beforeDispatch) };
 }
 
 export type WeeklyPlanningVNextOptionChoiceOutcome =
@@ -95,11 +114,33 @@ export function createWeeklyPlanningVNextOptionChoiceInterpreter(params: {
     const question = input.presentedQuestion;
     const started = Date.now();
     let dispatched = 0;
+    let evaluation: CandidateChoiceEvaluation | null = null;
+    let semanticPolicy: CandidateSemanticGatePolicy | null = null;
+    let choiceRequest: CandidateChoiceRequest | null = null;
+    const diagnostic = (gateReason: string): WeeklyPlanningVNextOptionChoiceDiagnostic => {
+      const sorted = evaluation?.probabilities.map(({ probability }) => probability).sort((a, b) => b - a);
+      const margin = sorted && sorted.length > 1 ? sorted[0] - sorted[1] : null;
+      const rule = choiceRequest && params.choice.policy.rules.find((entry) => entry.menuKind === choiceRequest!.menu.kind
+        && entry.depth === choiceRequest!.menu.depth && entry.optionCount === choiceRequest!.menu.options.length);
+      const extraMeaning: WeeklyPlanningVNextOptionChoiceDiagnostic['extraMeaning'] = [];
+      if (evaluation && semanticPolicy) {
+        if (evaluation.conditionChange > semanticPolicy.maximumConditionChange) extraMeaning.push('conditionChange');
+        if (evaluation.independentMeaning > semanticPolicy.maximumIndependentMeaning) extraMeaning.push('independentMeaning');
+      }
+      return { questionKey: question!.key, graphRevision: input.state.graph.revision, policyId: params.choice.policy.id,
+        gateReason, reason: gateReason === 'selected' || gateReason === 'none' || gateReason === 'extra_meaning' ? gateReason
+          : gateReason === 'low_probability' && rule && sorted
+            ? sorted[0] < rule.minimumTopProbability ? 'below_threshold' : 'margin'
+            : gateReason === 'provider_error' || gateReason === 'invalid_response' ? 'schema_or_transport' : 'unavailable',
+        probabilities: evaluation ? evaluation.probabilities.map((entry) => ({ ...entry })) : null,
+        margin, conditionChange: evaluation?.conditionChange ?? null, independentMeaning: evaluation?.independentMeaning ?? null,
+        extraMeaning };
+    };
     const toFullReading = async (reason: string): Promise<WeeklyPlanningVNextInterpretation> => {
       params.onOutcome?.({ route: 'full_reading', reason });
       const reading = await params.fullReading(input);
       return { ...reading, metrics: { ...reading.metrics, calls: reading.metrics.calls + dispatched,
-        latencyMs: Math.max(0, Date.now() - started) } };
+        latencyMs: Math.max(0, Date.now() - started), optionChoice: diagnostic(reason) } };
     };
     // Jev chooses only against the reply the user actually saw; without it, the full reading reads the words.
     if (!question || input.presentedText === null || !(VNEXT_OPTION_CHOICE_CODES as readonly string[]).includes(question.code)
@@ -118,7 +159,13 @@ export function createWeeklyPlanningVNextOptionChoiceInterpreter(params: {
       // The interpreter's input is fixed for this call; the binder re-checks freshness when applying.
       readCurrent: () => ({ ...basis, sourceAccess: 'allowed', intentProvenance: 'validated_current_turn',
         targetStatus: 'active', questionPresentation: 'fresh', formalEligibility: 'eligible' }),
-      choose: (request, beforeDispatch) => params.choice.choose(request, () => { dispatched += 1; beforeDispatch(); }),
+      choose: (request, beforeDispatch) => {
+        choiceRequest = request;
+        return params.choice.choose(request, () => { dispatched += 1; beforeDispatch(); }, (value, policy) => {
+          evaluation = structuredClone(value);
+          semanticPolicy = { ...policy };
+        });
+      },
     });
     if (result.status !== 'staged') return toFullReading(result.reason);
     const optionId = String(result.selection.candidate.tuple.optionId);
@@ -127,7 +174,7 @@ export function createWeeklyPlanningVNextOptionChoiceInterpreter(params: {
       status: 'interpreted',
       delta: { add: [], patch: [], remove: [], relate: [], defer: [] },
       answer: { kind: 'option', optionId },
-      metrics: { calls: dispatched, repairs: 0, latencyMs: Math.max(0, Date.now() - started) },
+      metrics: { calls: dispatched, repairs: 0, latencyMs: Math.max(0, Date.now() - started), optionChoice: diagnostic('selected') },
     };
   };
 }

@@ -50,11 +50,27 @@ export type WeeklyPlanningVNextInterpretedAnswer =
    */
   | { kind: 'estimate_minutes'; minutes: number; per: 'whole_work' | 'unit' };
 
+/** Values from the validated Jev response; diagnostics never authorize a selection. */
+export interface WeeklyPlanningVNextOptionChoiceDiagnostic {
+  questionKey: string;
+  graphRevision: number;
+  policyId: string;
+  gateReason: string;
+  reason: 'selected' | 'none' | 'below_threshold' | 'margin' | 'extra_meaning' | 'schema_or_transport' | 'unavailable';
+  /** Null means no validated evaluation was returned, rather than a zero score. */
+  probabilities: readonly { readonly optionId: string; readonly probability: number }[] | null;
+  margin: number | null;
+  conditionChange: number | null;
+  independentMeaning: number | null;
+  extraMeaning: ('conditionChange' | 'independentMeaning')[];
+}
+
 export interface WeeklyPlanningVNextInterpretationMetrics {
   /** Provider requests made for this turn, including the one allowed repair. */
   calls: number;
   repairs: number;
   latencyMs: number;
+  optionChoice?: WeeklyPlanningVNextOptionChoiceDiagnostic;
 }
 
 export type WeeklyPlanningVNextInterpretation =

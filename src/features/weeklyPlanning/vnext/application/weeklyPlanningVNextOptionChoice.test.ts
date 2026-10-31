@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { isCandidateChoiceDecisionContext } from '../../../../../shared/candidateChoiceDecision';
+import { CANDIDATE_CHOICE_CATALOG_VERSION, isCandidateChoiceDecisionContext, type CandidateChoiceWireRequest } from '../../../../../shared/candidateChoiceDecision';
 import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
 import type { CalibratedChoicePolicy, CandidateChoiceRequest } from '../../application/candidateSelection';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
@@ -15,7 +15,7 @@ import {
   type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope,
 } from './weeklyPlanningVNextExperimentalSession';
-import { createWeeklyPlanningVNextOptionChoiceInterpreter } from './weeklyPlanningVNextOptionChoice';
+import { createWeeklyPlanningVNextOptionChoiceInterpreter, createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoice';
 import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
 
 const pages = (localId: string, role: 'scope_total' | 'completed' | 'remaining', amount: number): VNextAddFact => ({
@@ -57,6 +57,79 @@ const response = (request: CandidateChoiceRequest, candidateId: string, sufficie
 
 // Stated remaining 7 against total 20 − completed 12 = 8: remaining_inconsistent with two options.
 const inconsistent = () => stateWith([pages('total', 'scope_total', 20), pages('done', 'completed', 12), pages('left', 'remaining', 7)]);
+
+describe('VNext Jev diagnostic receipts through the existing authenticated client', () => {
+  // Frozen dev calibration, as recorded in luna-holdout-fallback-a25c9899.md.
+  // No holdout utterance or recalibration is used by these synthetic gate controls.
+  const frozenPolicy: CalibratedChoicePolicy = { id: 'frozen-vnext', calibrationEvidenceId: 'frozen-dev-calibration', rules: [
+    { menuKind: 'leaves', optionCount: 3, depth: 0, minimumTopProbability: 0.91, minimumMargin: 0.82 },
+    { menuKind: 'leaves', optionCount: 4, depth: 0, minimumTopProbability: 0.59, minimumMargin: 0.20 },
+  ] };
+  const semanticPolicy = { calibrationEvidenceId: 'frozen-dev-calibration', maximumConditionChange: 0.36, maximumIndependentMeaning: 0.69 };
+  it.each([
+    { label: 'selected', reason: 'selected', scores: [0.95, 0.03, 0.02], conditionChange: 0.36, independentMeaning: 0.69 },
+    { label: 'none', reason: 'none', scores: [0.02, 0.03, 0.95], conditionChange: 0.1, independentMeaning: 0.2 },
+    { label: 'top probability', reason: 'below_threshold', scores: [0.90, 0.06, 0.04], conditionChange: 0.1, independentMeaning: 0.2 },
+    { label: 'margin', reason: 'margin', scores: [0.59, 0.41, 0, 0], conditionChange: 0.1, independentMeaning: 0.2 },
+    { label: 'condition change', reason: 'extra_meaning', scores: [0.95, 0.03, 0.02], conditionChange: 0.37, independentMeaning: 0.2 },
+    { label: 'independent meaning', reason: 'extra_meaning', scores: [0.95, 0.03, 0.02], conditionChange: 0.1, independentMeaning: 0.70 },
+    { label: 'both semantic heads', reason: 'extra_meaning', scores: [0.95, 0.03, 0.02], conditionChange: 0.37, independentMeaning: 0.70 },
+  ])('records all values and the unchanged gate outcome: $label', async ({ scores, conditionChange, independentMeaning, reason }) => {
+    const state = scores.length === 4 ? stateWith([pages('a', 'remaining', 20),
+      { ...pages('b', 'remaining', 8), unitCode: 'custom', unitLabel: '問' } as VNextAddFact]) : inconsistent();
+    const original = input(state, '合成の回答と独立した指示');
+    let evaluation: Record<string, unknown> | undefined;
+    const fullReading = vi.fn(async () => fullReadingResult);
+    const transport = vi.fn(async (_url: unknown, init: RequestInit | undefined) => {
+      const request = JSON.parse(String(init?.body)).decisionContext.request as CandidateChoiceWireRequest;
+      // Keep the `none` distribution entry regardless of menu order.
+      const leaves = request.menu.options.filter(option => option.kind !== 'none');
+      const ordered = [...leaves, request.menu.options.find(option => option.kind === 'none')!];
+      const probabilities = ordered.map((option, index) => ({ optionId: option.id, probability: scores[index] }));
+      evaluation = { status: 'evaluated', catalogVersion: CANDIDATE_CHOICE_CATALOG_VERSION,
+        requestId: request.requestId, selectionEpoch: request.selectionEpoch, candidateSetHash: request.candidateSetHash,
+        nodeId: request.menu.nodeId, optionId: probabilities.reduce((a, b) => a.probability > b.probability ? a : b).optionId,
+        probabilities, conditionChange, independentMeaning };
+      return new Response(JSON.stringify(evaluation));
+    });
+    const choice = createWeeklyPlanningVNextOptionChoicePort({ policy: frozenPolicy,
+      client: { semanticPolicy, proxyUrl: 'https://synthetic.invalid', getToken: async () => 'dummy-token', transport } });
+    const result = await createWeeklyPlanningVNextOptionChoiceInterpreter({ fullReading, choice,
+      scope: { ownerId: 'o', conversationId: 'c' } })(original);
+    const receipt = result.metrics.optionChoice!;
+    expect(receipt).toMatchObject({ reason, probabilities: evaluation!.probabilities, conditionChange, independentMeaning,
+      questionKey: original.presentedQuestion!.key, graphRevision: state.graph.revision, policyId: frozenPolicy.id });
+    expect(receipt.probabilities!.find(entry => entry.optionId === 'none')?.probability).toBe(scores[scores.length - 1]);
+    const sorted = [...scores].sort((a, b) => b - a);
+    expect(receipt.margin).toBeCloseTo(sorted[0] - sorted[1]);
+    expect(receipt.extraMeaning).toEqual([
+      ...(conditionChange > 0.36 ? ['conditionChange'] : []), ...(independentMeaning > 0.69 ? ['independentMeaning'] : []),
+    ]);
+    if (reason === 'selected') {
+      expect(result).toMatchObject({ status: 'interpreted', answer: { kind: 'option' }, metrics: { calls: 1 } });
+      expect(fullReading).not.toHaveBeenCalled();
+    } else {
+      expect(fullReading).toHaveBeenCalledExactlyOnceWith(original);
+      expect(result).toMatchObject({ answer: null, metrics: { calls: 2 } });
+    }
+    expect(frozenPolicy.rules.map(rule => [rule.minimumTopProbability, rule.minimumMargin])).toEqual([[0.91, 0.82], [0.59, 0.20]]);
+  });
+
+  it.each(['schema', 'transport'])('records unavailable scores for %s failure and preserves the whole input', async failure => {
+    const original = input(inconsistent(), '合成の回答と独立した指示');
+    const fullReading = vi.fn(async () => fullReadingResult);
+    const choice = createWeeklyPlanningVNextOptionChoicePort({ policy: frozenPolicy,
+      client: { semanticPolicy, proxyUrl: 'https://synthetic.invalid', getToken: async () => 'dummy-token',
+        transport: async () => { if (failure === 'transport') throw new Error('synthetic transport failure');
+          return new Response(JSON.stringify({ status: 'evaluated', probabilities: [] })); } } });
+    const result = await createWeeklyPlanningVNextOptionChoiceInterpreter({ fullReading, choice,
+      scope: { ownerId: 'o', conversationId: 'c' } })(original);
+    expect(result.metrics.optionChoice).toMatchObject({ reason: 'schema_or_transport', gateReason: 'provider_error',
+      probabilities: null, margin: null, conditionChange: null, independentMeaning: null, extraMeaning: [] });
+    expect(fullReading).toHaveBeenCalledExactlyOnceWith(original);
+    expect(result.metrics.calls).toBe(2);
+  });
+});
 
 describe('VNext closed-set option choice before the full reading', () => {
   it('selects one of the presented options as an option answer, without the full reading', async () => {
