@@ -19,6 +19,8 @@ Object.assign(process.env, {
   STUDYPLANNER_E2E_EMULATOR_STATE: path.join(repoRoot, 'artifacts/playwright-emulator-state.json'),
 });
 
+const VNEXT_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-vnext-state.json');
+
 export default defineConfig({
   testDir: configDir,
   fullyParallel: false,
@@ -45,6 +47,20 @@ export default defineConfig({
       // The seed spec registers several fixtures through the UI; same budget as its own config.
       timeout: 10 * 60_000,
       use: { ...devices['Desktop Chrome'], storageState: process.env.STUDYPLANNER_E2E_EMULATOR_STATE },
+    },
+    // The VNext experiment (#926), switched on by its explicit local query parameter, with its own account.
+    {
+      name: 'emulator-vnext-setup',
+      testMatch: 'emulator/account.setup.mjs',
+      metadata: { email: 'e2e-vnext@example.test', statePath: VNEXT_STATE },
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'chromium-emulator-vnext',
+      testMatch: 'emulator/vnext-conversation.emulator.mjs',
+      dependencies: ['emulator-vnext-setup'],
+      metadata: { email: 'e2e-vnext@example.test' },
+      use: { ...devices['Desktop Chrome'], storageState: VNEXT_STATE },
     },
   ],
   webServer: [
@@ -82,5 +98,6 @@ export default defineConfig({
       reuseExistingServer: !isCi,
       timeout: 300_000,
     },
+
   ],
 });

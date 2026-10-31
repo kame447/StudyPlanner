@@ -24,6 +24,9 @@ Object.assign(process.env, {
   VITE_CLOUDFLARE_AI_PROXY_URL: 'http://127.0.0.1:18787',
   VITE_WEEKLY_PLANNING_TRACE_ENABLED: 'true',
   VITE_DURABLE_WEEKLY_TURNS: 'disabled',
+  // Permits the explicit local VNext experiment (#926): it takes effect only on a local host and only
+  // with ?weeklyPlanningCore=vnext. Deployment builds never set it.
+  VITE_ENABLE_WEEKLY_PLANNING_VNEXT: 'true',
   // Ports from firebase.emulator-e2e.json, apart from the defaults other local tools often hold.
   VITE_E2E_AUTH_EMULATOR_HOST: '127.0.0.1:9199',
   VITE_E2E_FIRESTORE_EMULATOR_HOST: '127.0.0.1:8180',

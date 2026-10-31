@@ -6,14 +6,16 @@ import { expect, test } from '@playwright/test';
 // verification code the emulator issues instead of a mail (it delivers none), sign in, and answer what
 // the app asks, so production code writes every document itself. The tour's completion lives only in
 // this browser's storage, so the live spec starts with that flag and, as against production, signed out.
-const email = process.env.STUDYPLANNER_LIVE_EMAIL;
+// Each project registers its own account on its own origin; the live specs use the configured one.
+const email = () => test.info().project.metadata.email ?? process.env.STUDYPLANNER_LIVE_EMAIL;
+const statePath = () => test.info().project.metadata.statePath ?? process.env.STUDYPLANNER_E2E_EMULATOR_STATE;
 const password = process.env.STUDYPLANNER_LIVE_PASSWORD;
 const authEmulator = `http://${process.env.STUDYPLANNER_E2E_AUTH_EMULATOR_HOST}`;
 
 test('register and prepare the emulator account through the real screens', async ({ page, request }) => {
   await page.goto('/');
   await page.getByRole('tab', { name: '新規会員登録', exact: true }).click();
-  await page.getByLabel('メールアドレス').fill(email);
+  await page.getByLabel('メールアドレス').fill(email());
   await page.getByLabel('パスワード', { exact: true }).fill(password);
   await page.getByLabel('パスワード確認').fill(password);
   await page.getByRole('button', { name: '登録して確認メールを送る' }).click();
@@ -22,7 +24,7 @@ test('register and prepare the emulator account through the real screens', async
   await expect.poll(async () => {
     const response = await request.get(`${authEmulator}/emulator/v1/projects/demo-studyplanner/oobCodes`);
     const { oobCodes } = await response.json();
-    verification = oobCodes.find((code) => code.email === email && code.requestType === 'VERIFY_EMAIL');
+    verification = oobCodes.find((code) => code.email === email() && code.requestType === 'VERIFY_EMAIL');
     return Boolean(verification);
   }).toBe(true);
   const applied = await request.post(`${authEmulator}/identitytoolkit.googleapis.com/v1/accounts:update?key=demo-api-key`,
@@ -35,7 +37,7 @@ test('register and prepare the emulator account through the real screens', async
   await expect(primaryNav.or(signInTab)).toBeVisible();
   if (await signInTab.isVisible()) {
     await signInTab.click();
-    await page.getByLabel('メールアドレス').fill(email);
+    await page.getByLabel('メールアドレス').fill(email());
     await page.getByLabel('パスワード', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'ログインする' }).click();
   }
@@ -58,7 +60,7 @@ test('register and prepare the emulator account through the real screens', async
   await expect(tour).toBeHidden();
   await expect(primaryNav).toBeVisible();
   const state = await page.context().storageState();
-  await writeFile(process.env.STUDYPLANNER_E2E_EMULATOR_STATE, JSON.stringify({
+  await writeFile(statePath(), JSON.stringify({
     cookies: [],
     origins: state.origins.map((origin) => ({ origin: origin.origin,
       localStorage: origin.localStorage.filter(({ name }) => name.startsWith('laplance-first-run-tour-v1:')) })),
