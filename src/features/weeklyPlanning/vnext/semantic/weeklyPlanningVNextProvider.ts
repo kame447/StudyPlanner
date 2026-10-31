@@ -6,13 +6,15 @@ import { applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_ESTIMATE_ANSWER_REQUIREMENT,
   VNEXT_PROVIDER_RESPONSE_FORMAT, type VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
+import { resolveVNextEventRegistrationActs } from '../weeklyPlanningVNextEventRegistration';
 import { createVNextProviderReferences } from './weeklyPlanningVNextProviderReferences';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 function hasContributions(value: unknown): boolean {
-  return record(value) && ((value.answer !== null && value.answer !== undefined)
+  return record(value) && ((Array.isArray(value.conversationActs) && value.conversationActs.length > 0)
+    || (value.answer !== null && value.answer !== undefined)
     || (record(value.delta) && Object.values(value.delta).some(items => Array.isArray(items) && items.length > 0)));
 }
 
@@ -71,8 +73,7 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
       projection: input.projection, graph: input.state.graph, interpreted: reading });
     if (resolved.status === 'conflict') return resolved.errors;
   }
-  if (!Object.values(reading.delta).some(items => items.length)) return [];
-  const result = applyWeeklyPlanningVNextTurn(input.state, reading.delta, {
+  const result = !Object.values(reading.delta).some(items => items.length) ? { status: 'noop' as const, state: input.state } : applyWeeklyPlanningVNextTurn(input.state, reading.delta, {
     observedMemoryPace: input.observedMemoryPace,
     expectedRevision: input.state.graph.revision,
     acceptedDate: input.clock.currentDate,
@@ -82,7 +83,10 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
     turnKey: `native-dry-run:${input.state.graph.revision}`,
     conversationId: 'native-provider-dry-run', turnId: 'native-provider-dry-run', sourceText: input.userText,
   });
-  return result.status === 'rejected' ? result.errors : [];
+  if (result.status === 'rejected') return result.errors;
+  const registration = resolveVNextEventRegistrationActs({ state: result.state, delta: reading.delta,
+    acts: reading.conversationActs, currentTurnId: 'native-provider-dry-run' });
+  return registration.status === 'rejected' ? registration.errors : [];
 }
 
 /**

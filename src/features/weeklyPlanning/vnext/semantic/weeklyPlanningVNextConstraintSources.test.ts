@@ -44,7 +44,7 @@ const success: ExternalConstraintSourceSnapshot = { kind: 'timetable', status: '
 describe('VNext constraint sources reuse V5 selection and safety', () => {
   it.each(['timetable', 'existing_plans', 'calendar'] as const)('adds, patches, removes and exposes %s through the same provider contract', (kind) => {
     const fact = request(kind);
-    expect(decodeVNextProviderOutput({ planningIntent: 'discuss', delta: { ...empty(), add: [fact] }, answer: null }).status).toBe('decoded');
+    expect(decodeVNextProviderOutput({ planningIntent: 'discuss', conversationActs: [], delta: { ...empty(), add: [fact] }, answer: null }).status).toBe('decoded');
     expect(describeVNextProviderField('add[0].requestedAction', { delta: { ...empty(), add: [fact] }, answer: null })).toContain(VNEXT_CONSTRAINT_SOURCE_REQUIREMENT);
     const state = seed(fact);
     const patch = { kind: 'constraint_source_request' as const, localId: 'stop', targetFactId: state.graph.constraintSourceRequests[0].id,

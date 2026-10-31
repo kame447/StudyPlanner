@@ -11,9 +11,17 @@ import type {
   VNextTurnDelta,
   VNextTurnError,
   VNextPlanningIntent,
+  VNextFactRef,
   WeeklyPlanningVNextProjection,
   WeeklyPlanningVNextState,
 } from './weeklyPlanningVNextTypes';
+
+/** Current-turn meaning only: a request to preview registration, never permission to save. */
+export interface VNextEventRegistrationAct {
+  kind: 'request_event_registration';
+  /** null follows V5's current-turn task selection; explicit refs never degrade to null. */
+  targetRef: VNextFactRef | null;
+}
 
 export interface WeeklyPlanningVNextInterpretationClock {
   /** Accepted-at date the turn is read against (YYYY-MM-DD, local to timeZone). */
@@ -83,6 +91,8 @@ export type WeeklyPlanningVNextInterpretation =
       status: 'interpreted';
       /** The AI interprets intent; the shared V5 application gate alone grants preview permission. */
       planningIntent: VNextPlanningIntent;
+      /** Additive turn-local acts; kept out of Fact Graph and approval state. */
+      conversationActs?: VNextEventRegistrationAct[];
       /** Applies cleanly to `state` (validated with the same pure transaction), or is empty. */
       delta: VNextTurnDelta;
       answer: WeeklyPlanningVNextInterpretedAnswer | null;

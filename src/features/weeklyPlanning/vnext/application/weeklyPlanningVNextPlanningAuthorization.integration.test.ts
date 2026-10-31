@@ -19,7 +19,7 @@ const workload = (unitCode: 'minute' | 'page' = 'minute'): VNextAddFact => ({ ki
   taskRef: { localId: 'task' }, componentRef: null, quantityRole: 'remaining', amount: unitCode === 'minute' ? 60 : 8,
   unitCode, unitLabel: unitCode === 'minute' ? '分' : '枚', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null });
 const wire = (planningIntent: VNextPlanningIntent, delta: Partial<VNextTurnDelta> = {}, answer: unknown = null) => ({
-  planningIntent, delta: { ...EMPTY, ...delta }, answer,
+  planningIntent, conversationActs: [], delta: { ...EMPTY, ...delta }, answer,
 });
 type ProviderContext = { activeFacts: { workloads: { id: string }[] }; openQuestions: { key: string }[];
   recentConversation: { role: string; content: string }[]; userText: string };

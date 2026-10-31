@@ -54,7 +54,7 @@ afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyP
   setWeeklyPlanningTraceRepositoryForTests(undefined); vi.useRealTimers(); restore(); });
 
 function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRenderer?: WeeklyPlanningVNextExperimentalPorts['createRenderer'];
-  providerFails?: boolean; planningIntent?: 'create_plan' | 'discuss'; beforeDispatch?: (action: WeeklyPlanningAction) => void } = {}) {
+  nativeReading?: unknown; providerFails?: boolean; planningIntent?: 'create_plan' | 'discuss'; beforeDispatch?: (action: WeeklyPlanningAction) => void } = {}) {
   const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: createMemoryStorageHarness().storage });
   let state = createInitialPlanningState(WEEK);
   const controller = createWeeklyPlanningControllerSession(OWNER, WEEK, CONVERSATION);
@@ -63,7 +63,7 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
   const client: WeeklyPlanningVNextExperimentalPorts['client'] = { async createChatCompletion(input) {
     requests.push(structuredClone(input));
     if (options.providerFails) throw new Error('synthetic provider unavailable');
-    return JSON.stringify({ planningIntent: options.planningIntent ?? 'create_plan', delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null });
+    return JSON.stringify(options.nativeReading ?? { planningIntent: options.planningIntent ?? 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null });
   } };
   const gateway = createWeeklyPlanningVNextRuntimeGateway({ session: local, ports: () => ({ client,
     interpret: options.interpret ?? createWeeklyPlanningVNextProviderInterpreter(), checkpoint: local.checkpoint,
@@ -170,6 +170,53 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       planningIntent: 'discuss', authorizationDecision: expect.objectContaining({ authorized: false, draftGenerationIntent: 'not_requested' }),
     }) })] });
     expect(JSON.stringify(server.entries[0])).toContain('keep-future-authorization');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
+  });
+
+  it.each([false, true])('persists actual registration acts and exact fixed candidates through outbox reload and Worker (large=%s)', async large => {
+    const nativeReading = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: { localId: 'club' } }],
+      answer: null, delta: { ...EMPTY, add: [{ kind: 'task', localId: 'club', category: 'non_study', title: '部活' },
+        { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
+          constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+          startTime: '16:00', endTime: '17:30', precision: 'exact' }] } };
+    const h = harness({ nativeReading, createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        expect(input.communication?.eventRegistration?.candidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
+          startTime: '16:00', endTime: '17:30', durationMinutes: 90 })]);
+        Object.assign(input.communication!.eventRegistration!, { futureRegistrationSentinel: 'keep-future-registration',
+          ...(large ? { futureLargeRegistrationMetadata: 'x'.repeat(48 * 1024) } : {}) });
+        return renderer.render(input);
+      } };
+    } });
+    failAppend = true;
+    expect(await h.submit('火曜16時から17時半の部活を予定に登録して')).toMatchObject({ accepted: true,
+      draftCandidates: [expect.objectContaining({ source: 'fixed_event_registration', startTime: '16:00', endTime: '17:30' })] });
+    expect(h.results[0].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: (h.requests[0] as { messages: unknown[] }).messages },
+    });
+    const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toHaveLength(1); expect(queued[0].input.debugTraceEvents).toEqual(h.results[0].debugTraceEvents);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'registration-retry-after-reload', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes[0]; const entry = write.entries.find(entry => entry.kind === 'turn_diagnostic')!;
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing registration diagnostic');
+    expect(entry.diagnostics.outcome).toBe('preview_ready');
+    expect(entry.aiInterpreter.structuredResults[0].structuredResult).toMatchObject({ conversationActs: nativeReading.conversationActs,
+      authorizationDecision: { authorized: false, draftGenerationIntent: 'not_requested' } });
+    expect(JSON.stringify(entry)).toContain('fixed_event_registration'); expect(JSON.stringify(entry)).toContain('keep-future-registration');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ structuredResults: [expect.objectContaining({ structuredResult: expect.objectContaining({
+      conversationActs: nativeReading.conversationActs,
+    }) })] });
+    expect(JSON.stringify(server.entries[0])).toContain('keep-future-registration');
+    expect(JSON.stringify(server.entries[0])).toContain('fixed_event_registration');
     expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
   });

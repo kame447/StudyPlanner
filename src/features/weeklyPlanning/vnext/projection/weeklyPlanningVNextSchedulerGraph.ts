@@ -75,11 +75,17 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
   estimateCalibrationMultiplier?: number;
 }): WeeklyPlanningVNextSchedulerCompilation {
   const { state, projection } = params;
-  if (projection.readiness !== 'ready' || projection.graphRevision !== state.graph.revision) return { status: 'not_ready' };
+  // Empty movable work can still contain fixed reservations for V5's registration projection.
+  // Unresolved questions and stale revisions remain blocking (EventRegistration integration).
+  if (projection.readiness === 'needs_resolution' || projection.graphRevision !== state.graph.revision) return { status: 'not_ready' };
   const resolver = createVNextLineageResolver(state.graph);
   const current = (id: string) => resolver.leafOf(id) ?? id;
   const currentOrNull = (id: string | null) => (id === null ? null : current(id));
   const base = withCurrentVNextReferences(createWeeklyPlanningActiveSchedulerGraphViewV5(state.graph), current);
+  // A plain work deferral still has nothing compilable. The empty-work extension is only
+  // for actual active hard fixed intervals; it never gives deferred work a timebox.
+  if (projection.readiness === 'empty' && !base.temporalConstraints.some(bound =>
+    bound.kind === 'fixed_interval' && bound.constraintLevel === 'hard')) return { status: 'not_ready' };
   const sources = new Map([...state.graph.workloads, ...state.graph.tasks].map((fact) => [fact.id, fact.source]));
 
   const readyOwners = projection.owners.filter((owner) => owner.status === 'ready');

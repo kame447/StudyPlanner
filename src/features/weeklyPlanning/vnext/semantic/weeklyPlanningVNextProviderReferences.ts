@@ -64,6 +64,9 @@ export function createVNextProviderReferences() {
       ref(item.a, `delta.relate[${index}].a`, null); ref(item.b, `delta.relate[${index}].b`, null);
     });
     next.delta.defer.forEach((item, index) => { item.questionKey = real('Q', item.questionKey, `delta.defer[${index}].questionKey`, null); });
+    next.conversationActs.forEach((act, index) => {
+      if (act.targetRef) ref(act.targetRef, `conversationActs[${index}].targetRef`, null);
+    });
     if (next.answer?.kind === 'option') next.answer.optionId = real('O', next.answer.optionId, 'answer.optionId', null);
     if (next.answer?.kind === 'proposal_decision') next.answer.proposalId = real('F', next.answer.proposalId, 'answer.proposalId', null);
     return errors.length ? { status: 'rejected', errors } : { status: 'decoded', reading: next };

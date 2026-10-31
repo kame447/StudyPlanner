@@ -37,6 +37,10 @@ export {
 export { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 export type { WeeklyPlanningLearningStrategyProposalRecord, PlanningDraftGenerationIntent } from '../intake/weeklyPlanningIntakeTypes';
 export { isWeeklyPlanningStableV5PreviewAuthorized } from '../application/weeklyPlanningStableV5PlanningEvaluation';
+export { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
+  type WeeklyPlanningFixedEventCommunicationFacts,
+} from '../application/weeklyPlanningFixedEventOnlyInteraction';
+export type { SemanticConversationActV5 } from '../semantic/weeklyPlanningConversationActsV5';
 export { applyAcceptedMemorySessionProjectionV5 } from '../semantic/weeklyPlanningAcceptedMemorySessionProjectionV5';
 export { compileWeeklyPlanningMemoryCalibrationSchedulerInputV5 } from '../semantic/weeklyPlanningMemoryCalibrationSchedulerInputV5';
 export { deriveWeeklyPlanningEstimateCalibration } from '../personalization/weeklyPlanningEstimateCalibration';

@@ -32,6 +32,7 @@ import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningS
 import { vnextQuestionKeyAllowsProvisionalTimebox } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import { evaluateVNextLearningStrategy } from '../weeklyPlanningVNextLearningStrategy';
+import { resolveVNextEventRegistrationActs, vnextRegistrationChangesPreview } from '../weeklyPlanningVNextEventRegistration';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -135,7 +136,8 @@ export function applyWeeklyPlanningVNextTurn(
     error('stale_revision', 'context.expectedRevision');
     return reject();
   }
-  if (!delta.proposalDecision && ![delta.add, delta.patch, delta.remove, delta.relate, delta.defer].some(items => items.length)) {
+  if (!delta.proposalDecision && !context.eventRegistration?.acts.length
+    && ![delta.add, delta.patch, delta.remove, delta.relate, delta.defer].some(items => items.length)) {
     error('empty_delta', 'delta');
     return reject();
   }
@@ -530,14 +532,24 @@ export function applyWeeklyPlanningVNextTurn(
   }
   next.learningStrategyProposalRecords = evaluateVNextLearningStrategy({ state: next,
     projection: projectWeeklyPlanningVNext(next, context.observedMemoryPace), turnId: context.turnId, decision: statedDelta.proposalDecision }).records;
+  const registration = resolveVNextEventRegistrationActs({ state: next, delta: statedDelta,
+    acts: context.eventRegistration?.acts, currentTurnId: context.turnId });
+  if (registration.status === 'rejected') return { status: 'rejected', state, errors: registration.errors };
+  const acceptedRegistration = context.eventRegistration ? { registrationActs: registration.acts } : {};
   if (!diff.added.length && !diff.removed.length && !diff.superseded.length
     && JSON.stringify(next.workRelations) === JSON.stringify(state.workRelations)
     && JSON.stringify(next.deferrals) === JSON.stringify(state.deferrals)
     && JSON.stringify(next.learningStrategyProposalRecords) === JSON.stringify(state.learningStrategyProposalRecords)) {
+    // V5 versions accepted turns. An otherwise fact-noop registration needs a fresh preview/ledger
+    // identity only when V5's actual candidate set changed. No new state member or writer.
+    if (context.eventRegistration && vnextRegistrationChangesPreview(state, context.eventRegistration, registration.acts, context.turnId)) {
+      graph.appliedTurnKeys.push(context.turnKey);
+      return { status: 'applied', state: next, diff, ...acceptedRegistration };
+    }
     // Nothing changes and the revision is kept, but the turn is processed: a replay (even on a
     // later day, when its relative dates would resolve differently) is a duplicate.
-    return { status: 'noop', state: { ...state, graph: { ...state.graph, appliedTurnKeys: [...state.graph.appliedTurnKeys, context.turnKey] } } };
+    return { status: 'noop', state: { ...state, graph: { ...state.graph, appliedTurnKeys: [...state.graph.appliedTurnKeys, context.turnKey] } }, ...acceptedRegistration };
   }
   graph.appliedTurnKeys.push(context.turnKey);
-  return { status: 'applied', state: next, diff };
+  return { status: 'applied', state: next, diff, ...acceptedRegistration };
 }

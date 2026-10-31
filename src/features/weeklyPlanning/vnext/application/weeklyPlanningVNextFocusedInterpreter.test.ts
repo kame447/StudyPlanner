@@ -129,7 +129,7 @@ describe('V5 temporal repair has no equivalent VNext intermediate', () => {
   it('accepts date-only rules, rejects clock-bearing rules, and accepts ordinary unavailability', async () => {
     const rule = { kind: 'task_date_rule', localId: 'date', taskRef: { factId: 'F1' }, targetRef: { factId: 'F1' },
       ruleKind: 'excluded_date', dateExpression: 'weekday:tuesday', constraintLevel: 'hard' };
-    const wire = (fact: unknown) => ({ planningIntent: 'discuss', delta: { ...empty(), add: [fact] }, answer: null });
+    const wire = (fact: unknown) => ({ planningIntent: 'discuss', conversationActs: [], delta: { ...empty(), add: [fact] }, answer: null });
     expect(decodeVNextProviderOutput(wire(rule)).status).toBe('decoded');
     expect(decodeVNextProviderOutput(wire({ ...rule, startTime: '18:00', endTime: '20:00' })).status).toBe('rejected');
     expect(decodeVNextProviderOutput(wire({ kind: 'temporal_constraint', localId: 'date', taskRef: { factId: 'F1' }, targetRef: { factId: 'F1' },

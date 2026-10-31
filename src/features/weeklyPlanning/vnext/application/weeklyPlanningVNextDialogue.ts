@@ -21,6 +21,7 @@ import {
   learningStrategyProposalIntentForStableV5Dialogue,
   WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL,
   type WeeklyPlanningStableV5DialogueQuestionIntent,
+  type WeeklyPlanningFixedEventCommunicationFacts,
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from '../weeklyPlanningVNextV5Boundary';
 import { createVNextLineageResolver, withCurrentVNextReferences } from '../weeklyPlanningVNextWorkIdentity';
@@ -71,6 +72,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   userText: string;
   recentConversation: readonly WeeklyPlanningVNextMessage[];
   authorizationRequired?: boolean;
+  registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts;
 }): VNextDialogueRenderInput {
   const { state, question, preview } = params;
   // The renderer's helpers follow exact ids, so they read the facts with current references.
@@ -85,6 +87,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
     communication: {
       goal: actionKind === 'question' ? 'ask_question' : actionKind === 'preview_ready' ? 'present_preview' : 'acknowledge',
       askQuestion: actionKind === 'question',
+      ...params.registrationCommunication,
       ...(params.authorizationRequired ? { previewAuthorization: {
         status: 'authorization_required' as const, requestedPlanningIntent: 'create_plan' as const,
       } } : {}),

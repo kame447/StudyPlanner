@@ -24,7 +24,7 @@ const task = (localId = 'task', title = 'Math') => ({ kind: 'task', localId, cat
 const workload = (localId = 'work', amount: unknown = 7) => ({ kind: 'workload', localId,
   taskRef: { localId: 'task' }, componentRef: null, quantityRole: 'remaining', amount,
   unitCode: 'custom', unitLabel: '枚', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null });
-const output = (add: unknown[] = [], answer: unknown = null) => ({ planningIntent: 'discuss', delta: { ...emptyDelta(), add }, answer });
+const output = (add: unknown[] = [], answer: unknown = null) => ({ planningIntent: 'discuss', conversationActs: [], delta: { ...emptyDelta(), add }, answer });
 function input(responses: (string | Error)[]): WeeklyPlanningVNextInterpretationInput {
   const state = createEmptyWeeklyPlanningVNextState();
   return { client: { createChatCompletion: vi.fn(async () => {
@@ -474,7 +474,7 @@ describe('VNext native provider', () => {
 
   it('takes one complete new reading for non-field errors and validates the new delta', async () => {
     const result = await createWeeklyPlanningVNextProviderInterpreter()(input([
-      JSON.stringify({ planningIntent: 'discuss', delta: null, answer: null }), JSON.stringify(output([task(), workload()])),
+      JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta: null, answer: null }), JSON.stringify(output([task(), workload()])),
     ]));
     expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
   });
@@ -501,7 +501,7 @@ describe('VNext native provider', () => {
       const context = JSON.parse(request.messages[1].content);
       const [slides, files] = context.activeFacts.workloads;
       const repaired = request.messages.length > 2;
-      return JSON.stringify({ planningIntent: 'discuss', delta: { ...emptyDelta(), patch: [{ kind: 'workload', localId: 'p1',
+      return JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta: { ...emptyDelta(), patch: [{ kind: 'workload', localId: 'p1',
         targetFactId: slides.id, amountDelta: null, changes: { amount: 8, unitCode: null, unitLabel: null,
           quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }],
         relate: [{ kind: 'distinct',
@@ -550,7 +550,7 @@ describe('VNext native provider', () => {
   });
 
   it('allows an empty reread when the first malformed document had no contributions', async () => {
-    expect(await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify({ planningIntent: 'discuss', delta: null, answer: null }),
+    expect(await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta: null, answer: null }),
       JSON.stringify(output())]))).toMatchObject({ status: 'interpreted', delta: emptyDelta(), answer: null,
       metrics: { calls: 2, repairs: 1 } });
   });
@@ -568,7 +568,7 @@ describe('VNext native provider', () => {
   });
 
   it('a second non-field failure cannot trigger a second reread or commit state', async () => {
-    const bad = JSON.stringify({ planningIntent: 'discuss', delta: null, answer: null });
+    const bad = JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta: null, answer: null });
     const params = input([bad, bad, JSON.stringify(output())]);
     const original = structuredClone(params.state);
     const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
@@ -583,14 +583,14 @@ describe('VNext native provider', () => {
       const context = JSON.parse(request.messages[1].content);
       const answer = { kind: 'estimate_minutes', optionId: null, minutes: 20, per: 'unit' };
       const delta = { ...emptyDelta(), add: [task('other', 'English')] };
-      if (request.messages.length > 2) return JSON.stringify({ planningIntent: 'discuss', delta, answer });
+      if (request.messages.length > 2) return JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta, answer });
       const duplicate = collection === 'add'
         ? { kind: 'effort_estimate', localId: 'again', taskRef: { factId: context.activeFacts.tasks[0].id },
             targetRef: { factId: context.activeFacts.workloads[0].id }, effortKind: 'duration_per_unit',
             minutes: 20, unitCode: 'custom', unitLabel: 'セット', precision: 'exact' }
         : { kind: 'effort_estimate', localId: 'again', targetFactId: context.activeFacts.effortEstimates[0].id,
             changes: { minutes: 20, effortKind: null, unitCode: null, unitLabel: 'セット', precision: null } };
-      return JSON.stringify({ planningIntent: 'discuss', delta: { ...delta, [collection]: [...delta[collection], duplicate] }, answer });
+      return JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta: { ...delta, [collection]: [...delta[collection], duplicate] }, answer });
     }) };
     const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
     expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
@@ -643,13 +643,13 @@ describe('VNext native provider', () => {
       const context = JSON.parse(request.messages[1].content);
       const answer = { kind: 'option', optionId: context.presentedQuestion.options[optionIndex].optionId, minutes: null, per: null };
       const delta = { ...emptyDelta(), add: [task('other', 'English')] };
-      if (request.messages.length > 2) return JSON.stringify({ planningIntent: 'discuss', delta, answer });
+      if (request.messages.length > 2) return JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta, answer });
       const restated = collection === 'patch'
         ? { kind: 'workload', localId: 'again', targetFactId: context.activeFacts.workloads.find((fact: { quantityRole: string }) => fact.quantityRole === 'completed').id,
             amountDelta: null, changes: { amount: 13, unitCode: null, unitLabel: null, quantityRole: null,
               rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }
         : { targetFactId: context.activeFacts.workloads.find((fact: { unitCode: string }) => fact.unitCode === 'minute').id };
-      return JSON.stringify({ planningIntent: 'discuss', delta: { ...delta, [collection]: [restated] }, answer });
+      return JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta: { ...delta, [collection]: [restated] }, answer });
     }) };
     const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
     expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
@@ -722,7 +722,7 @@ describe('VNext native provider', () => {
       const context = JSON.parse(request.messages[1].content);
       return id === '882-iter4-explicit-r8'
         ? JSON.stringify(output([], { kind: 'option', optionId: context.presentedQuestion.options[0].optionId, minutes: null, per: null }))
-        : JSON.stringify({ planningIntent: 'discuss', delta: { ...emptyDelta(), patch: [{ kind: 'workload', localId: 'change-unit',
+        : JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta: { ...emptyDelta(), patch: [{ kind: 'workload', localId: 'change-unit',
           targetFactId: context.activeFacts.workloads[0].id, amountDelta: null, changes: { amount: null, unitCode: null,
             unitLabel: 'セット', quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] }, answer: null });
     }) };
@@ -892,7 +892,7 @@ describe('VNext native provider', () => {
         rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } };
     params.client = { createChatCompletion: vi.fn(async request => {
       const context = JSON.parse(request.messages[1].content);
-      return JSON.stringify({ planningIntent: 'discuss', delta: { ...emptyDelta(), patch: [{ ...patch, targetFactId: context.activeFacts.workloads[0].id }] }, answer: null });
+      return JSON.stringify({ planningIntent: 'discuss', conversationActs: [], delta: { ...emptyDelta(), patch: [{ ...patch, targetFactId: context.activeFacts.workloads[0].id }] }, answer: null });
     }) };
     const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
     expect(result).toMatchObject({ status: 'interpreted', delta: { patch: [patch] } });

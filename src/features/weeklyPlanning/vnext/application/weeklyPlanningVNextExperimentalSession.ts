@@ -25,7 +25,9 @@ import {
 import type { WeeklyPlanDraftBlock } from '../../types';
 import type { WeeklyDraftCandidate } from '../../scheduling/weeklyDraftCandidateGenerator';
 import { projectWeeklyPlanningVNext, type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
-import { vnextUnitIdentity } from '../weeklyPlanningVNextWorkIdentity';
+import { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
+  type SemanticConversationActV5, type WeeklyPlanningFixedEventCommunicationFacts } from '../weeklyPlanningVNextV5Boundary';
+import { createVNextLineageResolver, withCurrentVNextReferences, vnextUnitIdentity } from '../weeklyPlanningVNextWorkIdentity';
 import type { Actual, MonthEvent, Plan, ScheduleTemplate } from '../../../../types/domain';
 import { deriveWeeklyPlanningMemoryPaceEstimateV5 } from '../../personalization/weeklyPlanningMemoryPaceObservationsV5';
 import type { GenericSchedulerInputContext } from '../../semantic/weeklyPlanningGenericSchedulerInput';
@@ -220,15 +222,9 @@ function schedulingContext(scope: WeeklyPlanningVNextExperimentalScope, ports: W
   });
 }
 
-function shownPreview(
-  scope: WeeklyPlanningVNextExperimentalScope,
-  ports: WeeklyPlanningVNextExperimentalPorts,
-  calendar: WeeklyPlanningVNextCalendar,
-  state: WeeklyPlanningVNextState,
-  projection: WeeklyPlanningVNextProjection,
-  authorized: boolean,
-): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[];
-  draftCandidates?: WeeklyDraftCandidate[]; authorizationRequired?: boolean } {
+/** One compilation owner for ordinary previews and registration-only revision comparison. */
+function compilePreviewInput(scope: WeeklyPlanningVNextExperimentalScope, ports: WeeklyPlanningVNextExperimentalPorts,
+  calendar: WeeklyPlanningVNextCalendar, state: WeeklyPlanningVNextState, projection: WeeklyPlanningVNextProjection) {
   const context = schedulingContext(scope, ports, state);
   // V5 resolves source selection; placement still enforces raw calendar busy time after stop_using.
   // ConstraintSources tests guard the use/stop and unavailable-source controls through this boundary.
@@ -237,20 +233,39 @@ function shownPreview(
     timetableTermId: calendar.timetableTermId,
     horizon: { startDate: context.planningStartDate, endDate: context.planningEndDate }, timeZone: context.timeZone });
   const estimateCalibration = deriveWeeklyPlanningEstimateCalibration({ plans: calendar.plans, actuals: calendar.actuals });
-  const compiled = compileWeeklyPlanningVNextSchedulerInput({ state, projection, context, externalSources,
+  return compileWeeklyPlanningVNextSchedulerInput({ state, projection, context, externalSources,
     estimateCalibrationMultiplier: estimateCalibration.multiplier });
+}
+
+function shownPreview(
+  scope: WeeklyPlanningVNextExperimentalScope,
+  ports: WeeklyPlanningVNextExperimentalPorts,
+  calendar: WeeklyPlanningVNextCalendar,
+  state: WeeklyPlanningVNextState,
+  projection: WeeklyPlanningVNextProjection,
+  authorized: boolean,
+  registrationActs: SemanticConversationActV5[],
+  currentTurnId: string,
+): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[];
+  draftCandidates?: WeeklyDraftCandidate[]; authorizationRequired?: boolean; registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts } {
+  const compiled = compilePreviewInput(scope, ports, calendar, state, projection);
   if (compiled.status !== 'compiled') return { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] };
   if (!compiled.compilation.input) {
     const codes = compiled.compilation.issues.filter((issue) => issue.blocking).map((issue) => issue.code);
     return { preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys,
       previewBlockedBy: compiled.compilation.status === 'empty' ? [] : [...new Set(codes.length ? codes : [compiled.compilation.status])] };
   }
-  // Compile once to distinguish real movable work from empty/busy-only input. V5's gate owns
-  // consent; readiness alone never authorizes placement. PlanningAuthorization tests guard both.
-  if (!authorized && compiled.compilation.input.movableWorkItems.length > 0) return {
-    preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys, previewBlockedBy: [], authorizationRequired: true,
-  };
-  const scheduled = scheduleWeeklyPlanningStableV5Preview({
+  // V5 projects explicit registrations at their own fixed intervals before ordinary work placement.
+  // Consent applies only to movable study work. The mixed/busy-only/save controls in
+  // EventRegistration integration prevent registration from becoming work or granting study consent.
+  const resolver = createVNextLineageResolver(state.graph);
+  const registration = projectWeeklyPlanningFixedEventRegistration({
+    graph: withCurrentVNextReferences(state.graph, id => resolver.leafOf(id) ?? id),
+    compilation: compiled.compilation, registrationActs, currentTurnId,
+  });
+  const work = compiled.compilation.input.movableWorkItems;
+  const authorizationRequired = !authorized && work.length > 0;
+  const scheduled = !authorizationRequired && work.length > 0 ? scheduleWeeklyPlanningStableV5Preview({
     input: compiled.compilation.input,
     graph: compiled.placementGraph,
     plans: calendar.plans,
@@ -258,21 +273,20 @@ function shownPreview(
     scheduleTemplates: calendar.scheduleTemplates,
     timetableTermId: calendar.timetableTermId,
     notBefore: { date: scope.clock.currentDate, time: scope.notBeforeTime },
-  });
-  if (scheduled.status !== 'ready') {
-    return { preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys,
-      previewBlockedBy: scheduled.status === 'empty' ? [] : [scheduled.status] };
-  }
-  // Candidates carry the conversation of their stated facts; the preview id is per conversation and revision.
-  const blocks = createWeeklyPlanningPreviewBlocks(scheduled.candidates)
-    .map((block) => createWeeklyPlanningPreviewDisplayBlock(block, scope.ownerId));
+  }) : null;
+  if (scheduled && scheduled.status !== 'ready') return { preview: null,
+    unplacedOwnerKeys: compiled.unplacedOwnerKeys, previewBlockedBy: scheduled.status === 'empty' ? [] : [scheduled.status] };
+  const candidates = [...registration.candidates, ...(scheduled?.status === 'ready' ? scheduled.candidates : [])];
+  const registrationCommunication = registration.candidates.length > 0 || registration.unregistered.length > 0
+    ? weeklyPlanningFixedEventRegistrationFacts(registration.candidates, [...calendar.plans],
+      authorizationRequired ? [...new Set(work.map(item => item.label))] : [], registration.unregistered, candidates.length) : undefined;
+  // The existing candidate/display conversion supplies the same approval provenance for both kinds.
+  const blocks = createWeeklyPlanningPreviewBlocks(candidates)
+    .map(block => createWeeklyPlanningPreviewDisplayBlock(block, scope.ownerId));
   const previewId = blocks[0]?.behaviorMetadata?.previewMetadata?.previewId;
-  return {
-    preview: previewId ? { previewId, graphRevision: state.graph.revision, blocks } : null,
-    draftCandidates: scheduled.candidates,
-    unplacedOwnerKeys: compiled.unplacedOwnerKeys,
-    previewBlockedBy: [],
-  };
+  return { preview: previewId ? { previewId, graphRevision: state.graph.revision, blocks } : null,
+    draftCandidates: candidates, unplacedOwnerKeys: compiled.unplacedOwnerKeys, previewBlockedBy: [],
+    authorizationRequired, registrationCommunication };
 }
 
 /** Notices for turns that changed nothing the renderer could explain: a failure, a stale turn, or a blocked preview. */
@@ -356,6 +370,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   let delta: VNextTurnDelta | null = null;
   let errors: VNextTurnError[] = [];
   let semanticChanged = false;
+  let registrationActs: SemanticConversationActV5[] = [];
   if (interpretation.status === 'failed') {
     outcome = 'interpretation_failed';
     errors = interpretation.errors;
@@ -375,11 +390,16 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       outcome = 'rejected';
     } else if (delta === null) {
       outcome = 'answer_represented';
-    } else if (isEmpty(delta)) {
+    } else if (isEmpty(delta) && !interpretation.conversationActs?.length) {
       outcome = 'noop';
     } else {
+      const priorCompilation = interpretation.conversationActs?.length ? compilePreviewInput(scope, ports, calendar, state, before) : null;
       const result = applyWeeklyPlanningVNextTurn(state, delta, {
         observedMemoryPace: pace,
+        ...(interpretation.conversationActs?.length ? { eventRegistration: {
+          acts: interpretation.conversationActs, shownPreviewBlockIds: read.checkpoint.preview?.blocks.map(block => block.id) ?? [],
+          compilation: priorCompilation?.status === 'compiled' ? priorCompilation.compilation : null,
+        } } : {}),
         turnKey: `${scope.conversationId}:${params.turnId}`,
         acceptedDate: scope.clock.currentDate,
         // Dates are fixed against the same horizon and week the model read them with.
@@ -393,6 +413,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       });
       outcome = result.status;
       state = result.state;
+      if (result.status === 'applied' || result.status === 'noop') registrationActs = result.registrationActs ?? [];
       if (result.status === 'applied') semanticChanged = result.diff.added.length > 0
         || result.diff.superseded.length > 0 || result.diff.removed.length > 0
         || JSON.stringify(state.workRelations) !== JSON.stringify(read.checkpoint.state.workRelations);
@@ -414,7 +435,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const shown = read.checkpoint.preview;
   const made = question || !accepted
     ? { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] }
-    : shownPreview(scope, ports, calendar, state, projection, authorization.authorized);
+    : shownPreview(scope, ports, calendar, state, projection, authorization.authorized, registrationActs, params.turnId);
   const authorizationRequired = !question && !(shown && shown.graphRevision === state.graph.revision)
     && 'authorizationRequired' in made && made.authorizationRequired === true;
   const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision
@@ -434,6 +455,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
+      registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
     });
   // The renderer is a model call: it may run only while this turn is still current.
   const canDispatchRecovery = () => ports.checkpoint.read() === rawBefore;

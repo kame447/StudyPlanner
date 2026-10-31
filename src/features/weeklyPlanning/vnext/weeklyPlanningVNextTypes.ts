@@ -322,6 +322,8 @@ export interface VNextTurnDelta {
 }
 
 export interface VNextTurnContext {
+  /** Turn-local registration meaning/presentation; only the transaction may advance its revision. */
+  eventRegistration?: import('./weeklyPlanningVNextEventRegistration').VNextEventRegistrationContext;
   /** Read-only observations for this turn, never stored as stated effort or proposal policy. */
   observedMemoryPace?: Readonly<Record<string, number>>;
   /** Idempotency key; a key already in graph.appliedTurnKeys is a duplicate. */
@@ -361,10 +363,12 @@ export interface VNextTurnError {
 }
 
 export type VNextTurnResult =
-  | { status: 'applied'; state: WeeklyPlanningVNextState; diff: WeeklyPlanningFactDiffV5 }
+  | { status: 'applied'; state: WeeklyPlanningVNextState; diff: WeeklyPlanningFactDiffV5;
+      registrationActs?: import('./weeklyPlanningVNextV5Boundary').SemanticConversationActV5[] }
   | { status: 'duplicate'; state: WeeklyPlanningVNextState }
   /** Every operation restated current values: nothing changes, revision is kept. */
-  | { status: 'noop'; state: WeeklyPlanningVNextState }
+  | { status: 'noop'; state: WeeklyPlanningVNextState;
+      registrationActs?: import('./weeklyPlanningVNextV5Boundary').SemanticConversationActV5[] }
   | { status: 'rejected'; state: WeeklyPlanningVNextState; errors: VNextTurnError[] };
 
 // ---- projection: recomputed every turn, never stored --------------------------

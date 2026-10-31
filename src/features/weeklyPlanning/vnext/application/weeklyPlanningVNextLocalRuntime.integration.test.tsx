@@ -170,7 +170,7 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     let providerInput: Record<string, unknown> | undefined;
     services.client = () => ({ createChatCompletion: vi.fn(async request => {
       providerInput = JSON.parse(request.messages[1].content);
-      return JSON.stringify({ planningIntent: seed.planningIntent, delta: seed.delta, answer: null });
+      return JSON.stringify({ planningIntent: seed.planningIntent, conversationActs: [], delta: seed.delta, answer: null });
     }) });
     const ref = createRef<WeeklyPlanningApplication>();
     await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
