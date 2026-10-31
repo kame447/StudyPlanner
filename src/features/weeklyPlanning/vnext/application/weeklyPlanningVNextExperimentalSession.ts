@@ -386,20 +386,31 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     });
     delta = resolution.status === 'delta' ? resolution.delta : null;
     if (resolution.status === 'conflict') errors = resolution.errors;
+    // For a fact-noop, accepted intent can still make new work approvable. Ask the same V5 gate
+    // and preview builder at the current revision; the transaction alone versions any new keys.
+    // If facts actually change, its normal revision advance already covers the result.
+    const priorAuthorization = delta ? resolveVNextPlanningAuthorization({ state, accepted: true,
+      previousStatus: read.checkpoint.preview ? 'draft_ready' : before.questions.length ? 'revision_pending' : 'needs_scope',
+      planningIntent: interpretation.planningIntent, hadMachinePendingQuestion: before.questions.length > 0,
+      semanticChanged: false, provisionalTimeboxRequested: delta.defer.some(item => item.allocation === 'provisional_timebox'),
+    }) : null;
+    const authorizedCandidateKeys = priorAuthorization?.authorized
+      ? shownPreview(scope, ports, calendar, state, before, true, [], params.turnId).draftCandidates?.map(candidate => candidate.stableKey) ?? [] : [];
+
     if (resolution.status === 'conflict') {
       outcome = 'rejected';
     } else if (delta === null) {
       outcome = 'answer_represented';
-    } else if (isEmpty(delta) && !interpretation.conversationActs?.length) {
+    } else if (isEmpty(delta) && !interpretation.conversationActs?.length && !authorizedCandidateKeys.length) {
       outcome = 'noop';
     } else {
       const priorCompilation = interpretation.conversationActs?.length ? compilePreviewInput(scope, ports, calendar, state, before) : null;
       const result = applyWeeklyPlanningVNextTurn(state, delta, {
         observedMemoryPace: pace,
-        ...(interpretation.conversationActs?.length ? { eventRegistration: {
-          acts: interpretation.conversationActs, shownPreviewBlockIds: read.checkpoint.preview?.blocks.map(block => block.id) ?? [],
-          compilation: priorCompilation?.status === 'compiled' ? priorCompilation.compilation : null,
-        } } : {}),
+        preview: { shownPreviewBlockIds: read.checkpoint.preview?.blocks.map(block => block.id) ?? [], authorizedCandidateKeys,
+          ...(interpretation.conversationActs?.length ? { eventRegistration: { acts: interpretation.conversationActs,
+            compilation: priorCompilation?.status === 'compiled' ? priorCompilation.compilation : null } } : {}),
+        },
         turnKey: `${scope.conversationId}:${params.turnId}`,
         acceptedDate: scope.clock.currentDate,
         // Dates are fixed against the same horizon and week the model read them with.

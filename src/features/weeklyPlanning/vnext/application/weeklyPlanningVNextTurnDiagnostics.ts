@@ -47,7 +47,7 @@ export function captureWeeklyPlanningVNextTurnDiagnostics(requestId: string, por
     recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: 'semantic_validation_result',
       data: { attempt: 'vnext_result', accepted: interpretation?.status === 'interpreted' && turn.outcome !== 'rejected',
         errors: turn.errors, parsedDocument: interpretation
-          ? { authorizationDecision: turn.authorizationDecision, ...interpretation } : interpretation } });
+          ? { graphRevision: turn.graphRevision, authorizationDecision: turn.authorizationDecision, ...interpretation } : interpretation } });
     recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: 'semantic_normalizer_decision',
       data: { status: interpretation?.status ?? turn.outcome, diagnostics: interpretation?.metrics ?? null } });
     recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: 'runtime_branch_selected',

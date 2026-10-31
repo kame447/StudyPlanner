@@ -65,6 +65,41 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>, fa
 }
 
 describe('VNext native fixed-event registration through the unchanged V5 projection and approval', () => {
+  it.each([false, true])('AB01 shows and saves newly authorized study after a registration preview (alreadySaved=%s)', async alreadySaved => {
+    const h = harness([wire([...event(), ...work], [request({ localId: 'club' })]), wire([], [], 'create_plan'), wire([], [], 'create_plan')]);
+    const first = await h.turn('部活を登録して。数学は60分です');
+    expect(first.draftCandidates?.map(c => c.source)).toEqual(['fixed_event_registration']);
+    if (alreadySaved) expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
+    const graph = structuredClone(h.state().graph);
+    const next = await h.turn('数学の予定も作ってください');
+    expect(next.authorizationDecision?.authorized).toBe(true);
+    expect(next.draftCandidates?.filter(c => c.source === 'weekly_exam_prep')).toHaveLength(1);
+    expect(next.preview?.blocks.some(block => block.title.includes('数学'))).toBe(true);
+    expect(next.graphRevision).toBe(first.graphRevision! + 1);
+    expect(h.state().graph).toEqual({ ...graph, revision: graph.revision + 1,
+      appliedTurnKeys: [...graph.appliedTurnKeys, `${scope.conversationId}:turn-2`] });
+    expect(validateWeeklyPreviewApproval({ blocks: first.preview!.blocks, currentStateRevision: h.state().graph.revision,
+      userId: OWNER, proposalRecords: [], runtimeSnapshot: { conversationId: scope.conversationId,
+        stateRevision: h.state().graph.revision, proposalRecords: [] } })).toMatchObject({ allowed: false, attempt: { kind: 'stale_preview_approval_attempt' } });
+    expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
+    expect(h.saves()).toBe(alreadySaved ? 2 : 1);
+    expect([...h.saved.values()].filter(block => block.title.includes('数学'))).toHaveLength(1);
+    expect([...h.saved.values()].filter(block => block.title === 'club')).toHaveLength(alreadySaved ? 1 : 0);
+    const revision = h.state().graph.revision; const saves = h.saves();
+    expect((await h.turn('同じ数学の予定を作って')).outcome).toBe('noop');
+    expect(h.state().graph.revision).toBe(revision);
+    await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports }); expect(h.saves()).toBe(saves);
+  });
+
+  it('AB01 does not advance for a permission grant with no new candidates', async () => {
+    const h = harness([wire(event(), [request()]), wire([], [], 'create_plan')]);
+    const first = await h.turn('部活を登録して'); const graph = structuredClone(h.state().graph);
+    const next = await h.turn('この条件で予定を作って');
+    expect(next.authorizationDecision?.authorized).toBe(true); expect(h.state().draftGenerationIntent).toBe('user_authorized');
+    expect(next.outcome).toBe('noop'); expect(next.graphRevision).toBe(first.graphRevision);
+    expect(h.state().graph).toEqual(graph); expect(next.preview).toEqual(first.preview); expect(next.draftCandidates).toEqual([]);
+  });
+
   it.each(['study', 'non_study'] as const)('matches V5 at the stated interval without study authorization or estimate buffer (%s)', async category => {
     const h = harness([wire(event('club', category), [request()])]);
     const result = await h.turn('火曜16時から17時半の予定を登録してください');
@@ -154,7 +189,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
       conversationId: scope.conversationId, turnId: 'bad', turnKey: 'bad', sourceText: '指定した予定だけ登録して',
       expectedRevision: 0, acceptedDate: WEEK, weekStartsOn: 'monday',
       planningHorizon: { startDate: WEEK, endDate: '2026-11-08' }, defaultPlanningHorizon: { startDate: WEEK, endDate: '2026-11-08' },
-      eventRegistration: { acts: [request({ localId: 'unknown' })], shownPreviewBlockIds: [], compilation: null },
+      preview: { shownPreviewBlockIds: [], authorizedCandidateKeys: [], eventRegistration: { acts: [request({ localId: 'unknown' })], compilation: null } },
     });
     expect(result).toMatchObject({ status: 'rejected', errors: [{ code: 'unknown_ref', path: 'conversationActs[0].targetRef' }] });
     expect(result.state).toBe(state); expect(state.graph.revision).toBe(0); expect(state.graph.tasks).toEqual([]);

@@ -6,7 +6,6 @@ import { createVNextLineageResolver, withCurrentVNextReferences } from './weekly
 
 export interface VNextEventRegistrationContext {
   acts: readonly VNextEventRegistrationAct[];
-  shownPreviewBlockIds: readonly string[];
   /** The current-state compilation from the same application compiler as the preview. */
   compilation: GenericSchedulerInputCompilationResult | null;
 }
@@ -40,20 +39,14 @@ export function resolveVNextEventRegistrationActs(params: {
   return errors.length ? { status: 'rejected', errors } : { status: 'resolved', acts };
 }
 
-/** Compare V5's own stable candidate keys at the current revision with the shown set. The
- * comparison runs only for an otherwise fact-noop transaction: no new facts/ids are invented.
- * Match the requested keys directly to shown blocks without parsing ids, memo or rendered text.
- * A request for an already shown event, including a subset, is a duplicate, not a removal.
+/** V5 supplies the registration candidate keys; the one transaction compares them with study
+ * keys and the shown set. Keep this read-only: facts, memo and reply text never supply identity.
  */
-export function vnextRegistrationChangesPreview(state: WeeklyPlanningVNextState, context: VNextEventRegistrationContext,
-  acts: SemanticConversationActV5[], currentTurnId: string): boolean {
-  if (!acts.length) return false;
-  if (!context.compilation) return false;
+export function vnextRegistrationCandidateKeys(state: WeeklyPlanningVNextState, context: VNextEventRegistrationContext,
+  acts: SemanticConversationActV5[], currentTurnId: string): string[] {
+  if (!acts.length || !context.compilation) return [];
   const resolver = createVNextLineageResolver(state.graph);
   const graph = withCurrentVNextReferences(state.graph, id => resolver.leafOf(id) ?? id);
-  const input = { graph, compilation: context.compilation, currentTurnId };
-  const requested = projectWeeklyPlanningFixedEventRegistration({ ...input, registrationActs: acts }).candidates.map(c => c.stableKey).sort();
-  if (!requested.length) return false;
-  const shown = new Set(context.shownPreviewBlockIds);
-  return requested.some(id => !shown.has(id));
+  return projectWeeklyPlanningFixedEventRegistration({ graph, compilation: context.compilation,
+    currentTurnId, registrationActs: acts }).candidates.map(c => c.stableKey);
 }

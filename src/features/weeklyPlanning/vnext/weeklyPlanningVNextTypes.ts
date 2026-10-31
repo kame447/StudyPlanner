@@ -322,8 +322,13 @@ export interface VNextTurnDelta {
 }
 
 export interface VNextTurnContext {
-  /** Turn-local registration meaning/presentation; only the transaction may advance its revision. */
-  eventRegistration?: import('./weeklyPlanningVNextEventRegistration').VNextEventRegistrationContext;
+  /** Accepted preview meaning: the transaction alone versions a newly approvable candidate set. */
+  preview?: {
+    shownPreviewBlockIds: readonly string[];
+    /** Actual current-revision keys from the V5-authorized scheduler, never model-supplied ids. */
+    authorizedCandidateKeys: readonly string[];
+    eventRegistration?: import('./weeklyPlanningVNextEventRegistration').VNextEventRegistrationContext;
+  };
   /** Read-only observations for this turn, never stored as stated effort or proposal policy. */
   observedMemoryPace?: Readonly<Record<string, number>>;
   /** Idempotency key; a key already in graph.appliedTurnKeys is a duplicate. */

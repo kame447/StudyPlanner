@@ -94,7 +94,9 @@ describe('V5 authorization policy through the VNext native/session boundary', ()
     expect(first.preview).toBeNull();
     const graph = structuredClone(h.local.readCheckpoint()!.vnext.state.graph);
     expect((await h.turn('お願いします')).preview).not.toBeNull();
-    expect(h.local.readCheckpoint()!.vnext.state.graph).toEqual(graph);
+    // Permission makes a new candidate set approvable: version it without adding/changing facts.
+    expect(h.local.readCheckpoint()!.vnext.state.graph).toEqual({ ...graph, revision: graph.revision + 1,
+      appliedTurnKeys: [...graph.appliedTurnKeys, `${CONVERSATION}:turn-2`] });
     expect(h.local.readCheckpoint()!.vnext.state.draftGenerationIntent).toBe('user_authorized');
   });
 

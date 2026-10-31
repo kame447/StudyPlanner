@@ -54,7 +54,7 @@ afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyP
   setWeeklyPlanningTraceRepositoryForTests(undefined); vi.useRealTimers(); restore(); });
 
 function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRenderer?: WeeklyPlanningVNextExperimentalPorts['createRenderer'];
-  nativeReading?: unknown; providerFails?: boolean; planningIntent?: 'create_plan' | 'discuss'; beforeDispatch?: (action: WeeklyPlanningAction) => void } = {}) {
+  nativeReadings?: unknown[]; nativeReading?: unknown; providerFails?: boolean; planningIntent?: 'create_plan' | 'discuss'; beforeDispatch?: (action: WeeklyPlanningAction) => void } = {}) {
   const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: createMemoryStorageHarness().storage });
   let state = createInitialPlanningState(WEEK);
   const controller = createWeeklyPlanningControllerSession(OWNER, WEEK, CONVERSATION);
@@ -63,7 +63,7 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
   const client: WeeklyPlanningVNextExperimentalPorts['client'] = { async createChatCompletion(input) {
     requests.push(structuredClone(input));
     if (options.providerFails) throw new Error('synthetic provider unavailable');
-    return JSON.stringify(options.nativeReading ?? { planningIntent: options.planningIntent ?? 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null });
+    return JSON.stringify(options.nativeReadings ? options.nativeReadings.shift() : options.nativeReading ?? { planningIntent: options.planningIntent ?? 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null });
   } };
   const gateway = createWeeklyPlanningVNextRuntimeGateway({ session: local, ports: () => ({ client,
     interpret: options.interpret ?? createWeeklyPlanningVNextProviderInterpreter(), checkpoint: local.checkpoint,
@@ -217,6 +217,52 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     }) })] });
     expect(JSON.stringify(server.entries[0])).toContain('keep-future-registration');
     expect(JSON.stringify(server.entries[0])).toContain('fixed_event_registration');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
+  });
+
+  it.each([false, true])('AB01 persists the newly authorized preview revision through outbox reload and Worker (large=%s)', async large => {
+    const first = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: { localId: 'club' } }],
+      answer: null, delta: { ...EMPTY, add: [task, work('work', 'remaining', 60, 'minute'),
+        { kind: 'task', localId: 'club', category: 'non_study', title: '部活' },
+        { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
+          constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+          startTime: '16:00', endTime: '17:30', precision: 'exact' }] } };
+    const h = harness({ nativeReadings: [first, { planningIntent: 'create_plan', conversationActs: [], delta: EMPTY, answer: null }],
+      createRenderer: () => {
+        const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+        return { render(input) { Object.assign(input.communication!, { futurePreviewRevisionSentinel: 'keep-future-preview-revision',
+          ...(large ? { futureLargePreviewMetadata: 'x'.repeat(48 * 1024) } : {}) }); return renderer.render(input); } };
+      } });
+    expect(await h.submit('部活を登録して。数学は60分です')).toMatchObject({ accepted: true,
+      draftCandidates: [expect.objectContaining({ source: 'fixed_event_registration' })] });
+    expect(h.local.readCheckpoint()!.vnext.state.graph.revision).toBe(1);
+    failAppend = true;
+    const submitted = await h.submit('数学の予定も作ってください');
+    expect(submitted).toMatchObject({ accepted: true, draftCandidates: [expect.objectContaining({ source: 'weekly_exam_prep' })] });
+    const revision = h.local.readCheckpoint()!.vnext.state.graph.revision; expect(revision).toBe(2);
+    const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION }); expect(queued).toHaveLength(1);
+    expect(queued[0].input.debugTraceEvents).toEqual(h.results[1].debugTraceEvents);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'preview-revision-retry-after-reload', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    // Retrying also records the retry turn; inspect the queued original request, not that notice.
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued[0].input.requestId))!;
+    const entry = write.entries.find(entry => entry.kind === 'turn_diagnostic' && entry.requestId === queued[0].input.requestId)!;
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing AB01 diagnostic');
+    expect(entry.diagnostics).toMatchObject({ outcome: 'preview_ready', previewCount: 1 });
+    expect(entry.aiInterpreter.structuredResults[0].structuredResult).toMatchObject({ graphRevision: revision, planningIntent: 'create_plan',
+      authorizationDecision: { authorized: true, draftGenerationIntent: 'user_authorized' } });
+    expect(JSON.stringify(entry)).toContain('keep-future-preview-revision');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ structuredResults: [expect.objectContaining({ structuredResult: expect.objectContaining({
+      graphRevision: revision, planningIntent: 'create_plan', authorizationDecision: expect.objectContaining({ authorized: true }),
+    }) })] });
+    expect(JSON.stringify(server.entries[0])).toContain('keep-future-preview-revision');
     expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
   });

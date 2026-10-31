@@ -426,9 +426,18 @@ describe('VNext experimental session end to end (offline)', () => {
     const v5Raw = serializeWeeklyPlanningStableV5CheckpointWithMessageCount({ ownerId: scope.ownerId, weekStartDate: scope.weekStartDate,
       conversationId: scope.conversationId, graph, planningState: prepared.planningState, savedAt: '2026-11-02T08:00:00.000Z', messageCount: 0 })!;
     const h = harness([interpreted({})], { legacyV5: v5Raw });
-    const resumed = await submitWeeklyPlanningVNextExperimentalTurn({ scope: { ...scope, clock: { ...scope.clock, currentDate: '2026-11-09' } },
+    const resumedScope = { ...scope, clock: { ...scope.clock, currentDate: '2026-11-09' } };
+    const migrated = readWeeklyPlanningVNextExperimentalSession(resumedScope, h.ports);
+    if (migrated.status !== 'ready') throw new Error(migrated.status);
+    const before = structuredClone(migrated.checkpoint.state.graph);
+    const resumed = await submitWeeklyPlanningVNextExperimentalTurn({ scope: resumedScope,
       ports: h.ports, turnId: 't1', userText: 'お願いします', shownRevision: null });
-    expect(resumed).toMatchObject({ outcome: 'noop' });
+    expect(resumed).toMatchObject({ outcome: 'applied', graphRevision: before.revision + 1 });
+    const after = readWeeklyPlanningVNextExperimentalSession(resumedScope, h.ports);
+    if (after.status !== 'ready') throw new Error(after.status);
+    // Only the newly approvable preview is versioned; all migrated facts/dates stay exactly as accepted.
+    expect(after.checkpoint.state.graph).toEqual({ ...before, revision: before.revision + 1,
+      appliedTurnKeys: [...before.appliedTurnKeys, `${scope.conversationId}:t1`] });
     expect(resumed.preview!.blocks[0].date).toBe('2026-11-09');
     expect(h.slots.get('v5')).toBe(v5Raw);
   });
