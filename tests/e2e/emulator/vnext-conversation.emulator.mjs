@@ -53,11 +53,19 @@ async function answer(request, call, content, status = 200) {
   await request.post(`${SYNTHETIC}/__synthetic/respond`, { data: { id: call.id, status, body } });
 }
 
-/** The renderer must echo the action it was asked to explain; read it from the actual request. */
-function requestedActionId(call) {
-  const match = call.body.messages.map((message) => /"actionId"\s*:\s*"([^"]+)"/.exec(message.content)).find(Boolean);
-  expect(match, 'renderer request carries an actionId').toBeTruthy();
-  return match[1];
+/**
+ * A renderer reply for the application's decision as the actual request states it: the same action,
+ * kind and question, naming every label the request requires (the renderer's own validator checks this).
+ */
+function rendererReply(call) {
+  const prompt = call.body.messages.map((message) => {
+    try { return JSON.parse(message.content); } catch { return null; }
+  }).find((content) => content?.applicationDecision);
+  expect(prompt, 'renderer request carries the application decision').toBeTruthy();
+  const decision = prompt.applicationDecision;
+  const labels = [...(decision.relevantLabels ?? []), decision.previewPromotionControlLabel].filter(Boolean);
+  return { actionId: prompt.actionId, actionKind: decision.actionKind, questionCode: decision.questionCode ?? null,
+    groundingAcknowledgement: null, text: `${labels.join('、')}について確認しました。` };
 }
 
 async function firestoreDocuments(request, collection) {
@@ -70,21 +78,37 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   await signIn(page, VNEXT);
   await openPlanning(page);
 
-  // Turn 1: the user's text reaches the VNext interpreter through the Worker; then the V5 renderer explains.
+  // Turn 1: facts alone. The user's text reaches the VNext interpreter through the Worker; it reads no
+  // request to create a plan, so, as in Stable V5, the facts are kept but no preview is made (#926 A).
   await send(page, 'ゼミ資料を60分');
   const reading = await nextCall(request);
   expect(reading.schema).toBe('weekly_planning_vnext_native_v1');
   expect(JSON.stringify(reading.body.messages)).toContain('ゼミ資料を60分');
-  await answer(request, reading, { answer: null, delta: { patch: [], remove: [], relate: [], defer: [], add: [
+  await answer(request, reading, { planningIntent: 'discuss', answer: null, delta: { patch: [], remove: [], relate: [], defer: [], add: [
     { kind: 'task', localId: 'seminar', category: 'study', title: 'ゼミ資料' },
     { kind: 'workload', localId: 'seminar_minutes', taskRef: { localId: 'seminar' }, componentRef: null,
       quantityRole: 'target', amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
       perOccurrence: false, periodExpression: null },
   ] } });
+  const unauthorized = await nextCall(request);
+  expect(unauthorized.schema).toBe('weekly_planning_stable_v5_dialogue_response');
+  const unauthorizedReply = rendererReply(unauthorized);
+  expect(unauthorizedReply.actionKind).not.toBe('preview_ready');
+  await answer(request, unauthorized, unauthorizedReply);
+  await expect(page.locator('.ai-planning-conversation')).toContainText(unauthorizedReply.text);
+  await expect(page.locator('.ai-planning-plan-card')).toHaveCount(0);
+
+  // Turn 2: an explicit request to create the plan; the accepted facts now preview without restating them.
+  await send(page, 'この条件で予定を作って');
+  const create = await nextCall(request);
+  expect(create.schema).toBe('weekly_planning_vnext_native_v1');
+  await answer(request, create, { planningIntent: 'create_plan', answer: null,
+    delta: { add: [], patch: [], remove: [], relate: [], defer: [] } });
   const rendering = await nextCall(request);
   expect(rendering.schema).toBe('weekly_planning_stable_v5_dialogue_response');
-  await answer(request, rendering, { actionId: requestedActionId(rendering), actionKind: 'preview_ready', questionCode: null,
-    groundingAcknowledgement: null, text: 'ゼミ資料を60分の予定案にしました。プレビューを確認して保存してください。' });
+  const previewReply = rendererReply(rendering);
+  expect(previewReply.actionKind).toBe('preview_ready');
+  await answer(request, rendering, previewReply);
 
   // The V5 preview UI shows the VNext placement; approval runs through V5's approval application.
   const planCard = page.locator('.ai-planning-plan-card');
@@ -123,14 +147,14 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toContain('英語の音読');
   expect(await seminarEvents()).toBe(1);
 
-  // Trace (through the Worker into Firestore) records each turn's own result: the previewed turn as
-  // preview_ready and the failed one as failed, never as idle (Astra SW01).
+  // Trace (through the Worker into Firestore) records each turn's own result: facts without a request to
+  // plan as V5's needs_scope, the previewed turn as preview_ready, the failed one as failed, never idle.
   const outcomesIn = (value) => (value && typeof value === 'object'
     ? Object.entries(value).flatMap(([key, item]) =>
       (key === 'outcome' && typeof item?.stringValue === 'string' ? [item.stringValue] : outcomesIn(item)))
     : []);
   const traceOutcomes = async () => outcomesIn(await firestoreDocuments(request, 'weekly_planning_trace_entries')).sort();
-  await expect.poll(traceOutcomes).toEqual(['failed', 'preview_ready']);
+  await expect.poll(traceOutcomes).toEqual(['failed', 'needs_scope', 'preview_ready']);
 
   // Rollback: the same origin without VNext is Stable V5 with its own conversation; then VNext again.
   await signIn(page, V5);
