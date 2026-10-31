@@ -84,7 +84,7 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   const reading = await nextCall(request);
   expect(reading.schema).toBe('weekly_planning_vnext_native_v1');
   expect(JSON.stringify(reading.body.messages)).toContain('ゼミ資料を60分');
-  await answer(request, reading, { planningIntent: 'discuss', answer: null, delta: { patch: [], remove: [], relate: [], defer: [], add: [
+  await answer(request, reading, { planningIntent: 'discuss', conversationActs: [], answer: null, delta: { patch: [], remove: [], relate: [], defer: [], add: [
     { kind: 'task', localId: 'seminar', category: 'study', title: 'ゼミ資料' },
     { kind: 'workload', localId: 'seminar_minutes', taskRef: { localId: 'seminar' }, componentRef: null,
       quantityRole: 'target', amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
@@ -102,7 +102,7 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   await send(page, 'この条件で予定を作って');
   const create = await nextCall(request);
   expect(create.schema).toBe('weekly_planning_vnext_native_v1');
-  await answer(request, create, { planningIntent: 'create_plan', answer: null,
+  await answer(request, create, { planningIntent: 'create_plan', conversationActs: [], answer: null,
     delta: { add: [], patch: [], remove: [], relate: [], defer: [] } });
   const rendering = await nextCall(request);
   expect(rendering.schema).toBe('weekly_planning_stable_v5_dialogue_response');
