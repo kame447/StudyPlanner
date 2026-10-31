@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fillSecret } from './support/fill-secret.mjs';
 
 // Production check of the weekly-planning trace privacy boundary (Issue #45).
 // The shared-account test writes one isolated synthetic session and never
@@ -43,16 +44,6 @@ async function waitForAuthSurface(page) {
       return 'pending';
     }, { timeout: 20_000 })
     .not.toBe('pending');
-}
-
-// Playwright puts the filled value in its action log, so a failed fill would
-// print the credential. Replace the error with a fixed message.
-async function fillSecret(locator, value, label) {
-  try {
-    await locator.fill(value);
-  } catch {
-    throw new Error(`Could not enter the ${label}.`);
-  }
 }
 
 async function signIn(page, email = liveEmail, password = livePassword) {

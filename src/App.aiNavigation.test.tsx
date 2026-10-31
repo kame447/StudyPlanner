@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from './App';
+import { markFirstRunTourComplete } from './lib/firstRunTour';
 import { HomeScheduleView } from './components/HomeScheduleView';
 import { AiPlanningView } from './components/AiPlanningView';
 import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
@@ -44,6 +45,9 @@ beforeEach(() => {
     matchMedia: () => ({ matches: true }), requestAnimationFrame: () => 1, cancelAnimationFrame() {},
     setTimeout, clearTimeout, performance, scrollTo() {},
     history: { state: {}, length: 1, pushState() {}, replaceState() {} } }));
+  // Navigation regressions exercise returning users, after their first-run tour.
+  markFirstRunTourComplete('owner-a');
+  markFirstRunTourComplete('owner-b');
   vi.stubGlobal('HTMLElement', class {});
   vi.stubGlobal('document', Object.assign(new EventTarget(), {
     documentElement: { dataset: {}, style: {} }, body: { style: {} }, visibilityState: 'visible',

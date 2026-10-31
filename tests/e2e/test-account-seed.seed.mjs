@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fillSecret } from './support/fill-secret.mjs';
 
 function requireSecret(name) {
   const value = process.env[name]?.trim();
@@ -72,7 +73,7 @@ async function unlockAccessGateIfNeeded(page) {
   if (!liveAccessKey) {
     throw new Error('The production access gate is enabled but its secret is missing.');
   }
-  await page.getByLabel('閲覧キー').fill(liveAccessKey);
+  await fillSecret(page.getByLabel('閲覧キー'), liveAccessKey, 'access key');
   await page.getByRole('button', { name: 'キーを確認して進む' }).click();
   await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
 }
@@ -85,8 +86,8 @@ async function signIn(page) {
   await waitForAuthSurface(page);
   await unlockAccessGateIfNeeded(page);
   await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
-  await page.getByLabel('メールアドレス').fill(liveEmail);
-  await page.getByLabel('パスワード', { exact: true }).fill(livePassword);
+  await fillSecret(page.getByLabel('メールアドレス'), liveEmail, 'email');
+  await fillSecret(page.getByLabel('パスワード', { exact: true }), livePassword, 'password');
   await page.getByRole('button', { name: 'ログインする' }).click();
 
   const privacy = page.getByRole('heading', { name: '初回利用の確認' });
@@ -168,8 +169,13 @@ async function ensureMaterial(page, fixture) {
   await fieldControl(dialog, '教材名', 'input').fill(fixture.name);
   await fieldControl(dialog, '教科', 'select').selectOption({ label: fixture.subject });
 
+  // Click the visible switch, not the hidden input with force: a forced click skips the stability
+  // check and can land on another control while the dialog animates in (#947).
   const paceToggle = dialog.locator('.material-pace-toggle input[type="checkbox"]');
-  if (!(await paceToggle.isChecked())) await paceToggle.check({ force: true });
+  if (!(await paceToggle.isChecked())) {
+    await dialog.locator('.material-pace-toggle').click();
+    await expect(paceToggle).toBeChecked();
+  }
 
   await fieldControl(dialog, '単位', 'select').selectOption({ label: fixture.unit });
   await fieldControl(dialog, '総量', 'input').fill(String(fixture.total));
@@ -302,7 +308,10 @@ async function ensureMonthEvent(page, fixture) {
 
   await modal.getByLabel('タイトル', { exact: true }).fill(fixture.title);
   const allDay = modal.locator('.month-event-all-day-switch input[type="checkbox"]');
-  if (fixture.allDay && !(await allDay.isChecked())) await allDay.check({ force: true });
+  if (fixture.allDay && !(await allDay.isChecked())) {
+    await modal.locator('.month-event-all-day-switch').click();
+    await expect(allDay).toBeChecked();
+  }
   await modal.getByRole('button', { name: '保存', exact: true }).click();
 
   await expect(modal).not.toBeVisible();

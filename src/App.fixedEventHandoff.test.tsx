@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from './App';
+import { markFirstRunTourComplete } from './lib/firstRunTour';
 import { AiPlanningView } from './components/AiPlanningView';
 import { AiPlanningPreviewDialog } from './components/AiPlanningPreviewDialog';
 import { WeekView } from './components/WeekView';
@@ -90,6 +91,8 @@ beforeEach(async () => {
   vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: storage, sessionStorage: new MemoryStorage(),
     matchMedia: () => ({ matches: true }), requestAnimationFrame: () => 1, cancelAnimationFrame() {},
     addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout, performance });
+  // This suite validates the post-onboarding fixed-event flow.
+  markFirstRunTourComplete('owner-handoff');
   vi.stubGlobal('localStorage', storage);
   vi.stubGlobal('document', { documentElement: { dataset: {}, style: {} }, body: { style: {} },
     addEventListener() {}, removeEventListener() {} });
