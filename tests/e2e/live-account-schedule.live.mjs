@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fillSecret } from './support/fill-secret.mjs';
 
 function requireSecret(name) {
   const value = process.env[name]?.trim();
@@ -39,7 +40,7 @@ async function unlockAccessGateIfNeeded(page) {
     );
   }
 
-  await page.getByLabel('閲覧キー').fill(liveAccessKey);
+  await fillSecret(page.getByLabel('閲覧キー'), liveAccessKey, 'access key');
   await page.getByRole('button', { name: 'キーを確認して進む' }).click();
   await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
 }
@@ -56,8 +57,8 @@ async function signIn(page) {
   await unlockAccessGateIfNeeded(page);
 
   await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
-  await page.getByLabel('メールアドレス').fill(liveEmail);
-  await page.getByLabel('パスワード', { exact: true }).fill(livePassword);
+  await fillSecret(page.getByLabel('メールアドレス'), liveEmail, 'email');
+  await fillSecret(page.getByLabel('パスワード', { exact: true }), livePassword, 'password');
   await page.getByRole('button', { name: 'ログインする' }).click();
 
   const privacyHeading = page.getByRole('heading', { name: '初回利用の確認' });
