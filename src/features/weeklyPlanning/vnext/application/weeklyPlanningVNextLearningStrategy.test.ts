@@ -206,15 +206,30 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     }
   });
 
-  it('keeps a structural duplicate-quantity question under a trial owner', () => {
-    let state = decide(answer(decide(seed(), 'accept'), { kind: 'session_minutes', minutes: 20 }), 'accept');
-    state = apply(state, { ...empty(), add: [{ ...work, localId: 'same-basis', amount: 200,
-      taskRef: { factId: state.graph.tasks[0].id } }],
+  it('keeps the original same-basis distinct calibration work end to end like V5 (Astra CALIBRATION_DISTINCT)', () => {
+    const initial = apply(createEmptyWeeklyPlanningVNextState(), { ...empty(), add: [
+      { kind: 'task', localId: 't', category: 'study', title: 'Memory' },
+      { kind: 'study_context', localId: 's', taskRef: { localId: 't' }, purpose: 'self_study', contextLabel: null, activityKind: 'memorization_retrieval' },
+      { ...work, unitCode: 'word', unitLabel: '語' },
+    ] });
+    let state = decide(answer(decide(initial, 'accept'), { kind: 'session_minutes', minutes: 20 }), 'accept');
+    const trialId = state.graph.workloads[0].id;
+    const taskRef = { factId: state.graph.tasks[0].id };
+    state = apply(state, { ...empty(), add: [{ ...work, localId: 'same-basis', amount: 200, unitCode: 'word', unitLabel: '語', taskRef },
+      { kind: 'effort_estimate', localId: 'rate', taskRef, targetRef: { localId: 'same-basis' },
+        effortKind: 'duration_per_unit', minutes: 1, unitCode: 'word', unitLabel: '語', precision: 'exact' }],
       relate: [{ kind: 'distinct', a: { factId: state.graph.workloads[0].id }, b: { localId: 'same-basis' } }] });
     const projection = projectWeeklyPlanningVNext(state);
-    expect(projection.questions[0].code).toBe('duplicate_quantity');
-    expect(projection.readiness).toBe('needs_resolution');
-    expect(compileWeeklyPlanningVNextSchedulerInput({ state, projection, context }).status).toBe('not_ready');
+    expect(projection.questions).toEqual([]);
+    const compiled = compile(state);
+    const v5 = compileWeeklyPlanningMemoryCalibrationSchedulerInputV5({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(state.graph),
+      workloadFactId: trialId, sessionMinutes: 20, context, externalSources: [] })!;
+    const semantics = (result: typeof compiled) => result.input!.movableWorkItems.map(item => ({ workloadFactId: item.workloadFactId,
+      quantity: item.quantity, estimatedMinutes: item.estimatedMinutes,
+      observation: 'weeklyPlanningObservationSource' in item ? item.weeklyPlanningObservationSource : undefined }))
+      .sort((a, b) => a.workloadFactId.localeCompare(b.workloadFactId));
+    expect(semantics(compiled)).toEqual(semantics(v5));
+    expect(semantics(compiled).map(item => item.estimatedMinutes)).toEqual([20, 225]);
   });
 
   it('passes a turn-scoped calibration multiplier to the same compiler and does not inherit it', () => {

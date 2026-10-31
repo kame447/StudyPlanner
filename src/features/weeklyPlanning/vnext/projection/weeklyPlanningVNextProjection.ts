@@ -171,7 +171,10 @@ function effortAppliesToWork(
   if (targetLineage === lineageOf(unit.workload.taskId)) return true;
   if (unit.workload.componentId !== null && targetLineage === lineageOf(unit.workload.componentId)) return true;
   const target = context.workloadsById.get(leafOf(effort.targetFactId) ?? '');
-  return target !== undefined && ownerKeyOf(target) === unit.ownerKey;
+  // Owner pace sharing stops at an explicitly distinct work, while task/component scope
+  // and same/unknown relations keep their existing meaning (DistinctTargets rate controls).
+  return target !== undefined && ownerKeyOf(target) === unit.ownerKey
+    && !(effort.kind === 'duration_per_unit' && hasRelation(context, 'distinct', lineageOf(target.id), unit.workLineageId));
 }
 
 interface EstimateCandidate {
@@ -463,7 +466,7 @@ export function projectWeeklyPlanningVNext(
   };
 
   // Settle which work is scheduled first, so scope-wide totals see the final work set.
-  const resolved = computeVNextWorkUnits(graph).map((owner) => ({ owner, resolution: resolveOwnerWork(context, owner) }));
+  const resolved = computeVNextWorkUnits(graph, state.workRelations).map((owner) => ({ owner, resolution: resolveOwnerWork(context, owner) }));
   const allScheduled = resolved.flatMap(({ resolution }) => ('scheduled' in resolution ? resolution.scheduled : []));
   const owners = resolved.map(({ owner, resolution }) => ('projection' in resolution
     ? resolution.projection

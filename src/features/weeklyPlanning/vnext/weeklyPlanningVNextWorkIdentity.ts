@@ -4,6 +4,7 @@ import { filterActiveWeeklyPlanningFactsV5 } from '../semantic/weeklyPlanningFac
 import type { WorkloadFactV5 } from './weeklyPlanningVNextV5Boundary';
 import type {
   VNextEffortWorkBinding,
+  VNextWorkRelation,
   WeeklyPlanningVNextGraph,
 } from './weeklyPlanningVNextTypes';
 
@@ -191,14 +192,17 @@ function byRole(group: WorkloadFactV5[], role: WorkloadFactV5['quantityRole']): 
 }
 
 /**
- * Amount of work per owner and basis, from active stated workloads only.
- * A target governs its basis; otherwise a stated remaining, or total − completed
+ * Amount of work per owner and basis, from active stated workloads and explicit relations only.
+ * A single target governs its basis; independent target-only pairs stay separate when all are distinct.
+ * Otherwise a stated remaining, or total − completed
  * (no completed counts as 0; percent without a total uses 100). Completed work
  * alone is a record of progress, not work. A zero amount is not work.
  */
-export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWorkUnitsByOwner[] {
+export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph, workRelations: readonly VNextWorkRelation[] = []): VNextWorkUnitsByOwner[] {
   const resolver = createVNextLineageResolver(graph);
   const lineageOf = (fact: { id: string }) => resolver.lineageOf(fact.id);
+  const distinct = new Set(workRelations.filter(relation => relation.kind === 'distinct')
+    .map(relation => JSON.stringify([...relation.lineageIds].sort())));
   const workloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads);
   const owners = new Map<string, WorkloadFactV5[]>();
   for (const workload of workloads) {
@@ -236,6 +240,17 @@ export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWor
       const completed = byRole(group, 'completed');
       const remaining = byRole(group, 'remaining');
       const targets = byRole(group, 'target');
+      // Multiple stated targets are independent only when every pair is explicitly distinct.
+      // This exception cannot pair totals/progress by guesswork. DistinctTargets tests compare
+      // the ordinary and calibration paths with V5 and retain the unresolved/mixed-role controls.
+      const distinctTargetsOnly = targets.length > 1 && group.length === targets.length
+        && targets.every((a, index) => targets.slice(index + 1).every(b =>
+          distinct.has(JSON.stringify([lineageOf(a), lineageOf(b)].sort()))));
+      if (distinctTargetsOnly) {
+        units.push(...targets.filter(workload => workload.amount > 0).map(workload => ({ workLineageId: lineageOf(workload), definingFactId: workload.id,
+          ownerKey, basisKey, role: 'target' as const, derivedFromTotal: false, amount: workload.amount, workload })));
+        continue;
+      }
       if ([totals, completed, remaining, targets].some((facts) => facts.length > 1)) {
         issue = { code: 'duplicate_quantity', ownerKey, basisKey, lineageIds: group.map(lineageOf) };
         break;
@@ -307,6 +322,7 @@ export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph): VNextWor
 export function resolveVNextEffortBinding(
   graph: WeeklyPlanningVNextGraph,
   about: { workloadFactId: string } | { workLineageId: string },
+  workRelations: readonly VNextWorkRelation[] = [],
 ): VNextEffortWorkBinding | null {
   const resolver = createVNextLineageResolver(graph);
   if ('workloadFactId' in about) {
@@ -323,7 +339,7 @@ export function resolveVNextEffortBinding(
     }
   }
   const lineageId = 'workLineageId' in about ? about.workLineageId : resolver.lineageOf(about.workloadFactId);
-  const unit = computeVNextWorkUnits(graph).flatMap((owner) => owner.units)
+  const unit = computeVNextWorkUnits(graph, workRelations).flatMap((owner) => owner.units)
     .find((candidate) => candidate.workLineageId === lineageId);
   return unit
     ? { kind: 'future_work', workLineageId: unit.workLineageId, boundAmount: unit.amount, boundBasisKey: unit.basisKey }

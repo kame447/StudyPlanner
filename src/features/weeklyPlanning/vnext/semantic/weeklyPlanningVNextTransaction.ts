@@ -183,7 +183,7 @@ export function applyWeeklyPlanningVNextTurn(
   };
   // An estimate about a projected work by identity is stored on the work's defining fact.
   const workRefs = new Map<string, string>();
-  const stateWorkUnits = computeVNextWorkUnits(state.graph).flatMap((owner) => owner.units);
+  const stateWorkUnits = computeVNextWorkUnits(state.graph, state.workRelations).flatMap((owner) => owner.units);
   const workRef = (value: VNextWorkRef, path: string): string => {
     const unit = stateWorkUnits.find((candidate) => candidate.workLineageId === value.workLineageId);
     if (!unit) error('unknown_ref', path, value.workLineageId);
@@ -364,6 +364,26 @@ export function applyWeeklyPlanningVNextTurn(
   delta.remove.forEach((removal, index) => { if (!removesWindow(removal)) removeFact(removal, index); });
   if (errors.length) return reject();
 
+  // Relations are explicit accepted meaning too: settle them before binding effort to final work.
+  // In particular, same-turn distinct targets must be visible to that single binding stage.
+  const relationLineage = vnextLineageIdByFactId(graph);
+  delta.relate.forEach((relation, index) => {
+    const path = `relate[${index}]`;
+    const a = ref(relation.a, `${path}.a`), b = ref(relation.b, `${path}.b`);
+    const pair = [relationLineage.get(a), relationLineage.get(b)];
+    if (pair.some(id => !id) || !activeLeaf(graph, a) || !activeLeaf(graph, b)) error('work_unavailable', path);
+    else if (pair[0] === pair[1] || !['same', 'distinct'].includes(relation.kind)
+      || ![a, b].every(id => graph.workloads.some(workload => workload.id === activeLeaf(graph, id)))) error('invalid_value', path);
+    else {
+      const sorted = pair.sort() as [string, string];
+      if (next.workRelations.some(item => item.kind === relation.kind
+        && item.lineageIds[0] === sorted[0] && item.lineageIds[1] === sorted[1])) return;
+      next.workRelations = next.workRelations.filter(item => item.lineageIds[0] !== sorted[0] || item.lineageIds[1] !== sorted[1]);
+      next.workRelations.push({ kind: relation.kind, lineageIds: sorted, createdRevision: graph.revision });
+    }
+  });
+  if (errors.length) return reject();
+
   // All explicit operations have completed. Bind newly stated/changed totals to that final work.
   // What a total measures is fixed when it is stated; a patch rebinds the same measure.
   const previousBindings = new Map<string, VNextEffortWorkBinding | null>();
@@ -385,7 +405,7 @@ export function applyWeeklyPlanningVNextTurn(
           : previous?.kind === 'observed_pace' ? { workloadFactId: previous.workLineageId }
             : graph.workloads.some(fact => fact.id === targetLeaf) ? { workloadFactId: targetLeaf } : null;
     if (about === null) { effort.workBinding = null; continue; }
-    const binding = resolveVNextEffortBinding(graph, about);
+    const binding = resolveVNextEffortBinding(graph, about, next.workRelations);
     if (!binding) { error('work_unavailable', location.path, effort.id, location.localId); continue; }
     effort.workBinding = binding;
   }
@@ -430,21 +450,6 @@ export function applyWeeklyPlanningVNextTurn(
       }
     }
   }
-  delta.relate.forEach((relation, index) => {
-    const path = `relate[${index}]`;
-    const a = ref(relation.a, `${path}.a`), b = ref(relation.b, `${path}.b`);
-    const pair = [lineage.get(a), lineage.get(b)];
-    if (pair.some(id => !id) || !activeLeaf(graph, a) || !activeLeaf(graph, b)) error('work_unavailable', path);
-    else if (pair[0] === pair[1] || !['same', 'distinct'].includes(relation.kind)
-      || ![a, b].every(id => graph.workloads.some(workload => workload.id === activeLeaf(graph, id)))) error('invalid_value', path);
-    else {
-      const sorted = pair.sort() as [string, string];
-      if (next.workRelations.some(item => item.kind === relation.kind
-        && item.lineageIds[0] === sorted[0] && item.lineageIds[1] === sorted[1])) return;
-      next.workRelations = next.workRelations.filter(item => item.lineageIds[0] !== sorted[0] || item.lineageIds[1] !== sorted[1]);
-      next.workRelations.push({ kind: relation.kind, lineageIds: sorted, createdRevision: graph.revision });
-    }
-  });
   delta.defer.forEach((deferral, index) => {
     if (!deferral.questionKey.trim()) error('invalid_value', `defer[${index}].questionKey`);
     else if (deferral.allocation !== 'none' && (deferral.allocation !== 'provisional_timebox'

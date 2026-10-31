@@ -26,7 +26,7 @@ function contextualInput(input: WeeklyPlanningVNextInterpretationInput, requestI
   const active = new Set(graph.factLifecycles.filter(item => item.status === 'active').map(item => item.factId));
   const task = graph.tasks.find(item => item.id === resolver.leafOf(question.taskId));
   if (!task) return null;
-  const unit = question.forWork ? computeVNextWorkUnits(graph).flatMap(owner => owner.units)
+  const unit = question.forWork ? computeVNextWorkUnits(graph, input.state.workRelations).flatMap(owner => owner.units)
     .find(item => item.workLineageId === question.forWork!.workLineageId) : null;
   const unresolved = graph.workloads.filter(fact => active.has(fact.id) && question.subjectLineageIds.includes(resolver.lineageOf(fact.id)));
   const workload = question.forWork ? graph.workloads.find(fact => fact.id === resolver.leafOf(question.forWork!.definingFactId))

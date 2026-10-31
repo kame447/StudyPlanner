@@ -18,7 +18,7 @@ export function presentWeeklyPlanningVNextQuestion(
   const resolver = createVNextLineageResolver(graph);
   const factOf = (factId: string) => graph.workloads.find((workload) => workload.id === resolver.leafOf(factId));
   const title = graph.tasks.find((task) => task.id === (resolver.leafOf(question.taskId) ?? question.taskId))?.title ?? '';
-  const owner = computeVNextWorkUnits(graph).find((candidate) => candidate.ownerKey === question.ownerKey);
+  const owner = computeVNextWorkUnits(graph, state.workRelations).find((candidate) => candidate.ownerKey === question.ownerKey);
   const unitOfWork = (lineageId: string) => owner?.units.find((unit) => unit.workLineageId === lineageId);
   const amountOf = (lineageId: string) => {
     const unit = unitOfWork(lineageId);

@@ -187,7 +187,7 @@ export function checkVNextProviderScenario(expected: Expected, before: WeeklyPla
       multiset(oldEfforts.map(effort => effortView(effort, oldResolver))));
   } else {
     check('effort cardinality', efforts.length, expected.efforts.length);
-    const units = computeVNextWorkUnits(after.graph).flatMap(owner => owner.units);
+    const units = computeVNextWorkUnits(after.graph, after.workRelations).flatMap(owner => owner.units);
     const matches = (effort: Effort, wanted: ExpectedEffort) => {
       if (effort.kind !== wanted.kind || effort.minutes !== wanted.minutes) return false;
       const target = resolver.lineageOf(effort.targetFactId);
