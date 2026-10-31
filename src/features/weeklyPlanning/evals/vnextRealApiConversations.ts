@@ -32,10 +32,21 @@ export interface RealApiEffortOracle {
 
 export interface RealApiTemporalOracle {
   task: string;
-  kind: 'deadline' | 'earliest_start' | 'latest_end';
+  kind: 'deadline' | 'earliest_start' | 'latest_end' | 'fixed_interval';
   dateExpression: string;
   time?: string;
+  endTime?: string;
   level?: 'hard' | 'soft';
+}
+
+export interface RealApiFixedEventRegistrationOracle {
+  /** Expected typed registration request in this turn's semantic reading. */
+  requested: boolean;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+  /** Exact count of unsaved fixed-event candidates in the VNext preview. */
+  candidateCount: 0 | 1;
 }
 
 export interface RealApiTurnOracle {
@@ -70,6 +81,7 @@ export interface RealApiTurnOracle {
   expectNoApplicableEffort?: boolean;
   /** Some regression cases intentionally isolate a different semantic failure. */
   checkTemporal?: boolean;
+  fixedEventRegistration?: RealApiFixedEventRegistrationOracle;
 }
 
 export interface RealApiConversationTurn {
@@ -111,6 +123,64 @@ const ready = (minutes: number, workloads: readonly RealApiWorkloadOracle[], eff
 });
 
 export const vnextRealApiConversations: readonly RealApiConversation[] = [
+  {
+    id: 'fixed-event-register-calendar-add', source: '#926 fixed-event registration paraphrase',
+    description: '明示的に予定表へ追加する依頼を、未保存の固定予定候補へ結び付ける。',
+    turns: [{ userText: '11月3日16時から17時半までゼミがあります。予定表にも載せといて。', oracle: {
+      ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
+      fixedEventRegistration: { requested: true, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 1 },
+    } }],
+  },
+  {
+    id: 'fixed-event-register-calendar-question', source: '#926 fixed-event registration paraphrase',
+    description: '同じ登録依頼を別の丁寧な表現で行う。',
+    turns: [{ userText: '11月3日16時から17時半まではゼミです。カレンダーに入れてもらえる？', oracle: {
+      ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
+      fixedEventRegistration: { requested: true, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 1 },
+    } }],
+  },
+  {
+    id: 'fixed-event-busy-information-only', source: '#926 fixed-event registration negative control',
+    description: '固定予定の共有だけで登録依頼はせず、学習配置を妨げる時間として保持する。',
+    turns: [{ userText: '11月3日16時から17時半まではゼミなので、その間は勉強できません。', oracle: {
+      ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
+      fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0 },
+    } }],
+  },
+  {
+    id: 'fixed-event-registration-negated', source: '#926 fixed-event registration negative control',
+    description: '明示的な登録拒否を尊重し、予定表には追加しない。',
+    turns: [{ userText: '11月3日16時から17時半までゼミがありますが、予定表には入れなくていいです。', oracle: {
+      ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
+      fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0 },
+    } }],
+  },
+  {
+    id: 'fixed-event-yes-after-rendered-offer', source: '#926 fixed-event contextual acceptance',
+    description: '固定予定を伝えた後、VNextの実際の返信が登録を申し出た場合に限り、その申し出への短い承諾を解釈する。',
+    turns: [
+      { userText: '11月3日16時から17時半までゼミがあります。', oracle: {
+        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
+        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0 },
+      } },
+      { userText: 'うん、お願い。', oracle: {
+        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
+        fixedEventRegistration: { requested: true, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 1 },
+      } },
+    ],
+  },
+  {
+    id: 'fixed-event-yes-without-registration-offer', source: '#926 fixed-event contextual acceptance negative control',
+    description: '登録の申し出がない文脈での同じ短い相づちは登録依頼にしない。',
+    turns: [
+      { userText: '英語の音読を20分したいです。', oracle: ready(20,
+        [workload('reading-aloud', 'target', 20, 'minute', '分')]) },
+      { userText: '11月3日16時から17時半までゼミがあります。うん、お願い。', oracle: {
+        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], { projectedMinutes: null }),
+        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0 },
+      } },
+    ],
+  },
   {
     id: 'simple-remaining-and-rate', source: 'implementation-contract.md §1, §5.3',
     description: '通常の残量と単位あたり時間から分数を計算する。',

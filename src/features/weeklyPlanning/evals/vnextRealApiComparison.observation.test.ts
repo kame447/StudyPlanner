@@ -55,6 +55,7 @@ import {
 import { projectWeeklyPlanningVNext } from '../vnext/projection/weeklyPlanningVNextProjection';
 import type { WeeklyPlanningVNextInterpretationInput } from '../vnext/weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnDelta } from '../vnext/weeklyPlanningVNextTypes';
+import { decodeVNextProviderOutput } from '../vnext/semantic/weeklyPlanningVNextProviderSchema';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../vnext/semantic/weeklyPlanningVNextProvider';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../vnext/weeklyPlanningVNextV5Boundary';
 import type {
@@ -118,6 +119,22 @@ interface ObservedFacts {
   workloads: ObservedWorkload[];
   efforts: ObservedEffort[];
   temporal: ObservedTemporal[];
+}
+
+interface ObservedConversationActReading {
+  semanticCall: number;
+  status: 'decoded' | 'rejected' | 'unparseable' | 'missing_response';
+  conversationActs: Array<{ kind: string; targetRef: unknown }> | null;
+}
+
+interface ObservedDraftCandidate {
+  source: string;
+  title: string;
+  taskId: string | null;
+  date: string;
+  startTime: string;
+  endTime: string;
+  approvalStatus: string;
 }
 
 interface ObservedQuestionWork {
@@ -217,6 +234,9 @@ interface VNextTurnObservation extends V5TurnObservation {
   presentedText: string | null;
   presentedQuestion: WeeklyPlanningVNextInterpretationInput['presentedQuestion'];
   replySource: WeeklyPlanningVNextExperimentalTurn['replySource'] | null;
+  conversationActReadings: ObservedConversationActReading[];
+  finalCandidates: ObservedDraftCandidate[];
+  saveWritesBeforeApproval: number;
 }
 
 interface ConversationObservation {
@@ -509,10 +529,63 @@ function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question
       if (!observed.temporal.some((fact) => observed.taskIds.includes(fact.taskId)
         && fact.kind === wanted.kind && fact.dateExpression === wanted.dateExpression
         && (wanted.level === undefined || fact.constraintLevel === wanted.level)
-        && (wanted.time === undefined || fact.startTime === wanted.time || fact.endTime === wanted.time))) {
+        && (wanted.time === undefined || fact.startTime === wanted.time
+          || (wanted.endTime === undefined && fact.endTime === wanted.time))
+        && (wanted.endTime === undefined || fact.endTime === wanted.endTime))) {
         differences.push(`temporal missing ${wanted.kind}/${wanted.dateExpression}`);
       }
     }
+  }
+  return differences;
+}
+
+function observedConversationActReadings(calls: readonly RawProviderCallObservation[]): ObservedConversationActReading[] {
+  return calls.filter(call => call.request.purpose === 'weekly_planning_semantic_normalizer').map((call, index) => {
+    if (call.rawResponseText === undefined) return { semanticCall: index + 1, status: 'missing_response', conversationActs: null };
+    let value: unknown;
+    try { value = JSON.parse(call.rawResponseText); }
+    catch { return { semanticCall: index + 1, status: 'unparseable', conversationActs: null }; }
+    const decoded = decodeVNextProviderOutput(value);
+    return decoded.status === 'decoded'
+      ? { semanticCall: index + 1, status: 'decoded', conversationActs: decoded.reading.conversationActs }
+      : { semanticCall: index + 1, status: 'rejected', conversationActs: null };
+  });
+}
+
+function compareFixedEventRegistrationOracle(
+  oracle: RealApiTurnOracle['fixedEventRegistration'],
+  interpretation: VNextTurnObservation['interpretation'],
+  candidates: readonly ObservedDraftCandidate[],
+  saveWritesBeforeApproval: number,
+  temporal: ObservedFacts['temporal'],
+): string[] {
+  if (!oracle) return [];
+  const differences: string[] = [];
+  const finalActs = interpretation?.status === 'interpreted' ? interpretation.conversationActs ?? [] : [];
+  if ((finalActs.length > 0) !== oracle.requested || (oracle.requested && finalActs.length !== 1)) {
+    differences.push(`registration acts expected=${oracle.requested ? 1 : 0} observed=${finalActs.length}`);
+  }
+  const registrationCandidates = candidates.filter(candidate => candidate.source === 'fixed_event_registration');
+  if (registrationCandidates.length !== oracle.candidateCount) {
+    differences.push(`registration candidates expected=${oracle.candidateCount} observed=${registrationCandidates.length}`);
+  }
+  if (oracle.candidateCount === 1) {
+    const candidate = registrationCandidates[0];
+    const matchingEvent = temporal.find(fact => fact.kind === 'fixed_interval' && fact.dateExpression === oracle.eventDate
+      && fact.startTime === oracle.startTime && fact.endTime === oracle.endTime);
+    if (!candidate || candidate.date !== oracle.eventDate || candidate.startTime !== oracle.startTime
+      || candidate.endTime !== oracle.endTime || candidate.approvalStatus !== 'unapproved'
+      || candidate.taskId === null || candidate.taskId !== matchingEvent?.taskId) {
+      differences.push('registration candidate target/time/approval differs');
+    }
+  }
+  if (saveWritesBeforeApproval !== 0) differences.push(`save writes before approval expected=0 observed=${saveWritesBeforeApproval}`);
+  const eventIsBusy = temporal.some(fact => fact.kind === 'fixed_interval' && fact.dateExpression === oracle.eventDate
+    && fact.startTime === oracle.startTime && fact.endTime === oracle.endTime);
+  if (!eventIsBusy) differences.push('fixed event interval is not retained as busy time');
+  if (candidates.some(candidate => candidate.source === 'weekly_exam_prep' && candidate.date === oracle.eventDate
+    && candidate.startTime < oracle.endTime && candidate.endTime > oracle.startTime)) {
+    differences.push('study candidate overlaps fixed event interval');
   }
   return differences;
 }
@@ -668,6 +741,7 @@ async function runVNextConversation(
     write: (raw: string) => { slots.set(key, raw); },
   });
   const plans = new Map<string, string>();
+  let saveWrites = 0;
   let rawProviderCalls: RawProviderCallObservation[] = [];
   const client = overrides.client ?? captureProviderCalls(createOpenAiCompatibleClient(getAiConfig()), () => rawProviderCalls);
   const rendererFactory = overrides.createRenderer
@@ -689,6 +763,7 @@ async function runVNextConversation(
     plans: {
       async findExistingPlanId(sourceDraftBlockId) { return plans.get(sourceDraftBlockId); },
       async saveBlock(block) {
+        saveWrites += 1;
         const planId = `plan:${block.id}`;
         plans.set(block.id, planId);
         return { planId };
@@ -740,10 +815,18 @@ async function runVNextConversation(
     let transactionErrors: WeeklyPlanningVNextExperimentalTurn['errors'] = [];
     let appliedDelta: WeeklyPlanningVNextExperimentalTurn['appliedDelta'] = null;
     let previewBlockedBy: string[] = [];
+    let finalCandidates: ObservedDraftCandidate[] = [];
+    let saveWritesBeforeApproval = 0;
     try {
       const result = await submitWeeklyPlanningVNextExperimentalTurn({
         scope, ports, turnId: `turn-${index + 1}`, userText: fixtureTurn.userText, shownRevision,
       });
+      finalCandidates = (result.draftCandidates ?? []).map(candidate => ({
+        source: candidate.source, title: candidate.title, date: candidate.date,
+        startTime: candidate.startTime, endTime: candidate.endTime, approvalStatus: candidate.approvalStatus,
+        taskId: (candidate as typeof candidate & { stableV5Metadata?: { taskId?: string } }).stableV5Metadata?.taskId ?? null,
+      }));
+      saveWritesBeforeApproval = saveWrites;
       shownRevision = result.graphRevision;
       outcome = result.outcome;
       interpretation = result.interpretation;
@@ -795,6 +878,9 @@ async function runVNextConversation(
         facts, question, workMinutes, fixtureTurn.oracle, projectedWorkloads, workEstimateBases,
         { questionForWork, deferredQuestionCodes, checkQuestionForWork: true },
       );
+      differences.push(...compareFixedEventRegistrationOracle(
+        fixtureTurn.oracle.fixedEventRegistration, interpretation, finalCandidates, saveWritesBeforeApproval, observed.temporal,
+      ));
       const expectedClarification = fixtureTurn.oracle.questionCode !== null;
       const deferredExpectedQuestion = isExpectedQuestionDeferred(fixtureTurn.oracle, question, deferredQuestionCodes);
       const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification
@@ -839,6 +925,9 @@ async function runVNextConversation(
         presentedText: turnPresentedText,
         presentedQuestion: turnPresentedQuestion,
         replySource,
+        conversationActReadings: observedConversationActReadings(rawProviderCalls),
+        finalCandidates,
+        saveWritesBeforeApproval,
       } as VNextTurnObservation);
       previousQuestionSignature = signature;
     } catch (cause) {
@@ -881,6 +970,9 @@ async function runVNextConversation(
         presentedText: turnPresentedText,
         presentedQuestion: turnPresentedQuestion,
         replySource,
+        conversationActReadings: observedConversationActReadings(rawProviderCalls),
+        finalCandidates,
+        saveWritesBeforeApproval,
       } as VNextTurnObservation);
     }
   }
@@ -993,7 +1085,7 @@ describe('VNext real API conversation fixture contract (offline)', () => {
   });
 
   it('contains only synthetic turns and typed per-turn oracles', () => {
-    expect(vnextRealApiConversations).toHaveLength(14);
+    expect(vnextRealApiConversations).toHaveLength(20);
     expect(new Set(vnextRealApiConversations.map(({ id }) => id)).size).toBe(vnextRealApiConversations.length);
     for (const conversation of vnextRealApiConversations) {
       expect(conversation.turns.length, conversation.id).toBeGreaterThan(0);
@@ -1004,6 +1096,35 @@ describe('VNext real API conversation fixture contract (offline)', () => {
         if (!turn.oracle.inVNextScope) expect(turn.oracle.outOfScopeReason, conversation.id).toBeTruthy();
       }
     }
+    const fixedEventCases = vnextRealApiConversations.filter(conversation =>
+      conversation.turns.some(turn => turn.oracle.fixedEventRegistration !== undefined));
+    expect(fixedEventCases.map(({ id }) => id)).toEqual([
+      'fixed-event-register-calendar-add',
+      'fixed-event-register-calendar-question',
+      'fixed-event-busy-information-only',
+      'fixed-event-registration-negated',
+      'fixed-event-yes-after-rendered-offer',
+      'fixed-event-yes-without-registration-offer',
+    ]);
+    expect(fixedEventCases.flatMap(conversation => conversation.turns)
+      .filter(turn => turn.oracle.fixedEventRegistration?.requested)).toHaveLength(3);
+    expect(fixedEventCases.flatMap(conversation => conversation.turns)
+      .filter(turn => turn.oracle.fixedEventRegistration && !turn.oracle.fixedEventRegistration.requested)).toHaveLength(4);
+    for (const conversation of fixedEventCases) {
+      for (const turn of conversation.turns.filter(turn => turn.oracle.fixedEventRegistration)) {
+        expect(turn.oracle.fixedEventRegistration).toMatchObject({
+          eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30',
+          candidateCount: turn.oracle.fixedEventRegistration!.requested ? 1 : 0,
+        });
+        expect(turn.oracle.temporal).toContainEqual({
+          task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03',
+          time: '16:00', endTime: '17:30', level: 'hard',
+        });
+      }
+    }
+    expect(fixedEventCases.find(({ id }) => id === 'fixed-event-yes-after-rendered-offer')?.turns[1].userText).toBe('うん、お願い。');
+    expect(fixedEventCases.find(({ id }) => id === 'fixed-event-yes-without-registration-offer')?.turns[1].userText)
+      .toBe('11月3日16時から17時半までゼミがあります。うん、お願い。');
     const deadlineCase = vnextRealApiConversations.find(({ id }) => id === 'issue881-final-b-deadline-at-13');
     expect(deadlineCase?.turns.map(({ userText }) => userText)).toEqual([
       '明日の予定を立てたいです',
@@ -1327,6 +1448,9 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           presentedText: null,
           presentedQuestion: null,
           replySource: null,
+          conversationActReadings: [],
+          finalCandidates: [],
+          saveWritesBeforeApproval: 0,
         } as VNextTurnObservation)),
         error,
       });
