@@ -68,6 +68,28 @@ function rendererReply(call) {
     groundingAcknowledgement: null, text: `${labels.join('、')}について確認しました。` };
 }
 
+function outcomesIn(value) {
+  return value && typeof value === 'object'
+    ? Object.entries(value).flatMap(([key, item]) =>
+      (key === 'outcome' && typeof item?.stringValue === 'string' ? [item.stringValue] : outcomesIn(item)))
+    : [];
+}
+
+async function traceOutcomes(request) {
+  return outcomesIn(await firestoreDocuments(request, 'weekly_planning_trace_entries')).sort();
+}
+
+/** Other projects' specs trace into the same emulator; keep only what this test's turns added. */
+function withoutBaseline(outcomes, baseline) {
+  const remaining = [...baseline];
+  return outcomes.filter((outcome) => {
+    const index = remaining.indexOf(outcome);
+    if (index < 0) return true;
+    remaining.splice(index, 1);
+    return false;
+  });
+}
+
 async function firestoreDocuments(request, collection) {
   const response = await request.get(`${FIRESTORE}/${collection}?pageSize=300`, { headers: { Authorization: 'Bearer owner' } });
   expect(response.ok(), collection).toBe(true);
@@ -75,6 +97,7 @@ async function firestoreDocuments(request, collection) {
 }
 
 test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approval → save → reload → failure → V5 and back', async ({ page, request }) => {
+  const traceBaseline = await traceOutcomes(request);
   await signIn(page, VNEXT);
   await openPlanning(page);
 
@@ -149,12 +172,8 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
 
   // Trace (through the Worker into Firestore) records each turn's own result: facts without a request to
   // plan as V5's needs_scope, the previewed turn as preview_ready, the failed one as failed, never idle.
-  const outcomesIn = (value) => (value && typeof value === 'object'
-    ? Object.entries(value).flatMap(([key, item]) =>
-      (key === 'outcome' && typeof item?.stringValue === 'string' ? [item.stringValue] : outcomesIn(item)))
-    : []);
-  const traceOutcomes = async () => outcomesIn(await firestoreDocuments(request, 'weekly_planning_trace_entries')).sort();
-  await expect.poll(traceOutcomes).toEqual(['failed', 'needs_scope', 'preview_ready']);
+  await expect.poll(async () => withoutBaseline(await traceOutcomes(request), traceBaseline))
+    .toEqual(['failed', 'needs_scope', 'preview_ready']);
 
   // Rollback: the same origin without VNext is Stable V5 with its own conversation; then VNext again.
   await signIn(page, V5);

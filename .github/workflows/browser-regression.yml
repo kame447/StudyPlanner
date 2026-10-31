@@ -107,8 +107,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # The live-account spec, unchanged, against a production build backed by the Firebase emulators
-  # and the repository's firestore.rules (#947). No production URL, account or secret is used.
+  # The live-account, seed and trace live specs, unchanged, against a production build backed by the
+  # Firebase emulators, the repository's firestore.rules and the local Worker (#947). No production URL,
+  # account or secret is used.
   emulator-account:
     name: emulator-account (chromium)
     runs-on: ubuntu-latest
@@ -149,8 +150,13 @@ jobs:
       - name: Install Chromium
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
 
-      - name: Run the live-account spec against the emulators
+      - name: Run the live-account, seed and trace live specs against the emulators
         run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.emulator.config.mjs
+
+      # The live specs skip themselves when an account or session is not configured; on this target
+      # every one is configured, so a skip means the setup is broken, not that the check passed.
+      - name: Require that no emulator-target test was skipped
+        run: node -e "const { stats } = require('./artifacts/playwright-emulator-results.json'); if (stats.skipped) { console.error(stats.skipped + ' emulator-target test(s) skipped'); process.exit(1); }"
 
       - name: Upload emulator-account artifacts
         if: always()
