@@ -5,8 +5,13 @@
 // turn's result (its typed input, the context helpers that build it, and V5's
 // contingency texts, and the recovery evidence for a failed turn; the renderer
 // core is created without V5's prompt trace).
-// Read-only; VNext never writes V5 state, preview, trace or storage through this seam.
+// VNext never writes V5 planning state, preview or storage through this seam.
 // The sole external composition entry permits VNext only in an explicitly enabled local runtime.
+// That application's gateway alone captures bounded invocation diagnostics for the existing
+// trace owner; the core, interpreter and session never write trace or an outbox.
+export { createWeeklyPlanningSystemDialogueRendererTrace, createWeeklyPlanningFallbackDialogueTrace,
+  createWeeklyPlanningAiRenderedDialogueTrace } from '../dialogue/weeklyPlanningStableV5TurnDialogueTrace';
+export { recordWeeklyPlanningStableV5DebugTrace, takeWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 export {
   createEmptyWeeklyPlanningFactGraphV5,
   type EffortEstimateFactV5,
@@ -20,7 +25,7 @@ export {
   parseWeeklyPlanningStableV5PersistedSession,
   WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
 } from '../application/weeklyPlanningStableV5SessionCodec';
-export { scheduleWeeklyPlanningStableV5Preview } from '../semantic/weeklyPlanningStableV5PlacementEngine';
+export { scheduleWeeklyPlanningStableV5Preview, WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION } from '../semantic/weeklyPlanningStableV5PlacementEngine';
 export { createStableV5ExternalConstraintSources } from '../application/weeklyPlanningStableV5ExternalSources';
 export { getWeeklyPlanningStableV5StorageSnapshot } from '../application/weeklyPlanningStableV5SessionStorage';
 export type { ExternalConstraintSourceSnapshot } from '../semantic/weeklyPlanningAvailabilityResolver';
@@ -50,6 +55,7 @@ export type {
   WeeklyPlanningStableV5DialogueQuestionIntent,
   WeeklyPlanningStableV5DialogueRenderer,
   WeeklyPlanningStableV5DialogueRenderInput,
+  WeeklyPlanningStableV5DialogueRenderResult,
 } from '../dialogue/weeklyPlanningStableV5DialogueContracts';
 export { createWeeklyPlanningStableV5CurrentTurnGrounding } from '../dialogue/weeklyPlanningStableV5CurrentTurnGrounding';
 export { RENDERER_PREVIEW_CONTINGENCY, RENDERER_TECHNICAL_STOP } from '../dialogue/weeklyPlanningStableV5TurnDialogueCore';

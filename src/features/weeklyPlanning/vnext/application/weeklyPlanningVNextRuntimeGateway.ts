@@ -5,6 +5,7 @@ import { addCalendarDays } from '../../semantic/weeklyPlanningCalendarResolver';
 import { createInitialPlanningIntakeState } from '../weeklyPlanningVNextV5Boundary';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import type { WeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
+import { captureWeeklyPlanningVNextTurnDiagnostics } from './weeklyPlanningVNextTurnDiagnostics';
 
 /** The existing controller owns admission and publication. Stage the session's single checkpoint
  * write until that controller prepares commit; cancellation/discard writes nothing. Rollback uses
@@ -18,6 +19,7 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
   return {
     runtimeGateway: { async execute(input) {
       const ports = params.ports(input);
+      const diagnostic = captureWeeklyPlanningVNextTurnDiagnostics(input.pending.requestId, ports);
       const before = params.session.checkpoint.read();
       let after: string | null = null;
       const clock = createWeeklyPlanningTurnRequestContext({ startedAtIso: input.pending.startedAt,
@@ -31,19 +33,16 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
           conversationId: input.pending.conversationId, notBeforeTime: clock.notBeforeTime,
           clock: { currentDate: clock.currentDate, weekStartsOn: clock.weekStartsOn, timeZone: clock.timeZone,
             planningStartDate: input.snapshot.weekStartDate, planningEndDate } },
-        ports: { ...ports, checkpoint: { read: () => after ?? params.session.checkpoint.read(), write: raw => { after = raw; } } },
+        ports: { ...diagnostic.ports, checkpoint: { read: () => after ?? params.session.checkpoint.read(), write: raw => { after = raw; } } },
         turnId: input.pending.requestId, userText: input.userText,
         supplementalContext: input.supplementalContext,
         shownRevision: read?.vnext.presentedQuestion?.graphRevision ?? null,
       });
-      if (input.isCurrentTurn?.() === false || turn.outcome === 'stale' || turn.outcome === 'checkpoint_unreadable') {
-        throw new Error('VNext conversation is no longer current; no checkpoint was published.');
-      }
-      if (after !== null) stages.set(input.pending.requestId, { before, after });
+      if (after !== null && input.isCurrentTurn?.() !== false) stages.set(input.pending.requestId, { before, after });
       return { state: input.snapshot.intakeState ?? createInitialPlanningIntakeState(), message: turn.reply,
         draftCandidates: turn.draftCandidates ?? [],
         preserveExistingPreview: Boolean(turn.preview && !turn.draftCandidates?.length),
-        responseSource: turn.replySource === 'renderer' || turn.replySource === 'renderer_recovery' ? 'ai' : 'deterministic_fallback' };
+        ...diagnostic.finish(turn) };
     } },
     stagingLifecycle: {
       prepare({ pending }) {
