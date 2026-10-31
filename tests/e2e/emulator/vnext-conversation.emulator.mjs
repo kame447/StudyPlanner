@@ -101,18 +101,36 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   await expect.poll(async () => JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ゼミ資料');
   await expect.poll(async () => (await firestoreDocuments(request, 'weekly_planning_trace_sessions')).length).toBeGreaterThan(0);
 
-  // Reload: the VNext conversation resumes from its own checkpoint.
+  // Reload: the VNext conversation resumes from its own checkpoint, and the plan was saved exactly once.
   await page.reload();
   await openPlanning(page);
   await expect(page.locator('.ai-planning-conversation')).toContainText('ゼミ資料を60分');
+  const seminarEvents = async () => (await firestoreDocuments(request, 'schedule_events'))
+    .filter((document) => JSON.stringify(document.fields).includes('ゼミ資料')).length;
+  expect(await seminarEvents()).toBe(1);
 
-  // A failed provider call changes nothing; the turn reports it and the conversation stays.
+  // A failed provider call: the native reading fails, then the recovery renderer is asked to explain it.
+  // Failing that too must end the turn with VNext's system notice, apply nothing and save nothing.
   await send(page, '英語の音読も30分');
   const failed = await nextCall(request);
   expect(failed.schema).toBe('weekly_planning_vnext_native_v1');
   await answer(request, failed, null, 500);
-  await expect(page.locator('.ai-planning-conversation')).toContainText('英語の音読も30分');
-  await expect.poll(async () => JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toContain('英語の音読');
+  const recovery = await nextCall(request);
+  await answer(request, recovery, null, 500);
+  await expect(page.locator('.ai-planning-conversation'))
+    .toContainText('うまく反映できませんでした。もう一度、言い方を変えて教えてください。');
+  await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
+  expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toContain('英語の音読');
+  expect(await seminarEvents()).toBe(1);
+
+  // Trace (through the Worker into Firestore) records each turn's own result: the previewed turn as
+  // preview_ready and the failed one as failed, never as idle (Astra SW01).
+  const outcomesIn = (value) => (value && typeof value === 'object'
+    ? Object.entries(value).flatMap(([key, item]) =>
+      (key === 'outcome' && typeof item?.stringValue === 'string' ? [item.stringValue] : outcomesIn(item)))
+    : []);
+  const traceOutcomes = async () => outcomesIn(await firestoreDocuments(request, 'weekly_planning_trace_entries')).sort();
+  await expect.poll(traceOutcomes).toEqual(['failed', 'preview_ready']);
 
   // Rollback: the same origin without VNext is Stable V5 with its own conversation; then VNext again.
   await signIn(page, V5);
