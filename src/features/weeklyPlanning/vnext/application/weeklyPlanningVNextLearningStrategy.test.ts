@@ -169,6 +169,54 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     expect(semantics(compiled)).toEqual(semantics(v5));
   });
 
+  it.each([true, false])('keeps distinct work under the trial owner, including its unresolved estimate (rate=%s)', withRate => {
+    let state = decide(answer(decide(seed(), 'accept'), { kind: 'session_minutes', minutes: 20 }), 'accept');
+    const trialId = state.graph.workloads[0].id;
+    const taskRef = { factId: state.graph.tasks[0].id };
+    state = apply(state, { ...empty(), add: [
+      { ...work, localId: 'distinct-work', taskRef, amount: 200, unitCode: 'word', unitLabel: '語' },
+      ...(withRate ? [{ kind: 'effort_estimate' as const, localId: 'distinct-rate', taskRef,
+        targetRef: { localId: 'distinct-work' }, effortKind: 'duration_per_unit' as const,
+        minutes: 1, unitCode: 'word' as const, unitLabel: '語', precision: 'exact' as const }] : []),
+    ], relate: [{ kind: 'distinct', a: { factId: trialId }, b: { localId: 'distinct-work' } }] });
+    const projection = projectWeeklyPlanningVNext(state);
+    const v5 = compileWeeklyPlanningMemoryCalibrationSchedulerInputV5({
+      graph: createWeeklyPlanningActiveSchedulerGraphViewV5(state.graph), workloadFactId: trialId,
+      sessionMinutes: 20, context, externalSources: [] })!;
+    const result = compileWeeklyPlanningVNextSchedulerInput({ state, projection, context });
+    expect(projection.owners).toHaveLength(1);
+    expect(projection.owners[0].calibration).toEqual({ workloadFactId: trialId, sessionMinutes: 20 });
+    expect(state.graph.workloads.map(fact => fact.amount)).toEqual([100, 200]);
+    if (withRate) {
+      expect(v5.status).toBe('ready');
+      expect(result.status).toBe('compiled');
+      if (result.status !== 'compiled') throw new Error(result.status);
+      const semantics = (compiled: typeof v5) => compiled.input!.movableWorkItems.map(item => ({
+        workloadFactId: item.workloadFactId, quantity: item.quantity,
+        baseEstimatedMinutes: item.baseEstimatedMinutes, estimatedMinutes: item.estimatedMinutes,
+      })).sort((a, b) => a.workloadFactId.localeCompare(b.workloadFactId));
+      expect(semantics(result.compilation)).toEqual(semantics(v5));
+      expect(result.compilation.input!.movableWorkItems).toHaveLength(2);
+      expect(projection.owners[0].work.map(item => item.amount)).toEqual([200]);
+    } else {
+      expect(v5.status).toBe('needs_resolution');
+      expect(v5.issues).toContainEqual(expect.objectContaining({ code: 'missing_effort_estimate', blocking: true }));
+      expect(projection.questions[0]).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 200 } });
+      expect(result.status).toBe('not_ready');
+    }
+  });
+
+  it('keeps a structural duplicate-quantity question under a trial owner', () => {
+    let state = decide(answer(decide(seed(), 'accept'), { kind: 'session_minutes', minutes: 20 }), 'accept');
+    state = apply(state, { ...empty(), add: [{ ...work, localId: 'same-basis', amount: 200,
+      taskRef: { factId: state.graph.tasks[0].id } }],
+      relate: [{ kind: 'distinct', a: { factId: state.graph.workloads[0].id }, b: { localId: 'same-basis' } }] });
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection.questions[0].code).toBe('duplicate_quantity');
+    expect(projection.readiness).toBe('needs_resolution');
+    expect(compileWeeklyPlanningVNextSchedulerInput({ state, projection, context }).status).toBe('not_ready');
+  });
+
   it('passes a turn-scoped calibration multiplier to the same compiler and does not inherit it', () => {
     const state = seed('problem_solving', true);
     const v5 = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(state.graph), context, estimateCalibrationMultiplier: 1.2 });

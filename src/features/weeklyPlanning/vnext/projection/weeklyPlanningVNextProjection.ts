@@ -507,7 +507,15 @@ export function projectWeeklyPlanningVNext(
     }
     const calibration = records.find(record => record.id === learning.acceptedCalibrationProposal?.id);
     if (calibration?.selectedSessionMinutes) {
-      owner.status = 'ready'; owner.work = []; owner.question = null;
+      // A trial replaces one workload, not its owner. Keep structural questions and estimate
+      // the other resolved work on the complete basis, so a total cannot silently rebind.
+      // LearningStrategy's same-owner distinct-work controls compare this view with V5's compiler.
+      const original = resolved.find(entry => entry.owner.ownerKey === owner.ownerKey);
+      if (original && 'scheduled' in original.resolution) {
+        const remaining = original.resolution.scheduled.filter(unit => unit.workLineageId !== resolver.lineageOf(calibration.workloadFactId));
+        Object.assign(owner, estimateOwnerWork(context, original.owner, remaining, allScheduled));
+        if (owner.status === 'nothing_to_schedule') owner.status = 'ready';
+      }
       owner.calibration = { workloadFactId: resolver.leafOf(calibration.workloadFactId)!, sessionMinutes: calibration.selectedSessionMinutes };
       continue;
     }
