@@ -7,6 +7,7 @@ import { projectWeeklyPlanningFixedEventRegistration } from '../weeklyPlanningVN
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
 import { validateWeeklyPreviewApproval } from '../../planning/weeklyPlanningApproval';
+import { fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts } from '../../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { VNextEventRegistrationAct } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextAddFact, VNextPlanningIntent, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
@@ -18,7 +19,7 @@ const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartD
   conversationId: 'registration-conversation', notBeforeTime: '09:00', clock: { currentDate: WEEK,
     weekStartsOn: 'monday', timeZone: 'Asia/Tokyo', planningStartDate: WEEK, planningEndDate: '2026-11-08' } };
 const EMPTY: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
-const event = (id = 'club', category: 'study' | 'non_study' = 'non_study', startTime = '16:00', endTime = '17:30'): VNextAddFact[] => [
+const event = (id = 'club', category: 'study' | 'non_study' | 'unknown' = 'non_study', startTime = '16:00', endTime = '17:30'): VNextAddFact[] => [
   { kind: 'task', localId: id, category, title: id },
   { kind: 'temporal_constraint', localId: `${id}-time`, taskRef: { localId: id }, targetRef: { localId: id },
     constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
@@ -65,6 +66,63 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>, fa
 }
 
 describe('VNext native fixed-event registration through the unchanged V5 projection and approval', () => {
+  it.each([
+    { name: 'busy non-study', category: 'non_study' as const, requested: false, movable: false, expected: 'fixed_event_manual_entry' },
+    { name: 'registration priority', category: 'non_study' as const, requested: true, movable: false, expected: 'fixed_event_registration_preview' },
+    { name: 'movable work', category: 'non_study' as const, requested: false, movable: true, expected: undefined },
+    { name: 'fixed study is not manual handoff', category: 'study' as const, requested: false, movable: false, expected: undefined },
+    { name: 'captured unknown category remains V5 null', category: 'unknown' as const, requested: false, movable: false, expected: undefined },
+  ])('V5 busy-only handoff same-input control: $name', async ({ category, requested, movable, expected }) => {
+    const h = harness([wire([...event('club', category), ...(movable ? work : [])], requested ? [request()] : [])]);
+    const result = await h.turn('11月3日16時から17時半までゼミがあります。'
+      + (requested ? 'その予定を登録してください。' : '') + (movable ? '数学は60分です。' : ''));
+    const graph = h.state().graph;
+    const compilation = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
+      context: { ownerId: OWNER, currentDate: WEEK, planningStartDate: WEEK, planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } });
+    const registrations = h.oracle('turn-1').candidates;
+    const v5 = requested && registrations.length ? 'fixed_event_registration_preview' : fixedEventOnlyInteractionStatus({
+      graph, compilation, semanticChanged: true, previousQuestionSlot: undefined, declinedAdditionalWork: false,
+      requestedEventRegistration: requested, previousOptionalInvitationClosed: false });
+    expect(v5 ?? undefined).toBe(expected);
+    expect(h.rendererInputs[0]).toMatchObject({ communication: expected ? fixedEventCommunicationFacts(v5!) : {} });
+    expect((h.rendererInputs[0] as { communication: { statusReason?: string } }).communication.statusReason).toBe(expected);
+    expect(result.preview !== null).toBe(requested);
+    expect(h.saved.size).toBe(0);
+  });
+
+  it('V5 busy-only handoff ends an unchanged fixed-only turn without another invitation', async () => {
+    const h = harness([wire(event()), wire()]); await h.turn('11月3日16時から17時半までゼミがあります。');
+    const result = await h.turn('わかりました');
+    const graph = h.state().graph;
+    const compilation = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
+      context: { ownerId: OWNER, currentDate: WEEK, planningStartDate: WEEK, planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } });
+    const v5 = fixedEventOnlyInteractionStatus({ graph, compilation, semanticChanged: false, previousQuestionSlot: undefined,
+      declinedAdditionalWork: false, requestedEventRegistration: false, previousOptionalInvitationClosed: false });
+    expect(v5).toBe('no_additional_work');
+    expect(h.rendererInputs[1]).toMatchObject({ communication: fixedEventCommunicationFacts(v5!) });
+    expect(result.question).toBeNull(); expect(result.preview).toBeNull(); expect(h.saved.size).toBe(0);
+  });
+
+  it('keeps the V5 optional-decline path distinct from VNext task questions (no new invitation)', async () => {
+    const h = harness([wire([{ kind: 'availability_declaration', localId: 'busy', availabilityKind: 'unavailable',
+      dateExpression: '2026-11-03', namedTimePeriod: null, startTime: '16:00', endTime: '17:30', recurrenceKind: null,
+      days: [], capacityMinutes: null, constraintLevel: 'hard' }])]);
+    const result = await h.turn('その間は勉強できません');
+    expect(result.outcome).toBe('applied');
+    const graph = h.state().graph;
+    const compilation = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
+      context: { ownerId: OWNER, currentDate: WEEK, planningStartDate: WEEK, planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } });
+    const input = { graph, compilation, semanticChanged: true, previousQuestionSlot: undefined,
+      requestedEventRegistration: false, previousOptionalInvitationClosed: false };
+    expect(fixedEventOnlyInteractionStatus({ ...input, declinedAdditionalWork: false })).toBeNull();
+    // V5's supported declined optional invitation is a separate, currently unported path.
+    expect(fixedEventOnlyInteractionStatus({ ...input, previousQuestionSlot: 'stable_v5:missing_schedulable_work',
+      declinedAdditionalWork: true })).toBe('no_additional_work');
+    expect(result.question).toBeNull(); expect(result.preview).toBeNull();
+    expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull();
+    expect(h.state().graph.availabilityDeclarations).toHaveLength(1); expect(h.saved.size).toBe(0);
+  });
+
   it.each([false, true])('AB01 shows and saves newly authorized study after a registration preview (alreadySaved=%s)', async alreadySaved => {
     const h = harness([wire([...event(), ...work], [request({ localId: 'club' })]), wire([], [], 'create_plan'), wire([], [], 'create_plan')]);
     const first = await h.turn('部活を登録して。数学は60分です');

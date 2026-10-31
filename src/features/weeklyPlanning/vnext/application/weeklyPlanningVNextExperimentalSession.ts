@@ -26,6 +26,7 @@ import type { WeeklyPlanDraftBlock } from '../../types';
 import type { WeeklyDraftCandidate } from '../../scheduling/weeklyDraftCandidateGenerator';
 import { projectWeeklyPlanningVNext, type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
+  fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts,
   type SemanticConversationActV5, type WeeklyPlanningFixedEventCommunicationFacts } from '../weeklyPlanningVNextV5Boundary';
 import { createVNextLineageResolver, withCurrentVNextReferences, vnextUnitIdentity } from '../weeklyPlanningVNextWorkIdentity';
 import type { Actual, MonthEvent, Plan, ScheduleTemplate } from '../../../../types/domain';
@@ -246,6 +247,8 @@ function shownPreview(
   authorized: boolean,
   registrationActs: SemanticConversationActV5[],
   currentTurnId: string,
+  semanticChanged: boolean,
+  previousQuestionSlot: string | undefined,
 ): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[];
   draftCandidates?: WeeklyDraftCandidate[]; authorizationRequired?: boolean; registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts } {
   const compiled = compilePreviewInput(scope, ports, calendar, state, projection);
@@ -259,9 +262,18 @@ function shownPreview(
   // Consent applies only to movable study work. The mixed/busy-only/save controls in
   // EventRegistration integration prevent registration from becoming work or granting study consent.
   const resolver = createVNextLineageResolver(state.graph);
+  const currentGraph = withCurrentVNextReferences(state.graph, id => resolver.leafOf(id) ?? id);
   const registration = projectWeeklyPlanningFixedEventRegistration({
-    graph: withCurrentVNextReferences(state.graph, id => resolver.leafOf(id) ?? id),
+    graph: currentGraph,
     compilation: compiled.compilation, registrationActs, currentTurnId,
+  });
+  // V5 owns busy-only closure and manual-entry guidance too. Its registration preview/omission
+  // path has priority. No new invitation, decline act, closed state or save capability is inferred.
+  // EventRegistration integration maps the same V5 inputs and the null/movable-work controls.
+  const handoff = registration.candidates.length || registration.unregistered.length ? null : fixedEventOnlyInteractionStatus({
+    graph: currentGraph, compilation: compiled.compilation, semanticChanged, previousQuestionSlot,
+    declinedAdditionalWork: false, previousOptionalInvitationClosed: false,
+    requestedEventRegistration: registrationActs.some(act => act.kind === 'request_event_registration'),
   });
   const work = compiled.compilation.input.movableWorkItems;
   const authorizationRequired = !authorized && work.length > 0;
@@ -279,7 +291,7 @@ function shownPreview(
   const candidates = [...registration.candidates, ...(scheduled?.status === 'ready' ? scheduled.candidates : [])];
   const registrationCommunication = registration.candidates.length > 0 || registration.unregistered.length > 0
     ? weeklyPlanningFixedEventRegistrationFacts(registration.candidates, [...calendar.plans],
-      authorizationRequired ? [...new Set(work.map(item => item.label))] : [], registration.unregistered, candidates.length) : undefined;
+      authorizationRequired ? [...new Set(work.map(item => item.label))] : [], registration.unregistered, candidates.length) : handoff ? fixedEventCommunicationFacts(handoff) : undefined;
   // The existing candidate/display conversion supplies the same approval provenance for both kinds.
   const blocks = createWeeklyPlanningPreviewBlocks(candidates)
     .map(block => createWeeklyPlanningPreviewDisplayBlock(block, scope.ownerId));
@@ -344,6 +356,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     ? before.questions.find((question) => question.key === presented.questionKey) ?? null
     : null;
 
+  const previousQuestionSlot = presentedQuestion ? `stable_v5:${presentedQuestion.code}` : undefined;
+
   // The model reads dates against the horizon the state currently has (a stated planning window moves it).
   const horizon = schedulingContext(scope, ports, state);
   const clock: WeeklyPlanningVNextInterpretationClock = { ...scope.clock,
@@ -395,7 +409,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       semanticChanged: false, provisionalTimeboxRequested: delta.defer.some(item => item.allocation === 'provisional_timebox'),
     }) : null;
     const authorizedCandidateKeys = priorAuthorization?.authorized
-      ? shownPreview(scope, ports, calendar, state, before, true, [], params.turnId).draftCandidates?.map(candidate => candidate.stableKey) ?? [] : [];
+      ? shownPreview(scope, ports, calendar, state, before, true, [], params.turnId, false, previousQuestionSlot).draftCandidates?.map(candidate => candidate.stableKey) ?? [] : [];
 
     if (resolution.status === 'conflict') {
       outcome = 'rejected';
@@ -446,7 +460,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const shown = read.checkpoint.preview;
   const made = question || !accepted
     ? { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] }
-    : shownPreview(scope, ports, calendar, state, projection, authorization.authorized, registrationActs, params.turnId);
+    : shownPreview(scope, ports, calendar, state, projection, authorization.authorized, registrationActs, params.turnId, semanticChanged, previousQuestionSlot);
   const authorizationRequired = !question && !(shown && shown.graphRevision === state.graph.revision)
     && 'authorizationRequired' in made && made.authorizationRequired === true;
   const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision

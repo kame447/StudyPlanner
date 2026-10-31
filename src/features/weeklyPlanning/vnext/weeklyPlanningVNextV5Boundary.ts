@@ -38,6 +38,7 @@ export { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntake
 export type { WeeklyPlanningLearningStrategyProposalRecord, PlanningDraftGenerationIntent } from '../intake/weeklyPlanningIntakeTypes';
 export { isWeeklyPlanningStableV5PreviewAuthorized } from '../application/weeklyPlanningStableV5PlanningEvaluation';
 export { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
+  fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts,
   type WeeklyPlanningFixedEventCommunicationFacts,
 } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 export type { SemanticConversationActV5 } from '../semantic/weeklyPlanningConversationActsV5';

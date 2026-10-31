@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createWeeklyPlanningStableV5DialoguePrompt } from '../../dialogue/weeklyPlanningStableV5DialoguePrompt';
 import { CANDIDATE_CHOICE_CATALOG_VERSION, type CandidateChoiceWireRequest } from '../../../../../shared/candidateChoiceDecision';
 import { measureWeeklyPlanningTraceJsonBytes, WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS } from '../../../../../shared/weeklyPlanningTraceContract';
 import { prepareWeeklyPlanningTraceServerWrite } from '../../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
@@ -263,6 +264,66 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       graphRevision: revision, planningIntent: 'create_plan', authorizationDecision: expect.objectContaining({ authorized: true }),
     }) })] });
     expect(JSON.stringify(server.entries[0])).toContain('keep-future-preview-revision');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
+  });
+
+  it.each([
+    { repeat: false, large: false }, { repeat: false, large: true },
+    { repeat: true, large: false }, { repeat: true, large: true },
+  ])('persists V5 busy-only handoff and exact renderer instruction (repeat=$repeat, large=$large)', async ({ repeat, large }) => {
+    const native = { planningIntent: 'discuss', conversationActs: [], answer: null, delta: { ...EMPTY, add: [
+      { kind: 'task', localId: 'club', category: 'non_study', title: 'ゼミ' },
+      { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
+        constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+        startTime: '16:00', endTime: '17:30', precision: 'exact' },
+    ] } };
+    let expectedPrompt = ''; let actualInstruction: unknown;
+    const h = harness({ nativeReadings: [native, { planningIntent: 'discuss', conversationActs: [], delta: EMPTY, answer: null }],
+      createRenderer: () => {
+        const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+          const prompt = JSON.parse(request.messages[1].content);
+          actualInstruction = prompt.request;
+          expect(prompt.request).toEqual(JSON.parse(expectedPrompt).request);
+          const result = JSON.parse(await successfulWeeklyPlanningRendererCompletion(request));
+          const manual = prompt.applicationDecision.communication.manualEntry;
+          if (manual) result.text += `「${manual.navigationLabel}」から「${manual.actionLabel}」で入力してください。`;
+          return JSON.stringify(result);
+        } });
+        return { render(input) {
+          Object.assign(input.communication!, { futureHandoffSentinel: 'keep-future-handoff',
+            ...(large ? { futureLargeHandoffMetadata: 'x'.repeat(48 * 1024) } : {}) });
+          expectedPrompt = createWeeklyPlanningStableV5DialoguePrompt(input).userPrompt;
+          return renderer.render(input);
+        } };
+      } });
+    if (repeat) await h.submit('11月3日16時から17時半までゼミがあります。');
+    failAppend = true;
+    expect(await h.submit(repeat ? 'わかりました' : '11月3日16時から17時半までゼミがあります。')).toEqual({ accepted: true, draftCandidates: [] });
+    const result = h.results[h.results.length - 1];
+    const status = repeat ? 'no_additional_work' : 'fixed_event_manual_entry';
+    expect(result.dialogueRendererTrace!.request!.promptContext).toMatchObject({ communication: { statusReason: status, askQuestion: false } });
+    expect(actualInstruction).toBeDefined();
+    if (!repeat) {
+      expect(result.message).toContain('「予定」から「予定を追加」');
+      expect(result.dialogueRendererTrace!.request!.promptContext).toMatchObject({ communication: {
+        manualEntry: { navigationLabel: '予定', actionLabel: '予定を追加', eventCreatedByTurn: false } } });
+    }
+    expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull(); expect(h.getState().previewCandidates).toEqual([]);
+    const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION }); expect(queued).toHaveLength(1);
+    expect(queued[0].input.debugTraceEvents).toEqual(result.debugTraceEvents);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'handoff-retry-after-reload', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued[0].input.requestId))!;
+    const entry = write.entries.find(entry => entry.kind === 'turn_diagnostic' && entry.requestId === queued[0].input.requestId)!;
+    expect(JSON.stringify(entry)).toContain(status); expect(JSON.stringify(entry)).toContain('keep-future-handoff');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(JSON.stringify(server.entries[0])).toContain(status); expect(JSON.stringify(server.entries[0])).toContain('keep-future-handoff');
     expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
   });
