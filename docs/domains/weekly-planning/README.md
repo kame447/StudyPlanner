@@ -24,6 +24,8 @@ Stable V5 is the sole production weekly-planning runtime. This directory is the 
 
 These documents supplement the canonical owners above; they do not override them.
 
+The experimental [VNext core contract](architecture/vnext-conversation-core.md) records Issue #926's ownership, extension rules and scale limits. It does not replace Stable V5 production behavior.
+
 - [Semantic / orchestration direction](architecture/semantic-v5-direction.md)
 - [Semantic schema reference](architecture/weekly-planning-semantic-schema-v5.md)
 - [Conversation trace architecture](architecture/weekly-planning-conversation-trace.md)

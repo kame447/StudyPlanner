@@ -460,7 +460,9 @@ export async function submitWeeklyPlanningControlledTurn(
       preparedCommit = undefined;
     }
     const failedResult = result;
-    if (failedResult) {
+    const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;
+    const stagedPresentation = controlledFailure && failedResult?.recoveryPresentation?.commitStagedPresentation === true;
+    if (failedResult && !stagedPresentation) {
       await runBestEffort(() => params.discardExecutionResult?.({
         snapshot,
         pending,
@@ -470,9 +472,11 @@ export async function submitWeeklyPlanningControlledTurn(
       }));
     }
     if (params.isActive?.() === false || !isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+      if (stagedPresentation && failedResult) await runBestEffort(() => params.discardExecutionResult?.({
+        snapshot, pending, userText, result: failedResult, reason: 'stale',
+      }));
       return { accepted: false, draftCandidates: [] };
     }
-    const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;
     const message = controlledFailure
       ? error.userMessage
       : '週間計画の会話状態を更新できませんでした。';
@@ -494,12 +498,39 @@ export async function submitWeeklyPlanningControlledTurn(
           planningStateRevision: pending.baseRevision + 2, graphRevision: recovery.graphRevision,
         }).lastQuestionContext?.presentation
       : undefined;
-    const failedState = params.dispatch({
-      type: 'fail_turn',
-      pending,
-      assistantMessage,
-      ...(questionPresentation ? { questionPresentation } : {}),
-    });
+    let failedState: PlanningState;
+    try {
+      // A handled failure may re-present a question without changing accepted facts. Its
+      // checkpoint uses the same receipt as a successful turn, never a second writer.
+      if (stagedPresentation && failedResult) preparedCommit = params.prepareExecutionCommit?.({
+        snapshot, pending, userText, result: failedResult,
+      }) ?? undefined;
+      if (stagedPresentation && (params.isActive?.() === false
+        || !isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending))) {
+        preparedCommit?.rollback(); preparedCommit = undefined;
+        await runBestEffort(() => params.discardExecutionResult?.({ snapshot, pending, userText,
+          result: failedResult!, reason: 'stale' }));
+        return { accepted: false, draftCandidates: [] };
+      }
+      failedState = params.dispatch({ type: 'fail_turn', pending, assistantMessage,
+        ...(questionPresentation ? { questionPresentation } : {}) });
+      if (stagedPresentation && (failedState.pendingTurn !== undefined
+        || failedState.weekStartDate !== pending.weekStartDate || failedState.revision !== pending.baseRevision + 2)) {
+        preparedCommit?.rollback(); preparedCommit = undefined;
+        await runBestEffort(() => params.discardExecutionResult?.({ snapshot, pending, userText,
+          result: failedResult!, reason: 'commit_rejected' }));
+        return { accepted: false, draftCandidates: [] };
+      }
+    } catch (presentationError) {
+      preparedCommit?.rollback(); preparedCommit = undefined;
+      if (stagedPresentation && failedResult) await runBestEffort(() => params.discardExecutionResult?.({
+        snapshot, pending, userText, result: failedResult, reason: 'failed',
+      }));
+      throw presentationError;
+    }
+    const completedPresentation = preparedCommit;
+    preparedCommit = undefined;
+    await runBestEffort(() => completedPresentation?.complete?.());
     await runBestEffort(() => params.onFailedTurn?.({
       snapshot,
       pending,

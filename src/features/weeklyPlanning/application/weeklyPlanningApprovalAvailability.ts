@@ -35,6 +35,7 @@ const BLOCKED_MESSAGE =
   'この仮予定は現在承認できません。最新条件で作り直してください。';
 
 export function classifyWeeklyPlanningApprovalAvailability(params: {
+  resolveRuntime?: typeof resolveWeeklyPlanningApprovalRuntime;
   blocks: readonly WeeklyPlanDraftBlock[];
   userId: string;
 }): WeeklyPlanningApprovalAvailability {
@@ -81,7 +82,7 @@ export function classifyWeeklyPlanningApprovalAvailability(params: {
     return { kind: 'blocked', reason: 'metadata_ineligible', message: BLOCKED_MESSAGE };
   }
 
-  const runtimeResolution = resolveWeeklyPlanningApprovalRuntime({
+  const runtimeResolution = (params.resolveRuntime ?? resolveWeeklyPlanningApprovalRuntime)({
     blocks,
     userId: params.userId,
   });

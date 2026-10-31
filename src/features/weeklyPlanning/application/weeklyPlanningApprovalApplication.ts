@@ -33,6 +33,8 @@ import {
 } from './weeklyPlanningOutcomeObservability';
 
 interface WeeklyPlanningApprovalApplicationInput {
+  /** An experimental core supplies its checkpoint authority; the guard/save/ledger stay here. */
+  resolveRuntime?: typeof resolveWeeklyPlanningApprovalRuntime;
   userId: string | null | undefined;
   featureSessionId?: string | null;
   plans: Plan[];
@@ -90,6 +92,7 @@ function ownsPendingApproval(
 }
 
 export async function approveWeeklyPlanningDraftBlocks({
+  resolveRuntime,
   userId,
   featureSessionId,
   plans,
@@ -135,13 +138,13 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
       throw new UserFacingError('保存途中の仮予定が変更されています。元の状態を復元してください。');
     }
     const originalBlocks = recovery?.blocks ?? blocks;
-    const runtimeResolution = resolveWeeklyPlanningApprovalRuntime({
+    const runtimeResolution = (resolveRuntime ?? resolveWeeklyPlanningApprovalRuntime)({
       blocks: originalBlocks,
       userId: authenticatedUserId,
     });
     const guard = validateWeeklyPreviewApproval({
       blocks: originalBlocks,
-      currentStateRevision: snapshot.intakeState?.sourceTurns.length ?? 0,
+      currentStateRevision: resolveRuntime ? runtimeResolution.runtimeSnapshot?.stateRevision ?? -1 : snapshot.intakeState?.sourceTurns.length ?? 0,
       userId: authenticatedUserId,
       proposalRecords: snapshot.intakeState?.assumptionProposalRecords ?? [],
       runtimeSnapshot: runtimeResolution.runtimeSnapshot,

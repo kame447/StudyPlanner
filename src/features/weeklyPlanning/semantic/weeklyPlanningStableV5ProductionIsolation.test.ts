@@ -89,6 +89,9 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'trace/weeklyPlanningTraceOutbox.ts',
   'trace/weeklyPlanningTraceRemoteRepository.ts',
   'trace/weeklyPlanningTurnDiagnosticV2.ts',
+  // #926 VNext (experimental, unwired; vnext/weeklyPlanningVNextIsolation.test.ts proves no production
+  // importer): the single read-only seam to the V5 Fact Graph shape and session envelope version.
+  'vnext/weeklyPlanningVNextV5Boundary.ts',
 ]);
 
 const STATIC_IMPORT_EXPRESSION = /(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g;

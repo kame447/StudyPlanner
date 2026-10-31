@@ -90,6 +90,9 @@ export interface WeeklyPlanningApplicationSubmissionResult extends WeeklyPlannin
 }
 
 export interface WeeklyPlanningApplication {
+  /** The isolated local experiment has one conversation per owner/week. */
+  conversationNavigation?: 'single';
+  registeredTargetsAvailable?: false;
   chat: AiPlanningChatSession;
   state: PlanningState;
   pendingDraftBlocks: WeeklyPlanDraftBlock[];

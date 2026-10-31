@@ -55,7 +55,9 @@ export interface WeeklyPlanningTurnDialoguePorts {
 const RECENT_TURN_LIMIT = 4;
 // A renderer outage is not evidence that the user's meaning was ambiguous.
 // Accepted planning facts can already be staged, so do not assert that input was discarded.
-const RENDERER_TECHNICAL_STOP = '返信を作れませんでした。少し待ってからもう一度送信してください。';
+export const RENDERER_TECHNICAL_STOP = '返信を作れませんでした。少し待ってからもう一度送信してください。';
+/** Shown when rendering fails after a preview was made: the preview stays, unsaved. */
+export const RENDERER_PREVIEW_CONTINGENCY = '予定の候補を用意しました。内容を確認してください。まだ保存していません。';
 
 export const WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP =
   '返信を作れませんでした。今回の内容は計画へ反映していません。少し待ってからもう一度送信してください。';
@@ -376,7 +378,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessageCore(params: {
     // The short message below is only a contingency for a provider outage;
     // ordinary conversations remain fully model-generated.
     const finalMessage = actionKind === 'preview_ready' && params.result.draftCandidates.length > 0
-      ? '予定の候補を用意しました。内容を確認してください。まだ保存していません。'
+      ? RENDERER_PREVIEW_CONTINGENCY
       : renderInput.fallbackText;
     const dialogueRendererTrace = createWeeklyPlanningFallbackDialogueTrace({
       actionId: currentActionId,

@@ -483,7 +483,7 @@ export function AiPlanningView({
   useEffect(() => {
     // App supplies its current owned read snapshot. Standalone consumers retain
     // the existing repository path without giving stale data authority.
-    if (starterCatalog || !active) return;
+    if (application.registeredTargetsAvailable === false || starterCatalog || !active) return;
     let cancelled = false;
     setStarterCatalogStatus('loading');
 
@@ -508,7 +508,7 @@ export function AiPlanningView({
     return () => {
       cancelled = true;
     };
-  }, [userId, Boolean(starterCatalog), active]);
+  }, [userId, Boolean(starterCatalog), active, application.registeredTargetsAvailable]);
 
   useEffect(() => {
     setPreviewPageIndex(0);
@@ -875,7 +875,7 @@ export function AiPlanningView({
 
   return (
     <section ref={viewRef} hidden={!active} className="ai-planning-view home-dashboard" aria-label="AI計画">
-      <AiPlanningChatSidebar
+      {application.conversationNavigation !== 'single' && <AiPlanningChatSidebar
         open={isChatDrawerOpen}
         checkpointNotice={checkpointNotice}
         chats={visibleChats}
@@ -887,18 +887,18 @@ export function AiPlanningView({
         onSelect={switchChat}
         onDelete={removeChat}
         onClose={() => setIsChatDrawerOpen(false)}
-      />
+      />}
 
       <div className="ai-planning-card">
         <div className="ai-planning-heading">
-          <button
+          {application.conversationNavigation !== 'single' && <button
             className="ai-planning-chat-menu-button"
             type="button"
             aria-label="チャット一覧を開く"
             onClick={() => setIsChatDrawerOpen(true)}
           >
             <Menu aria-hidden="true" size={22} />
-          </button>
+          </button>}
           <div>
             <h1>AI計画</h1>
             <p>
@@ -923,6 +923,7 @@ export function AiPlanningView({
                   <button
                     key={`${option.displayText}\u0000${option.prompt}`}
                     type="button"
+                    disabled={Boolean(option.target) && application.registeredTargetsAvailable === false}
                     onClick={() => useStarterPrompt(option)}
                   >
                     <span>{option.displayText}</span>
@@ -930,6 +931,7 @@ export function AiPlanningView({
                   </button>
                 ))}
               </div>
+              {application.registeredTargetsAvailable === false && <p role="status">教材や登録項目からの入力例は、この実験モードでは未対応です。</p>}
             </div>
           ) : null}
 

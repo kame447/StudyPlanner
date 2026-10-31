@@ -119,9 +119,14 @@ export interface WeeklyPlanningTurnExecutionResult {
    * question. The turn controller binds it to the committed assistant message.
    */
   questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
-  /** Produced only after recovery wording passed the independent finite-contract check. */
+  /** Verified V5 recovery evidence, or an unchanged-state runtime presentation staged for fail_turn. */
   recoveryPresentation?: {
     question: { graphRevision: number; previousAssistantMessageId: string } | null;
+    /** The runtime staged only the failed turn's presentation, with accepted facts unchanged.
+     * Publish it through the ordinary commit receipt when fail_turn is accepted. V5 stages
+     * nothing on failure and leaves this absent. Controller/gateway integration guards this seam.
+     */
+    commitStagedPresentation?: true;
   };
 }
 
