@@ -25,6 +25,8 @@ const failuresByTurnId = new Map<string, WeeklyPlanningStableV5RecordedFailure>(
 function validationErrorCategory(value: string): string {
   const error = value.replace(/^(?:initial|repair):/, '');
   if (error === 'document:invalid-json') return 'invalid_json';
+  if (error.includes(':workload-basis-mismatch:')) return 'workload_correction_reference';
+  if (error.startsWith('semantic-repair-preservation:')) return 'repair_preservation';
   if (error.includes('.missing-key:')) return 'missing_key';
   if (error.includes('.unknown-key:')) return 'unknown_key';
   if (error.includes(':not-object')) return 'not_object';

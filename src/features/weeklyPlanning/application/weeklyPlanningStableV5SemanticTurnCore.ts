@@ -258,12 +258,16 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
     };
   }
   if (semantic.status === 'normalization_rejected') {
+    const workloadCorrectionRejected = semantic.normalization.diagnostics.validationErrors.some(error =>
+      error.includes(':workload-basis-mismatch:'));
     return {
       status: 'failure',
       output: semanticFailureOutput({
         input,
         branch: 'normalization_rejected',
-        message: 'こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。',
+        message: workloadCorrectionRejected
+          ? '変更を安全に反映できませんでした。予定条件は変更していません。'
+          : 'こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。',
         basis: { semanticStatus: semantic.status, normalization: semantic.normalization },
       }),
     };
