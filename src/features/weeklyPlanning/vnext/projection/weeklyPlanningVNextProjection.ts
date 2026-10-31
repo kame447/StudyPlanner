@@ -8,7 +8,7 @@
 // completed…", "binds a same-turn quantity and total correction in either order",
 // "never silently drops or double-counts other-basis work…").
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
-import { evaluateVNextLearningStrategy } from '../application/weeklyPlanningVNextLearningStrategy';
+import { evaluateVNextLearningStrategy } from '../weeklyPlanningVNextLearningStrategy';
 import { WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5 } from '../../intake/weeklyPlanningProvisionalTimeboxStateV5';
 import type { WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
 import type {

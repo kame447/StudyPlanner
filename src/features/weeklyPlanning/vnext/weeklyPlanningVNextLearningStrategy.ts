@@ -1,10 +1,14 @@
 // Only adapts typed, accepted meaning to V5's proposal policy. Records stay in the
 // one VNext state and are updated by the transaction; no V5 intake state is persisted.
 // Tests: LearningStrategy positive/negative decisions, duration gate and supersession.
-import { createInitialPlanningIntakeState, evaluateWeeklyPlanningLearningStrategyProposalsV5 } from '../weeklyPlanningVNextV5Boundary';
-import type { VNextProposalDecision, WeeklyPlanningVNextProjection, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
-import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, type WeeklyPlanningSemanticDocumentV5 } from '../../semantic/weeklyPlanningSemanticDocumentV5';
-import { createVNextLineageResolver, withCurrentVNextReferences } from '../weeklyPlanningVNextWorkIdentity';
+import {
+  createInitialPlanningIntakeState,
+  evaluateWeeklyPlanningLearningStrategyProposalsV5,
+  WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+  type WeeklyPlanningSemanticDocumentV5,
+} from './weeklyPlanningVNextV5Boundary';
+import type { VNextProposalDecision, WeeklyPlanningVNextProjection, WeeklyPlanningVNextState } from './weeklyPlanningVNextTypes';
+import { createVNextLineageResolver, withCurrentVNextReferences } from './weeklyPlanningVNextWorkIdentity';
 
 export function evaluateVNextLearningStrategy(params: {
   state: WeeklyPlanningVNextState;

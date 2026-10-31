@@ -24,6 +24,10 @@ export { scheduleWeeklyPlanningStableV5Preview } from '../semantic/weeklyPlannin
 export { createStableV5ExternalConstraintSources } from '../application/weeklyPlanningStableV5ExternalSources';
 export type { ExternalConstraintSourceSnapshot } from '../semantic/weeklyPlanningAvailabilityResolver';
 export { evaluateWeeklyPlanningLearningStrategyProposalsV5 } from '../application/weeklyPlanningStableV5LearningStrategyProposal';
+export {
+  WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+  type WeeklyPlanningSemanticDocumentV5,
+} from '../semantic/weeklyPlanningSemanticDocumentV5';
 export { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 export type { WeeklyPlanningLearningStrategyProposalRecord } from '../intake/weeklyPlanningIntakeTypes';
 export { applyAcceptedMemorySessionProjectionV5 } from '../semantic/weeklyPlanningAcceptedMemorySessionProjectionV5';

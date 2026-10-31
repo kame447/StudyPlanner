@@ -31,7 +31,7 @@ import { isValidCalendarDate, resolveCanonicalDateExpression } from '../../seman
 import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { vnextQuestionKeyAllowsProvisionalTimebox } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
-import { evaluateVNextLearningStrategy } from '../application/weeklyPlanningVNextLearningStrategy';
+import { evaluateVNextLearningStrategy } from '../weeklyPlanningVNextLearningStrategy';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
