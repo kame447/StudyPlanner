@@ -38,6 +38,9 @@ export function createWeeklyPlanningVNextLocalSession(params: {
       // Reuse the existing UI codec for V5 placement candidates, with the actual VNext revision.
       // This is a presentation shape check, not a fabricated V5 runtime/checkpoint.
       if (state) { delete state.pendingTurn; delete state.pendingApproval; }
+      // The core owns preview authority. A legacy automatic preview invalidated by its reader
+      // must not reappear from this UI cache. Keep user-created/edited draft blocks and raw bytes.
+      if (state && accepted && !accepted.vnext.preview) state.previewCandidates = [];
       if (!isPersistedWeeklyPlanningState(state, { kind: 'stable_v5_session_v1', ownerId, weekStartDate,
         conversationId: value.conversationId, graphRevision: accepted?.vnext.state.graph.revision ?? 0 })
         || value.ownerId !== ownerId || typeof value.conversationId !== 'string' || !value.conversationId

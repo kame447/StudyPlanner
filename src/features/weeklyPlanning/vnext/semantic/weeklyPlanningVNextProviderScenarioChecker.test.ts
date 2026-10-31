@@ -24,7 +24,7 @@ const effort = (localId: string, taskId: string, target: { localId: string } | {
   kind: 'effort_estimate', localId, taskRef: { factId: taskId }, targetRef: target, effortKind: 'total_duration', minutes,
   unitCode: null, unitLabel: null, precision: 'exact',
 });
-const reading = (delta: VNextTurnDelta) => ({ status: 'interpreted' as const, delta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 0 } });
+const reading = (delta: VNextTurnDelta) => ({ status: 'interpreted' as const, planningIntent: 'unknown' as const, delta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 0 } });
 
 describe('controlled provider-oracle corruption probes', () => {
   it('requires the explicit date to be a hard deadline, not just any constraint on that date', () => {

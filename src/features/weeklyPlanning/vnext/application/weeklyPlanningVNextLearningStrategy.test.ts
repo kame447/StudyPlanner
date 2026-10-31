@@ -246,7 +246,7 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     const result = await createWeeklyPlanningVNextProviderInterpreter()({ state, projection, presentedQuestion: projection.questions[0],
       presentedText: 'synthetic proposal text', clock, userText: 'synthetic acceptance', client: { async createChatCompletion(request) {
         const context = JSON.parse(request.messages[1].content);
-        return JSON.stringify({ delta: empty(), answer: { kind: 'proposal_decision', proposalId: context.presentedQuestion.proposal.id, decision: 'accept' } });
+        return JSON.stringify({ planningIntent: 'unknown', delta: empty(), answer: { kind: 'proposal_decision', proposalId: context.presentedQuestion.proposal.id, decision: 'accept' } });
       } } });
     expect(result).toMatchObject({ status: 'interpreted', answer: { kind: 'proposal_decision', proposalId: state.learningStrategyProposalRecords[0].id } });
   });
@@ -276,7 +276,7 @@ describe('VNext learning strategy adapters use V5 policy', () => {
         const delta = call === 0 ? { ...empty(), add: [
           { kind: 'task', localId: 't', category: 'study', title: '暗記学習' },
           { kind: 'study_context', localId: 's', taskRef: { localId: 't' }, purpose: 'self_study', activityKind: 'memorization_retrieval', contextLabel: null }, work] } : empty();
-        return JSON.stringify({ delta, answer: answers[call++] });
+        return JSON.stringify({ planningIntent: call === 0 ? 'create_plan' : 'unknown', delta, answer: answers[call++] });
       } },
       interpret: createWeeklyPlanningVNextProviderInterpreter(),
       checkpoint: { read: () => checkpoint, write: raw => { checkpoint = raw; } }, legacyV5Checkpoint: { read: () => null },

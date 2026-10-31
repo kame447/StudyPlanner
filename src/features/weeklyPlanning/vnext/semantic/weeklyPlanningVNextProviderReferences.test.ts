@@ -7,7 +7,7 @@ describe('request-scoped provider reference vocabulary', () => {
   it('decodes a study context task reference without deriving activity from the context label', () => {
     const references = createVNextProviderReferences();
     references.encodeContext({ tasks: [{ id: 'stored:["task"]' }] });
-    const result = references.decodeReading({ delta: { ...empty(), add: [
+    const result = references.decodeReading({ planningIntent: 'unknown', delta: { ...empty(), add: [
       { kind: 'study_context', localId: 'study', taskRef: { factId: 'F1' }, purpose: 'self_study', contextLabel: '暗記', activityKind: 'unknown' },
     ] }, answer: null });
     expect(result).toMatchObject({ status: 'decoded', reading: { delta: { add: [
@@ -18,7 +18,7 @@ describe('request-scoped provider reference vocabulary', () => {
   it('decodes task-order and recurrence references through the same fact vocabulary', () => {
     const references = createVNextProviderReferences();
     references.encodeContext({ tasks: [{ id: 'first:["task"]' }, { id: 'second:["task"]' }] });
-    const reading: VNextProviderReading = { delta: { ...empty(), add: [
+    const reading: VNextProviderReading = { planningIntent: 'unknown', delta: { ...empty(), add: [
       { kind: 'relation', localId: 'order', relationKind: 'before', fromTaskRef: { factId: 'F1' }, toTaskRef: { factId: 'F2' } },
       { kind: 'recurrence', localId: 'repeat', taskRef: { factId: 'F1' }, targetRef: { factId: 'F1' }, recurrenceKind: 'daily', count: null, days: [] },
     ] }, answer: null };
@@ -45,7 +45,7 @@ describe('request-scoped provider reference vocabulary', () => {
       };
     expect(JSON.stringify(context)).not.toContain('vnext:');
     expect(context.activeFacts[0]).toMatchObject({ id: 'F1', taskId: 'F1', title: 'Keep F1 literal title' });
-    const reading: VNextProviderReading = { delta: { ...empty(), add: [{ kind: 'effort_estimate', localId: 'F1',
+    const reading: VNextProviderReading = { planningIntent: 'unknown', delta: { ...empty(), add: [{ kind: 'effort_estimate', localId: 'F1',
       taskRef: { factId: 'F1' }, targetRef: { workLineageId: 'W1' }, effortKind: 'total_duration',
       minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' }], defer: [{ questionKey: 'Q1', allocation: 'none' }] },
     answer: { kind: 'option', optionId: 'O1' } };
@@ -62,21 +62,21 @@ describe('request-scoped provider reference vocabulary', () => {
   it.each(['F999', 'W1', 'real-id', 'F1]},'])('rejects unknown, wrong-namespace or corrupted alias %s', value => {
     const references = createVNextProviderReferences();
     references.encodeContext({ id: 'real-id', workLineageId: 'real-work' });
-    const result = references.decodeReading({ delta: { ...empty(), remove: [{ targetFactId: value }] }, answer: null });
+    const result = references.decodeReading({ planningIntent: 'unknown', delta: { ...empty(), remove: [{ targetFactId: value }] }, answer: null });
     expect(result).toMatchObject({ status: 'rejected', errors: [{ code: 'unknown_ref', path: 'delta.remove[0].targetFactId' }] });
   });
 
   it('does not let aliases from a prior invocation resolve without being exposed anew', () => {
     const first = createVNextProviderReferences(), second = createVNextProviderReferences();
     first.encodeContext({ id: 'first-id' });
-    const result = second.decodeReading({ delta: { ...empty(), remove: [{ targetFactId: 'F1' }] }, answer: null });
+    const result = second.decodeReading({ planningIntent: 'unknown', delta: { ...empty(), remove: [{ targetFactId: 'F1' }] }, answer: null });
     expect(result.status).toBe('rejected');
   });
 
   it('decodes patch/remove/relation identities from the same map without translating local references', () => {
     const references = createVNextProviderReferences();
     references.encodeContext({ tasks: [{ id: 'punctuated:["task"]' }], workloads: [{ id: 'first-work' }, { id: 'second-work' }] });
-    const result = references.decodeReading({ delta: { ...empty(),
+    const result = references.decodeReading({ planningIntent: 'unknown', delta: { ...empty(),
       patch: [{ kind: 'task', localId: 'F3', targetFactId: 'F1', changes: { title: 'F1 stays a title', category: null } }],
       remove: [{ targetFactId: 'F2' }],
       relate: [{ kind: 'distinct', a: { factId: 'F2' }, b: { localId: 'F3' } }],

@@ -185,6 +185,7 @@ export function adaptWeeklyPlanningV5GraphToVNext(
       workRelations: [],
       deferrals: [],
       learningStrategyProposalRecords: [],
+      draftGenerationIntent: 'not_requested',
     },
     notes,
   };

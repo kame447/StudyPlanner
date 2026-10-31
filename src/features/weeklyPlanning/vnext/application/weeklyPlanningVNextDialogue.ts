@@ -35,6 +35,13 @@ export interface WeeklyPlanningVNextMessage {
   content: string;
 }
 
+/** Typed extension on V5's existing presentation-only communication channel. */
+type VNextDialogueRenderInput = WeeklyPlanningStableV5DialogueRenderInput & {
+  communication: NonNullable<WeeklyPlanningStableV5DialogueRenderInput['communication']> & {
+    previewAuthorization?: { status: 'authorization_required'; requestedPlanningIntent: 'create_plan' };
+  };
+};
+
 function questionIntent(state: WeeklyPlanningVNextState, question: VNextQuestion,
   planningInformation: Record<string, unknown>, targetFactId: string): WeeklyPlanningStableV5DialogueQuestionIntent | null {
   if (question.proposal) return learningStrategyProposalIntentForStableV5Dialogue({ questionCode: question.code,
@@ -63,7 +70,8 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   previousQuestionCode: string | null;
   userText: string;
   recentConversation: readonly WeeklyPlanningVNextMessage[];
-}): WeeklyPlanningStableV5DialogueRenderInput {
+  authorizationRequired?: boolean;
+}): VNextDialogueRenderInput {
   const { state, question, preview } = params;
   // The renderer's helpers follow exact ids, so they read the facts with current references.
   const { leafOf } = createVNextLineageResolver(state.graph);
@@ -77,6 +85,9 @@ export function createWeeklyPlanningVNextRenderInput(params: {
     communication: {
       goal: actionKind === 'question' ? 'ask_question' : actionKind === 'preview_ready' ? 'present_preview' : 'acknowledge',
       askQuestion: actionKind === 'question',
+      ...(params.authorizationRequired ? { previewAuthorization: {
+        status: 'authorization_required' as const, requestedPlanningIntent: 'create_plan' as const,
+      } } : {}),
     },
     actionId: params.actionId,
     currentUserMessage: params.userText,
@@ -91,7 +102,9 @@ export function createWeeklyPlanningVNextRenderInput(params: {
     previewPromotionControlLabel: preview ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL : null,
     requiredLabels: [...new Set([...requiredLabelsForStableV5Dialogue({ planningInformation, targetFactId,
       includePreviewPromotionControl: preview !== null }), ...optionLabels])],
-    fallbackText: RENDERER_TECHNICAL_STOP,
+    fallbackText: params.authorizationRequired
+      ? '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。'
+      : RENDERER_TECHNICAL_STOP,
     previewCount: preview?.blocks.length ?? 0,
   };
 }

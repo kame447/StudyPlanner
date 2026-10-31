@@ -39,7 +39,8 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
         shownRevision: read?.vnext.presentedQuestion?.graphRevision ?? null,
       });
       if (after !== null && input.isCurrentTurn?.() !== false) stages.set(input.pending.requestId, { before, after });
-      return { state: input.snapshot.intakeState ?? createInitialPlanningIntakeState(), message: turn.reply,
+      const intake = input.snapshot.intakeState ?? createInitialPlanningIntakeState();
+      return { state: turn.authorizationRequired ? { ...intake, status: 'needs_scope' } : intake, message: turn.reply,
         draftCandidates: turn.draftCandidates ?? [],
         preserveExistingPreview: Boolean(turn.preview && !turn.draftCandidates?.length),
         ...diagnostic.finish(turn) };

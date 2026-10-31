@@ -967,8 +967,8 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     const interpreter: WeeklyPlanningVNextExperimentalPorts['interpret'] = async (input) => {
       inputs.push(input);
       return inputs.length === 1
-        ? { status: 'interpreted', delta: initialDelta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }
-        : { status: 'interpreted', delta: emptyDelta, answer: { kind: 'estimate_minutes', minutes: 2, per: 'unit' },
+        ? { status: 'interpreted', planningIntent: 'create_plan' as const, delta: initialDelta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }
+        : { status: 'interpreted', planningIntent: 'unknown' as const, delta: emptyDelta, answer: { kind: 'estimate_minutes', minutes: 2, per: 'unit' },
           metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
     };
     const renderer: WeeklyPlanningVNextExperimentalPorts['createRenderer'] = () => ({

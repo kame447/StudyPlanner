@@ -44,7 +44,7 @@ const success: ExternalConstraintSourceSnapshot = { kind: 'timetable', status: '
 describe('VNext constraint sources reuse V5 selection and safety', () => {
   it.each(['timetable', 'existing_plans', 'calendar'] as const)('adds, patches, removes and exposes %s through the same provider contract', (kind) => {
     const fact = request(kind);
-    expect(decodeVNextProviderOutput({ delta: { ...empty(), add: [fact] }, answer: null }).status).toBe('decoded');
+    expect(decodeVNextProviderOutput({ planningIntent: 'discuss', delta: { ...empty(), add: [fact] }, answer: null }).status).toBe('decoded');
     expect(describeVNextProviderField('add[0].requestedAction', { delta: { ...empty(), add: [fact] }, answer: null })).toContain(VNEXT_CONSTRAINT_SOURCE_REQUIREMENT);
     const state = seed(fact);
     const patch = { kind: 'constraint_source_request' as const, localId: 'stop', targetFactId: state.graph.constraintSourceRequests[0].id,
@@ -96,7 +96,7 @@ describe('VNext constraint sources reuse V5 selection and safety', () => {
     let checkpoint: string | null = null;
     let next: VNextTurnDelta = { ...empty(), add: [...work, request('calendar')] };
     const ports: WeeklyPlanningVNextExperimentalPorts = { client: {} as never,
-      interpret: async () => ({ status: 'interpreted', delta: next, answer: null, metrics: { calls: 0, repairs: 0, latencyMs: 0 } }),
+      interpret: async () => ({ status: 'interpreted', planningIntent: 'create_plan' as const, delta: next, answer: null, metrics: { calls: 0, repairs: 0, latencyMs: 0 } }),
       checkpoint: { read: () => checkpoint, write: raw => { checkpoint = raw; } }, legacyV5Checkpoint: { read: () => null },
       approvalLedger: { read: () => null, write: () => {} },
       plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { throw new Error('No save allowed in this test'); } },

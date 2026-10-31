@@ -95,7 +95,7 @@ function terminalize(graph: WeeklyPlanningVNextGraph, factId: string, replacemen
 export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState {
   return { version: WEEKLY_PLANNING_VNEXT_STATE_VERSION,
     graph: { ...createEmptyWeeklyPlanningFactGraphV5(), effortEstimates: [], studyContexts: [] },
-    workRelations: [], deferrals: [], learningStrategyProposalRecords: [] };
+    workRelations: [], deferrals: [], learningStrategyProposalRecords: [], draftGenerationIntent: 'not_requested' };
 }
 
 /**

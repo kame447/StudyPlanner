@@ -25,7 +25,7 @@ import { buildAiPlanningStarterPromptOptions } from '../../ui/aiPlanningStarterP
 
 const OWNER = 'local-vnext-owner'; const WEEK = '2026-11-02'; const NOW = '2026-11-02T00:00:00.000Z';
 const readyParts = new Set(WEEKLY_PLANNING_VNEXT_SWITCH_PARTS);
-const seed: WeeklyPlanningVNextInterpretation = { status: 'interpreted', answer: null,
+const seed: WeeklyPlanningVNextInterpretation = { status: 'interpreted', planningIntent: 'create_plan' as const, answer: null,
   delta: { add: [{ kind: 'task', localId: 'task', category: 'study', title: '数学' },
     { kind: 'workload', localId: 'work', taskRef: { localId: 'task' }, componentRef: null,
       quantityRole: 'remaining', amount: 30, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
@@ -170,7 +170,7 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     let providerInput: Record<string, unknown> | undefined;
     services.client = () => ({ createChatCompletion: vi.fn(async request => {
       providerInput = JSON.parse(request.messages[1].content);
-      return JSON.stringify({ delta: seed.delta, answer: null });
+      return JSON.stringify({ planningIntent: seed.planningIntent, delta: seed.delta, answer: null });
     }) });
     const ref = createRef<WeeklyPlanningApplication>();
     await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });

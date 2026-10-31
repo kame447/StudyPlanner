@@ -41,7 +41,7 @@ const scope: WeeklyPlanningVNextExperimentalScope = {
 const metrics = { calls: 1, repairs: 0, latencyMs: 1 };
 const EMPTY: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
 const interpreted = (delta: Partial<VNextTurnDelta>, answer: Extract<WeeklyPlanningVNextInterpretation, { status: 'interpreted' }>['answer'] = null):
-  WeeklyPlanningVNextInterpretation => ({ status: 'interpreted', delta: { ...EMPTY, ...delta }, answer, metrics });
+  WeeklyPlanningVNextInterpretation => ({ status: 'interpreted', planningIntent: 'create_plan' as const, delta: { ...EMPTY, ...delta }, answer, metrics });
 const pages = (localId: string, role: 'scope_total' | 'completed', amount: number): VNextAddFact => ({
   kind: 'workload', localId, taskRef: { localId: 'slides' }, componentRef: null, quantityRole: role, amount,
   unitCode: 'page', unitLabel: '枚', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
@@ -442,7 +442,8 @@ describe('VNext experimental session end to end (offline)', () => {
     };
     const prepared = prepareWeeklyPlanningStableV5Checkpoint({
       ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId, graph,
-      planningState: createInitialPlanningState(scope.weekStartDate),
+      planningState: { ...createInitialPlanningState(scope.weekStartDate),
+        intakeState: { ...createInitialPlanningIntakeState(), draftGenerationIntent: 'user_authorized' } },
     });
     if (prepared.status !== 'ready') throw new Error(prepared.status);
     const v5Raw = serializeWeeklyPlanningStableV5CheckpointWithMessageCount({
@@ -454,7 +455,8 @@ describe('VNext experimental session end to end (offline)', () => {
       amount: 30, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
     }] })], { legacyV5: v5Raw });
 
-    expect(readWeeklyPlanningVNextExperimentalSession(scope, h.ports)).toMatchObject({ source: 'migrated_v5', checkpoint: { state: { graph: { revision: 4 } } } });
+    expect(readWeeklyPlanningVNextExperimentalSession(scope, h.ports)).toMatchObject({ source: 'migrated_v5',
+      checkpoint: { state: { draftGenerationIntent: 'user_authorized', graph: { revision: 4 } } } });
     const migrated = await turn(h.ports, 't1', '英単語を30分');
     expect(migrated).toMatchObject({ outcome: 'applied', readiness: 'ready' });
     expect(migrated.preview).not.toBeNull();

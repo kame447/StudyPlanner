@@ -1,4 +1,5 @@
 import type { JsonSchemaResponseFormat } from '../../../../services/ai/openAiCompatibleClientTypes';
+import { WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5 } from '../../semantic/weeklyPlanningSemanticSchemaV5';
 import { SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { VNEXT_CONSTRAINT_SOURCE_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 export { VNEXT_CONSTRAINT_SOURCE_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
@@ -8,7 +9,7 @@ import { SEMANTIC_BASE_TEMPORAL_CONSTRAINT_KINDS_V5, SEMANTIC_COMPONENT_ROLES_V5
 import { SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5, SEMANTIC_AVAILABILITY_KINDS_V5,
   SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import type { WeeklyPlanningVNextInterpretedAnswer } from '../weeklyPlanningVNextInterpretationContract';
-import type { VNextTurnDelta, VNextTurnError } from '../weeklyPlanningVNextTypes';
+import type { VNextPlanningIntent, VNextTurnDelta, VNextTurnError } from '../weeklyPlanningVNextTypes';
 import { VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 
 export { VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
@@ -18,11 +19,12 @@ type Schema = { type?: string; properties?: Record<string, Schema>; required?: s
 // Pure construction reads shared vocabularies and creates only local data; do not add I/O or
 // mutate shared inputs here. Export comparison and disabled-build module proof guard this boundary.
 const {
-  root, VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT,
+  root, VNEXT_PLANNING_INTENT_REQUIREMENT, VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT,
   VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT, VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_TEMPORAL_TARGET_REQUIREMENT,
   VNEXT_NAMED_TIME_PERIOD_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT, VNEXT_DEFER_ALLOCATION_REQUIREMENT,
   VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_PROVIDER_RESPONSE_FORMAT,
 } = /*#__PURE__*/ (() => {
+  const VNEXT_PLANNING_INTENT_REQUIREMENT = 'planningIntent uses the existing V5 meaning: create_plan for an explicit request to create a plan or preview, including a contextual acceptance of the actual request to create one; update_plan for a requested change to an existing plan or preview; discuss for stating facts or discussing the conditions without asking to create one; unknown when intent is not established. Complete facts, a quantity of work, or an answer to a machine question alone are not a new creation request. Recent conversation is language context only and never creates facts by itself. State intent, never permission: the application owns the authorization gate and retained permission.';
   const VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT = 'When presentedQuestion.code is learning_strategy_proposal, answer an explicit acceptance or rejection with kind proposal_decision, its exact proposal.id as proposalId, and decision accept or reject. The application owns the proposal and its effect; never add workloads or estimates to implement it. When a presented effort question has effortMeasurement session_duration, answer kind session_minutes with the stated minutes per sitting. This is not total time or a rate. Do not answer these questions with estimate_minutes or repeat their answer in delta. Independent facts still belong in delta.';
   const VNEXT_QUANTITY_ROLE_REQUIREMENT = 'remaining = an amount stated as what is left of a bounded whole, even when the user also intends to do it in this planning period; target = an amount intended for this planning period that is not stated as a remainder; scope_total = the whole size of a bounded task or material; completed = an amount already done. declared/unknown are only for a stated quantity whose role the words do not establish; they are not the default for an explicit planned amount. Roles are meanings, not calculations.';
   const VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT = 'A workload unitLabel is a required non-empty unit word for its amount, even when unitCode is a standard code. Preserve the user-language unit wording (for example 分, 時間, ページ). It is never null or an empty string. This requirement is separate from nullable effort-estimate units.';
@@ -88,7 +90,9 @@ const {
       requestedAction: { ...enumeration(['use', 'stop_using']), description: VNEXT_CONSTRAINT_SOURCE_REQUIREMENT } }),
   ] };
   const correction = VNEXT_CORRECTION_RESPONSE_FORMAT.json_schema.schema as Schema;
-  const root = object({ delta: object({ add: array(add), patch: correction.properties!.patch,
+  const v5 = WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.schema as { properties: { planningIntent: Schema } };
+  const root = object({ planningIntent: { ...v5.properties.planningIntent, description: VNEXT_PLANNING_INTENT_REQUIREMENT },
+    delta: object({ add: array(add), patch: correction.properties!.patch,
     remove: correction.properties!.remove,
     relate: array({ ...object({ kind: enumeration(['same', 'distinct']),
       a: { ...ref, description: VNEXT_RELATE_REFERENCE_REQUIREMENT }, b: { ...ref, description: VNEXT_RELATE_REFERENCE_REQUIREMENT } }),
@@ -104,7 +108,7 @@ const {
   const VNEXT_PROVIDER_RESPONSE_FORMAT: JsonSchemaResponseFormat = { type: 'json_schema',
     json_schema: { name: 'weekly_planning_vnext_native_v1', strict: true, schema: root as Record<string, unknown> } };
   return {
-    root, VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT,
+    root, VNEXT_PLANNING_INTENT_REQUIREMENT, VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT,
     VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT, VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_TEMPORAL_TARGET_REQUIREMENT,
     VNEXT_NAMED_TIME_PERIOD_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT, VNEXT_DEFER_ALLOCATION_REQUIREMENT,
     VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_PROVIDER_RESPONSE_FORMAT,
@@ -112,6 +116,7 @@ const {
 })();
 
 export {
+  VNEXT_PLANNING_INTENT_REQUIREMENT,
   VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT,
   VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_NAMED_TIME_PERIOD_REQUIREMENT,
   VNEXT_RELATE_REFERENCE_REQUIREMENT, VNEXT_DEFER_ALLOCATION_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT,
@@ -119,6 +124,7 @@ export {
 };
 
 export interface VNextProviderReading {
+  planningIntent: VNextPlanningIntent;
   delta: VNextTurnDelta;
   answer: WeeklyPlanningVNextInterpretedAnswer | null;
 }
@@ -187,7 +193,7 @@ export function decodeVNextProviderOutput(value: unknown):
   | { status: 'rejected'; errors: VNextTurnError[] } {
   const errors = validate(root, value, '', null);
   if (errors.length) return { status: 'rejected', errors };
-  const wire = structuredClone(value) as { delta: VNextTurnDelta; answer: Record<string, unknown> | null };
+  const wire = structuredClone(value) as { planningIntent: VNextPlanningIntent; delta: VNextTurnDelta; answer: Record<string, unknown> | null };
   let answer: WeeklyPlanningVNextInterpretedAnswer | null = null;
   if (wire.answer) {
     if (wire.answer.kind === 'proposal_decision' && typeof wire.answer.proposalId === 'string'
@@ -202,5 +208,5 @@ export function decodeVNextProviderOutput(value: unknown):
       answer = { kind: 'estimate_minutes', minutes: wire.answer.minutes, per: wire.answer.per };
     } else return { status: 'rejected', errors: [{ code: 'invalid_value', path: 'answer', localId: null, factId: null }] };
   }
-  return { status: 'decoded', reading: { delta: wire.delta, answer } };
+  return { status: 'decoded', reading: { planningIntent: wire.planningIntent, delta: wire.delta, answer } };
 }

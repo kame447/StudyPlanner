@@ -38,7 +38,7 @@ const scope: WeeklyPlanningVNextExperimentalScope = {
 
 const emptyDelta = (): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const interpreted = (delta: VNextTurnDelta): WeeklyPlanningVNextInterpretation => ({
-  status: 'interpreted', delta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 },
+  status: 'interpreted', planningIntent: 'create_plan' as const, delta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 },
 });
 
 function memoryFacts(activityKind: 'memorization_retrieval' | 'problem_solving' | 'unknown' = 'memorization_retrieval',
@@ -477,7 +477,7 @@ describe('VNext observed memory pace through the session and scheduler', () => {
       if (form === 'explicit_delta') delta.add.push({ kind: 'effort_estimate', localId: 'corrected-estimate',
         taskRef: { factId: workload.taskId }, targetRef: { factId: workload.id }, effortKind: 'duration_per_unit',
         minutes: 2, unitCode: 'problem', unitLabel: '問', precision: 'exact' });
-      return { status: 'interpreted', delta,
+      return { status: 'interpreted', planningIntent: 'create_plan' as const, delta,
         answer: form === 'answer' ? { kind: 'estimate_minutes', minutes: 2, per: 'unit' } : null,
         metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
     };
@@ -502,7 +502,7 @@ describe('VNext observed memory pace through the session and scheduler', () => {
     const asked = await h.turn('asked-estimate', '35語を勉強する');
     expect(asked.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 35, unitCode: 'word' } });
 
-    h.ports.interpret = async () => ({ status: 'interpreted', delta: emptyDelta(),
+    h.ports.interpret = async () => ({ status: 'interpreted', planningIntent: 'create_plan' as const, delta: emptyDelta(),
       answer: { kind: 'estimate_minutes', minutes: 2, per: 'unit' }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } });
     const result = await h.turn('answer-only', '1語あたり2分です');
     expect(result.outcome).toBe('applied');

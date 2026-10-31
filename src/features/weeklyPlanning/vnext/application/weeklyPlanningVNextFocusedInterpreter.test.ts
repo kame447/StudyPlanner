@@ -34,7 +34,7 @@ function input(state = seed(), userText = '40分くらい') : WeeklyPlanningVNex
   return { state, projection, presentedQuestion: projection.questions[0], presentedText: '数学の残り8ページの所要時間は？',
     userText, clock, client: {} as never };
 }
-const fullResult: WeeklyPlanningVNextInterpretation = { status: 'interpreted', delta: empty(), answer: null,
+const fullResult: WeeklyPlanningVNextInterpretation = { status: 'interpreted', planningIntent: 'unknown' as const, delta: empty(), answer: null,
   metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
 const decision = (kind: 'effort_answer' | 'quantity_role_answer' | 'fallback', per = false) => ({ decision: kind,
   effortTarget: kind === 'effort_answer' ? 'question_target' : null,
@@ -129,7 +129,7 @@ describe('V5 temporal repair has no equivalent VNext intermediate', () => {
   it('accepts date-only rules, rejects clock-bearing rules, and accepts ordinary unavailability', async () => {
     const rule = { kind: 'task_date_rule', localId: 'date', taskRef: { factId: 'F1' }, targetRef: { factId: 'F1' },
       ruleKind: 'excluded_date', dateExpression: 'weekday:tuesday', constraintLevel: 'hard' };
-    const wire = (fact: unknown) => ({ delta: { ...empty(), add: [fact] }, answer: null });
+    const wire = (fact: unknown) => ({ planningIntent: 'discuss', delta: { ...empty(), add: [fact] }, answer: null });
     expect(decodeVNextProviderOutput(wire(rule)).status).toBe('decoded');
     expect(decodeVNextProviderOutput(wire({ ...rule, startTime: '18:00', endTime: '20:00' })).status).toBe('rejected');
     expect(decodeVNextProviderOutput(wire({ kind: 'temporal_constraint', localId: 'date', taskRef: { factId: 'F1' }, targetRef: { factId: 'F1' },

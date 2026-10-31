@@ -153,7 +153,7 @@ function makeHarness(testCase: VNextJevComparisonCase, repetition: number, clien
     async interpret(input) {
       if (!seedPending) return interpreter(input);
       seedPending = false;
-      return { status: 'interpreted', delta: taskSeedDelta(testCase), answer: null,
+      return { status: 'interpreted', planningIntent: 'create_plan', delta: taskSeedDelta(testCase), answer: null,
         metrics: { calls: 0, repairs: 0, latencyMs: 0 } };
     },
     checkpoint: slot('vnext'), legacyV5Checkpoint: { read: slot('v5').read }, approvalLedger: slot('ledger'),
@@ -596,7 +596,7 @@ async function executeApprovalLifecycle(scope: WeeklyPlanningVNextExperimentalSc
     const resolver = createVNextLineageResolver(lifecycleRead.checkpoint.state.graph);
     const targetWork = lifecycleRead.checkpoint.state.graph.workloads.find((fact) => resolver.lineageOf(fact.id) === lineageId);
     if (!lineageId || !targetWork) throw new Error(`Cannot close the preview estimate question for ${testCase.id}.`);
-    harness.ports.interpret = async () => ({ status: 'interpreted', delta: { ...emptyDelta(), add: [{
+    harness.ports.interpret = async () => ({ status: 'interpreted', planningIntent: 'unknown', delta: { ...emptyDelta(), add: [{
       kind: 'effort_estimate', localId: 'synthetic-approval-estimate', taskRef: { factId: targetWork.taskId },
       targetRef: { workLineageId: lineageId }, effortKind: 'total_duration', minutes: 120,
       unitCode: null, unitLabel: null, precision: 'exact',
@@ -844,7 +844,7 @@ describe('VNext Jev comparison session controls (offline)', () => {
   const controlCase = VNEXT_JEV_COMPARISON_CASES.find((item) => item.id === 'dev-remaining-progress')!;
   const controlPolicy: CalibratedChoicePolicy = { id: 'offline-control-only', calibrationEvidenceId: 'synthetic-control',
     rules: [{ menuKind: 'leaves', optionCount: 3, depth: 0, minimumTopProbability: 0.8, minimumMargin: 0.5 }] };
-  const interpreted = (delta = emptyDelta()) => ({ status: 'interpreted' as const, delta, answer: null,
+  const interpreted = (delta = emptyDelta()) => ({ status: 'interpreted' as const, planningIntent: 'unknown' as const, delta, answer: null,
     metrics: { calls: 0, repairs: 0, latencyMs: 0 } });
 
   it('does not dispatch Jev when a reply names an older shown revision', async () => {

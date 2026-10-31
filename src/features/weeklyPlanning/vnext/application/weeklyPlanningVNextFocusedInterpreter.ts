@@ -98,6 +98,7 @@ export function createWeeklyPlanningVNextFocusedInterpreter(params: { fullReadin
       defaultPlanningHorizon: input.clock.defaultPlanningHorizon, observedMemoryPace: input.observedMemoryPace,
       conversationId: 'vnext-focused-dry-run', turnKey: requestId, turnId: requestId, sourceText: input.userText });
     if (dryRun.status === 'rejected') return fallback();
-    return { status: 'interpreted', delta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: Math.max(0, Date.now() - started) } };
+    return { status: 'interpreted', planningIntent: 'unknown', delta, answer: null,
+      metrics: { calls: 1, repairs: 0, latencyMs: Math.max(0, Date.now() - started) } };
   };
 }

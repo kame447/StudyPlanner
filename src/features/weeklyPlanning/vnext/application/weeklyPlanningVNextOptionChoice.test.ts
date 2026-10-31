@@ -40,7 +40,7 @@ function input(state: WeeklyPlanningVNextState, userText: string): WeeklyPlannin
     clock: { currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo',
     weekStartsOn: 'monday', defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' } } };
 }
-const fullReadingResult: WeeklyPlanningVNextInterpretation = { status: 'interpreted',
+const fullReadingResult: WeeklyPlanningVNextInterpretation = { status: 'interpreted', planningIntent: 'unknown' as const,
   delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
 const policy = (optionCount: number): CalibratedChoicePolicy => ({ id: 'test', calibrationEvidenceId: 'synthetic-test-only',
   rules: [{ menuKind: 'leaves', optionCount, depth: 0, minimumTopProbability: 0.8, minimumMargin: 0.5 }] });

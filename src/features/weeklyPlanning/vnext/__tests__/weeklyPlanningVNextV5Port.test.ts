@@ -27,7 +27,7 @@ const scope: WeeklyPlanningVNextExperimentalScope = {
 
 const emptyDelta = (): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const interpreted = (delta: VNextTurnDelta): WeeklyPlanningVNextInterpretation => ({
-  status: 'interpreted', delta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 },
+  status: 'interpreted', planningIntent: 'create_plan' as const, delta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 },
 });
 const task = (localId: string, title = localId): VNextAddFact => ({
   kind: 'task', localId, category: 'study', title,

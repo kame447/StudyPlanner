@@ -4,7 +4,7 @@
 // it routes it to unreadable-storage retention instead. Reading a V5 checkpoint
 // with VNext is an explicit, non-destructive migration that bumps the revision.
 import { WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION } from '../weeklyPlanningVNextV5Boundary';
-import type { WeeklyPlanningFactGraphV5 } from '../weeklyPlanningVNextV5Boundary';
+import type { PlanningDraftGenerationIntent, WeeklyPlanningFactGraphV5 } from '../weeklyPlanningVNextV5Boundary';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPlanningFactGraphValidatorV5';
 import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { frozenGroundingRange } from '../../application/weeklyPlanningTemporalContext';
@@ -92,7 +92,9 @@ function withLearningStrategyRecords(value: unknown): unknown {
 }
 
 function validState(value: unknown, conversationId: string): value is WeeklyPlanningVNextState {
-  if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals', 'learningStrategyProposalRecords'])
+  if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals', 'learningStrategyProposalRecords', 'draftGenerationIntent'])
+    || typeof value.draftGenerationIntent !== 'string'
+    || !['not_requested', 'assistant_suggested', 'user_authorized'].includes(value.draftGenerationIntent)
     || value.version !== WEEKLY_PLANNING_VNEXT_STATE_VERSION || !isRecord(value.graph)
     || !Array.isArray(value.workRelations) || !Array.isArray(value.deferrals)) return false;
   const graph = value.graph as unknown as WeeklyPlanningVNextState['graph'];
@@ -174,14 +176,18 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
       || typeof value.conversationId !== 'string' || !value.conversationId.trim()
       || typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))
       || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion', 'preview', 'messages'])) return null;
-    const state = withLearningStrategyRecords(withDeferralAllocation(withStatedActivity(value.vnext.state)));
+    // Earlier experimental previews were automatic and carry no evidence of permission. Keep
+    // facts and raw storage, but invalidate that derived preview; only a new request can replace it.
+    const missingAuthorization = isRecord(value.vnext.state) && !('draftGenerationIntent' in value.vnext.state);
+    const upgraded = missingAuthorization ? { ...value.vnext.state as Record<string, unknown>, draftGenerationIntent: 'not_requested' } : value.vnext.state;
+    const state = withLearningStrategyRecords(withDeferralAllocation(withStatedActivity(upgraded)));
     if (!validState(state, value.conversationId) || !validPreview(value.vnext.preview)
       || !validMessages(value.vnext.messages)) return null;
     const presented = value.vnext.presentedQuestion;
     if (presented !== null && !(isRecord(presented) && hasExactKeys(presented, ['questionKey', 'graphRevision', 'shownText'])
       && typeof presented.questionKey === 'string' && Number.isInteger(presented.graphRevision)
       && typeof presented.shownText === 'string')) return null;
-    return { ...value, vnext: { ...value.vnext, state } } as unknown as WeeklyPlanningVNextSessionCheckpoint;
+    return { ...value, vnext: { ...value.vnext, state, preview: missingAuthorization ? null : value.vnext.preview } } as unknown as WeeklyPlanningVNextSessionCheckpoint;
   } catch {
     return null;
   }
@@ -198,6 +204,7 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
 export function migrateWeeklyPlanningV5GraphToVNextSession(
   v5Graph: WeeklyPlanningFactGraphV5,
   groundingRecords: readonly WeeklyPlanningGroundingRecord[] = [],
+  draftGenerationIntent: PlanningDraftGenerationIntent = 'not_requested',
 ): {
   state: WeeklyPlanningVNextState;
   notes: WeeklyPlanningVNextAdapterNote[];
@@ -210,7 +217,7 @@ export function migrateWeeklyPlanningV5GraphToVNextSession(
       start: frozen.startDate, end: frozen.endDate } : window;
   });
   return {
-    state: { ...state, graph: { ...state.graph, planningWindows, revision: v5Graph.revision + 1 } },
+    state: { ...state, draftGenerationIntent, graph: { ...state.graph, planningWindows, revision: v5Graph.revision + 1 } },
     notes,
   };
 }

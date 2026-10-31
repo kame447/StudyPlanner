@@ -33,7 +33,7 @@ const work = (id: string, role: 'remaining' | 'scope_total' | 'completed', amoun
   unitCode, unitLabel: unitCode === 'minute' ? '分' : '枚', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
 } as VNextAddFact);
 const reading = (add: VNextAddFact[], answer: Extract<WeeklyPlanningVNextInterpretation, { status: 'interpreted' }>['answer'] = null): WeeklyPlanningVNextInterpretation => ({
-  status: 'interpreted', delta: { ...EMPTY, add }, answer, metrics: { calls: 1, repairs: 0, latencyMs: 1 },
+  status: 'interpreted', planningIntent: 'create_plan' as const, delta: { ...EMPTY, add }, answer, metrics: { calls: 1, repairs: 0, latencyMs: 1 },
 });
 
 let restore: () => void;
@@ -54,7 +54,7 @@ afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyP
   setWeeklyPlanningTraceRepositoryForTests(undefined); vi.useRealTimers(); restore(); });
 
 function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRenderer?: WeeklyPlanningVNextExperimentalPorts['createRenderer'];
-  providerFails?: boolean; beforeDispatch?: (action: WeeklyPlanningAction) => void } = {}) {
+  providerFails?: boolean; planningIntent?: 'create_plan' | 'discuss'; beforeDispatch?: (action: WeeklyPlanningAction) => void } = {}) {
   const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: createMemoryStorageHarness().storage });
   let state = createInitialPlanningState(WEEK);
   const controller = createWeeklyPlanningControllerSession(OWNER, WEEK, CONVERSATION);
@@ -63,7 +63,7 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
   const client: WeeklyPlanningVNextExperimentalPorts['client'] = { async createChatCompletion(input) {
     requests.push(structuredClone(input));
     if (options.providerFails) throw new Error('synthetic provider unavailable');
-    return JSON.stringify({ delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null });
+    return JSON.stringify({ planningIntent: options.planningIntent ?? 'create_plan', delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null });
   } };
   const gateway = createWeeklyPlanningVNextRuntimeGateway({ session: local, ports: () => ({ client,
     interpret: options.interpret ?? createWeeklyPlanningVNextProviderInterpreter(), checkpoint: local.checkpoint,
@@ -105,6 +105,8 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(trace.diagnostics.outcome).toBe('preview_ready');
     expect(trace.diagnostics.error).toBeNull();
     expect(trace.assistantOutput.responseSource).toBe('ai');
+    expect(trace.aiInterpreter.structuredResults[0].structuredResult).toMatchObject({ planningIntent: 'create_plan',
+      authorizationDecision: { authorized: true, draftGenerationIntent: h.local.readCheckpoint()!.vnext.state.draftGenerationIntent } });
     const serialized = JSON.stringify(trace);
     expect(serialized).toContain('weekly_planning_vnext');
     expect(serialized).toContain('30分');
@@ -123,6 +125,53 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(diagnosticEntries()[0].assistantOutput.responseSource).toBe('system');
     expect(h.local.readCheckpoint()!.vnext.state.graph.tasks).toEqual([]);
     expect(h.getState().messages[h.getState().messages.length - 1].content).toBe(h.results[0].failure!.userMessage);
+  });
+
+  it.each([false, true])('persists actual intent and authorization presentation through append failure/reload/Worker (large=%s)', async large => {
+    const sent: Record<string, unknown>[] = [];
+    const h = harness({ planningIntent: 'discuss', createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+        const prompt = JSON.parse(request.messages[1].content); sent.push(prompt);
+        expect(prompt.applicationDecision.communication.previewAuthorization).toMatchObject({ status: 'authorization_required' });
+        return successfulWeeklyPlanningRendererCompletion(request);
+      } });
+      return { render(input) {
+        const authorization = (input.communication as unknown as { previewAuthorization: Record<string, unknown> }).previewAuthorization;
+        Object.assign(authorization, { futureAuthorizationSentinel: 'keep-future-authorization',
+          ...(large ? { futureLargeAuthorizationMetadata: 'x'.repeat(48 * 1024) } : {}) });
+        return renderer.render(input);
+      } };
+    } });
+    failAppend = true;
+    expect(await h.submit('数学の作業量は30分です。')).toEqual({ accepted: true, draftCandidates: [] });
+    expect(sent).toHaveLength(1);
+    expect(h.local.readCheckpoint()!.vnext.state.draftGenerationIntent).toBe('not_requested');
+    const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toHaveLength(1);
+    expect(queued[0].input.debugTraceEvents).toEqual(h.results[0].debugTraceEvents);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'authorization-retry-after-reload', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes[0];
+    const entry = write.entries.find(entry => entry.kind === 'turn_diagnostic')!;
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing authorization diagnostic');
+    expect(entry.diagnostics.outcome).toBe('needs_scope');
+    expect(entry.aiInterpreter.structuredResults[0].structuredResult).toMatchObject({ planningIntent: 'discuss',
+      authorizationDecision: { planningIntent: 'discuss', authorized: false, previousDraftGenerationIntent: 'not_requested',
+        draftGenerationIntent: h.local.readCheckpoint()!.vnext.state.draftGenerationIntent } });
+    expect(JSON.stringify(entry)).toContain('authorization_required');
+    expect(JSON.stringify(entry)).toContain('keep-future-authorization');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ structuredResults: [expect.objectContaining({ structuredResult: expect.objectContaining({
+      planningIntent: 'discuss', authorizationDecision: expect.objectContaining({ authorized: false, draftGenerationIntent: 'not_requested' }),
+    }) })] });
+    expect(JSON.stringify(server.entries[0])).toContain('keep-future-authorization');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
   });
 
   it.each([true, false])('binds the next answer to the actual retained presentation (verified recovery=%s)', async verified => {

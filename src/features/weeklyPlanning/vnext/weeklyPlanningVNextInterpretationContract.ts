@@ -10,6 +10,7 @@ import type {
   VNextQuestion,
   VNextTurnDelta,
   VNextTurnError,
+  VNextPlanningIntent,
   WeeklyPlanningVNextProjection,
   WeeklyPlanningVNextState,
 } from './weeklyPlanningVNextTypes';
@@ -36,6 +37,8 @@ export interface WeeklyPlanningVNextInterpretationInput {
   /** The actual assistant message that displayed this question; null iff no question is presented. */
   presentedText: string | null;
   userText: string;
+  /** Actual bounded conversation context for contextual intent; never a source of new facts by itself. */
+  recentConversation?: readonly { role: 'user' | 'assistant'; content: string }[];
   /** Attachment-derived supplemental evidence; userText remains the user's source/intent channel. */
   supplementalContext?: string;
   clock: WeeklyPlanningVNextInterpretationClock;
@@ -78,6 +81,8 @@ export interface WeeklyPlanningVNextInterpretationMetrics {
 export type WeeklyPlanningVNextInterpretation =
   | {
       status: 'interpreted';
+      /** The AI interprets intent; the shared V5 application gate alone grants preview permission. */
+      planningIntent: VNextPlanningIntent;
       /** Applies cleanly to `state` (validated with the same pure transaction), or is empty. */
       delta: VNextTurnDelta;
       answer: WeeklyPlanningVNextInterpretedAnswer | null;

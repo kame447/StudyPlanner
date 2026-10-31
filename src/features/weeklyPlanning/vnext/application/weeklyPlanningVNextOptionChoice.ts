@@ -172,6 +172,7 @@ export function createWeeklyPlanningVNextOptionChoiceInterpreter(params: {
     params.onOutcome?.({ route: 'option_choice', optionId });
     return {
       status: 'interpreted',
+      planningIntent: 'unknown',
       delta: { add: [], patch: [], remove: [], relate: [], defer: [] },
       answer: { kind: 'option', optionId },
       metrics: { calls: dispatched, repairs: 0, latencyMs: Math.max(0, Date.now() - started), optionChoice: diagnostic('selected') },

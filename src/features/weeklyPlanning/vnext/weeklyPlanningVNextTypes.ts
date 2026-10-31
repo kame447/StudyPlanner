@@ -6,6 +6,8 @@ import type {
   WeeklyPlanningFactGraphV5,
   TemporalConstraintFactV5,
   WeeklyPlanningLearningStrategyProposalRecord,
+  PlanningDraftGenerationIntent,
+  WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningVNextV5Boundary';
 import type {
   SemanticComponentRoleV5,
@@ -86,7 +88,11 @@ export interface WeeklyPlanningVNextState {
   workRelations: VNextWorkRelation[];
   deferrals: VNextQuestionDeferral[];
   learningStrategyProposalRecords: WeeklyPlanningLearningStrategyProposalRecord[];
+  /** Durable application permission, never inferred from complete facts or a shown preview. */
+  draftGenerationIntent: PlanningDraftGenerationIntent;
 }
+
+export type VNextPlanningIntent = WeeklyPlanningSemanticDocumentV5['planningIntent'];
 
 // ---- one turn = one typed delta, applied as one transaction -------------------
 

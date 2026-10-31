@@ -9,6 +9,7 @@
 // checkpoint is read (never written) and migrated when the VNext slot is empty,
 // so rolling back to V5 finds its own data exactly as it was.
 import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
+import { resolveVNextPlanningAuthorization, type VNextAuthorizationDecision } from './weeklyPlanningVNextPlanningAuthorization';
 import {
   createWeeklyDraftApprovalOperation,
   executeWeeklyDraftApproval,
@@ -153,6 +154,10 @@ export type WeeklyPlanningVNextExperimentalTurnOutcome =
   | 'checkpoint_unreadable';
 
 export interface WeeklyPlanningVNextExperimentalTurn {
+  /** A normal permission request, never a provider/placement failure or a new machine question. */
+  authorizationRequired?: boolean;
+  /** Read-only application decision for the shared trace owner; never read back as authority. */
+  authorizationDecision?: VNextAuthorizationDecision;
   /** Exact V5 placement candidates for the ordinary preview UI, never rebuilt from blocks. */
   draftCandidates?: WeeklyDraftCandidate[];
   outcome: WeeklyPlanningVNextExperimentalTurnOutcome;
@@ -196,7 +201,8 @@ export function readWeeklyPlanningVNextExperimentalSession(
   return {
     status: 'ready',
     source: 'migrated_v5',
-    checkpoint: { state: migrateWeeklyPlanningV5GraphToVNextSession(v5.graph, v5.planningState.intakeState?.groundingRecords).state,
+    checkpoint: { state: migrateWeeklyPlanningV5GraphToVNextSession(v5.graph, v5.planningState.intakeState?.groundingRecords,
+      v5.planningState.intakeState?.draftGenerationIntent).state,
       presentedQuestion: null, preview: null, messages: [] },
   };
 }
@@ -220,7 +226,9 @@ function shownPreview(
   calendar: WeeklyPlanningVNextCalendar,
   state: WeeklyPlanningVNextState,
   projection: WeeklyPlanningVNextProjection,
-): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[]; draftCandidates?: WeeklyDraftCandidate[] } {
+  authorized: boolean,
+): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[];
+  draftCandidates?: WeeklyDraftCandidate[]; authorizationRequired?: boolean } {
   const context = schedulingContext(scope, ports, state);
   // V5 resolves source selection; placement still enforces raw calendar busy time after stop_using.
   // ConstraintSources tests guard the use/stop and unavailable-source controls through this boundary.
@@ -237,6 +245,11 @@ function shownPreview(
     return { preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys,
       previewBlockedBy: compiled.compilation.status === 'empty' ? [] : [...new Set(codes.length ? codes : [compiled.compilation.status])] };
   }
+  // Compile once to distinguish real movable work from empty/busy-only input. V5's gate owns
+  // consent; readiness alone never authorizes placement. PlanningAuthorization tests guard both.
+  if (!authorized && compiled.compilation.input.movableWorkItems.length > 0) return {
+    preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys, previewBlockedBy: [], authorizationRequired: true,
+  };
   const scheduled = scheduleWeeklyPlanningStableV5Preview({
     input: compiled.compilation.input,
     graph: compiled.placementGraph,
@@ -327,6 +340,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     client: ports.client, state, projection: before, presentedQuestion, userText: params.userText, clock,
     ...(params.supplementalContext === undefined ? {} : { supplementalContext: params.supplementalContext }),
     observedMemoryPace: pace,
+    recentConversation: read.checkpoint.messages,
     // The reply the question was shown in: what the user's words answer (e.g. an ordinal over its options).
     presentedText: presentedQuestion ? presented!.shownText : null,
   });
@@ -341,6 +355,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   let outcome: WeeklyPlanningVNextExperimentalTurnOutcome;
   let delta: VNextTurnDelta | null = null;
   let errors: VNextTurnError[] = [];
+  let semanticChanged = false;
   if (interpretation.status === 'failed') {
     outcome = 'interpretation_failed';
     errors = interpretation.errors;
@@ -378,18 +393,30 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       });
       outcome = result.status;
       state = result.state;
+      if (result.status === 'applied') semanticChanged = result.diff.added.length > 0
+        || result.diff.superseded.length > 0 || result.diff.removed.length > 0
+        || JSON.stringify(state.workRelations) !== JSON.stringify(read.checkpoint.state.workRelations);
       if (result.status === 'rejected') errors = result.errors;
     }
   }
 
+  const accepted = outcome === 'applied' || outcome === 'noop';
+  const authorization = resolveVNextPlanningAuthorization({ state, accepted,
+    previousStatus: read.checkpoint.preview ? 'draft_ready' : before.questions.length ? 'revision_pending' : 'needs_scope',
+    planningIntent: interpretation.status === 'interpreted' ? interpretation.planningIntent : null,
+    hadMachinePendingQuestion: before.questions.length > 0, semanticChanged,
+    provisionalTimeboxRequested: delta?.defer.some(item => item.allocation === 'provisional_timebox') ?? false });
+  state = authorization.state;
   const projection = projectWeeklyPlanningVNext(state, observedMemoryPace(state, calendar));
   const question = projection.questions[0] ?? null;
   // A shown preview belongs to its revision: while the revision is current it is
   // exactly what the user saw (and may have approved), so it is not made again.
   const shown = read.checkpoint.preview;
-  const made = question
+  const made = question || !accepted
     ? { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] }
-    : shownPreview(scope, ports, calendar, state, projection);
+    : shownPreview(scope, ports, calendar, state, projection, authorization.authorized);
+  const authorizationRequired = !question && !(shown && shown.graphRevision === state.graph.revision)
+    && 'authorizationRequired' in made && made.authorizationRequired === true;
   const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision
     ? { preview: shown, unplacedOwnerKeys: made.unplacedOwnerKeys, previewBlockedBy: [] }
     : made;
@@ -406,6 +433,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       state, question: shownQuestion, preview: shownPreview, actionId: `${scope.conversationId}:${params.turnId}`,
       turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
       recentConversation: read.checkpoint.messages,
+      authorizationRequired,
     });
   // The renderer is a model call: it may run only while this turn is still current.
   const canDispatchRecovery = () => ports.checkpoint.read() === rawBefore;
@@ -487,6 +515,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     previewBlockedBy,
     reply,
     replySource,
+    authorizationRequired,
+    authorizationDecision: authorization.decision,
     interpretation,
     appliedDelta: outcome === 'applied' ? delta : null,
     errors,
