@@ -128,8 +128,10 @@ run('#926 VNext native session real API end to end', () => {
       return turn;
     };
     try {
-      const t1 = await say('t1', '今週はゼミ発表のスライドを仕上げたいです。全部で20枚で、もう12枚できています。');
+      // As in V5, a preview needs the user's own request to create the plan; it is kept while the estimate is asked.
+      const t1 = await say('t1', '今週はゼミ発表のスライドを仕上げたいです。全部で20枚で、もう12枚できています。この内容で今週の計画を作ってください。');
       expect(t1.outcome).toBe('applied');
+      expect(t1.preview).toBeNull();
       const unit = statedTotalUnit(ports);
       expect(unit).not.toBeNull();
       expect(t1.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 8 } });
