@@ -176,9 +176,36 @@ jobs:
           retention-days: 30
 
   stability-repeat:
+    name: stability-repeat (${{ matrix.project }}) (shard ${{ matrix.shard }}/${{ matrix.shards }})
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'stability') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The whole cross-browser config x3 outgrew one 30-minute job (#945). Each project is split into
+    # Playwright shards that together list exactly the project's tests x3; the counts follow measured
+    # single-run durations (UI Regression Matrix): chromium 5.6, firefox 7.9, webkit desktop 9.2 and
+    # webkit mobile 51.4 minutes, so every leg stays well inside the unchanged budget.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { project: chromium-desktop, shard: 1, shards: 2 }
+          - { project: chromium-desktop, shard: 2, shards: 2 }
+          - { project: firefox-desktop, shard: 1, shards: 2 }
+          - { project: firefox-desktop, shard: 2, shards: 2 }
+          - { project: webkit-desktop, shard: 1, shards: 2 }
+          - { project: webkit-desktop, shard: 2, shards: 2 }
+          - { project: webkit-mobile, shard: 1, shards: 12 }
+          - { project: webkit-mobile, shard: 2, shards: 12 }
+          - { project: webkit-mobile, shard: 3, shards: 12 }
+          - { project: webkit-mobile, shard: 4, shards: 12 }
+          - { project: webkit-mobile, shard: 5, shards: 12 }
+          - { project: webkit-mobile, shard: 6, shards: 12 }
+          - { project: webkit-mobile, shard: 7, shards: 12 }
+          - { project: webkit-mobile, shard: 8, shards: 12 }
+          - { project: webkit-mobile, shard: 9, shards: 12 }
+          - { project: webkit-mobile, shard: 10, shards: 12 }
+          - { project: webkit-mobile, shard: 11, shards: 12 }
+          - { project: webkit-mobile, shard: 12, shards: 12 }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -197,12 +224,16 @@ jobs:
       - name: Build production bundle
         run: npm run build
       - name: Repeat cross-browser smoke without retries
-        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.cross-browser.config.mjs --repeat-each=3 --retries=0
+        env:
+          STABILITY_PROJECT: ${{ matrix.project }}
+          STABILITY_SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
+        # The shard guard refuses an empty shard before any browser starts.
+        run: node scripts/ci/playwright-shard.mjs test --config=tests/e2e/playwright.cross-browser.config.mjs "--project=$STABILITY_PROJECT" "--shard=$STABILITY_SHARD" --repeat-each=3 --retries=0
       - name: Upload stability artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ui-stability-${{ github.sha }}
+          name: ui-stability-${{ github.sha }}-${{ matrix.project }}-shard-${{ matrix.shard }}
           path: |
             artifacts/playwright-cross-browser-results/
             artifacts/playwright-cross-browser-report/

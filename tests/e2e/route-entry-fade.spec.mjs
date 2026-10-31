@@ -104,20 +104,19 @@ for (const { width, level } of [{ width: 390, level: 'standard' }, { width: 1280
         if (data.entries[0].liveEffectAvailable) expect(data.entries[0].properties).toEqual(['opacity']);
         expect(data.entries[0].pending).toBe(false);
       }
-      for (const sample of data.samples) {
-        expect(sample.transform).toBe('none');
-        for (const chrome of sample.chrome.filter(Boolean)) {
-          expect(chrome.opacity).toBe('1');
-          if (chrome.selector === '.primary-bottom-nav') {
-            // Existing fixed navigation is centered with translateX(-50%).
-            // Permit only that static translation, never entry motion.
-            expect(chrome.matrix.slice(0, 4)).toEqual([1, 0, 0, 1]);
-            expect(chrome.matrix[5]).toBe(0);
-            expect(Math.abs(chrome.matrix[4] + chrome.width / 2)).toBeLessThanOrEqual(0.01);
-            expect(chrome.transform).toBe(data.samples[0].chrome.find(c => c?.selector === '.primary-bottom-nav').transform);
-          } else expect(chrome.transform).toBe('none');
-        }
-      }
+      // Validate every recorded frame in one assertion. Per-frame Playwright
+      // assertions add reporting overhead to this cold-and-warm route journey.
+      const unstableFrames = data.samples.filter(sample => sample.transform !== 'none' || sample.chrome.filter(Boolean).some(chrome => {
+        if (chrome.opacity !== '1') return true;
+        if (chrome.selector !== '.primary-bottom-nav') return chrome.transform !== 'none';
+        // Existing fixed navigation is centered with translateX(-50%).
+        // Permit only that static translation, never entry motion.
+        return [1, 0, 0, 1].some((value, index) => !Object.is(chrome.matrix[index], value))
+          || !Object.is(chrome.matrix[5], 0)
+          || !(Math.abs(chrome.matrix[4] + chrome.width / 2) <= 0.01)
+          || chrome.transform !== data.samples[0].chrome.find(c => c?.selector === '.primary-bottom-nav').transform;
+      }));
+      expect(unstableFrames).toEqual([]);
       const visible = data.samples.filter(s => s.visible && !s.pending);
       expect(new Set(visible.map(s => s.id)).size).toBe(1);
       for (const dimension of ['x', 'y', 'width']) expect(Math.max(...visible.map(s => s[dimension])) - Math.min(...visible.map(s => s[dimension]))).toBeLessThanOrEqual(1);

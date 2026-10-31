@@ -28,7 +28,7 @@ const longText = {
   name: 'MATERIALTOKEN'.repeat(20), subject: 'SUBJECTTOKEN'.repeat(14), activity: 'ACTIVITYTOKEN'.repeat(20),
 };
 function seed(storage: Storage, values: typeof longText | null = null) {
-  runInNewContext(`(${seedCallback})`, { localStorage: storage, Date })(values);
+  runInNewContext(`(${seedCallback})`, { localStorage: storage, Date })({ longTextFixture: values, materialCount: 2 });
 }
 function read(storage: Storage, key: string) { return JSON.parse(storage.getItem(key) ?? 'null'); }
 

@@ -3,8 +3,8 @@ import type { Auth, User as FirebaseUser } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 
 const mocks = vi.hoisted(() => ({ getDoc: vi.fn(), setDoc: vi.fn(), setPersistence: vi.fn(),
-  serverTimestamp: vi.fn(), signOut: vi.fn(), observe: vi.fn() }));
-vi.mock('firebase/auth', () => ({ browserLocalPersistence: {}, setPersistence: mocks.setPersistence,
+  serverTimestamp: vi.fn(), signOut: vi.fn(), observe: vi.fn(), credential: vi.fn(), reauthCredential: vi.fn(), reauthPopup: vi.fn() }));
+vi.mock('firebase/auth', () => ({ EmailAuthProvider: { credential: mocks.credential }, reauthenticateWithCredential: mocks.reauthCredential, reauthenticateWithPopup: mocks.reauthPopup, browserLocalPersistence: {}, setPersistence: mocks.setPersistence,
   createUserWithEmailAndPassword: vi.fn(), onAuthStateChanged: vi.fn(), sendEmailVerification: vi.fn(),
   sendPasswordResetEmail: vi.fn(), signInWithEmailAndPassword: vi.fn(), signInWithPopup: vi.fn(),
   signOut: mocks.signOut, updateProfile: vi.fn() }));
@@ -16,7 +16,7 @@ const profile = { id: 'owner', email: 'student@example.test', username: 'Student
 const authUser = { uid: 'owner', email: 'Student@Example.test ', displayName: 'Account Name', emailVerified: true,
   providerData: [{ providerId: 'password' }], metadata: { creationTime: profile.createdAt } } as FirebaseUser;
 const timestamp = { fixtureServerTimestamp: true };
-const setRead = (value: unknown) => mocks.getDoc.mockResolvedValue({ exists: () => value !== null, data: () => value });
+const setRead = (value: unknown) => mocks.getDoc.mockImplementation((reference: { collection: string }) => Promise.resolve({ exists: () => reference.collection === 'profiles' && value !== null, data: () => value }));
 async function repository(user = authUser) {
   const { createFirebaseAuthRepository } = await import('./firebaseAuthRepository');
   return createFirebaseAuthRepository({ currentUser: user } as Auth, {} as Firestore);
@@ -143,6 +143,32 @@ it('a throwing optional disposer cannot escape asynchronous observer callbacks',
   expect(await repo.getCurrentUser()).toEqual(profile);
 });
 
+
+it('restores the auth identity without recreating a deleted profile while deletion is pending', async () => {
+  mocks.getDoc.mockImplementation((reference: { collection: string }) => Promise.resolve({
+    exists: () => reference.collection === 'account_deletions', data: () => ({ status: 'deleting' }),
+  }));
+  // The Rules tombstone refuses the profile write; sign-in still succeeds.
+  mocks.setDoc.mockRejectedValue(Object.assign(new Error('denied'), { code: 'permission-denied' }));
+  expect(await (await repository()).getCurrentUser()).toMatchObject({ id: 'owner' });
+});
+
+it('still surfaces a refused profile write when no deletion is pending', async () => {
+  mocks.getDoc.mockImplementation(() => Promise.resolve({ exists: () => false, data: () => undefined }));
+  mocks.setDoc.mockRejectedValue(Object.assign(new Error('denied'), { code: 'permission-denied' }));
+  await expect((await repository()).getCurrentUser()).rejects.toThrow();
+});
+
+it.each(['password', 'google.com'])('reauthenticates the current %s provider without profile writes', async provider => {
+  const getIdTokenResult = vi.fn().mockResolvedValue({ signInProvider: provider });
+  const user = { ...authUser, getIdTokenResult } as FirebaseUser;
+  mocks.credential.mockReturnValue('credential');
+  const repo = await repository(user);
+  await repo.reauthenticate!('secret-password');
+  if (provider === 'password') expect(mocks.reauthCredential).toHaveBeenCalledWith(user, 'credential');
+  else expect(mocks.reauthPopup).toHaveBeenCalledWith(user, undefined);
+  expect(mocks.setDoc).not.toHaveBeenCalled();
+});
 
 it.each([
   ['auth/email-already-in-use', 'すでに登録されています'],

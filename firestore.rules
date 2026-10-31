@@ -15,6 +15,10 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function accountDeletionStarted() {
+      return exists(/databases/$(database)/documents/account_deletions/$(request.auth.uid));
+    }
+
     function hasAcceptedWeeklyPlanningPolicy() {
       return isSignedIn()
         && exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
@@ -37,12 +41,12 @@ service cloud.firestore {
     }
 
     function canCreateOwnedResource() {
-      return isOwner(request.resource.data.userId);
+      return isOwner(request.resource.data.userId) && !accountDeletionStarted();
     }
 
     function canUpdateOwnedResource() {
       return isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+        && isOwner(request.resource.data.userId) && !accountDeletionStarted();
     }
 
     function hasScheduleEventMigration(userId) {
@@ -248,14 +252,14 @@ service cloud.firestore {
     }
     match /announcement_reads/{userId} {
       allow get: if isOwner(userId);
-      allow create, update: if isOwner(userId) && request.resource.data.keys().hasOnly(['through'])
+      allow create, update: if isOwner(userId) && !accountDeletionStarted() && request.resource.data.keys().hasOnly(['through'])
         && request.resource.data.through is timestamp && request.resource.data.through <= request.time
         && (resource == null || request.resource.data.through >= resource.data.through);
       allow delete, list: if false;
       match /items/{id} {
         allow get: if isOwner(userId);
         allow list: if isOwner(userId) && request.query.limit != null && request.query.limit <= 25;
-        allow create, update: if isOwner(userId) && request.resource.data.keys().hasOnly(['publishedAt'])
+        allow create, update: if isOwner(userId) && !accountDeletionStarted() && request.resource.data.keys().hasOnly(['publishedAt'])
           && request.resource.data.publishedAt is timestamp
           && request.resource.data.publishedAt <= get(/databases/$(database)/documents/announcements/$(id)).data.publishedAt
           && (resource == null || request.resource.data.publishedAt >= resource.data.publishedAt);
@@ -269,13 +273,18 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    match /account_deletions/{userId} {
+      allow get: if isOwner(userId);
+      allow list, create, update, delete: if false;
+    }
+
     match /profiles/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId)
+      allow create: if isOwner(userId) && !accountDeletionStarted()
         && !request.resource.data.keys().hasAny(['weeklyPlanningTracePolicy'])
         && request.resource.data.registeredAt is timestamp
         && request.resource.data.registeredAt == request.time;
-      allow update: if isOwner(userId)
+      allow update: if isOwner(userId) && !accountDeletionStarted()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'id',
           'email',
@@ -311,7 +320,7 @@ service cloud.firestore {
 
     match /schedule_event_migrations/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId)
+      allow create: if isOwner(userId) && !accountDeletionStarted()
         && request.resource.data.userId == userId
         && request.resource.data.schemaVersion == 1
         && request.resource.data.migrationVersion == 1
@@ -320,7 +329,7 @@ service cloud.firestore {
         && request.resource.data.revision == 1
         && request.resource.data.startedAt is string
         && request.resource.data.completedAt == null;
-      allow update: if isOwner(userId)
+      allow update: if isOwner(userId) && !accountDeletionStarted()
         && resource.data.userId == userId
         && request.resource.data.userId == userId
         && resource.data.schemaVersion == 1
@@ -388,8 +397,8 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/schedule_templates/$(templateId)).data.userId == userId;
       }
       allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && validAttendance();
-      allow update: if isOwner(userId) && validAttendance()
+      allow create: if isOwner(userId) && !accountDeletionStarted() && validAttendance();
+      allow update: if isOwner(userId) && !accountDeletionStarted() && validAttendance()
         && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if false;
     }
@@ -419,11 +428,11 @@ service cloud.firestore {
       }
       allow get: if isOwner(userId);
       allow list, delete: if false;
-      allow create: if isOwner(userId) && validRestState()
+      allow create: if isOwner(userId) && !accountDeletionStarted() && validRestState()
         && request.resource.data.revision == 1
         && request.resource.data.dates.size() == 1
         && validRestDate(request.resource.data.dates[0]);
-      allow update: if isOwner(userId) && validRestState()
+      allow update: if isOwner(userId) && !accountDeletionStarted() && validRestState()
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.dates.size() == resource.data.dates.size() + 1
         && request.resource.data.dates.hasAll(resource.data.dates)
@@ -524,7 +533,7 @@ service cloud.firestore {
       );
       allow list: if isAdmin()
         && request.query.limit != null && request.query.limit <= 26;
-      allow create: if isSignedIn()
+      allow create: if isSignedIn() && !accountDeletionStarted()
         && inquiryId.matches('^[a-zA-Z0-9_-]{20,80}$')
         && validInquirySchema(request.resource.data)
         && isOwner(request.resource.data.userId)
@@ -543,7 +552,7 @@ service cloud.firestore {
     match /support_inquiry_limits/{userId} {
       allow get: if isOwner(userId);
       allow list, delete: if false;
-      allow create, update: if isOwner(userId)
+      allow create, update: if isOwner(userId) && !accountDeletionStarted()
         && request.resource.data.keys().hasOnly(['inquiryId', 'submittedAt'])
         && request.resource.data.inquiryId is string
         && request.resource.data.inquiryId.matches('^[a-zA-Z0-9_-]{20,80}$')
@@ -557,13 +566,14 @@ service cloud.firestore {
     }
 
     match /weekly_planning_personalization_profiles/{userId} {
-      allow read, create, update, delete: if isOwner(userId)
+      allow read, delete: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy();
+      allow create, update: if isOwner(userId) && !accountDeletionStarted()
         && hasAcceptedWeeklyPlanningPolicy();
     }
 
     match /user_planning_contexts/{userId} {
       allow read: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy();
-      allow create, update: if isOwner(userId)
+      allow create, update: if isOwner(userId) && !accountDeletionStarted()
         && hasAcceptedWeeklyPlanningPolicy()
         && request.resource.data.schemaVersion == 'studyplanner-user-planning-context-cloud-v1'
         && request.resource.data.ownerId == userId

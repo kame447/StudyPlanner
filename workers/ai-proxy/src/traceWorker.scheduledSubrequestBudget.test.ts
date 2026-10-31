@@ -460,6 +460,7 @@ function installScenario(
     if (scenario === 'retention') {
       if (url.includes(':runQuery')) {
         const collection = collectionFromQuery(init);
+        if (collection === 'account_deletions') return new Response('[]', { status: 200 });
         const limit = (JSON.parse(String(init?.body)) as { structuredQuery: { limit: number } }).structuredQuery.limit;
         const count = state.retentionMax ? limit : 0;
         return new Response(JSON.stringify(Array.from({ length: count }, (_, index) => ({
@@ -732,19 +733,19 @@ describe('traceWorker scheduled subrequest budget', () => {
     expect(backlog.backfillCompleted).toBe(true);
   });
 
-  it('keeps retention steady and two 400-delete commits at exact 5 and 19', async () => {
+  it('keeps retention plus the account deletion probe at exact 6 and 20', async () => {
     const steady = installScenario('retention');
     await runScheduled(3);
-    expect(externalCalls(steady)).toBe(5);
+    expect(externalCalls(steady)).toBe(6);
 
     vi.unstubAllGlobals();
     const backlog = installScenario('retention', { retentionMax: true });
     await runScheduled(3);
     const firstCalls = externalCalls(backlog);
-    expect(firstCalls).toBe(19);
+    expect(firstCalls).toBe(20);
     expect(backlog.retentionDeleted).toBe(800);
     await runScheduled(3);
-    expect(externalCalls(backlog) - firstCalls).toBe(19);
+    expect(externalCalls(backlog) - firstCalls).toBe(20);
     expect(backlog.retentionDeleted).toBe(1_600);
   });
 

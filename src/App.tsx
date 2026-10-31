@@ -1,3 +1,6 @@
+import { isFirebaseEnabled } from './lib/firebaseConfig';
+import { AccountDeletionDialog } from './components/AccountDeletionDialog';
+import { hasPendingAccountDeletion } from './services/accountDeletionService';
 import { useStudyProgressPreference } from './hooks/useStudyProgressPreference';
 import { StudyStreakProvider } from './components/StudyStreakContext';
 import type { HomeAddEntry } from './components/home/TodayScheduleAddMenu';
@@ -190,6 +193,19 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     openDay,
     setEditorDraft,
   } = state;
+  const [pendingDeletionUid, setPendingDeletionUid] = useState<string | null>(null);
+  const [deletionOpen, setDeletionOpen] = useState(false);
+  useEffect(() => {
+    let current = true;
+    setDeletionOpen(false);
+    // Non-blocking: the app keeps its offline start. Rules reject writes while
+    // a deletion is unfinished, so an unanswered check only delays the dialog.
+    if (user && isFirebaseEnabled()) void hasPendingAccountDeletion(user.id).then(pending => {
+      if (current && pending) setPendingDeletionUid(user.id);
+    }).catch(() => undefined);
+    return () => { current = false; };
+  }, [user?.id]);
+
   const studyProgressPreference = useStudyProgressPreference(user?.id);
   const monthTimetablePreference = useMonthTimetablePreference(user?.id);
   const dayTimetablePreference = useTimetableDisplayPreference('day', user?.id);
@@ -307,6 +323,13 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
       />
     );
   }
+
+  const deletionPending = pendingDeletionUid === user.id;
+  const deletionDialog = <AccountDeletionDialog key={user.id} uid={user.id}
+    retry={deletionPending} onClose={() => setDeletionOpen(false)}
+    onSignOut={signOut}
+    onCompleted={async () => { await signOut(); window.location.reload(); }} />;
+  if (deletionPending) return deletionDialog;
 
   function openQuickEntry(materialId?: string) {
     if (!user) return;
@@ -752,7 +775,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
       />
 
     </div>
+      {deletionOpen ? deletionDialog : null}
       <AppSettingsDialog
+        onDeleteAccount={isFirebaseEnabled() ? () => setDeletionOpen(true) : undefined}
         homeScenePreferences={homeScenePreference.preferences}
         onChangeHomeSceneStyle={homeScenePreference.setStyle}
         onChangeHomeSceneMotion={homeScenePreference.setAnimated}
