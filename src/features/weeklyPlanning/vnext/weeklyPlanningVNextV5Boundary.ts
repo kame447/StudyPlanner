@@ -34,6 +34,9 @@ export { applyAcceptedMemorySessionProjectionV5 } from '../semantic/weeklyPlanni
 export { compileWeeklyPlanningMemoryCalibrationSchedulerInputV5 } from '../semantic/weeklyPlanningMemoryCalibrationSchedulerInputV5';
 export { deriveWeeklyPlanningEstimateCalibration } from '../personalization/weeklyPlanningEstimateCalibration';
 export { learningStrategyProposalIntentForStableV5Dialogue } from '../dialogue/weeklyPlanningStableV5DialogueContext';
+export { createFocusedContextualAnswerMessagesV5, parseFocusedContextualAnswerDecisionV5,
+  FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5, FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS } from '../semantic/weeklyPlanningFocusedContextualAnswerV5';
+export { createFocusedContextualBindingSnapshotV5, isFocusedContextualBindingCurrentV5 } from '../semantic/weeklyPlanningFocusedContextualBindingV5';
 export { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
 export {
   questionIntentForStableV5Dialogue,

@@ -30,7 +30,7 @@ export type WeeklyPlanningVNextAnswer =
    * Minutes for the asked work, for the whole of it or per unit; the binder names the task,
    * the work and (per unit) the work's unit from the question, not the AI.
    */
-  | { kind: 'estimate_minutes'; minutes: number; per: 'whole_work' | 'unit' }
+  | { kind: 'estimate_minutes'; minutes: number; per: 'whole_work' | 'unit'; precision?: 'exact' | 'approximate' | 'unspecified' }
   /** A semantic reading of a longer answer, already a typed delta. */
   | { kind: 'delta'; delta: VNextTurnDelta };
 
@@ -119,7 +119,7 @@ export function bindWeeklyPlanningVNextAnswer(params: {
             : { targetRef: { factId: forWork.definingFactId }, effortKind: 'duration_per_unit' as const,
                 unitCode: unitChanges?.unitCode ?? forWork.unitCode, unitLabel: unitChanges?.unitLabel ?? forWork.unitLabel }),
           minutes: answer.minutes,
-          precision: 'exact',
+          precision: answer.precision ?? 'exact',
         }],
       },
     };
