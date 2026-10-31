@@ -1,9 +1,11 @@
+import { writeFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
-// The live specs expect a verified account that has already chosen a week start (trace consent is off
-// without the Worker). Register it through the real sign-up screen, open the verification code the
-// emulator issues instead of a mail (it delivers none), then sign in and choose the week start, so
-// production code writes every document itself.
+// The live spec expects a returning account: verified, with a week start chosen and the first-run tour
+// done (trace consent is off without the Worker). Register through the real sign-up screen, apply the
+// verification code the emulator issues instead of a mail (it delivers none), sign in, and answer what
+// the app asks, so production code writes every document itself. The tour's completion lives only in
+// this browser's storage, so the live spec starts with that flag and, as against production, signed out.
 const email = process.env.STUDYPLANNER_LIVE_EMAIL;
 const password = process.env.STUDYPLANNER_LIVE_PASSWORD;
 const authEmulator = `http://${process.env.STUDYPLANNER_E2E_AUTH_EMULATOR_HOST}`;
@@ -40,10 +42,20 @@ test('register and prepare the emulator account through the real screens', async
 
   // The app asks for a week start only when it has none for this account; answer it if asked.
   const weekStart = page.getByRole('heading', { name: '1週間の始まりを選択' });
-  await expect(primaryNav.or(weekStart)).toBeVisible();
+  const tour = page.getByRole('dialog', { name: 'Laplanceの使い方' });
+  await expect(primaryNav.or(weekStart).or(tour).first()).toBeVisible();
   if (await weekStart.isVisible()) {
     await page.getByRole('combobox', { name: '週の始まり' }).selectOption('monday');
     await page.getByRole('button', { name: 'この設定で始める' }).click();
   }
+  // A new account without saved content is always shown the first-run tour once.
+  await tour.getByRole('button', { name: 'スキップ' }).click();
+  await expect(tour).toBeHidden();
   await expect(primaryNav).toBeVisible();
+  const state = await page.context().storageState();
+  await writeFile(process.env.STUDYPLANNER_E2E_EMULATOR_STATE, JSON.stringify({
+    cookies: [],
+    origins: state.origins.map((origin) => ({ origin: origin.origin,
+      localStorage: origin.localStorage.filter(({ name }) => name.startsWith('laplance-first-run-tour-v1:')) })),
+  }));
 });

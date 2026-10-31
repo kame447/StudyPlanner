@@ -15,6 +15,8 @@ Object.assign(process.env, {
   STUDYPLANNER_LIVE_PASSWORD: 'emulator-only-password',
   STUDYPLANNER_LIVE_ACCESS_KEY: '',
   STUDYPLANNER_E2E_AUTH_EMULATOR_HOST: '127.0.0.1:9199',
+  // The returning account's device-local first-run tour completion, saved by the setup project.
+  STUDYPLANNER_E2E_EMULATOR_STATE: path.join(repoRoot, 'artifacts/playwright-emulator-state.json'),
 });
 
 export default defineConfig({
@@ -42,7 +44,7 @@ export default defineConfig({
       // anywhere, and its triage is a separate #947 item, so it is not counted as covered.
       testMatch: 'live-account-schedule.live.mjs',
       dependencies: ['emulator-account-setup'],
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], storageState: process.env.STUDYPLANNER_E2E_EMULATOR_STATE },
     },
   ],
   webServer: [
