@@ -64,7 +64,7 @@ describe('weeklyPlanningApprovalApplication server completion', () => {
       getState: store.getState,
       dispatch: store.dispatch,
       onOperationCompleted: recordOperation,
-    })).rejects.toThrow('server-finalization-failed');
+    })).rejects.toThrow('予定の保存結果を確認できませんでした。保存済みの予定を確認し、未保存分だけ再試行してください。');
 
     expect(savePlan).toHaveBeenCalledTimes(1);
     expect(operations[0].status).toBe('completed');

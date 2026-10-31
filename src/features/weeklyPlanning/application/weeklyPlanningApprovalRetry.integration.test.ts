@@ -134,7 +134,7 @@ async function interruptedBatch(count: number, failedIndex: number, metadata: bo
   }
   if (loseLedger) operations = [];
   if (finalizationFailure) {
-    await expect(run()).rejects.toThrow('finalization-response-lost');
+    await expect(run()).rejects.toThrow('予定の保存結果を確認できませんでした。保存済みの予定を確認し、未保存分だけ再試行してください。');
     const callsBeforeFinalizationRetry = saveCalls;
     operations = [];
     state = decodeWeeklyPlanningStatePayload(JSON.parse(JSON.stringify({ version: 2, state })), state.weekStartDate);

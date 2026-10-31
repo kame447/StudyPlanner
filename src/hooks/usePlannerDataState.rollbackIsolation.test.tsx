@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createPlannerRepository } from '../repositories/plannerRepository';
@@ -126,7 +127,7 @@ it.each(operations)('isolates deletion from overlapping %s across outcomes, comp
         await act(async () => {
           if (success) gate.resolve(); else gate.reject(failure);
           const result = await (isA ? doneA : doneB);
-          if (!success) expect(result).toBe(failure);
+          if (!success) expect(result).toEqual(new UserFacingError(isA ? '予定を削除できませんでした。' : ({ move: '予定を移動できませんでした。', 'plan-update': '学習予定を保存できませんでした。', 'plan-create': '学習予定を保存できませんでした。', standalone: '記録を保存できませんでした。', link: '予定に紐づけできませんでした。', 'actual-delete': '記録を削除できませんでした。', 'schedule-todo': 'Todoを予定化できませんでした。', 'plan-delete': '予定を削除できませんでした。', 'linked-update': '記録を保存できませんでした。', 'linked-create': '記録を保存できませんでした。' })[operation]));
           else if (!isA && operation === 'schedule-todo') expect(result).toMatchObject({ userId: 'owner', sourceType: 'todo', sourceId: TODO.id });
           else expect(result).toBeUndefined();
         });

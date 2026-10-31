@@ -48,13 +48,34 @@ describe('auth entry paint and motion contract', () => {
 
   it('animates only transform on two layers, pauses while hidden, and disables animation below the standard motion level', () => {
     const frames: string[] = [];
-    root.walkAtRules('keyframes', rule => { rule.walkDecls(declaration => { frames.push(declaration.prop); }); });
+    root.walkAtRules('keyframes', rule => {
+      if (rule.params === 'auth-star-drift') rule.walkDecls(declaration => { frames.push(declaration.prop); });
+    });
     expect(frames).toEqual(['transform', 'transform']);
     expect(declarations(".auth-stars[data-paused='true'] .auth-stars__layer")['animation-play-state']).toBe('paused');
     expect(declarations(":root:is([data-motion='reduced'], [data-motion='off']) .auth-stars__layer").animation).toBe('none');
     expect(declarations(":root:is([data-motion='reduced'], [data-motion='off']) .auth-motion-toggle").display).toBe('none');
     expect(css).not.toMatch(/url\(|filter:\s*blur|backdrop-filter|will-change/);
     expect(declarations('.auth-stars')['pointer-events']).toBe('none');
+  });
+
+  it('keeps the brand anchored and switches only opacity on the existing form panel', () => {
+    expect(declarations('.auth-shell.auth-entry-shell')['align-content']).toBe('start');
+    expect(declarations('.auth-entry-panel').animation).toBe(
+      'auth-sign-in-fade var(--motion-duration-slow) var(--motion-ease-standard) both',
+    );
+    expect(declarations(".auth-entry-panel[data-intent='sign-up']")['animation-name']).toBe('auth-sign-up-fade');
+    for (const name of ['auth-sign-in-fade', 'auth-sign-up-fade']) {
+      const frames: Record<string, string> = {};
+      root.walkAtRules('keyframes', rule => {
+        if (rule.params === name) rule.walkDecls(declaration => {
+          expect(declaration.prop).toBe('opacity');
+          const parent = declaration.parent;
+          frames[parent?.type === 'rule' ? parent.selector : 'invalid'] = declaration.value;
+        });
+      });
+      expect(frames).toEqual({ from: '0', to: '1' });
+    }
   });
 
   it('feathers the existing navy bitmap without global logo changes or extra assets', () => {

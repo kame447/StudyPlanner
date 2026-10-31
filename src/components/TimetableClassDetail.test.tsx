@@ -55,7 +55,8 @@ it('keeps a failed record editable and retry succeeds without inventing a count'
   await mount({ list: vi.fn(async () => []), save });
   act(() => button('記録').props.onClick()); act(() => button('遅刻・早退').props.onClick());
   await act(async () => { await ui.root.findByType('form').props.onSubmit({ preventDefault() {} }); });
-  expect(ui.root.findByProps({ role: 'alert' }).children).toContain('offline');
+  expect(ui.root.findByProps({ role: 'alert' }).children).toContain('出欠の保存結果を確認できませんでした。再読み込みして記録を確認してください。');
+  expect(JSON.stringify(ui.toJSON())).not.toContain('offline');
   expect(ui.root.findAllByType('dd').map(node => node.children.join(''))).toEqual(['0', '0', '0']);
   expect(button('保存').props.disabled).toBe(false);
   await act(async () => { await ui.root.findByType('form').props.onSubmit({ preventDefault() {} }); });

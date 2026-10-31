@@ -1,3 +1,6 @@
+import { isFirebaseEnabled } from './lib/firebaseConfig';
+import { AccountDeletionDialog } from './components/AccountDeletionDialog';
+import { hasPendingAccountDeletion } from './services/accountDeletionService';
 import { useStudyProgressPreference } from './hooks/useStudyProgressPreference';
 import { StudyStreakProvider } from './components/StudyStreakContext';
 import type { HomeAddEntry } from './components/home/TodayScheduleAddMenu';
@@ -194,6 +197,19 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     openDay,
     setEditorDraft,
   } = state;
+  const [pendingDeletionUid, setPendingDeletionUid] = useState<string | null>(null);
+  const [deletionOpen, setDeletionOpen] = useState(false);
+  useEffect(() => {
+    let current = true;
+    setDeletionOpen(false);
+    // Non-blocking: the app keeps its offline start. Rules reject writes while
+    // a deletion is unfinished, so an unanswered check only delays the dialog.
+    if (user && isFirebaseEnabled()) void hasPendingAccountDeletion(user.id).then(pending => {
+      if (current && pending) setPendingDeletionUid(user.id);
+    }).catch(() => undefined);
+    return () => { current = false; };
+  }, [user?.id]);
+
   const studyProgressPreference = useStudyProgressPreference(user?.id);
   const monthTimetablePreference = useMonthTimetablePreference(user?.id);
   const dayTimetablePreference = useTimetableDisplayPreference('day', user?.id);
@@ -330,6 +346,13 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     );
   }
 
+  const deletionPending = pendingDeletionUid === user.id;
+  const deletionDialog = <AccountDeletionDialog key={user.id} uid={user.id}
+    retry={deletionPending} onClose={() => setDeletionOpen(false)}
+    onSignOut={signOut}
+    onCompleted={async () => { await signOut(); window.location.reload(); }} />;
+  if (deletionPending) return deletionDialog;
+
   function openQuickEntry(materialId?: string) {
     if (!user) return;
     setQuickEntry({ ownerId: user.id, id: ++quickEntrySequence.current, materialId });
@@ -406,7 +429,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         isWorkspaceSurface
           ? isScheduleSurface
             ? 'app-shell schedule-workspace-shell'
-            : `app-shell${viewMode === 'bookshelf' ? ' bookshelf-workspace-shell' : viewMode === 'report' ? ' report-workspace-shell' : ''}`
+            : `app-shell${viewMode === 'bookshelf' ? ' bookshelf-workspace-shell' : viewMode === 'report' ? ' report-workspace-shell' : viewMode === 'timetable' ? ' timetable-workspace-shell' : ''}`
           : `app-shell home-app-shell${isActiveAiPlanningSurface ? ' ai-planning-active' : ''}`
       }
     >
@@ -786,8 +809,10 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
       />
 
     </div>
+      {deletionOpen ? deletionDialog : null}
       <AppSettingsDialog
         onShowTutorial={() => { settingsNavigation.close(); setTutorialReplayOwner(user.id); }}
+        onDeleteAccount={isFirebaseEnabled() ? () => setDeletionOpen(true) : undefined}
         homeScenePreferences={homeScenePreference.preferences}
         onChangeHomeSceneStyle={homeScenePreference.setStyle}
         onChangeHomeSceneMotion={homeScenePreference.setAnimated}

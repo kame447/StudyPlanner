@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { useEffect, useRef, useState } from 'react';
 import type { InquiryAttachment } from '../../shared/inquiryAttachments';
 import { readInquiryAttachment } from '../services/inquiryAttachmentService';
@@ -19,7 +20,11 @@ export function InquiryPhotoViewer({ receiptId, slot, photo }: { receiptId: stri
     try {
       const blob = await readInquiryAttachment(receiptId, slot, photo, controller.signal);
       if (controller.signal.aborted || request.current !== controller) return;
-      objectUrl.current = URL.createObjectURL(blob);
+      try {
+        objectUrl.current = URL.createObjectURL(blob);
+      } catch {
+        throw new UserFacingError('写真を表示できませんでした。時間をおいて開き直してください。');
+      }
       setState({ kind: 'open', url: objectUrl.current });
     } catch (error) {
       if (!controller.signal.aborted && request.current === controller) setState({ kind: 'error', error: error instanceof Error ? error.message : '写真を取得できませんでした。' });

@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import {
   assertAttendanceDraft, assertAttendanceScope, readClassAttendance,
   type ClassAttendance, type ClassAttendanceDraft,
@@ -29,7 +30,7 @@ export function createLocalClassAttendanceRepository(
         const raw = storage.getItem(key);
         if (raw !== null) {
           const record = readClassAttendance(JSON.parse(raw), userId, templateId);
-          if (key !== `${keyPrefix}${record.date}`) throw new Error('出欠記録の日付が一致しません。');
+          if (key !== `${keyPrefix}${record.date}`) throw new UserFacingError('出欠記録の日付が一致しません。');
           rows.push(record);
         }
       }
@@ -39,7 +40,7 @@ export function createLocalClassAttendanceRepository(
       assertAttendanceDraft(draft);
       const templates = await planner.getScheduleTemplates(draft.userId);
       if (!templates.some(template => template.id === draft.templateId && template.userId === draft.userId)) {
-        throw new Error('この授業は削除されたか、利用できなくなりました。');
+        throw new UserFacingError('この授業は削除されたか、利用できなくなりました。');
       }
       const key = `${prefix(draft.userId, draft.templateId)}${draft.date}`;
       const raw = storage.getItem(key);
@@ -53,6 +54,6 @@ export function createLocalClassAttendanceRepository(
 }
 
 export function createUnavailableClassAttendanceRepository(): ClassAttendanceRepository {
-  const unavailable = async (): Promise<never> => { throw new Error('出欠の保存設定を確認できませんでした。'); };
+  const unavailable = async (): Promise<never> => { throw new UserFacingError('出欠の保存設定を確認できませんでした。'); };
   return { list: unavailable, save: unavailable };
 }

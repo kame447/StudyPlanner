@@ -16,6 +16,7 @@ const TABS = [
 
 interface AppSettingsDialogProps extends AppSettingsGeneralProps {
   open: boolean;
+  onDeleteAccount?: () => void;
   onClose: () => void;
   onShowTutorial?: () => void;
 }
@@ -28,7 +29,7 @@ function memoryOriginLabel(record: UserPlanningContextRecordV1): string {
 }
 
 // The entry point is retained; settings is now a standalone page, not a modal.
-export function AppSettingsDialog({ open, onClose, onShowTutorial, ...generalProps }: AppSettingsDialogProps) {
+export function AppSettingsDialog({ open, onClose, onShowTutorial, onDeleteAccount, ...generalProps }: AppSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<AppSettingsTab>('settings');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
@@ -221,7 +222,7 @@ export function AppSettingsDialog({ open, onClose, onShowTutorial, ...generalPro
                 </section>
               )}
             </div>
-          ) : <AppSettingsSupportPanel onShowTutorial={onShowTutorial} />}
+          ) : <AppSettingsSupportPanel onShowTutorial={onShowTutorial} onDeleteAccount={onDeleteAccount} />}
       </div>
     </div>
   </main>;

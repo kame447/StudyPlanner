@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { isInquiryAttachmentList, sameInquiryAttachments, type InquiryAttachment } from '../../shared/inquiryAttachments';
 import { createAuthSessionService, type AuthSessionService } from './authSession';
 import { submitInquiry, recoverInquiryReceipt } from './inquiryService';
@@ -105,7 +106,7 @@ export class InquiryDraft {
       if (!accepted) { this.update({ phase: 'restore-input', restoringReceipt: true, error: '' }); return; }
       this.update({ phase: marker.complete || !marker.attachments ? 'sent' : 'needs-files' });
     } catch (error) {
-      if (this.current(generation, userId)) this.update({ phase: 'recovery-failed', error: error instanceof Error ? error.message : '受付を確認できませんでした。' });
+      if (this.current(generation, userId)) this.update({ phase: 'recovery-failed', error: error instanceof UserFacingError ? error.message : '受付を確認できませんでした。本文は再送せず、時間をおいて受付を確認してください。' });
     } finally {
       if (this.recoveringGeneration === generation) this.recoveringGeneration = null;
     }

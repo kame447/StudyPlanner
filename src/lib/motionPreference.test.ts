@@ -43,7 +43,7 @@ describe('effective motion level', () => {
     expect(css).toContain('.home-dashboard:not([data-initial-layout-pending])');
     expect(css).toContain('.ai-planning-view-shell-v2:not([hidden]) > .ai-planning-view:not([hidden])');
     expect(css).toContain(':where(.app-shell > main) > :is(.schedule-month-view, .schedule-week-view, .swipe-view, .todo-view, .bookshelf-view, .learning-report-view, .timetable-view)');
-    expect(css).toContain('animation: ui-surface-fade var(--route-entry-duration, var(--motion-duration-fast)) ease-out backwards;');
+    expect(css).toContain('animation: ui-surface-fade var(--route-entry-duration, var(--motion-duration-slow)) ease-out backwards;');
     expect(css).toMatch(/:root\[data-motion='reduced'\] \.app-shell \{\s*--route-entry-duration: var\(--motion-duration-fade\);/);
     expect(css).not.toContain('ui-surface-enter');
     const bookshelfCss = readFileSync(new URL('../styles/bookshelf-add-material-mobile.css', import.meta.url), 'utf8');
@@ -52,6 +52,18 @@ describe('effective motion level', () => {
     expect(fade).toContain('opacity: 0;');
     expect(fade).toContain('opacity: 1;');
     expect(fade).not.toContain('transform');
+  });
+
+  it('keeps bookshelf navigation still without disabling data-change feedback', () => {
+    const view = readFileSync(new URL('../components/BookshelfView.tsx', import.meta.url), 'utf8');
+    expect(view).not.toMatch(/coverHandoff|rememberCover|playFromRect/);
+    expect(view).toContain('useDataChangeMotion(');
+    expect(view).toContain('className="bookshelf-expanded-materials"');
+    expect(view).not.toContain('bookshelf-expanded-materials motion-reveal');
+    const css = readFileSync(new URL('../styles/bookshelf.css', import.meta.url), 'utf8');
+    const content = css.match(/\.bookshelf-detail-content \{([^}]+)\}/)?.[1];
+    expect(content).toBeDefined();
+    expect(content).not.toMatch(/min-height|height:/);
   });
 
   it('keeps the JS exit waits equal to the CSS tokens that animate them', () => {

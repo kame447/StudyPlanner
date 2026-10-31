@@ -312,7 +312,8 @@ it('leaves planner failure after successful profile retry to existing planner re
   const state = fixture.content.mock.lastCall?.[0];
   expect(state.user.id).toBe('a'); expect(state.profileRestoreRecovery).toBeNull();
   expect(state.plannerDataRecovery).toMatchObject({ phase: 'failed', canRetry: true });
-  expect(state.notice.text).toBe('planner read failed');
+  expect(state.notice.text).toBe('学習データを読み込めませんでした。接続を確認して再読み込みしてください。');
+  expect(JSON.stringify(renderer!.toJSON())).not.toMatch(/planner unavailable|plans unavailable|planner read failed/);
 });
 
 it('keeps ordinary null-user startup and genuine sign-out out of profile recovery', async () => {

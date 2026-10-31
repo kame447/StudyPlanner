@@ -1,3 +1,4 @@
+import { UserFacingError } from '../lib/userFacingError';
 import { prepareStudyMaterialRecord } from '../domain/studyMaterialRecord';
 import { createDuplicatePlanDraft } from '../lib/scheduleItemActions';
 import { getEntryDurationMinutes, isValidPlanEntryTimeRange } from '../lib/entryTimeRange';
@@ -127,23 +128,8 @@ function getErrorDiagnostics(error: unknown): {
   };
 }
 
-function resolveErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error) {
-    const diagnostics = getErrorDiagnostics(error);
-    if (diagnostics.code && diagnostics.message) {
-      return `${diagnostics.code}: ${diagnostics.message}`;
-    }
-
-    const message = error.message.trim();
-    return message || fallback;
-  }
-
-  const diagnostics = getErrorDiagnostics(error);
-  if (diagnostics.code && diagnostics.message) {
-    return `${diagnostics.code}: ${diagnostics.message}`;
-  }
-
-  return diagnostics.message || fallback;
+function resolveUserFacingError(error: unknown, fallback: string): UserFacingError {
+  return error instanceof UserFacingError ? error : new UserFacingError(fallback);
 }
 
 function summarizePlanForLog(plan: Plan) {
@@ -348,7 +334,7 @@ export function usePlannerDataState({
       waiting.reject(new PlannerMutationScopeExpiredError());
     } else if (snapshot.recovery?.phase === 'failed') {
       demand.waiting = undefined;
-      waiting.reject(new Error('日次メモを読み込めませんでした。再読み込みしてから保存してください。'));
+      waiting.reject(new UserFacingError('日次メモを読み込めませんでした。再読み込みしてから保存してください。'));
     } else if (snapshot.availability.status === 'ready' && demand.notes !== null) {
       demand.waiting = undefined;
       waiting.resolve();
@@ -650,7 +636,7 @@ export function usePlannerDataState({
         return;
       }
       publishReadSnapshot();
-      throw error;
+      throw resolveUserFacingError(error, '学習データを読み込めませんでした。接続を確認して再読み込みしてください。');
     } finally {
       reconciliation.pump();
     }
@@ -717,7 +703,7 @@ export function usePlannerDataState({
     if (!mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)) {
       throw new PlannerMutationScopeExpiredError();
     }
-    if (savedPlan.userId !== userId) throw new Error('予定の所有者が一致しません。');
+    if (savedPlan.userId !== userId) throw new UserFacingError('予定の所有者が一致しません。');
     const settledActivity = reconciliation.captureActivity();
     const otherMutationObserved = activity.pending !== 1
       || activity.epoch !== settledActivity.epoch
@@ -831,7 +817,7 @@ export function usePlannerDataState({
       }
     } catch (error) {
       if (selectionOperation) selectionState.reject(selectionOperation);
-      if (!mutationScope.isCurrent() || error instanceof ActualMutationAdmissionError) throw error;
+      if (!mutationScope.isCurrent() || error instanceof ActualMutationAdmissionError) throw resolveUserFacingError(error, '予定の変更結果を確認できませんでした。現在の画面を確認してください。');
       console.error('[RecurringPlanScope] failed', {
         action: pendingRecurringPlanAction.kind,
         scope,
@@ -845,13 +831,11 @@ export function usePlannerDataState({
       });
       try { await loadPlannerData(userId); }
       catch { needsRefresh = true; }
-      showNotice(
-        resolveErrorMessage(
-          error,
-          pendingRecurringPlanAction.kind === 'edit'
+      const userFacingError = resolveUserFacingError(error, pendingRecurringPlanAction.kind === 'edit'
             ? '繰り返し予定の更新に失敗しました。'
-            : '繰り返し予定の削除に失敗しました。',
-        ),
+            : '繰り返し予定の削除に失敗しました。');
+      showNotice(
+        userFacingError.message,
         'error',
       );
     } finally {
@@ -861,12 +845,12 @@ export function usePlannerDataState({
 
   async function movePlanOccurrence(plan: Plan, target: WeekPlanMoveTarget) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     if (!isValidPlanEntryTimeRange({ ...plan, ...target })) {
       showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
-      throw new Error('有効な開始時刻と終了時刻を入力してください。');
+      throw new UserFacingError('有効な開始時刻と終了時刻を入力してください。');
     }
 
     const sourcePlan = resolveStoredPlan(plan);
@@ -904,20 +888,21 @@ export function usePlannerDataState({
       showNotice('予定を移動しました。', 'success');
     } catch (error) {
       planState.reject(planOperation);
+      const userFacingError = resolveUserFacingError(error, '予定を移動できませんでした。');
       showNotice(
-        resolveErrorMessage(error, '予定を移動できませんでした。'),
+        userFacingError.message,
         'error',
       );
-      throw error;
+      throw userFacingError;
     }
   }
 
   async function createPlanDraft(draft: PlanDraft): Promise<void> {
     if (!userId || draft.userId !== userId) {
-      throw new Error('ログイン状態と予定の所有者を確認してください。');
+      throw new UserFacingError('ログイン状態と予定の所有者を確認してください。');
     }
     if (!isValidPlanEntryTimeRange(draft)) {
-      throw new Error('有効な開始時刻と終了時刻を入力してください。');
+      throw new UserFacingError('有効な開始時刻と終了時刻を入力してください。');
     }
     // Independent create surfaces must not inherit the global editor's target
     // or resolve before a recurring-edit confirmation has actually persisted.
@@ -926,12 +911,12 @@ export function usePlannerDataState({
 
   async function savePlanDraft(draft: PlanDraft, targetPlanId?: string) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     if (!isValidPlanEntryTimeRange(draft)) {
       showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
-      throw new Error('有効な開始時刻と終了時刻を入力してください。');
+      throw new UserFacingError('有効な開始時刻と終了時刻を入力してください。');
     }
 
     if (editingPlan && isScopedRecurringEditCandidate(editingPlan)) {
@@ -964,11 +949,12 @@ export function usePlannerDataState({
       } catch (error) {
         planState.reject(planOperation);
         selectionState.reject(selectionOperation);
+        const userFacingError = resolveUserFacingError(error, '学習予定を保存できませんでした。');
         showNotice(
-          resolveErrorMessage(error, '学習予定を保存できませんでした。'),
+          userFacingError.message,
           'error',
         );
-        throw error;
+        throw userFacingError;
       }
     });
   }
@@ -983,7 +969,8 @@ export function usePlannerDataState({
           await trackMutation(onUndo, targets)();
           showNotice('元に戻しました。', 'success');
         } catch (error) {
-          showNotice(resolveErrorMessage(error, '復元できませんでした。'), 'error');
+          const userFacingError = resolveUserFacingError(error, '復元できませんでした。');
+          showNotice(userFacingError.message, 'error');
         }
       },
     });
@@ -997,7 +984,7 @@ export function usePlannerDataState({
       if (current && plannerDataReadAuthority.isProjectionUsable(current) && plannerDataReadAuthority.hasAcceptedProjectionChanged(uncertain)) {
         uncertainDaySources.delete(key);
       } else {
-        throw new Error('予定の保存状態を確認できません。再読み込み後にもう一度お試しください。');
+        throw new UserFacingError('予定の保存状態を確認できません。再読み込み後にもう一度お試しください。');
       }
     }
   }
@@ -1005,7 +992,7 @@ export function usePlannerDataState({
   async function withDayOccurrenceSourceWrite<T>(target: string | string[] | undefined, write: () => Promise<T>): Promise<T> {
     const keys = target ? typeof target === 'string' ? [target] : target : [];
     requireKnownDaySources(keys);
-    if (keys.some(key => pendingDayOccurrenceChanges.has(key))) throw new Error('この予定は保存中です。');
+    if (keys.some(key => pendingDayOccurrenceChanges.has(key))) throw new UserFacingError('この予定は保存中です。');
     keys.forEach(key => pendingDaySourceWrites.set(key, (pendingDaySourceWrites.get(key) ?? 0) + 1));
     try { return await write(); } finally {
       keys.forEach(key => {
@@ -1023,7 +1010,7 @@ export function usePlannerDataState({
   function requireDayOccurrenceProjection() {
     const lease = plannerDataReadAuthority.captureProjectionLease();
     if (!lease || !plannerDataReadAuthority.isProjectionUsable(lease)) {
-      throw new Error('予定の保存状態を確認できません。再読み込み後にもう一度お試しください。');
+      throw new UserFacingError('予定の保存状態を確認できません。再読み込み後にもう一度お試しください。');
     }
   }
 
@@ -1035,7 +1022,7 @@ export function usePlannerDataState({
     const keys = [...edit.templates.map(row => `timetable-template:${row.id}`), `plan:${plan.id}`];
     requireKnownDaySources(keys);
     if (keys.some(key => pendingDayOccurrenceChanges.has(key) || pendingDaySourceWrites.has(key))) {
-      throw new Error('この予定は保存中です。');
+      throw new UserFacingError('この予定は保存中です。');
     }
     // Reserve every grouped template before saving, symmetrically with import,
     // cancellation and master edits. No optimistic template is converted to a Plan.
@@ -1053,7 +1040,7 @@ export function usePlannerDataState({
         keys.forEach(key => uncertainDaySources.set(key, lease));
         reconciliation.request(lease, ['plans-todos']);
       }
-      throw error;
+      throw resolveUserFacingError(error, 'この日の予定を変更できませんでした。再読み込みして保存結果を確認してください。');
     } finally { keys.forEach(key => pendingDayOccurrenceChanges.delete(key)); }
   }
 
@@ -1077,7 +1064,7 @@ export function usePlannerDataState({
     const isPending = () => keys.some(key => pendingDayOccurrenceChanges.has(key) || pendingDaySourceWrites.has(key));
     const markPending = () => keys.forEach(key => pendingDayOccurrenceChanges.add(key));
     const clearPending = () => keys.forEach(key => pendingDayOccurrenceChanges.delete(key));
-    if (isPending()) throw new Error('この予定は保存中です。');
+    if (isPending()) throw new UserFacingError('この予定は保存中です。');
     const targets: PlannerRepairTarget[] = cancellation.kind === 'timetable' ? ['timetable']
       : cancellation.kind === 'plan' ? ['plans-todos'] : ['month-events'];
     const write = async (restore: boolean) => {
@@ -1123,26 +1110,27 @@ export function usePlannerDataState({
     try {
       await write(false);
       showDeleteUndoNotice(async () => {
-        if (isPending()) throw new Error('この予定は保存中です。');
+        if (isPending()) throw new UserFacingError('この予定は保存中です。');
         const data = dayMutationData.current;
         const rows = cancellation.kind === 'timetable' ? data.scheduleTemplates
           : cancellation.kind === 'plan' ? data.plans : data.monthEvents;
         const expected = cancellation.kind === 'timetable' ? cancellation.after : [cancellation.after];
         if (!expected.every(row => JSON.stringify(rows.find(current => current.id === row.id && current.userId === userId)) === JSON.stringify(row))) {
-          throw new Error('予定が更新されたため復元できません。現在の予定を確認してください。');
+          throw new UserFacingError('予定が更新されたため復元できません。現在の予定を確認してください。');
         }
         markPending();
         try { await write(true); } finally { clearPending(); }
       }, targets);
     } catch (error) {
-      showNotice(resolveErrorMessage(error, 'この日の予定を削除できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, 'この日の予定を削除できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     } finally { clearPending(); }
   }
 
   async function deletePlan(plan: Plan) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     if (isScopedRecurringEditCandidate(plan)) {
@@ -1158,8 +1146,9 @@ export function usePlannerDataState({
       if (plan.sourceType === 'todo' && plan.sourceId) {
         try { todoReservation = todoAdmission.beginLinkedPlanDelete(plan.sourceId, plan.userId, plan.id); }
         catch (error) {
-          showNotice(resolveErrorMessage(error, 'Todoを更新できませんでした。'), 'error');
-          throw error;
+          const userFacingError = resolveUserFacingError(error, 'Todoを更新できませんでした。');
+          showNotice(userFacingError.message, 'error');
+          throw userFacingError;
         }
       }
       const linkedTodo = todoReservation?.todo ?? null;
@@ -1229,8 +1218,9 @@ export function usePlannerDataState({
         planState.reject(planOperation);
         actualState.reject(actualOperation);
         todoState.reject(todoOperation);
-        showNotice(resolveErrorMessage(error, '予定を削除できませんでした。'), 'error');
-        throw error;
+        const userFacingError = resolveUserFacingError(error, '予定を削除できませんでした。');
+        showNotice(userFacingError.message, 'error');
+        throw userFacingError;
       }
     } finally {
       todoReservation?.settle();
@@ -1263,8 +1253,9 @@ export function usePlannerDataState({
       }
       return actualAdmission.acquire(targets, planIds, materialIds, subjectIds);
     } catch (error) {
-      showNotice(resolveErrorMessage(error, '記録を更新できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '記録を更新できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     }
   }
 
@@ -1305,9 +1296,9 @@ export function usePlannerDataState({
 
   async function saveActual(_plan: Plan, draft: ActualDraft, targetActualId?: string) {
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
-    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (!userId) throw new UserFacingError('ログイン状態を確認できませんでした。');
     if (getEntryDurationMinutes(draft.actualStartTime, draft.actualEndTime) <= 0) {
-      throw new Error('有効な開始時刻と終了時刻を入力してください。');
+      throw new UserFacingError('有効な開始時刻と終了時刻を入力してください。');
     }
     if (draft.planId) requireLinkedTarget(draft.planId, draft.occurrenceDate);
     const occurrenceKey = draft.planId ? buildPlanOccurrenceKey(draft.planId, draft.occurrenceDate) : null;
@@ -1361,21 +1352,22 @@ export function usePlannerDataState({
     } catch (error) {
       dispatchedFailure = materialIds.length > 0;
       actualState.reject(actualOperation);
-      showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '記録を保存できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function saveStandaloneActual(draft: ActualDraft, targetActualId?: string) {
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
-    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (!userId) throw new UserFacingError('ログイン状態を確認できませんでした。');
     if (!draft.title.trim()) {
       showNotice('記録のタイトルを入力してください。', 'error');
-      throw new Error('記録のタイトルを入力してください。');
+      throw new UserFacingError('記録のタイトルを入力してください。');
     }
     if (getEntryDurationMinutes(draft.actualStartTime, draft.actualEndTime) <= 0) {
       showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
-      throw new Error('有効な開始時刻と終了時刻を入力してください。');
+      throw new UserFacingError('有効な開始時刻と終了時刻を入力してください。');
     }
     const existingActual = targetActualId
       ? requireCurrentActual(targetActualId)
@@ -1443,21 +1435,22 @@ export function usePlannerDataState({
     } catch (error) {
       dispatchedFailure = materialIds.length > 0;
       actualState.reject(actualOperation);
-      showNotice(resolveErrorMessage(error, '記録を保存できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '記録を保存できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function linkStandaloneActualToPlan(actual: Actual, plan: Plan) {
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     const sourceActual = requireCurrentActual(actual.id);
     if (sourceActual.planId) {
       showNotice('この記録はすでに予定に紐づいています。', 'error');
-      throw new Error('この記録はすでに予定に紐づいています。');
+      throw new UserFacingError('この記録はすでに予定に紐づいています。');
     }
 
     const occurrenceDate = actual.occurrenceDate;
@@ -1471,7 +1464,7 @@ export function usePlannerDataState({
 
     if (existingLinkedActual) {
       showNotice('この予定にはすでに記録があります。', 'error');
-      throw new Error('この予定にはすでに記録があります。');
+      throw new UserFacingError('この予定にはすでに記録があります。');
     }
 
     const nextActual = prepareActualProgressSource({
@@ -1508,17 +1501,18 @@ export function usePlannerDataState({
       showNotice('予定に紐づけました。', 'success');
     } catch (error) {
       actualState.reject(actualOperation);
+      const userFacingError = resolveUserFacingError(error, '予定に紐づけできませんでした。');
       showNotice(
-        resolveErrorMessage(error, '予定に紐づけできませんでした。'),
+        userFacingError.message,
         'error',
       );
-      throw error;
+      throw userFacingError;
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection); }
   }
 
   async function deleteActual(actual: Actual) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
@@ -1532,11 +1526,12 @@ export function usePlannerDataState({
       showNotice('記録を削除しました。');
     } catch (error) {
       actualState.reject(actualOperation);
+      const userFacingError = resolveUserFacingError(error, '記録を削除できませんでした。');
       showNotice(
-        resolveErrorMessage(error, '記録を削除できませんでした。'),
+        userFacingError.message,
         'error',
       );
-      throw error;
+      throw userFacingError;
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection); }
   }
 
@@ -1547,7 +1542,7 @@ export function usePlannerDataState({
 
     const demand = dayNoteDemand.current;
     const currentNotes = demand && plannerDataReadAuthority.isOwnerCurrent(demand.scope) ? demand.notes : dayNotes;
-    if (currentNotes === null) throw new Error('日次メモを読み込んでから保存してください。');
+    if (currentNotes === null) throw new UserFacingError('日次メモを読み込んでから保存してください。');
     const currentDayNote = currentNotes.find((dayNote) => dayNote.date === draft.date);
     const nextDayNote = createDayNoteFromDraft(draft, currentDayNote);
 
@@ -1580,7 +1575,7 @@ export function usePlannerDataState({
         throw new PlannerMutationScopeExpiredError();
       }
       if (plannerDataReadAuthority.read().status !== 'ready' || dayNoteDemand.current?.notes == null) {
-        throw new Error('日次メモの読み込みが更新されました。もう一度保存してください。');
+        throw new UserFacingError('日次メモの読み込みが更新されました。もう一度保存してください。');
       }
     }
     await trackMutation(saveDayNote, ['day-notes'])(draft);
@@ -1591,9 +1586,9 @@ export function usePlannerDataState({
     const source = dayMutationData.current.monthEvents.find(event => event.id === id);
     if (!userId || draft.userId !== userId || edit.source.userId !== userId || !source
       || source.userId !== userId || JSON.stringify(source) !== JSON.stringify(edit.source)) {
-      throw new Error('予定が更新されました。現在の予定を開き直してください。');
+      throw new UserFacingError('予定が更新されました。現在の予定を開き直してください。');
     }
-    if ((pendingDaySourceWrites.get(`month-event:${id}`) ?? 0) > 1) throw new Error('この予定は保存中です。');
+    if ((pendingDaySourceWrites.get(`month-event:${id}`) ?? 0) > 1) throw new UserFacingError('この予定は保存中です。');
     const change = buildRecurringMonthEventEdit(source, draft, edit.occurrenceDate, edit.scope);
     const lease = plannerDataReadAuthority.captureProjectionLease();
     const keys = change.monthEvents.map(event => `month-event:${event.id}`);
@@ -1618,8 +1613,9 @@ export function usePlannerDataState({
         keys.forEach(key => uncertainDaySources.set(key, lease));
         reconciliation.request(lease, ['month-events']);
       }
-      showNotice(resolveErrorMessage(error, '予定を保存できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '予定を保存できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     } finally { keys.forEach(key => pendingDayOccurrenceChanges.delete(key)); }
   }
 
@@ -1630,13 +1626,13 @@ export function usePlannerDataState({
   ) {
     if (edit) return saveRecurringMonthEvent(draft, targetMonthEventId, edit);
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     const validationError = validateMonthEventDraft({ ...draft, title: draft.title.trim() });
     if (validationError) {
       showNotice(validationError, 'error');
-      throw new Error(validationError);
+      throw new UserFacingError(validationError);
     }
 
     const currentMonthEvent = monthEvents.find(
@@ -1665,21 +1661,22 @@ export function usePlannerDataState({
     } catch (error) {
       monthEventState.reject(monthEventOperation);
       selectionState.reject(selectionOperation);
+      const userFacingError = resolveUserFacingError(error, '月の主要予定を保存できませんでした。');
       showNotice(
-        resolveErrorMessage(error, '月の主要予定を保存できませんでした。'),
+        userFacingError.message,
         'error',
       );
-      throw error;
+      throw userFacingError;
     }
   }
 
   async function deleteMonthEvent(monthEvent: MonthEvent) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     const currentEvent = actualAdmission.monthEvents().find(event => event.userId === userId && event.id === monthEvent.id);
-    if (!currentEvent) throw new Error('主要予定を再読み込みしてから、もう一度削除してください。');
+    if (!currentEvent) throw new UserFacingError('主要予定を再読み込みしてから、もう一度削除してください。');
     const actualOperation = actualState.begin(current => preserveMonthEventActualSources(current, currentEvent));
     const monthEventOperation = monthEventState.begin((current) =>
       sortMonthEvents(removeByKey(current, monthEvent.id, (item) => item.id)),
@@ -1703,29 +1700,31 @@ export function usePlannerDataState({
     } catch (error) {
       monthEventState.reject(monthEventOperation);
       actualState.reject(actualOperation);
+      const userFacingError = resolveUserFacingError(error, '月の主要予定を削除できませんでした。');
       showNotice(
-        resolveErrorMessage(error, '月の主要予定を削除できませんでした。'),
+        userFacingError.message,
         'error',
       );
-      throw error;
+      throw userFacingError;
     }
   }
 
   function admitTodoMutation(id: string, owner: string) {
     try { return todoAdmission.begin(id, owner); } catch (error) {
-      showNotice(resolveErrorMessage(error, 'Todoを更新できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, 'Todoを更新できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     }
   }
 
   async function saveTodo(draft: TodoTaskDraft, targetTodoId?: string) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     if (!draft.title.trim()) {
       showNotice('Todoのタイトルを入れてください。', 'error');
-      throw new Error('Todoのタイトルを入れてください。');
+      throw new UserFacingError('Todoのタイトルを入れてください。');
     }
 
     if (draft.userId !== userId) throw new PlannerMutationScopeExpiredError();
@@ -1766,17 +1765,18 @@ export function usePlannerDataState({
         showNotice(currentTodo ? 'Todoを更新しました。' : 'Todoを追加しました。', 'success');
       } catch (error) {
         todoState.reject(todoOperation);
-        showNotice(resolveErrorMessage(error, 'Todoを保存できませんでした。'), 'error');
-        throw error;
+        const userFacingError = resolveUserFacingError(error, 'Todoを保存できませんでした。');
+        showNotice(userFacingError.message, 'error');
+        throw userFacingError;
       }
     } finally { admission?.settle(); }
   }
 
   async function scheduleTodoAsPlan(todo: TodoTask, draft: PlanDraft): Promise<Plan> {
-    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (!userId) throw new UserFacingError('ログイン状態を確認できませんでした。');
     if (!isValidPlanEntryTimeRange(draft)) {
       showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
-      throw new Error('有効な開始時刻と終了時刻を入力してください。');
+      throw new UserFacingError('有効な開始時刻と終了時刻を入力してください。');
     }
     if (draft.userId !== userId) throw new PlannerMutationScopeExpiredError();
     const admission = admitTodoMutation(todo.id, todo.userId);
@@ -1807,15 +1807,16 @@ export function usePlannerDataState({
         planState.reject(planOperation);
         todoState.reject(todoOperation);
         selectionState.reject(selectionOperation);
-        showNotice(resolveErrorMessage(error, 'Todoを予定化できませんでした。'), 'error');
-        throw error;
+        const userFacingError = resolveUserFacingError(error, 'Todoを予定化できませんでした。');
+        showNotice(userFacingError.message, 'error');
+        throw userFacingError;
       }
     } finally { admission.settle(); }
   }
 
   async function deleteTodo(todo: TodoTask) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     const admission = admitTodoMutation(todo.id, todo.userId);
@@ -1837,8 +1838,9 @@ export function usePlannerDataState({
         }, ['plans-todos']);
       } catch (error) {
         todoState.reject(todoOperation);
-        showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
-        throw error;
+        const userFacingError = resolveUserFacingError(error, 'Todoを削除できませんでした。');
+        showNotice(userFacingError.message, 'error');
+        throw userFacingError;
       }
     } finally { admission.settle(); }
   }
@@ -1847,11 +1849,11 @@ export function usePlannerDataState({
     draft: StudySubjectDraft,
     targetSubjectId?: string,
   ): Promise<StudySubject> {
-    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (!userId) throw new UserFacingError('ログイン状態を確認できませんでした。');
     const name = draft.name.trim();
     if (!name) {
       showNotice('教科名を入れてください。', 'error');
-      throw new Error('教科名を入れてください。');
+      throw new UserFacingError('教科名を入れてください。');
     }
     const currentSubject = actualAdmission.subjects().find((subject) => subject.id === targetSubjectId);
     if (targetSubjectId && !currentSubject) throw new MaterialMutationAdmissionError(materialStaleMessage);
@@ -1890,14 +1892,15 @@ export function usePlannerDataState({
       return nextSubject;
     } catch (error) {
       dispatchedFailure = true;
-      showNotice(resolveErrorMessage(error, '教科を保存できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '教科を保存できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function deleteStudySubject(subject: StudySubject) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
     const currentSubject = actualAdmission.subjects().find(item => item.id === subject.id);
     if (subject.userId !== userId || !currentSubject) {
@@ -1912,7 +1915,7 @@ export function usePlannerDataState({
 
     if (hasMaterials) {
       showNotice('教材がある教科は削除できません。先に教材を削除してください。', 'error');
-      throw new Error('教材がある教科は削除できません。');
+      throw new UserFacingError('教材がある教科は削除できません。');
     }
 
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
@@ -1941,8 +1944,9 @@ export function usePlannerDataState({
       });
     } catch (error) {
       dispatchedFailure = true;
-      showNotice(resolveErrorMessage(error, '教科を削除できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '教科を削除できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
@@ -1952,7 +1956,7 @@ export function usePlannerDataState({
     baseline?: MaterialEditBaseline,
   ): Promise<StudyMaterial> {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     const name = draft.name.trim();
@@ -1960,20 +1964,21 @@ export function usePlannerDataState({
 
     if (!name) {
       showNotice('教材名を入れてください。', 'error');
-      throw new Error('教材名を入れてください。');
+      throw new UserFacingError('教材名を入れてください。');
     }
 
     if (!subject) {
       showNotice('教科を選択してください。', 'error');
-      throw new Error('教科を選択してください。');
+      throw new UserFacingError('教科を選択してください。');
     }
 
     let currentMaterial: StudyMaterial | undefined;
     try {
       currentMaterial = targetMaterialId ? actualAdmission.requireMaterialBaseline(targetMaterialId, baseline) : undefined;
     } catch (error) {
-      showNotice(resolveErrorMessage(error, materialStaleMessage), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, materialStaleMessage);
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     }
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     const materialId = currentMaterial?.id ?? createId('study-material');
@@ -1996,13 +2001,14 @@ export function usePlannerDataState({
       return nextMaterial;
     } catch (error) {
       dispatchedFailure = true;
-      showNotice(resolveErrorMessage(error, '教材を保存できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '教材を保存できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function deleteStudyMaterial(material: StudyMaterial, baseline?: MaterialEditBaseline) {
-    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (!userId) throw new UserFacingError('ログイン状態を確認できませんでした。');
     // The editor's token carries its original scope/generation. Content equality
     // alone must not silently re-baseline an old dialog after reset or ABA.
     actualAdmission.captureMaterial(material);
@@ -2031,8 +2037,9 @@ export function usePlannerDataState({
       });
     } catch (error) {
       dispatchedFailure = true;
-      showNotice(resolveErrorMessage(error, '教材を削除できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '教材を削除できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
@@ -2041,17 +2048,17 @@ export function usePlannerDataState({
     targetTemplateId?: string,
   ) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
       showNotice('時間割の終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('時間割の終了時刻は開始時刻より後にしてください。');
+      throw new UserFacingError('時間割の終了時刻は開始時刻より後にしてください。');
     }
 
     if (!draft.title.trim()) {
       showNotice('時間割のタイトルを入れてください。', 'error');
-      throw new Error('時間割のタイトルを入れてください。');
+      throw new UserFacingError('時間割のタイトルを入れてください。');
     }
 
     const weekIntervalAnchorDate = draft.weekInterval === 2
@@ -2059,7 +2066,7 @@ export function usePlannerDataState({
       : null;
     if (draft.weekInterval === 2 && !weekIntervalAnchorDate) {
       showNotice('隔週の授業は基準日を設定してください。', 'error');
-      throw new Error('隔週の授業は基準日を設定してください。');
+      throw new UserFacingError('隔週の授業は基準日を設定してください。');
     }
 
     const currentTemplate = dayMutationData.current.scheduleTemplates.find(
@@ -2103,14 +2110,15 @@ export function usePlannerDataState({
         'success',
       );
     } catch (error) {
-      showNotice(resolveErrorMessage(error, '時間割を保存できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '時間割を保存できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     }
   }
 
   async function deleteScheduleTemplate(template: ScheduleTemplate) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
@@ -2124,18 +2132,19 @@ export function usePlannerDataState({
       }
       showNotice('時間割を削除しました。');
     } catch (error) {
-      showNotice(resolveErrorMessage(error, '時間割を削除できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '時間割を削除できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     }
   }
 
   async function activateTimetableTerm(draft: TimetableTermDraft): Promise<TimetableTerm> {
-    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (!userId) throw new UserFacingError('ログイン状態を確認できませんでした。');
     const startDate = normalizeTimetableDate(draft.startDate);
     const endDate = normalizeTimetableDate(draft.endDate);
     if (startDate && endDate && endDate < startDate) {
       showNotice('時間割の終了日は開始日以降にしてください。', 'error');
-      throw new Error('時間割の終了日は開始日以降にしてください。');
+      throw new UserFacingError('時間割の終了日は開始日以降にしてください。');
     }
     const usesAlternatingWeeks = draft.usesAlternatingWeeks === true;
     const alternatingWeekAnchorDate = usesAlternatingWeeks
@@ -2143,7 +2152,7 @@ export function usePlannerDataState({
       : null;
     if (usesAlternatingWeeks && !alternatingWeekAnchorDate) {
       showNotice('交互週を使う場合はA週の基準日を設定してください。', 'error');
-      throw new Error('交互週を使う場合はA週の基準日を設定してください。');
+      throw new UserFacingError('交互週を使う場合はA週の基準日を設定してください。');
     }
     const yearFromStartDate = startDate ? Number(startDate.slice(0, 4)) : null;
     const year = Number.isFinite(yearFromStartDate)
@@ -2197,17 +2206,18 @@ export function usePlannerDataState({
       showNotice('時間割の期間を保存しました。', 'success');
       return nextActiveTerm;
     } catch (error) {
-      showNotice(resolveErrorMessage(error, '時間割の期間を保存できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '時間割の期間を保存できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     }
   }
 
   async function deleteTimetableTerm(term: TimetableTerm) {
-    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (!userId) throw new UserFacingError('ログイン状態を確認できませんでした。');
     const targetTerm = timetableTerms.find((item) => item.id === term.id) ?? term;
     if (timetableTerms.length <= 1) {
       showNotice('最後の期間は削除できません。新しい期間を追加してから削除してください。', 'error');
-      throw new Error('最後の期間は削除できません。');
+      throw new UserFacingError('最後の期間は削除できません。');
     }
     const targetTermId = targetTerm.id;
     const targetTemplates = scheduleTemplates.filter(
@@ -2249,13 +2259,14 @@ export function usePlannerDataState({
       }
       showNotice('期間を削除しました。', 'success');
     } catch (error) {
-      showNotice(resolveErrorMessage(error, '期間を削除できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, '期間を削除できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     }
   }
 
   async function clearTimetableTermData(term: TimetableTerm) {
-    if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (!userId) throw new UserFacingError('ログイン状態を確認できませんでした。');
     const targetTermId = term.id;
     const targetTemplates = scheduleTemplates.filter(
       (template) => (template.termId || 'default') === targetTermId,
@@ -2286,8 +2297,9 @@ export function usePlannerDataState({
       }
       showNotice('この期間の授業をすべて削除しました。', 'success');
     } catch (error) {
-      showNotice(resolveErrorMessage(error, 'この期間の授業を削除できませんでした。'), 'error');
-      throw error;
+      const userFacingError = resolveUserFacingError(error, 'この期間の授業を削除できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
     }
   }
 
@@ -2296,7 +2308,7 @@ export function usePlannerDataState({
     targetPeriodId?: string,
   ): Promise<TimetablePeriod> {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     if (
@@ -2305,7 +2317,7 @@ export function usePlannerDataState({
       minutesBetween(draft.startTime, draft.endTime) <= 0
     ) {
       showNotice('時限の終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('時限の終了時刻は開始時刻より後にしてください。');
+      throw new UserFacingError('時限の終了時刻は開始時刻より後にしてください。');
     }
 
     const currentPeriod = timetablePeriods.find((period) => period.id === targetPeriodId);
@@ -2338,17 +2350,18 @@ export function usePlannerDataState({
       }
       return nextPeriod;
     } catch (error) {
+      const userFacingError = resolveUserFacingError(error, '時限設定を保存できませんでした。');
       showNotice(
-        resolveErrorMessage(error, '時限設定を保存できませんでした。'),
+        userFacingError.message,
         'error',
       );
-      throw error;
+      throw userFacingError;
     }
   }
 
   async function deleteTimetablePeriod(period: TimetablePeriod) {
     if (!userId) {
-      throw new Error('ログイン状態を確認できませんでした。');
+      throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
 
     const periodTemplates = scheduleTemplates.filter(
@@ -2359,7 +2372,7 @@ export function usePlannerDataState({
 
     if (periodTemplates.length > 0) {
       showNotice('授業が入っている時限は削除できません。', 'error');
-      throw new Error('授業が入っている時限は削除できません。');
+      throw new UserFacingError('授業が入っている時限は削除できません。');
     }
 
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
@@ -2373,11 +2386,12 @@ export function usePlannerDataState({
       }
       showNotice('時限を削除しました。');
     } catch (error) {
+      const userFacingError = resolveUserFacingError(error, '時限を削除できませんでした。');
       showNotice(
-        resolveErrorMessage(error, '時限を削除できませんでした。'),
+        userFacingError.message,
         'error',
       );
-      throw error;
+      throw userFacingError;
     }
   }
 

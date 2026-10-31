@@ -15,6 +15,7 @@ Updated: 2026-10-05
 - `domains/weekly-planning/`: 週間計画のproduct/runtime/dialogue/scheduler/personalization/quality
 - `domains/user-context/`: app-wide durable user context、semantic/episodic memory、memory retrieval、lifecycle/forget、conversation surfacing
 - `domains/client-runtime/`: client-first execution、local execution、sync authority等のclient runtime責務
+- `domains/account/`: アカウント退会、個人データの削除対象・保持例外、削除ジョブの監査・復旧運用
 - `domains/support/`: 認証済み問い合わせ送信、受付情報、管理者の閲覧、送信制限とprivacy責務
 - `domains/reporting/`: 学習実績・予定・教材情報の集計とuser-facing learning report
 - `domains/product-observability/`: service-wide product activity、AI/API usage、planning quality、operational drill-down向けtelemetry / analytics / read model責務
@@ -122,6 +123,12 @@ local fallbackのcommand/compensation直列化は `architecture/local-planner-st
 Actualと教材の画面横断admission、古いtarget拒否、教材編集時点の証拠は `architecture/actual-action-admission.md` が所有する。read healthと条件付きSubject再取得はread projection契約、storage queueはstorage契約が所有し、保証範囲を区別する。
 
 時間割のowner-scoped canonical IDと既存参照の整合化は `architecture/timetable-owner-identity.md` が所有する。既存Firestore所有者ルール、カスタム期間ID、旧clientのrollout制約を維持する。
+
+### Account
+
+入口: `docs/domains/account/README.md`
+
+退会時の削除対象、保持理由と期限、監査証跡、失敗時の運用手順は `policies/account-deletion-and-retention.md` が正本。週間計画traceの保持・マスキング・アクセス監査の意味はIssue #45の既存文書を参照し、このdomainでは再定義しない。
 
 ### Reporting
 

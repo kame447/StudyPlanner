@@ -186,6 +186,11 @@ export class ProductObservabilityStore {
 
     const existingActor = await this.lookupActorSubjectId(uid);
     if (existingActor) return existingActor;
+    // Account deletion removes the directory entry first; a still-signed-in
+    // device must not link new events to the deleting account again.
+    if (await this.firestore.getDocument('account_deletions', uid)) {
+      throw new Error('observability actor is being deleted');
+    }
 
     const directoryId = await this.keyedId('actor-directory', uid);
     const observedAt = this.now().toISOString();
