@@ -121,7 +121,8 @@ export function vnextUnitIdentity(unit: { unitCode: string | null; unitLabel: st
   return `${unit.unitCode ?? ''}|${label}`;
 }
 
-const PERCENT_UNIT_IDENTITY = vnextUnitIdentity({ unitCode: 'custom', unitLabel: '%' });
+// Normalizing this constant has no effects; disabled builds must not retain its initializer.
+const PERCENT_UNIT_IDENTITY = /*#__PURE__*/ vnextUnitIdentity({ unitCode: 'custom', unitLabel: '%' });
 
 export function isVNextPercentUnit(unit: { unitCode: string | null; unitLabel: string | null }): boolean {
   return vnextUnitIdentity(unit) === PERCENT_UNIT_IDENTITY;
