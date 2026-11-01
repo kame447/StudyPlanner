@@ -7,6 +7,11 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, '../..');
 const artifactsDir = path.join(repoRoot, 'artifacts');
 const isCi = Boolean(process.env.CI);
+// Chunk-load recovery is product behavior of whichever core lazy-loads its runtime: the default
+// VNext build loads weeklyPlanningVNextRuntimeModule, the comparison build the V5 executor. The spec
+// runs against both; every other stable-v5 spec stays comparison-only.
+const sharedCoreSpecs = new Set(['**/weekly-planning-module-recovery.spec.mjs']);
+const stableV5OnlySpecs = stableV5Specs.filter(spec => !sharedCoreSpecs.has(spec));
 
 export default defineConfig({
   testDir: configDir,
@@ -44,7 +49,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: stableV5Specs,
+      testIgnore: stableV5OnlySpecs,
       use: { ...devices['Desktop Chrome'] },
     },
     {
