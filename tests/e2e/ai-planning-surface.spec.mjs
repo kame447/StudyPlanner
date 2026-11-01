@@ -1,5 +1,6 @@
 import { expect, test } from './support/fixed-clock.mjs';
 import { waitForVisualReady } from './support/ui-regression.mjs';
+import { installWeeklyConversationSeeder } from './support/weekly-conversation-seed.mjs';
 
 async function seedHome(page) {
   await page.addInitScript(() => {
@@ -38,6 +39,7 @@ async function seedHome(page) {
 }
 
 async function seedMultiweekDraftPlan(page, dayCount = 12, messageCount = 0) {
+  await installWeeklyConversationSeeder(page);
   await page.addInitScript(({ dayCount: requestedDayCount, messageCount: requestedMessageCount }) => {
     const now = new Date().toISOString();
     const today = new Date();
@@ -108,7 +110,6 @@ async function seedMultiweekDraftPlan(page, dayCount = 12, messageCount = 0) {
       })),
       updatedAt: now,
     };
-    const storageKey = `studyplanner.weeklyPlanning.${user.id}.${weekStartDate}`;
 
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
@@ -116,23 +117,7 @@ async function seedMultiweekDraftPlan(page, dayCount = 12, messageCount = 0) {
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
-    localStorage.setItem(
-      storageKey,
-      JSON.stringify({
-        version: 3,
-        ownerId: user.id,
-        payload: { version: 2, state: planningState },
-      }),
-    );
-    localStorage.setItem(
-      `studyplanner.weeklyPlanning.activeSession.${user.id}`,
-      JSON.stringify({
-        version: 1,
-        ownerId: user.id,
-        weekStartDate,
-        conversationId: null,
-      }),
-    );
+    window.__seedWeeklyConversation({ ownerId: user.id, weekStartDate, state: planningState });
   }, { dayCount, messageCount });
 }
 

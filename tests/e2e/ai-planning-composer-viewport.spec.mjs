@@ -1,11 +1,13 @@
 import { expect, test } from './support/fixed-clock.mjs';
 import { clickPrimaryNav, seedRegressionUser } from './support/ui-regression.mjs';
+import { installWeeklyConversationSeeder } from './support/weekly-conversation-seed.mjs';
 
 // Desktop automation cannot open an iOS keyboard. Simulate its VisualViewport
 // boundary while keeping the full App, persisted messages and DOM layout real.
 // Actual Safari keyboard/pinch interaction remains a separate device check.
 async function seedConversationAndViewport(page, withPreview = false) {
   await seedRegressionUser(page);
+  await installWeeklyConversationSeeder(page);
   const initialViewport = page.viewportSize();
   if (!initialViewport) throw new Error('The visual-viewport fixture requires an explicit browser viewport');
   await page.addInitScript(({ withPreview, viewportHeight }) => {
@@ -42,17 +44,11 @@ async function seedConversationAndViewport(page, withPreview = false) {
       type: 'study', label: '数学', source: 'ai', status: 'draft', userEdited: false,
       createdAt: now, updatedAt: now,
     }] : [];
-    localStorage.setItem(`studyplanner.weeklyPlanning.${ownerId}.${weekStartDate}`, JSON.stringify({
-      version: 3, ownerId,
-      payload: { version: 2, state: {
-        weekStartDate, revision: 1, conversationRequestSequence: 0,
-        mode: withPreview ? 'draft_created' : 'collecting_tasks',
-        draftBlocks, previewCandidates: [], messages, updatedAt: now,
-      } },
-    }));
-    localStorage.setItem(`studyplanner.weeklyPlanning.activeSession.${ownerId}`, JSON.stringify({
-      version: 1, ownerId, weekStartDate, conversationId: null,
-    }));
+    window.__seedWeeklyConversation({ ownerId, weekStartDate, state: {
+      weekStartDate, revision: 1, conversationRequestSequence: 0,
+      mode: withPreview ? 'draft_created' : 'collecting_tasks',
+      draftBlocks, previewCandidates: [], messages, updatedAt: now,
+    } });
   }, { withPreview, viewportHeight: initialViewport.height });
 }
 
