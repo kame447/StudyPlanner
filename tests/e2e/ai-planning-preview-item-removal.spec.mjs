@@ -253,7 +253,9 @@ test('AI planning storage failure exposes an operable retry and preserves the em
     await page.evaluate(() => {
       const setItem = Storage.prototype.setItem;
       Storage.prototype.setItem = function (key, value) {
-        if (this === localStorage && key.startsWith('studyplanner.aiPlanning.chat.v1.')) {
+        // The active core's per-chat snapshot: VNext in production, V5 in the comparison build.
+        if (this === localStorage && (key.startsWith('studyplanner.aiPlanning.chat.v1.')
+          || key.startsWith('studyplanner.weeklyPlanning.vnext.'))) {
           throw new DOMException('Simulated full storage', 'QuotaExceededError');
         }
         return setItem.call(this, key, value);
