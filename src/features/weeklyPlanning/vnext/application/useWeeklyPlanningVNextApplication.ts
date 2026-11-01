@@ -10,8 +10,6 @@ import { loadWeeklyPlanningApprovalOperations, saveWeeklyPlanningApprovalOperati
 import { startOfWeeklyPlanningWeek } from '../../personalization/weeklyPlanningWeek';
 import { useWeeklyPlanningPersonalization } from '../../personalization/WeeklyPlanningPersonalizationContext';
 import { isPlannerDataReadyForOwner } from '../../../../domain/plannerDataReadAuthority';
-import { createOpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClient';
-import { getAiConfig, getCloudflareAiProxyUrl } from '../../../../lib/aiConfig';
 import type { WeeklyPlanningAction, PlanningState } from '../../types';
 import { createAiPlanningChatSessionWithStore } from '../../chat/aiPlanningChatSession';
 import { hasStoredAiPlanningChatIndex, readAiPlanningChatSnapshotRaw, saveAiPlanningChatSearchText } from '../../chat/aiPlanningChatStore';
@@ -20,34 +18,31 @@ import { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurable
 import { durableWeeklyPlanningEnabled, cancelDurableWeeklyTurn } from '../../application/weeklyPlanningDurableTurnClient';
 import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../application/weeklyPlanningDurableRecovery';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
-import { createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoiceBrowserPort';
-import { createWeeklyPlanningVNextRuntimeInterpreter, VNEXT_OPTION_CHOICE_POLICY, VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } from './weeklyPlanningVNextRuntimeInterpreter';
-import { createWeeklyPlanningStableV5DialogueRendererCore } from '../weeklyPlanningVNextV5Boundary';
+import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+  /** Loads the heavy runtime behind `client`, `interpret` and `createRenderer` before they are called. */
+  preload?: () => Promise<void>;
   client: () => WeeklyPlanningVNextExperimentalPorts['client'];
   interpret: (scope: { ownerId: string; conversationId: string }) => WeeklyPlanningVNextExperimentalPorts['interpret'];
   createRenderer: (client: WeeklyPlanningVNextExperimentalPorts['client'], options: { canDispatchRecovery: () => boolean }) => ReturnType<WeeklyPlanningVNextExperimentalPorts['createRenderer']>;
   now: () => string;
 }
 
-/** Frozen VNext dev calibration (luna-holdout-fallback-a25c9899); no V5 settings or retuning.
- * The native reader remains the complete fallback for both narrow Jev purposes.
- */
 function localServices(): WeeklyPlanningVNextLocalApplicationServices {
+  // The runtime (provider, interpreter, renderer, client) is a lazy chunk; the entry keeps the hook only.
+  let runtime: Awaited<ReturnType<typeof loadWeeklyPlanningVNextRuntimeModule>>['weeklyPlanningVNextRuntimeFactories'] | undefined;
+  const loaded = () => { if (!runtime) throw new Error('The VNext runtime is not loaded.'); return runtime; };
   // Resolve storage per operation so an absent or throwing localStorage (private mode, blocked
   // site data) surfaces inside the hook's guarded reads and writes, as it does for V5's stores.
   return { storage: { getItem: key => window.localStorage.getItem(key),
       setItem: (key, value) => window.localStorage.setItem(key, value),
       removeItem: key => window.localStorage.removeItem(key) },
-    client: () => {
-      if (!getCloudflareAiProxyUrl()) throw new Error('The local VNext experiment requires the authenticated Worker proxy.');
-      return createOpenAiCompatibleClient({ ...getAiConfig(), provider: 'openai' });
-    },
-    interpret: scope => createWeeklyPlanningVNextRuntimeInterpreter(scope, { choice: createWeeklyPlanningVNextOptionChoicePort({
-      policy: VNEXT_OPTION_CHOICE_POLICY, client: { semanticPolicy: VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } }) }),
-    createRenderer: (client, options) => createWeeklyPlanningStableV5DialogueRendererCore(client, options),
+    preload: async () => { runtime = (await loadWeeklyPlanningVNextRuntimeModule()).weeklyPlanningVNextRuntimeFactories; },
+    client: () => loaded().client(),
+    interpret: scope => loaded().interpret(scope),
+    createRenderer: (client, options) => loaded().createRenderer(client, options),
     now: () => new Date().toISOString() };
 }
 
@@ -180,7 +175,8 @@ export function useWeeklyPlanningVNextApplication(
   const liveSession = useMemo(() => ({ get checkpoint() { return runtime.local.checkpoint; },
     get legacyV5Checkpoint() { return runtime.local.legacyV5Checkpoint; } }), [runtime]);
   const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: liveSession,
-    ports: turn => {
+    ports: async turn => {
+      await services.preload?.();
       const local = runtime.local;
       const client = services.client();
       return { client, interpret: services.interpret({ ownerId, conversationId: turn.pending.conversationId }),

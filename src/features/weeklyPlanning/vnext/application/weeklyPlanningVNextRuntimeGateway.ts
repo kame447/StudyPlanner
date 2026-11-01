@@ -4,7 +4,7 @@ import { createWeeklyPlanningTurnRequestContext } from '../../application/weekly
 import { durableWeeklyPlanningEnabled, executeDurableWeeklyTurn, readDurableWeeklyTurnReceipt, saveDurableWeeklyTurnReceipt } from '../../application/weeklyPlanningDurableTurnClient';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import type { WeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
-import { executeIsolatedWeeklyPlanningVNextTurn } from './weeklyPlanningVNextIsolatedTurn';
+import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
 import type { WeeklyPlanningVNextDurableTurnInput, WeeklyPlanningVNextDurableTurnResult } from './weeklyPlanningVNextDurableTurn';
 import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 
@@ -19,12 +19,12 @@ export function readWeeklyPlanningVNextDurableReceipt(ownerId: string) {
  */
 export function createWeeklyPlanningVNextRuntimeGateway(params: {
   session: Pick<WeeklyPlanningVNextLocalSession, 'checkpoint' | 'legacyV5Checkpoint'>;
-  ports(input: ExecuteWeeklyPlanningTurnRuntimeParams): WeeklyPlanningVNextExperimentalPorts;
+  /** Built only when the turn runs in this tab, so a lazy runtime loads after durable execution is ruled out. */
+  ports(input: ExecuteWeeklyPlanningTurnRuntimeParams): WeeklyPlanningVNextExperimentalPorts | Promise<WeeklyPlanningVNextExperimentalPorts>;
 }): { runtimeGateway: WeeklyPlanningTurnRuntimeGateway; stagingLifecycle: WeeklyPlanningTurnStagingLifecycle } {
   const stages = new Map<string, { before: string | null; after: string }>();
   return {
     runtimeGateway: { async execute(input) {
-      const ports = params.ports(input);
       const before = params.session.checkpoint.read();
       const clock = createWeeklyPlanningTurnRequestContext({ startedAtIso: input.pending.startedAt,
         timeZone: input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'Asia/Tokyo',
@@ -52,7 +52,10 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
         completed = await executeDurableWeeklyTurn<WeeklyPlanningVNextDurableTurnResult>(receipt, {
           resumeOnly: input.resumeDurable, isCurrent: input.isCurrentTurn,
         });
-      } else completed = await executeIsolatedWeeklyPlanningVNextTurn(payload, ports);
+      } else {
+        const { executeIsolatedWeeklyPlanningVNextTurn } = await loadWeeklyPlanningVNextRuntimeModule();
+        completed = await executeIsolatedWeeklyPlanningVNextTurn(payload, await params.ports(input));
+      }
       if (input.isCurrentTurn?.() === false) throw new Error('Conversation changed before the VNext result returned.');
       if (completed.core !== 'vnext' || completed.checkpointBefore !== before
         || (completed.checkpointAfter !== null && typeof completed.checkpointAfter !== 'string')) {

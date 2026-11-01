@@ -30,7 +30,6 @@ import {
 } from '../projection/weeklyPlanningVNextSchedulerGraph';
 import {
   applyWeeklyPlanningVNextTurn,
-  createEmptyWeeklyPlanningVNextState,
 } from '../semantic/weeklyPlanningVNextTransaction';
 import type {
   WeeklyPlanningVNextInterpretation,
@@ -45,7 +44,6 @@ import type {
   WeeklyPlanningVNextState,
 } from '../weeklyPlanningVNextTypes';
 import {
-  parseWeeklyPlanningStableV5PersistedSession,
   createStableV5ExternalConstraintSources,
   deriveWeeklyPlanningEstimateCalibration,
   scheduleWeeklyPlanningStableV5Preview,
@@ -58,12 +56,12 @@ import { resolveWeeklyPlanningVNextTurnDelta } from './weeklyPlanningVNextAnswer
 import { createVNextOptionalInvitation } from './weeklyPlanningVNextOptionalInvitation';
 import { createWeeklyPlanningVNextRenderInput, VNEXT_RECENT_MESSAGE_LIMIT } from './weeklyPlanningVNextDialogue';
 import {
-  migrateWeeklyPlanningV5GraphToVNextSession,
-  parseWeeklyPlanningVNextSessionCheckpoint,
   serializeWeeklyPlanningVNextSessionCheckpoint,
-  type WeeklyPlanningVNextSessionCheckpoint,
   type WeeklyPlanningVNextShownPreview,
 } from './weeklyPlanningVNextSessionCheckpoint';
+
+export { readWeeklyPlanningVNextExperimentalSession, type WeeklyPlanningVNextExperimentalRead } from './weeklyPlanningVNextSessionRead';
+import { readWeeklyPlanningVNextExperimentalSession } from './weeklyPlanningVNextSessionRead';
 
 export interface WeeklyPlanningVNextStorageSlot {
   read(): string | null;
@@ -132,11 +130,6 @@ export interface WeeklyPlanningVNextExperimentalPorts {
   now(): string;
 }
 
-export type WeeklyPlanningVNextExperimentalRead =
-  | { status: 'ready'; source: 'vnext' | 'migrated_v5' | 'empty'; checkpoint: WeeklyPlanningVNextSessionCheckpoint['vnext'] }
-  /** Bytes that are neither format: never overwritten, never guessed. */
-  | { status: 'unreadable' };
-
 export type WeeklyPlanningVNextExperimentalTurnOutcome =
   | 'applied'
   | 'noop'
@@ -174,33 +167,6 @@ export interface WeeklyPlanningVNextExperimentalTurn {
   interpretation: WeeklyPlanningVNextInterpretation | null;
   appliedDelta: VNextTurnDelta | null;
   errors: VNextTurnError[];
-}
-
-export function readWeeklyPlanningVNextExperimentalSession(
-  scope: Pick<WeeklyPlanningVNextExperimentalScope, 'ownerId' | 'weekStartDate' | 'conversationId'>,
-  ports: Pick<WeeklyPlanningVNextExperimentalPorts, 'checkpoint' | 'legacyV5Checkpoint'>,
-): WeeklyPlanningVNextExperimentalRead {
-  const raw = ports.checkpoint.read();
-  if (raw !== null) {
-    const parsed = parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: scope.ownerId, weekStartDate: scope.weekStartDate });
-    return parsed && parsed.conversationId === scope.conversationId
-      ? { status: 'ready', source: 'vnext', checkpoint: parsed.vnext }
-      : { status: 'unreadable' };
-  }
-  const legacy = ports.legacyV5Checkpoint.read();
-  if (legacy === null) {
-    return { status: 'ready', source: 'empty', checkpoint: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [] } };
-  }
-  const v5 = parseWeeklyPlanningStableV5PersistedSession({ raw: legacy, ownerId: scope.ownerId, weekStartDate: scope.weekStartDate });
-  if (!v5 || v5.conversationId !== scope.conversationId) return { status: 'unreadable' };
-  // Presented questions and previews were made against the V5 revision; migration moves past it.
-  return {
-    status: 'ready',
-    source: 'migrated_v5',
-    checkpoint: { state: migrateWeeklyPlanningV5GraphToVNextSession(v5.graph, v5.planningState.intakeState?.groundingRecords,
-      v5.planningState.intakeState?.draftGenerationIntent).state,
-      presentedQuestion: null, preview: null, messages: [] },
-  };
 }
 
 /** The scheduling context of a state: horizon from its planning window (or the selected week), by V5's resolvers. */

@@ -7,7 +7,7 @@ import { weeklyPlanningStableV5StorageKey, parseWeeklyPlanningStableV5PersistedS
 import type { resolveWeeklyPlanningApprovalRuntime } from '../../application/weeklyPlanningApprovalRuntimeResolver';
 import type { PlanningState } from '../../types';
 import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
-import { readWeeklyPlanningVNextExperimentalSession } from './weeklyPlanningVNextExperimentalSession';
+import { readWeeklyPlanningVNextExperimentalSession } from './weeklyPlanningVNextSessionRead';
 import { createWeeklyPlanningApplicationRequestId } from '../../application/weeklyPlanningApplicationIdentity';
 
 export function createWeeklyPlanningVNextLocalSession(params: {
