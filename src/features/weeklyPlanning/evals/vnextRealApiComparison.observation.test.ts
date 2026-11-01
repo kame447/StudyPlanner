@@ -1543,6 +1543,11 @@ describe('VNext real API conversation fixture contract (offline)', () => {
       communicationStatusReason: null, optionalInvitationClosed: false, finalCandidateCount: 0, saveWritesBeforeApproval: 0,
     }));
     expect(requiredDifferences).toEqual([]);
+    // A reading that drops the act while the required question is shown (run 41340157768, 3 of 3) is still a failure.
+    expect(compareOptionalInvitationOracle(requiredOracle.optionalInvitation, {
+      optionalInvitationKind: 'required', conversationActKinds: [],
+      communicationStatusReason: null, optionalInvitationClosed: false, finalCandidateCount: 0, saveWritesBeforeApproval: 0,
+    })).toEqual(['conversation act kinds expected=decline_additional_work observed=none']);
     expect(compareOptionalInvitationOracle(requiredOracle.optionalInvitation, {
       optionalInvitationKind: 'optional', conversationActKinds: ['decline_additional_work'],
       communicationStatusReason: 'no_additional_work', optionalInvitationClosed: true,

@@ -601,5 +601,9 @@ describe('a plan request with new work after the optional invitation', () => {
     const schema = JSON.stringify(second.responseFormat?.json_schema?.schema);
     expect(schema).toContain('presentedQuestion with an optionalInvitation field is that invitation');
     expect(schema).toContain('decline_additional_work with an empty delta');
+    // The act is about what the user said, not about which question is shown: a required question presented at the same
+    // time (V5 reads the act there too) must not narrow it, and the application keeps that question.
+    expect(schema).toContain('whichever question is presented');
+    expect(schema).toContain('never dismiss a required question');
   });
 });
