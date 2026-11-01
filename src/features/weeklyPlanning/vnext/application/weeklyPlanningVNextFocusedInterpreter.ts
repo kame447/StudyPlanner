@@ -56,9 +56,13 @@ export function createWeeklyPlanningVNextFocusedInterpreter(params: { fullReadin
     const evidence = contextualInput(input, requestId);
     const snapshot = evidence ? createFocusedContextualBindingSnapshotV5(evidence) : null;
     if (!evidence || !snapshot) return params.fullReading(input);
-    const fallback = async () => {
+    // The focused dispatch is part of this invocation: it counts as a call, and when it failed the provider
+    // failure travels with the fallback's result (the recovery bound may not forget it).
+    const fallback = async (focusedDispatchFailed = false) => {
       const result = await params.fullReading(input);
-      return { ...result, metrics: { ...result.metrics, calls: result.metrics.calls + 1, latencyMs: Math.max(0, Date.now() - started) } };
+      const failures = (result.metrics.providerFailures ?? 0) + (focusedDispatchFailed ? 1 : 0);
+      return { ...result, metrics: { ...result.metrics, calls: result.metrics.calls + 1, latencyMs: Math.max(0, Date.now() - started),
+        ...(failures > 0 ? { providerFailures: failures } : {}) } };
     };
     let raw: string;
     try {
@@ -68,7 +72,7 @@ export function createWeeklyPlanningVNextFocusedInterpreter(params: { fullReadin
         maxCompletionTokens: FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS, temperature: 0,
         purpose: 'weekly_planning_semantic_normalizer', decisionContext: snapshot.context,
       });
-    } catch { return fallback(); }
+    } catch { return fallback(true); }
     const current = contextualInput(input, requestId);
     if (!current || !isFocusedContextualBindingCurrentV5(snapshot, current)) return fallback();
     const decision = parseFocusedContextualAnswerDecisionV5(raw);

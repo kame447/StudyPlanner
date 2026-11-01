@@ -86,6 +86,14 @@ export interface WeeklyPlanningVNextInterpretationMetrics {
   calls: number;
   repairs: number;
   latencyMs: number;
+  /**
+   * Provider dispatches through the normalizer client that FAILED earlier in this invocation, carried by every
+   * interpreter that falls back (the focused route adds its own). The single recovery gate reads it with the
+   * final failure reason, so a later successful-but-rejected reading cannot hide an earlier failure. The closed
+   * choice (Jev) is a separate Worker decision service, not a normalizer dispatch, and is not counted here (V5's
+   * census counts the normalizer client boundary only, which the closed choice never uses).
+   */
+  providerFailures?: number;
   optionChoice?: WeeklyPlanningVNextOptionChoiceDiagnostic;
 }
 

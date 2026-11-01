@@ -206,7 +206,10 @@ function compilePreviewInput(scope: WeeklyPlanningVNextExperimentalScope, ports:
  */
 export function recoveryMayDispatch(interpretation: WeeklyPlanningVNextInterpretation): boolean {
   const calls = interpretation.metrics?.calls;
+  // A provider failure anywhere in the invocation counts: the final reason covers the last dispatch and
+  // `providerFailures` the earlier ones a fallback carried (focused route -> native reading).
   return !(interpretation.status === 'failed' && interpretation.reason === 'provider_error')
+    && (interpretation.metrics?.providerFailures ?? 0) === 0
     && Number.isSafeInteger(calls) && calls >= 1 && calls <= 6;
 }
 

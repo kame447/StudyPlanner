@@ -419,6 +419,13 @@ describe('VNext experimental session end to end (offline)', () => {
       expect(JSON.parse(h.slots.get('vnext')!).vnext.state).toEqual(before.state);
     });
 
+    it('the bound also reads earlier provider failures a fallback carried', () => {
+      const earlier = { ...metrics, calls: 3, repairs: 1, providerFailures: 1 };
+      expect(recoveryMayDispatch({ status: 'failed', reason: 'rejected_after_repair', errors: [], metrics: earlier })).toBe(false);
+      expect(recoveryMayDispatch({ ...interpreted({}), metrics: earlier } as WeeklyPlanningVNextInterpretation)).toBe(false);
+      expect(recoveryMayDispatch({ status: 'failed', reason: 'rejected_after_repair', errors: [], metrics: { ...earlier, providerFailures: 0 } })).toBe(true);
+    });
+
     it('the bound itself: provider failures and unknown counts are refused, 1-6 successful dispatches allowed', () => {
       expect(recoveryMayDispatch(failed('provider_error', 3))).toBe(false);
       expect(recoveryMayDispatch(failed('unparseable', 0))).toBe(false);

@@ -115,6 +115,24 @@ describe('VNext uses existing focused contextual purpose and native fallback', (
       expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2 } });
     });
 
+  it('carries an earlier focused provider failure into the fallback result and counts the focused dispatch', async () => {
+    const failed = input();
+    failed.client = { createChatCompletion: vi.fn(async () => { throw new TypeError('synthetic focused transport outage'); }) };
+    const rejected: WeeklyPlanningVNextInterpretation = { status: 'failed', reason: 'rejected_after_repair', errors: [],
+      metrics: { calls: 2, repairs: 1, latencyMs: 1 } };
+    const viaFailure = await createWeeklyPlanningVNextFocusedInterpreter({ fullReading: async () => rejected })(failed);
+    // One failed focused dispatch plus the native reading's own two calls; the failure is typed provenance.
+    expect(viaFailure).toMatchObject({ status: 'failed', reason: 'rejected_after_repair', metrics: { calls: 3, providerFailures: 1 } });
+    // A fallback the focused route chose after a SUCCESSFUL dispatch carries no failure; an earlier one is kept, not reset.
+    const abstained = input();
+    abstained.client = { createChatCompletion: vi.fn(async () => JSON.stringify(decision('fallback'))) };
+    const viaAbstention = await createWeeklyPlanningVNextFocusedInterpreter({ fullReading: async () => rejected })(abstained);
+    expect(viaAbstention).toMatchObject({ metrics: { calls: 3 } });
+    expect((viaAbstention.metrics as { providerFailures?: number }).providerFailures).toBeUndefined();
+    const carried = await createWeeklyPlanningVNextFocusedInterpreter({ fullReading: async () => ({ ...rejected, metrics: { ...rejected.metrics, providerFailures: 1 } }) })(abstained);
+    expect(carried.metrics.providerFailures).toBe(1);
+  });
+
   it('keeps session/proposal questions and a missing presentation on the full-reading path', async () => {
     for (const change of [{ presentedText: null }, { presentedQuestion: { ...input().presentedQuestion!, effortMeasurement: 'session_duration' as const } }]) {
       const params = { ...input(), ...change };

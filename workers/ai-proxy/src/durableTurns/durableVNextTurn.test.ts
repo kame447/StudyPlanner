@@ -95,6 +95,44 @@ describe('VNext durable execution', () => {
     expect(schemas.filter(name => name !== VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name).length).toBeGreaterThan(0);
   });
 
+  it('a failed focused request followed by a rejected native reading gets no recovery renderer request in the Worker either', async () => {
+    const stages: string[] = [];
+    const focusedName = FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5.json_schema.name;
+    const fetchFor = (focusedFails: boolean) => vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const body = JSON.parse(init!.body as string) as { response_format?: { json_schema?: { name?: string } }; messages: { content: string }[] };
+      const schema = body.response_format?.json_schema?.name ?? 'none';
+      stages.push(schema === focusedName ? 'focused' : schema === VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name ? 'native' : 'renderer');
+      if (schema === focusedName) {
+        if (focusedFails) throw new TypeError('synthetic focused transport outage');
+        return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content: focused.replace('effort_answer', 'fallback') } }] });
+      }
+      // The native reading is invalid after the first turn; the first (seeding) turn reads the work normally.
+      const content = schema === VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name
+        ? (seeded ? '{}' : reading([addTask, addWork])) : await successfulWeeklyPlanningRendererCompletion(body);
+      return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content } }] });
+    });
+    let seeded = false;
+    vi.stubGlobal('fetch', fetchFor(false));
+    const first = await executeDurableVNextTurn(providerEnv, payload(), journal().dispatch);
+    seeded = true;
+    const asked = parseWeeklyPlanningVNextSessionCheckpoint({ raw: first.checkpointAfter!, ownerId: 'alice', weekStartDate: WEEK })!;
+    expect(asked.vnext.presentedQuestion).not.toBeNull();
+    const second = (requestId: string) => payload({ requestId, checkpoint: first.checkpointAfter, userText: '40分くらい' });
+    for (const [focusedFails, expectedRenderers] of [[true, 0], [false, 2]] as const) {
+      stages.length = 0;
+      vi.stubGlobal('fetch', fetchFor(focusedFails));
+      const withInput = second(`chat:request:${focusedFails ? 2 : 3}`);
+      withInput.input.inputStateRevision = asked.vnext.state.graph.revision;
+      const result = await executeDurableVNextTurn(providerEnv, withInput, journal().dispatch);
+      expect(stages[0]).toBe('focused');
+      // The session decision itself (not only the journal): an earlier focused failure allows no renderer request at all;
+      // with a successful abstention the recovery is the free reply plus its one verification (2 requests).
+      expect(stages.filter(stage => stage === 'renderer')).toHaveLength(expectedRenderers);
+      expect(result.checkpointAfter === null || JSON.stringify(parseWeeklyPlanningVNextSessionCheckpoint({ raw: result.checkpointAfter, ownerId: 'alice', weekStartDate: WEEK })!.vnext.state))
+        .toBe(JSON.stringify(asked.vnext.state));
+    }
+  });
+
   it('replays the whole turn byte for byte from the journal, including a second turn on the saved checkpoint', async () => {
     const first = journal();
     vi.stubGlobal('fetch', providerFetch());
