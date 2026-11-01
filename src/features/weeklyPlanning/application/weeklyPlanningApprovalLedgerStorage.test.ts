@@ -109,3 +109,41 @@ describe('weeklyPlanningApprovalLedgerStorage', () => {
     expect(loadWeeklyPlanningApprovalOperations('   ')).toEqual([]);
   });
 });
+
+describe('weeklyPlanningApprovalLedgerStorage when storage fails (B5)', () => {
+  // The real module over a storage double that throws; nothing else is mocked.
+  const valid = () => serializeWeeklyApprovalLedger([operation('user-a', 'preview-a')]);
+  const doubleStorage = (values: Map<string, string>, failing: { getItem?: boolean; removeItem?: boolean }) => ({
+    getItem: (key: string) => { if (failing.getItem) throw new Error('storage read failed'); return values.get(key) ?? null; },
+    setItem: (key: string, value: string) => void values.set(key, value),
+    removeItem: (key: string) => { if (failing.removeItem) throw new Error('storage remove failed'); values.delete(key); },
+  }) as unknown as Storage;
+  let restore: (() => void) | undefined;
+  afterEach(() => { restore?.(); restore = undefined; });
+
+  it('returns no operations when storage is absent', () => {
+    restore = installWeeklyPlanningTestStorage(undefined as unknown as Storage);
+    expect(loadWeeklyPlanningApprovalOperations('user-a')).toEqual([]);
+  });
+
+  it('returns no operations without throwing when reading and removing both throw', () => {
+    const values = new Map([[userKey('user-a'), valid()]]);
+    restore = installWeeklyPlanningTestStorage(doubleStorage(values, { getItem: true, removeItem: true }));
+    expect(loadWeeklyPlanningApprovalOperations('user-a')).toEqual([]);
+    expect(values.get(userKey('user-a'))).toBe(valid());
+  });
+
+  it('does not delete a stored ledger because it could not be read', () => {
+    const values = new Map([[userKey('user-a'), valid()]]);
+    restore = installWeeklyPlanningTestStorage(doubleStorage(values, { getItem: true }));
+    expect(loadWeeklyPlanningApprovalOperations('user-a')).toEqual([]);
+    expect(values.get(userKey('user-a'))).toBe(valid());
+  });
+
+  it('still loads a valid ledger when only removal fails (negative control)', () => {
+    const values = new Map([[userKey('user-a'), valid()]]);
+    restore = installWeeklyPlanningTestStorage(doubleStorage(values, { removeItem: true }));
+    expect(loadWeeklyPlanningApprovalOperations('user-a')).toEqual([operation('user-a', 'preview-a')]);
+    expect(values.get(userKey('user-a'))).toBe(valid());
+  });
+});
