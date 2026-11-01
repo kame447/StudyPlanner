@@ -1,15 +1,16 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../support/fixed-clock.mjs';
 
-// The connected VNext path (#926) on the isolated target (#947): the real planning UI, switched to VNext
-// only by the explicit local query parameter, talks to the local Worker, which authenticates against the
+// Runs on the shared fixed clock (Asia/Tokyo, E2E_FIXED_NOW): the preview needs capacity left in the week, so a
+// live clock late on Sunday makes turn 2 correctly answer insufficient_capacity and never call the renderer.
+// The connected VNext path (#926) on the isolated target (#947): the real planning UI, whose only production
+// conversation core is VNext, talks to the local Worker, which authenticates against the
 // Auth emulator, records trace in the Firestore emulator and forwards AI calls to the synthetic provider.
 // The test answers each forwarded call from the request the Worker actually sent (real network path,
 // scripted model output: real-model quality is the real-API workflow's job). The preview is approved
-// through V5's approval, saved to Firestore, reloaded, survives a failed turn, and the page returns to V5.
+// through V5's approval, saved to Firestore, reloaded and survives a failed turn.
 const SYNTHETIC = 'http://127.0.0.1:18790';
 const FIRESTORE = 'http://127.0.0.1:8180/v1/projects/demo-studyplanner/databases/(default)/documents';
-const VNEXT = '/?weeklyPlanningCore=vnext';
-const V5 = '/?weeklyPlanningCore=v5';
+const PLANNING = '/';
 const email = () => test.info().project.metadata.email;
 const password = () => process.env.STUDYPLANNER_LIVE_PASSWORD;
 
@@ -96,9 +97,9 @@ async function firestoreDocuments(request, collection) {
   return (await response.json()).documents ?? [];
 }
 
-test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approval → save → reload → failure → V5 and back', async ({ page, request }) => {
+test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approval → save → reload → failure', async ({ page, request }) => {
   const traceBaseline = await traceOutcomes(request);
-  await signIn(page, VNEXT);
+  await signIn(page, PLANNING);
   await openPlanning(page);
 
   // Turn 1: facts alone. The user's text reaches the VNext interpreter through the Worker; it reads no
@@ -174,12 +175,4 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   // plan as V5's needs_scope, the previewed turn as preview_ready, the failed one as failed, never idle.
   await expect.poll(async () => withoutBaseline(await traceOutcomes(request), traceBaseline))
     .toEqual(['failed', 'needs_scope', 'preview_ready']);
-
-  // Rollback: the same origin without VNext is Stable V5 with its own conversation; then VNext again.
-  await signIn(page, V5);
-  await openPlanning(page);
-  await expect(page.locator('.ai-planning-conversation')).not.toContainText('ゼミ資料を60分');
-  await signIn(page, VNEXT);
-  await openPlanning(page);
-  await expect(page.locator('.ai-planning-conversation')).toContainText('ゼミ資料を60分');
 });
