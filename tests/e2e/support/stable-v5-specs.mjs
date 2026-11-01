@@ -2,7 +2,6 @@
 // contracts, including chat/reset/preview, remain on the default VNext project.
 export const stableV5Specs = [
   '**/ai-planning-jev-first-authority.spec.mjs',
-  '**/weekly-durable-return.spec.mjs',
   '**/weekly-planning-module-recovery.spec.mjs',
 ];
 

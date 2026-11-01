@@ -6,11 +6,17 @@ import { expect, test } from '@playwright/test';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const { outputFiles } = await build({ stdin: { contents: `
   export { DurableTurnJob } from './workers/ai-proxy/src/durableTurns/durableTurnJob';
-  export { executeIsolatedWeeklyPlanningTurn } from './src/features/weeklyPlanning/application/weeklyPlanningIsolatedTurn';
-`, resolveDir: root, loader: 'ts' }, bundle: true, write: false, platform: 'node', format: 'cjs' });
+  export { executeDurableVNextTurn } from './workers/ai-proxy/src/durableTurns/durableVNextTurn';
+  export { serializeWeeklyPlanningTurnResult } from './workers/ai-proxy/src/durableTurns/weeklyPlanningTurnResult';
+`, resolveDir: root, loader: 'ts' }, bundle: true, write: false, platform: 'node', format: 'cjs',
+  // The Worker entry imports the Cloudflare runtime; only the job and the turn execution run here.
+  plugins: [{ name: 'cloudflare-workers-stub', setup: (b) => {
+    b.onResolve({ filter: /^cloudflare:workers$/ }, () => ({ path: 'cloudflare-workers', namespace: 'stub' }));
+    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export class DurableObject {}', loader: 'js' }));
+  } }] });
 const module = { exports: {} };
 new Function('module', 'exports', outputFiles[0].text)(module, module.exports);
-const { DurableTurnJob, executeIsolatedWeeklyPlanningTurn } = module.exports;
+const { DurableTurnJob, executeDurableVNextTurn, serializeWeeklyPlanningTurnResult } = module.exports;
 const url = 'http://127.0.0.1:4175/real-weekly.html';
 const reply = 'どの学習を計画しましょうか？';
 
@@ -42,18 +48,29 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect.poll(() => posts).toBe(1);
     // Destroy the browser runtime while the accepted job is still queued.
     await page.goto('about:blank');
-    await job.run(async (payload, dispatch) => JSON.stringify(await executeIsolatedWeeklyPlanningTurn(JSON.parse(payload), {
-      createChatCompletion: (request) => dispatch(JSON.stringify(request), async () => {
-        providerCalls += 1;
-        if (request.purpose === 'weekly_planning_semantic_normalizer') return JSON.stringify({
-          schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'discuss', planningWindow: null,
-          tasks: [], relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [], uncertainties: [], corrections: [], decisions: [],
-        });
-        const prompt = JSON.parse(request.messages.at(-1).content);
-        return JSON.stringify({ actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind,
-          questionCode: prompt.applicationDecision.questionCode, groundingAcknowledgement: null, text: reply });
-      }),
-    })));
+    // The Worker's own VNext turn over the journaled provider; only the model's answers are scripted.
+    const env = { OPENAI_API_KEY: 'server-key', ALLOWED_CHAT_MODELS: 'gpt-6-luna',
+      AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 0 }) }) } };
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (_url, init) => {
+      providerCalls += 1;
+      const body = JSON.parse(init.body);
+      let content;
+      if (body.response_format?.json_schema?.name === 'weekly_planning_vnext_native_v1') {
+        content = JSON.stringify({ planningIntent: 'discuss', conversationActs: [], answer: null,
+          delta: { add: [], patch: [], remove: [], relate: [], defer: [] } });
+      } else {
+        const prompt = body.messages.map((message) => { try { return JSON.parse(message.content); } catch { return null; } })
+          .find((value) => value?.applicationDecision);
+        content = JSON.stringify({ actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind,
+          questionCode: prompt.applicationDecision.questionCode ?? null, groundingAcknowledgement: null, text: reply });
+      }
+      return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content } }] });
+    };
+    try {
+      await job.run(async (payload, dispatch) => serializeWeeklyPlanningTurnResult(
+        await executeDurableVNextTurn(env, JSON.parse(payload), dispatch)));
+    } finally { globalThis.fetch = realFetch; }
     expect(record.status).toBe('completed'); expect(providerCalls).toBe(2);
     await page.goto(url);
     const conversation = page.locator('.ai-planning-conversation');
