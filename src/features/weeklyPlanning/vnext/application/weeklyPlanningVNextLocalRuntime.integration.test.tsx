@@ -280,6 +280,54 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     expect(ref.current!.state.previewCandidates).toEqual(firstState.previewCandidates);
   });
 
+  it('keeps the chat history and each week\'s conversation across week changes and reload', async () => {
+    const NEXT = '2026-11-09';
+    const { input, services } = fixture(); const ref = createRef<WeeklyPlanningApplication>();
+    const view = (selectedDate: string) => <LocalHarness ref={ref} input={{ ...input, selectedDate }} services={services} />;
+    await act(async () => { renderer = create(view(WEEK)); });
+    await act(async () => { await ref.current!.submitTurn('数学を30分'); });
+    const weekState = ref.current!.state;
+    await act(async () => { renderer!.update(view(NEXT)); });
+    expect(ref.current!.state.weekStartDate).toBe(NEXT);
+    expect(ref.current!.state.messages).toEqual([]);
+    expect(ref.current!.chat.requiresInitialization).toBe(false);
+    await act(async () => { renderer!.update(view(WEEK)); });
+    expect(ref.current!.state.weekStartDate).toBe(WEEK);
+    expect(ref.current!.state.messages).toEqual(weekState.messages);
+    expect(ref.current!.chat.index.chats.length).toBeGreaterThan(0);
+  });
+
+  it('does not block the chat UI on unreadable VNext bytes and keeps them for the user', async () => {
+    const { input, services } = fixture(); const ref = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
+    await act(async () => { await ref.current!.submitTurn('数学を30分'); });
+    const chatId = ref.current!.chat.index.activeChatId;
+    const uiKey = `studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.ui`;
+    storage.storage.setItem(uiKey, '{broken');
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
+    expect(ref.current!.chat.canStartWithoutRestoring).toBe(true);
+    await act(async () => { expect(ref.current!.chat.startWithoutRestoring().status).toBe('saved'); });
+    await act(async () => { expect((await ref.current!.submitTurn('英語を30分')).accepted).toBe(true); });
+    expect(storage.storage.getItem(uiKey)).toBe('{broken');
+    expect(ref.current!.chat.index.chats).toHaveLength(2);
+  });
+
+  it.each(['absent', 'throwing'] as const)('mounts with production services when localStorage is %s and reports the chat as unavailable', async mode => {
+    const { input } = fixture(); const ref = createRef<WeeklyPlanningApplication>();
+    const fail = () => { throw new Error('storage blocked'); };
+    const unavailable = mode === 'absent' ? undefined
+      : { getItem: fail, setItem: fail, removeItem: fail, key: fail, length: 0 } as unknown as Storage;
+    restore(); restore = installWeeklyPlanningTestStorage(unavailable as unknown as Storage);
+    await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={undefined as never} />); });
+    expect(ref.current!.chat.requiresInitialization).toBe(true);
+    expect(ref.current!.plannerDataReady).toBe(false);
+    expect(await ref.current!.submitTurn('数学を30分')).toMatchObject({ accepted: false });
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    // The afterEach test-only resets need a readable storage again.
+    restore(); restore = installWeeklyPlanningTestStorage(storage.storage);
+  });
+
   it('offers registered-target starter controls exactly as the Stable V5 composition does', async () => {
     const { input, services } = fixture(); const ref = createRef<WeeklyPlanningApplication>();
     await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });

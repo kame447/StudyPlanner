@@ -1,8 +1,8 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { WeeklyPlanningApplication, UseWeeklyPlanningApplicationInput } from '../../application/useWeeklyPlanningApplication';
 import { weeklyPlanningReducer, createInitialPlanningState } from '../../weeklyPlanningReducer';
 import { createWeeklyPlanningControllerSession, inferWeeklyPlanningControllerRequestSequence, cancelWeeklyPlanningControlledTurn, clearWeeklyPlanningControlledConversation } from '../../weeklyPlanningTurnController';
-import { submitWeeklyPlanningApplicationTurn, weeklyPlanningTurnApplicationServices } from '../../application/weeklyPlanningTurnApplication';
+import { submitWeeklyPlanningApplicationTurnWithServices, weeklyPlanningTurnApplicationBaseServices } from '../../application/weeklyPlanningTurnApplicationCore';
 import { createWeeklyPlanningTurnOutcomeLifecycle } from '../../application/weeklyPlanningTurnOutcomeLifecycle';
 import { approveWeeklyPlanningDraftBlocks } from '../../application/weeklyPlanningApprovalApplication';
 import { classifyWeeklyPlanningApprovalAvailability } from '../../application/weeklyPlanningApprovalAvailability';
@@ -24,7 +24,7 @@ import { createWeeklyPlanningVNextOptionChoiceInterpreter, createWeeklyPlanningV
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../weeklyPlanningVNextV5Boundary';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
-  storage: Storage;
+  storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
   client: () => WeeklyPlanningVNextExperimentalPorts['client'];
   interpret: (scope: { ownerId: string; conversationId: string }) => WeeklyPlanningVNextExperimentalPorts['interpret'];
   createRenderer: (client: WeeklyPlanningVNextExperimentalPorts['client'], options: { canDispatchRecovery: () => boolean }) => ReturnType<WeeklyPlanningVNextExperimentalPorts['createRenderer']>;
@@ -35,7 +35,11 @@ export interface WeeklyPlanningVNextLocalApplicationServices {
  * The native reader remains the complete fallback for both narrow Jev purposes.
  */
 function localServices(): WeeklyPlanningVNextLocalApplicationServices {
-  return { storage: window.localStorage,
+  // Resolve storage per operation so an absent or throwing localStorage (private mode, blocked
+  // site data) surfaces inside the hook's guarded reads and writes, as it does for V5's stores.
+  return { storage: { getItem: key => window.localStorage.getItem(key),
+      setItem: (key, value) => window.localStorage.setItem(key, value),
+      removeItem: key => window.localStorage.removeItem(key) },
     client: () => {
       if (!getCloudflareAiProxyUrl()) throw new Error('The local VNext experiment requires the authenticated Worker proxy.');
       return createOpenAiCompatibleClient({ ...getAiConfig(), provider: 'openai' });
@@ -66,7 +70,7 @@ export function useWeeklyPlanningVNextApplication(
   const ownerId = input.userId?.trim() || 'anonymous';
   const week = startOfWeeklyPlanningWeek(input.selectedDate, weekStartsOn);
   const services = useMemo(() => providedServices ?? localServices(), [providedServices]);
-  const [, redraw] = useState(0);
+  const [revision, redraw] = useState(0);
   const runtime = useMemo(() => {
     const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: week, storage: services.storage });
     let loaded: ReturnType<typeof local.load>;
@@ -139,10 +143,13 @@ export function useWeeklyPlanningVNextApplication(
   }, {
     load: (_owner, record) => {
       if (!record.weekStartDate) return null;
+      // Opening this runtime follows the selected week (as V5's per-week slot does); selecting
+      // another chat later restores that chat's own last week.
+      const target = runtime.session.conversationId === 'uninitialized-vnext' ? week : record.weekStartDate;
       try {
-        const local = localFor(record.id, record.weekStartDate);
+        const local = localFor(record.id, target);
         const loaded = local.load();
-        return { ownerId, weekStartDate: record.weekStartDate, conversationId: loaded.conversationId,
+        return { ownerId, weekStartDate: target, conversationId: loaded.conversationId,
           planningState: loaded.state, savedAt: services.now(), local };
       } catch { return null; }
     },
@@ -165,6 +172,13 @@ export function useWeeklyPlanningVNextApplication(
     },
   }), [runtime, ownerId, services]);
   useLayoutEffect(() => { if (chat.initialize().status === 'saved') chat.checkpoint(); }, [chat]);
+  // Same unsaved-chat warning as V5: a failed checkpoint write leaves the live state as the only copy.
+  useEffect(() => {
+    if (!chat.dirty || typeof window === 'undefined' || !window.addEventListener) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [chat, revision]);
   const local = runtime.local;
   const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: local,
     ports: turn => {
@@ -178,7 +192,7 @@ export function useWeeklyPlanningVNextApplication(
           scheduleTemplates: turn.scheduleTemplates, timetableTermId: turn.timetableTermId }),
         createRenderer: options => services.createRenderer(client, options), now: services.now };
     } }), [local, services, ownerId]);
-  const turnServices = { ...weeklyPlanningTurnApplicationServices, ...gateway,
+  const turnServices = { ...weeklyPlanningTurnApplicationBaseServices, ...gateway,
     outcomeLifecycle: createWeeklyPlanningTurnOutcomeLifecycle({ saveOwnedState: (_owner, state) => {
       if (!current()) return false;
       runtime.local.save(runtime.session.conversationId, state); return true;
@@ -203,7 +217,7 @@ export function useWeeklyPlanningVNextApplication(
     },
     submitTurn: async (userText, supplementalContext, selectedStarterTarget, machineBoundAnswer) => {
       if (!plannerReady() || committedInput.current !== input || runtime.state.approvalRecovery) return { accepted: false, draftCandidates: [] };
-      const result = await submitWeeklyPlanningApplicationTurn({ ...input, userId: ownerId, ownerId,
+      const result = await submitWeeklyPlanningApplicationTurnWithServices({ ...input, userId: ownerId, ownerId,
         session: runtime.session, userText, supplementalContext, selectedStarterTarget, machineBoundAnswer,
         weekStartsOn, getState, dispatch, now: services.now,
         isPlannerDataSnapshotCurrent: plannerReady, isApplicationCurrent: current }, turnServices);

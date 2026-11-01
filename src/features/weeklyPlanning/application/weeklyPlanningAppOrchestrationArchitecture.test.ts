@@ -56,7 +56,7 @@ describe('weekly planning application boundary', () => {
 
   it('keeps the hook as a composition root and delegates turn orchestration', () => {
     const application = source('./useWeeklyPlanningApplication.ts');
-    const turnApplication = source('./weeklyPlanningTurnApplication.ts');
+    const turnApplication = source('./weeklyPlanningTurnApplicationCore.ts');
     const sessionLifecycle = source('./weeklyPlanningSessionLifecycle.ts');
     const approval = source('./weeklyPlanningApprovalApplication.ts');
 

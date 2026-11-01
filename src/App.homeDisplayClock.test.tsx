@@ -19,7 +19,7 @@ vi.mock('./components/StudyStreakContext', () => ({
 vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));
-vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: boundary.weeklyPlanning }));
+vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningConversationApplication', () => ({ useWeeklyPlanningConversationApplication: boundary.weeklyPlanning }));
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
 vi.mock('./components/MyPageDialog', () => ({ MyPageDialog: () => null }));

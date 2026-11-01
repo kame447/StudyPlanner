@@ -1,4 +1,4 @@
-import { WeeklyPlanningRuntimeModuleError } from '../features/weeklyPlanning/application/weeklyPlanningRuntimeModule';
+import { WeeklyPlanningRuntimeModuleError } from '../features/weeklyPlanning/application/weeklyPlanningRuntimeLoader';
 import {
   consumeAiPlanningModuleRecovery, readAiPlanningModuleRecovery, saveAiPlanningModuleRecovery,
   sameAiPlanningModuleRecoveryBinding, type AiPlanningModuleRecoveryBinding,

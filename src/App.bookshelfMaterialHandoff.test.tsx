@@ -25,7 +25,7 @@ vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
-vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }) }));
+vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningConversationApplication', () => ({ useWeeklyPlanningConversationApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }) }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
 vi.mock('./components/PrimaryAppHeader', () => ({ PrimaryAppHeader: forwardRef(() => <header />) }));
 vi.mock('./components/HomeScheduleView', () => ({ HomeScheduleView: () => null }));

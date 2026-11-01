@@ -121,7 +121,7 @@ it('uses the existing unsaved-chat warning condition for Admin entry and clears 
 
   const write = window.localStorage.setItem.bind(window.localStorage);
   const storageFailure = vi.spyOn(window.localStorage, 'setItem').mockImplementation((key, value) => {
-    if (key.includes('.chat.v1.')) throw new Error('injected checkpoint write failure');
+    if (key.includes('.chat.v1.') || key.includes('.vnext.')) throw new Error('injected checkpoint write failure');
     write(key, value);
   });
   await act(async () => {

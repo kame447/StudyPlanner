@@ -1,6 +1,6 @@
 # weeklyPlanning current contract v5
 
-Status: canonical / Stable V5 production baseline
+Status: canonical / Stable V5 contract and reference for responsibilities VNext reuses; VNext is the production conversation core ([VNext contract](vnext-conversation-core.md), Issue #926) and V5 is kept for local comparison
 Updated: 2026-10-05
 
 References:
@@ -16,7 +16,7 @@ References:
 
 ## Runtime baseline
 
-Stable V5 is the sole production weekly-planning runtime.
+Stable V5 was the sole production weekly-planning runtime before Issue #926. VNext is now the production conversation core, and Stable V5 remains in source for comparison and for the pure responsibilities VNext reuses (scheduler, preview, renderer, approval, trace collector). The statements below describe V5 behavior and those shared responsibilities.
 
 ```text
 raw user utterance + relevant conversation + typed machine state

@@ -45,7 +45,8 @@ export function loadWeeklyPlanningApprovalOperations(
     }
     return owned;
   } catch {
-    window.localStorage.removeItem(userKey);
+    // Unreadable bytes are dropped, but unavailable storage must not turn a read into a crash.
+    try { window.localStorage.removeItem(userKey); } catch { /* storage unavailable */ }
     return [];
   }
 }
