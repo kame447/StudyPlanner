@@ -154,18 +154,20 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
   },
   {
     id: 'fixed-event-busy-information-only', source: '#926 fixed-event registration negative control',
-    description: '固定予定の共有だけで登録依頼はせず、学習配置を妨げる時間として保持する。',
+    description: '固定予定の共有だけで登録依頼はせず、学習配置を妨げる時間として保持する。Stable V5と同じく、動かせる作業がまだ無いので任意の追加作業の確認を出す（V5 HumanScale「busy-only evidence without registration is an optional invitation」）。',
     turns: [{ userText: '11月3日16時から17時半まではゼミなので、その間は勉強できません。', oracle: {
-      ...ready(0, [], [], [], { projectedMinutes: null, checkTemporal: false }),
+      ...ready(0, [], [], [], { projectedMinutes: null, checkTemporal: false, questionCode: 'missing_schedulable_work' }),
       fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
+        optionalInvitation: { question: 'optional', conversationActKinds: [], statusReason: null, closed: false, candidateCount: 0, saveWritesBeforeApproval: 0 },
     } }],
   },
   {
     id: 'fixed-event-registration-negated', source: '#926 fixed-event registration negative control',
-    description: '明示的な登録拒否を尊重し、予定表には追加しない。',
+    description: '明示的な登録拒否を尊重し、予定表には追加しない。動かせる作業がまだ無いので、Stable V5と同じ任意の追加作業の確認を出す。',
     turns: [{ userText: '11月3日16時から17時半までゼミがありますが、予定表には入れなくていいです。', oracle: {
-      ...ready(0, [], [], [], { projectedMinutes: null, checkTemporal: false }),
+      ...ready(0, [], [], [], { projectedMinutes: null, checkTemporal: false, questionCode: 'missing_schedulable_work' }),
       fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
+        optionalInvitation: { question: 'optional', conversationActKinds: [], statusReason: null, closed: false, candidateCount: 0, saveWritesBeforeApproval: 0 },
     } }],
   },
   {

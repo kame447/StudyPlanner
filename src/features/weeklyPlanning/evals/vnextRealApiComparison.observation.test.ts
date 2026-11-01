@@ -1014,9 +1014,13 @@ async function runVNextConversation(
         ? typedQuestion : null;
       question = observedQuestion?.code ?? null;
       deferredQuestionCodes = projection.deferredQuestions.map(({ code }) => code);
-      const askedWork = observedQuestion?.forWork;
+      // `question` counts only what this reply showed. A deferral the oracle allows is checked against the work
+      // the deferred question was about, without counting that unshown question as presented.
+      const workQuestion = observedQuestion ?? (fixtureTurn.oracle.allowQuestionDeferral
+        ? projection.deferredQuestions.find(({ code }) => code === fixtureTurn.oracle.questionCode) : undefined);
+      const askedWork = workQuestion?.forWork;
       questionForWork = askedWork ? {
-        taskId: observedQuestion.taskId,
+        taskId: workQuestion!.taskId,
         amount: askedWork.amount,
         unitCode: askedWork.unitCode,
         unitLabel: askedWork.unitLabel,
@@ -1405,6 +1409,80 @@ describe('VNext real API conversation fixture contract (offline)', () => {
       .toMatchObject({ passedOracle: 0, failedOracle: 0, notReached: 1 });
   });
 
+  it.each([
+    { id: 'fixed-event-busy-information-only', add: [{
+      kind: 'availability_declaration', localId: 'busy', availabilityKind: 'unavailable', dateExpression: '2026-11-03',
+      namedTimePeriod: null, startTime: '16:00', endTime: '17:30', recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard',
+    }] },
+    // Both real readings (runs 41238397000 and 41336860494) keep the negated event as hard unavailable time.
+    { id: 'fixed-event-registration-negated', add: [{
+      kind: 'availability_declaration', localId: 'seminar_time', availabilityKind: 'unavailable', dateExpression: '2026-11-03',
+      namedTimePeriod: null, startTime: '16:00', endTime: '17:30', recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard',
+    }] },
+  ])('expects the optional invitation V5 asks when only busy time is known ($id) and rejects its absence', async ({ id, add }) => {
+    // V5 contract: weeklyPlanningHumanScaleConversationIntegrationV5.test.ts 'treats busy-only evidence without registration as
+    // an optional invitation…' (first turn: lastQuestionContext.targetSlot stable_v5:missing_schedulable_work, not manual entry);
+    // in run 41336860494 V5 asked the same invitation for the negated-registration input.
+    const conversation = vnextRealApiConversations.find(turn => turn.id === id)!;
+    const delta: VNextTurnDelta = { add: add as unknown as VNextTurnDelta['add'], patch: [], remove: [], relate: [], defer: [] };
+    const interpreter: WeeklyPlanningVNextExperimentalPorts['interpret'] = async () => ({ status: 'interpreted', planningIntent: 'discuss',
+      delta, conversationActs: [], answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } });
+    const client: OpenAiCompatibleClient = { async createChatCompletion() { throw new Error('offline proof must not call a provider'); } };
+    const renderer: WeeklyPlanningVNextExperimentalPorts['createRenderer'] = () => ({
+      async render() { return { status: 'rendered', text: '合成の応答', rawResponse: '' }; },
+    });
+    const observed = await runVNextConversation(conversation, { client, interpret: interpreter, createRenderer: renderer });
+    expect(observed.turns[0]).toMatchObject({ questionCode: 'missing_schedulable_work', optionalInvitationKind: 'optional', optionalInvitationClosed: false });
+    expect(observed.turns[0].oracleDifferences).toEqual([]);
+    expect(observed.turns[0].status).toBe('pass');
+    // Discriminating: a turn that shows no invitation, or one that is already closed, no longer satisfies the oracle.
+    const oracle = conversation.turns[0].oracle;
+    const shown = { optionalInvitationKind: 'optional' as const, conversationActKinds: [], communicationStatusReason: null,
+      optionalInvitationClosed: false, finalCandidateCount: 0, saveWritesBeforeApproval: 0 };
+    expect(compareOptionalInvitationOracle(oracle.optionalInvitation, shown)).toEqual([]);
+    expect(compareOptionalInvitationOracle(oracle.optionalInvitation, { ...shown, optionalInvitationKind: 'none' }))
+      .toContain('invitation question expected=optional observed=none');
+    expect(compareOptionalInvitationOracle(oracle.optionalInvitation, { ...shown, optionalInvitationClosed: true }))
+      .toContain('invitation closed expected=false observed=true');
+    const noFacts: ObservedFacts = { taskIds: [], workloads: [], efforts: [], temporal: [] };
+    expect(compareTypedOracle(noFacts, null, null, oracle).join('|')).toContain('question expected=missing_schedulable_work observed=none');
+  });
+
+  it('checks a deferred question against the work it was about without counting it as presented', async () => {
+    const conversation = vnextRealApiConversations.find(({ id }) => id === 'omitted-effort-answer')!;
+    const emptyDelta: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
+    const stated: VNextTurnDelta = { ...emptyDelta, add: [
+      { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+      { kind: 'workload', localId: 'math-work', taskRef: { localId: 'math' }, componentRef: null, quantityRole: 'remaining',
+        amount: 8, unitCode: 'custom', unitLabel: '問', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+    ] };
+    let call = 0;
+    const interpreter: WeeklyPlanningVNextExperimentalPorts['interpret'] = async (input) => {
+      call += 1;
+      const delta: VNextTurnDelta = call === 1 ? stated : { ...emptyDelta, defer: [{ questionKey: input.presentedQuestion!.key, allocation: 'none' }] };
+      return { status: 'interpreted', planningIntent: 'discuss', delta, conversationActs: [], answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
+    };
+    const client: OpenAiCompatibleClient = { async createChatCompletion() { throw new Error('offline proof must not call a provider'); } };
+    const renderer: WeeklyPlanningVNextExperimentalPorts['createRenderer'] = () => ({
+      async render() { return { status: 'rendered', text: '合成の応答', rawResponse: '' }; },
+    });
+    const observed = await runVNextConversation(conversation, { client, interpret: interpreter, createRenderer: renderer });
+    const [asked, deferred] = observed.turns;
+    expect(asked).toMatchObject({ questionCode: 'missing_effort_estimate', status: 'pass' });
+    // Nothing is presented on the deferral turn, yet the deferral is checked against the 8 problems it was about.
+    expect(deferred).toMatchObject({ questionCode: null, deferredQuestionCodes: ['missing_effort_estimate'],
+      questionForWork: { amount: 8, unitCode: 'custom', unitLabel: '問' }, status: 'pass' });
+    expect(deferred.oracleDifferences).toEqual([]);
+    // A deferral about other work does not satisfy the oracle.
+    const oracle = conversation.turns[1].oracle;
+    const math: ObservedWorkload = { factId: 'math-work', taskId: 'math-task', role: 'remaining', amount: 8,
+      unitCode: 'custom', unitLabel: '問', perOccurrence: false, periodExpression: null };
+    const facts: ObservedFacts = { taskIds: ['math-task'], workloads: [math], efforts: [], temporal: [] };
+    const context: OracleObservationContext = { checkQuestionForWork: true, deferredQuestionCodes: ['missing_effort_estimate'],
+      questionForWork: { taskId: 'math-task', amount: 7, unitCode: 'custom', unitLabel: '問' } };
+    expect(compareTypedOracle(facts, null, null, oracle, [], [], context)).toContain('question forWork differs');
+  });
+
   it('scores the V5 presented-question sequence and keeps omission/required-question controls discriminating', () => {
     const conversation = vnextRealApiConversations.find(({ id }) => id === 'optional-invitation-busy-decline-reopen')!;
     const emptyFacts: ObservedFacts = { taskIds: [], workloads: [], efforts: [], temporal: [] };
@@ -1634,7 +1712,8 @@ describe('VNext real API conversation fixture contract (offline)', () => {
       }],
     };
     const unavailableFacts: ObservedFacts = { taskIds: [], workloads: [], efforts: [], temporal: [] };
-    const compareTyped = (facts: ObservedFacts) => compareTypedOracle(facts, null, null, oracleForBusyCase);
+    // This test is about the busy-time meaning; the turn's question is V5's optional invitation (the oracle's questionCode).
+    const compareTyped = (facts: ObservedFacts) => compareTypedOracle(facts, 'missing_schedulable_work', null, oracleForBusyCase);
     const compareFullTurn = (facts: ObservedFacts, input: V5BusyConstraints | null) => [
       ...compareTyped(facts), ...compareRegistration(facts),
       ...compareBusyIntervalOracle(oracleForBusyCase.fixedEventRegistration, input),
