@@ -1,5 +1,15 @@
 # Preserve the deleted major event when Undo restores it
 
+## Current disposition — 2026-10-29
+
+Status: integrated through [PR #787](https://github.com/kame447/StudyPlanner/pull/787) (`f618577ceb4ea12fdfddef24ab35ed1d0d6edffa`), an ancestor of audited main `9da5faf3166283fa389a7287e8c28b9e7184e4be`.
+
+Deletion Undo retains the event accepted at deletion admission, rather than the older caller object. The final PR head has successful Browser Regression and UI Regression Matrix summaries; generic browser Undo coverage does not independently prove the stale-menu scenario covered by the real-Local hook tests. Physical-device behavior and remote-edit concurrency guarantees are not established.
+
+## Original implementation and verification checkpoints
+
+The original records below are preserved. Publication/integration statements describe their checkpoint dates; their source-scoped evidence, failure records, behavioral constraints and unresolved acceptance limits are not waived by integration.
+
 Status: local candidate; focused verification and independent source/data-safety review complete.
 
 ## Scope and ownership

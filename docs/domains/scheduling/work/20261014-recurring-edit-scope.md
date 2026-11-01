@@ -1,5 +1,15 @@
 # Recurring general-event edit scope
 
+## Current disposition — 2026-10-29
+
+Status: integrated through [PR #659](https://github.com/kame447/StudyPlanner/pull/659) (`150bdbf138054567835129083b6f7d2899046f57`), an ancestor of audited main `9da5faf3166283fa389a7287e8c28b9e7184e4be`.
+
+Single/future ordinary-event edits and the scope-prompt layout correction were integrated. PR #659 records all 12 scoped/range cases passing in Chromium and mobile WebKit, plus corrected prompt image acceptance. Earlier layout failures and snapshot-specific checks below remain evidence; physical iPhone and authenticated production UI behavior remain unverified by those checks.
+
+## Original implementation and verification checkpoints
+
+The original records below are preserved. Publication/integration statements describe their checkpoint dates; their source-scoped evidence, failure records, behavioral constraints and unresolved acceptance limits are not waived by integration.
+
 Status: local implementation verified; publication/main integration authorized; native browser and integrated release verification pending.
 
 ## Scope and ownership

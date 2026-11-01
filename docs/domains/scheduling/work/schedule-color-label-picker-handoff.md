@@ -1,5 +1,15 @@
 # Schedule color label picker
 
+## Current disposition — 2026-10-29
+
+Status: integrated through [PR #672](https://github.com/kame447/StudyPlanner/pull/672) (`1b1417da123f4fd97c4a425d6a435cd241d4f63b`), an ancestor of audited main `9da5faf3166283fa389a7287e8c28b9e7184e4be`.
+
+The compact native-radio picker replaced the always-visible chips from PR #663. Final-head Browser Regression and UI Regression Matrix summaries succeeded. The PR records Chromium image acceptance but still describes final WebKit image review as pending; those records do not establish physical iOS or physical-keyboard acceptance.
+
+## Original implementation and verification checkpoints
+
+The original records below are preserved. Publication/integration statements describe their checkpoint dates; their source-scoped evidence, failure records, behavioral constraints and unresolved acceptance limits are not waived by integration.
+
 Status: active PR #672; browser correction awaiting exact-head integration and native verification.
 
 - Owner: existing UI umbrella #483; follow-up to merged #663.
