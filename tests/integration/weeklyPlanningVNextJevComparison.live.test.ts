@@ -13,9 +13,10 @@ import { createWeeklyPlanningVNextOptionChoiceInterpreter, vnextOptionChoiceBasi
 import { presentWeeklyPlanningVNextQuestion } from '../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextQuestionText';
 import { parseWeeklyApprovalLedger } from '../../src/features/weeklyPlanning/planning/weeklyPlanningApproval';
 import {
-  approveWeeklyPlanningVNextExperimentalPreview, readWeeklyPlanningVNextExperimentalSession, submitWeeklyPlanningVNextExperimentalTurn,
+  readWeeklyPlanningVNextExperimentalSession, submitWeeklyPlanningVNextExperimentalTurn,
   type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope,
 } from '../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalSession';
+import { approveWeeklyPlanningVNextExperimentalPreview } from '../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalApproval';
 import { projectWeeklyPlanningVNext } from '../../src/features/weeklyPlanning/vnext/projection/weeklyPlanningVNextProjection';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProvider';
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from '../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextTransaction';

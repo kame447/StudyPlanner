@@ -1,5 +1,6 @@
 import { loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
-import { durableWeeklyPlanningEnabled, readDurableWeeklyTurnReceipt, clearDurableWeeklyTurnReceipt, cancelDurableWeeklyTurn } from './weeklyPlanningDurableTurnClient';
+import { durableWeeklyPlanningEnabled, readDurableWeeklyTurnReceipt, cancelDurableWeeklyTurn } from './weeklyPlanningDurableTurnClient';
+import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from './weeklyPlanningDurableRecovery';
 import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
 import { isPlannerDataReadyForOwner } from '../../../domain/plannerDataReadAuthority';
 import { loadAiPlanningChatSnapshot, readAiPlanningChatIndex } from '../chat/aiPlanningChatStore';
@@ -497,46 +498,23 @@ export function useWeeklyPlanningApplication({
   useEffect(() => {
     if (!durableWeeklyPlanningEnabled() || !userId || chat.requiresInitialization || !isPlanningStateReady()) return;
     const session = controllerSessionRef.current;
-    const receipt = readDurableWeeklyTurnReceipt(userId);
-    if (!session || !receipt || receipt.pending.conversationId !== session.conversationId) return;
+    const stored = readDurableWeeklyTurnReceipt(userId);
+    // A VNext receipt belongs to its own core and is never resumed here.
+    const receipt = stored && !('core' in stored.payload) ? stored : null;
     const current = getPlanningState();
-    if (current.pendingTurn || current.pendingApproval || recoveringDurableRequest.current === receipt.pending.requestId) return;
-    if (receipt.cancelRequested) {
-      recoveringDurableRequest.current = receipt.pending.requestId;
-      void cancelDurableWeeklyTurn(userId, receipt.pending.requestId).finally(() => {
-        if (recoveringDurableRequest.current === receipt.pending.requestId) recoveringDurableRequest.current = null;
-      });
-      return;
-    }
-    if (current.revision > receipt.pending.baseRevision) {
-      // A persisted newer state owns the conversation. Never apply the old reply twice.
-      const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: userId, weekStartDate: current.weekStartDate });
-      if (saved?.conversationId === receipt.pending.conversationId
-        && saved.planningState.revision >= receipt.pending.baseRevision + 2
-        && chat.checkpoint().status === 'saved') {
-        clearDurableWeeklyTurnReceipt(userId, receipt.pending.requestId);
-      }
-      return;
-    }
-    if (current.revision !== receipt.pending.baseRevision || current.weekStartDate !== receipt.pending.weekStartDate
-      || JSON.stringify(current.intakeState) !== JSON.stringify(receipt.snapshot.intakeState)
-      || !isPlannerDataReadyForOwner(plannerDataAvailability, userId)) return;
-    recoveringDurableRequest.current = receipt.pending.requestId;
-    const original = receipt.payload.input;
-    void submitWeeklyPlanningApplicationTurn({
-      session, userId, ownerId, userText: original.userText, supplementalContext: original.supplementalContext,
-      selectedStarterTarget: original.selectedStarterTarget,
-      ...(original.machineBoundAnswer ? { machineBoundAnswer: original.machineBoundAnswer } : {}),
-      selectedDate: original.selectedDate,
-      plans: original.plans, monthEvents: original.monthEvents, actuals: original.actuals,
-      studyMaterials: original.studyMaterials, scheduleTemplates: original.scheduleTemplates,
-      timetableTermId: original.timetableTermId, timetableTerm: original.timetableTerm, timetableTerms: original.timetableTerms,
-      plannerDataAvailability, weekStartsOn: original.requestContext.weekStartsOn,
-      timeZone: original.requestContext.timeZone, resumePending: receipt.pending,
-      getState: getPlanningState, dispatch: dispatchAndPersist,
-      isApplicationCurrent: () => applicationActiveRef.current && chatPortsRef.current.ownerId === ownerId,
-    }).catch(() => undefined).finally(() => {
-      if (recoveringDurableRequest.current === receipt.pending.requestId) recoveringDurableRequest.current = null;
+    recoverDurableWeeklyTurn({
+      ownerId: userId, conversationId: session?.conversationId, state: current, recovering: recoveringDurableRequest,
+      receipt, plannerDataReady: isPlannerDataReadyForOwner(plannerDataAvailability, userId),
+      persistedRevision: () => {
+        const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: userId, weekStartDate: current.weekStartDate });
+        return saved?.conversationId === receipt?.pending.conversationId ? saved?.planningState.revision : undefined;
+      },
+      chatSaved: () => chat.checkpoint().status === 'saved',
+      resubmit: stable => submitWeeklyPlanningApplicationTurn({
+        ...durableReceiptTurnParams(stable), session: session!, userId, ownerId, plannerDataAvailability,
+        getState: getPlanningState, dispatch: dispatchAndPersist,
+        isApplicationCurrent: () => applicationActiveRef.current && chatPortsRef.current.ownerId === ownerId,
+      }),
     });
   }, [chat, chatRevision, userId, ownerId, planningState, isPlanningStateReady, plannerDataAvailability,
     getPlanningState, dispatchAndPersist]);

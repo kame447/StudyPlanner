@@ -8,7 +8,7 @@ import { executeIsolatedWeeklyPlanningVNextTurn } from './weeklyPlanningVNextIso
 import type { WeeklyPlanningVNextDurableTurnInput, WeeklyPlanningVNextDurableTurnResult } from './weeklyPlanningVNextDurableTurn';
 import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 
-function vnextReceipt(ownerId: string) {
+export function readWeeklyPlanningVNextDurableReceipt(ownerId: string) {
   const receipt = readDurableWeeklyTurnReceipt<WeeklyPlanningVNextDurableTurnInput>(ownerId);
   return receipt?.payload.core === 'vnext' ? receipt : null;
 }
@@ -18,7 +18,7 @@ function vnextReceipt(ownerId: string) {
  * the same receipt discipline as V5's staging lifecycle. LocalRuntime tests exercise both paths.
  */
 export function createWeeklyPlanningVNextRuntimeGateway(params: {
-  session: WeeklyPlanningVNextLocalSession;
+  session: Pick<WeeklyPlanningVNextLocalSession, 'checkpoint' | 'legacyV5Checkpoint'>;
   ports(input: ExecuteWeeklyPlanningTurnRuntimeParams): WeeklyPlanningVNextExperimentalPorts;
 }): { runtimeGateway: WeeklyPlanningTurnRuntimeGateway; stagingLifecycle: WeeklyPlanningTurnStagingLifecycle } {
   const stages = new Map<string, { before: string | null; after: string }>();
@@ -41,7 +41,7 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
           retainedPreviewCount: input.snapshot.previewCandidates?.length ?? 0 } };
       let completed: WeeklyPlanningVNextDurableTurnResult;
       if (durableWeeklyPlanningEnabled()) {
-        const receipt = input.resumeDurable ? vnextReceipt(input.userId) : {
+        const receipt = input.resumeDurable ? readWeeklyPlanningVNextDurableReceipt(input.userId) : {
           version: 1 as const, ownerId: input.userId, snapshot: input.snapshot, pending: input.pending, payload,
         };
         if (!receipt || receipt.pending.requestId !== input.pending.requestId

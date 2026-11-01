@@ -16,7 +16,9 @@ import type { WeeklyPlanningAction, PlanningState } from '../../types';
 import { createAiPlanningChatSessionWithStore } from '../../chat/aiPlanningChatSession';
 import { hasStoredAiPlanningChatIndex, readAiPlanningChatSnapshotRaw, saveAiPlanningChatSearchText } from '../../chat/aiPlanningChatStore';
 import { createWeeklyPlanningVNextLocalSession, type WeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
-import { createWeeklyPlanningVNextRuntimeGateway } from './weeklyPlanningVNextRuntimeGateway';
+import { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt } from './weeklyPlanningVNextRuntimeGateway';
+import { durableWeeklyPlanningEnabled, cancelDurableWeeklyTurn } from '../../application/weeklyPlanningDurableTurnClient';
+import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../application/weeklyPlanningDurableRecovery';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoiceBrowserPort';
 import { createWeeklyPlanningVNextRuntimeInterpreter, VNEXT_OPTION_CHOICE_POLICY, VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } from './weeklyPlanningVNextRuntimeInterpreter';
@@ -63,6 +65,7 @@ export function useWeeklyPlanningVNextApplication(
   const week = startOfWeeklyPlanningWeek(input.selectedDate, weekStartsOn);
   const services = useMemo(() => providedServices ?? localServices(), [providedServices]);
   const [revision, redraw] = useState(0);
+  const recoveringDurableRequest = useRef<string | null>(null);
   const runtime = useMemo(() => {
     const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: week, storage: services.storage });
     let loaded: ReturnType<typeof local.load>;
@@ -85,7 +88,9 @@ export function useWeeklyPlanningVNextApplication(
     if (!current()) return runtime.state;
     const next = weeklyPlanningReducer(runtime.state, action);
     if (next !== runtime.state) {
-      runtime.local.save(runtime.session.conversationId, next);
+      // As in V5, an in-flight turn or approval is never persisted: a reload then returns to the last
+      // committed state, which is exactly what a saved durable receipt resumes from.
+      if (!next.pendingTurn && !next.pendingApproval) runtime.local.save(runtime.session.conversationId, next);
       runtime.state = next;
       redraw(value => value + 1);
     }
@@ -171,9 +176,12 @@ export function useWeeklyPlanningVNextApplication(
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [chat, revision]);
-  const local = runtime.local;
-  const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: local,
+  // A chat checkpoint, import or new chat replaces runtime.local; the gateway always uses the live one.
+  const liveSession = useMemo(() => ({ get checkpoint() { return runtime.local.checkpoint; },
+    get legacyV5Checkpoint() { return runtime.local.legacyV5Checkpoint; } }), [runtime]);
+  const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: liveSession,
     ports: turn => {
+      const local = runtime.local;
       const client = services.client();
       return { client, interpret: services.interpret({ ownerId, conversationId: turn.pending.conversationId }),
         checkpoint: local.checkpoint, legacyV5Checkpoint: local.legacyV5Checkpoint,
@@ -183,7 +191,7 @@ export function useWeeklyPlanningVNextApplication(
         calendar: () => ({ plans: turn.plans, actuals: turn.actuals ?? [], monthEvents: turn.monthEvents ?? [],
           scheduleTemplates: turn.scheduleTemplates, timetableTermId: turn.timetableTermId }),
         createRenderer: options => services.createRenderer(client, options), now: services.now };
-    } }), [local, services, ownerId]);
+    } }), [liveSession, runtime, services, ownerId]);
   const turnServices = { ...weeklyPlanningTurnApplicationBaseServices, ...gateway,
     outcomeLifecycle: createWeeklyPlanningTurnOutcomeLifecycle({ saveOwnedState: (_owner, state) => {
       if (!current()) return false;
@@ -196,6 +204,31 @@ export function useWeeklyPlanningVNextApplication(
       ? { ownerId, chatId: chat.index.activeChatId, conversationId: runtime.session.conversationId,
         weekStartDate: runtime.state.weekStartDate, revision: runtime.state.revision } : null;
   }
+  // A reply that finished while the app was away is read back by its saved request identity, never re-run.
+  // Each chat has its own receipt conversation and checkpoint slot, so it resumes only into its own chat.
+  useEffect(() => {
+    if (!durableWeeklyPlanningEnabled() || !input.userId || chat.requiresInitialization || !current()) return;
+    const receipt = readWeeklyPlanningVNextDurableReceipt(input.userId);
+    const state = runtime.state;
+    recoverDurableWeeklyTurn({
+      ownerId, conversationId: runtime.session.conversationId, state, recovering: recoveringDurableRequest, receipt,
+      plannerDataReady: plannerReady(),
+      persistedRevision: () => {
+        try {
+          const saved = runtime.local.load();
+          return saved.conversationId === receipt?.pending.conversationId ? saved.state.revision : undefined;
+        } catch { return undefined; }
+      },
+      chatSaved: () => chat.checkpoint().status === 'saved',
+      resubmit: stable => submitWeeklyPlanningApplicationTurnWithServices({ ...input, ...durableReceiptTurnParams(stable),
+        userId: ownerId, ownerId, session: runtime.session, getState, dispatch, now: services.now,
+        isPlannerDataSnapshotCurrent: plannerReady, isApplicationCurrent: current }, turnServices).then(result => {
+        // Like a submitted turn, a recovered one commits its accepted state into the owning chat's record.
+        if (current()) chat.checkpoint();
+        return result;
+      }),
+    });
+  }, [chat, runtime, revision, runtime.state, runtime.session.conversationId, input.userId, input.plannerDataAvailability]);
   const pendingDraftBlocks = runtime.state.draftBlocks.filter(block => block.status === 'draft');
   return { registeredTargetsAvailable: true, chat, state: runtime.state, pendingDraftBlocks,
     approvalAvailability: classifyWeeklyPlanningApprovalAvailability({ blocks: pendingDraftBlocks, userId: ownerId, resolveRuntime: runtime.local.resolveRuntime }),
@@ -209,6 +242,8 @@ export function useWeeklyPlanningVNextApplication(
     },
     submitTurn: async (userText, supplementalContext, selectedStarterTarget, machineBoundAnswer) => {
       if (!plannerReady() || committedInput.current !== input || runtime.state.approvalRecovery) return { accepted: false, draftCandidates: [] };
+      // A new chat exists only in memory until first saved; its conversation id must survive a reload for the receipt.
+      if (durableWeeklyPlanningEnabled()) chat.checkpoint();
       const result = await submitWeeklyPlanningApplicationTurnWithServices({ ...input, userId: ownerId, ownerId,
         session: runtime.session, userText, supplementalContext, selectedStarterTarget, machineBoundAnswer,
         weekStartsOn, getState, dispatch, now: services.now,
@@ -216,7 +251,17 @@ export function useWeeklyPlanningVNextApplication(
       if (current()) chat.checkpoint();
       return result;
     },
-    cancelTurn: () => cancelWeeklyPlanningControlledTurn({ getState, dispatch }),
+    cancelTurn: () => {
+      const pending = runtime.state.pendingTurn;
+      const cancelled = cancelWeeklyPlanningControlledTurn({ getState, dispatch });
+      if (cancelled && pending && input.userId && durableWeeklyPlanningEnabled()) {
+        recoveringDurableRequest.current = pending.requestId;
+        void cancelDurableWeeklyTurn(ownerId, pending.requestId).finally(() => {
+          if (recoveringDurableRequest.current === pending.requestId) recoveringDurableRequest.current = null;
+        });
+      }
+      return cancelled;
+    },
     clearConversation: () => clearWeeklyPlanningControlledConversation({ getState, dispatch }),
     appendMessage: message => { dispatch({ type: 'append_message', message }); },
     resetSession: () => { if (!runtime.state.pendingTurn && !runtime.state.pendingApproval) chat.create(); },
