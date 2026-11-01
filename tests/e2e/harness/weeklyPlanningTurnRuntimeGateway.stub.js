@@ -4,7 +4,7 @@ import {
   commitWeeklyPlanningStableV5RuntimeGraph,
 } from '../../../src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
 import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from '../../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextTransaction';
-import { serializeWeeklyPlanningVNextSessionCheckpoint } from '../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
+import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from '../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
 import { createWeeklyPlanningPreviewBlocks, createWeeklyPlanningPreviewDisplayBlock } from '../../../src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
 
 const pendingResolvers = [];
@@ -100,7 +100,10 @@ async function execute(params, vnext) {
       weekStartDate: params.snapshot.weekStartDate,
       conversationId: params.pending.conversationId,
     });
-    const accepted = vnext?.session.readCheckpoint();
+    // The gateway's live session exposes the raw checkpoint slot only; read it as production does.
+    const rawCheckpoint = vnext?.session.checkpoint.read();
+    const accepted = rawCheckpoint ? parseWeeklyPlanningVNextSessionCheckpoint({ raw: rawCheckpoint,
+      ownerId: params.userId, weekStartDate: params.snapshot.weekStartDate }) : null;
     const previousCore = accepted?.vnext.state ?? createEmptyWeeklyPlanningVNextState();
     const graphRevision = (vnext ? previousCore.graph : runtimeSession.graph).revision + 1;
     const stagedGraph = runtimeSession && {
@@ -136,6 +139,7 @@ async function execute(params, vnext) {
         turnKey: `${params.pending.conversationId}:${params.pending.requestId}`, sourceText: params.userText,
         acceptedDate: params.snapshot.weekStartDate, weekStartsOn: 'monday',
         planningHorizon: { startDate: params.snapshot.weekStartDate, endDate: params.snapshot.weekStartDate },
+        defaultPlanningHorizon: { startDate: params.snapshot.weekStartDate, endDate: params.snapshot.weekStartDate },
       });
       if (applied.status !== 'applied') throw new Error('Invalid native weekly UI fixture');
       const taskId = applied.state.graph.tasks.at(-1).id;
@@ -169,6 +173,10 @@ async function execute(params, vnext) {
       draftCandidates,
     };
 }
+
+// Durable receipt reading is production code (browser storage only); the harness aliases the module, so
+// it is re-exported from the real gateway rather than faked.
+export { readWeeklyPlanningVNextDurableReceipt } from '../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway';
 
 export const weeklyPlanningTurnRuntimeGateway = {
   execute: params => execute(params),

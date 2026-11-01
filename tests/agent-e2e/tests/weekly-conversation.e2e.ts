@@ -25,7 +25,8 @@ test('smoke: weekly planning conversation accepts one user turn', async ({ app, 
   await composer.fill(vagueRequest);
   await screen.getByRole('button', { name: '送信' }).click();
 
-  await expect(screen.getByText(vagueRequest, { exact: true })).toBeVisible();
+  // The chat title in the heading repeats the first user message, so the user's text is asserted exactly
+  // once inside the conversation below, not by a page-wide text match.
   await expect(screen.getByText(`テスト応答: ${vagueRequest}`, { exact: true })).toBeVisible();
 
   // Keep the exact-once controller/reducer and rendered-message guarantees
