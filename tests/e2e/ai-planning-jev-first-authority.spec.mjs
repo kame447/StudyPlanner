@@ -158,7 +158,7 @@ async function boot(page, mode) {
   await page.route('**/weeklyPlanningTurnRuntimeGateway.stub.js*', async route => {
     audit.replacedModules.push('gateway');
     return route.fulfill({ contentType: 'application/javascript',
-      body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};\nexport { createWeeklyPlanningVNextRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway.ts`)};` });
+      body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};\nexport { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway.ts`)};` });
   });
   for (const [file, marker, injected] of [
     ['aiConfig.ts', 'function getCloudflareAiProxyUrl() {', `return ${JSON.stringify(PROXY)};`],
@@ -172,7 +172,7 @@ async function boot(page, mode) {
     });
   }
   if (mode.startsWith('d5')) {
-    await page.route('**/src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts*', async route => {
+    await page.route('**/src/features/weeklyPlanning/application/weeklyPlanningTurnApplicationCore.ts*', async route => {
       const response = await route.fetch(); const code = await response.text();
       const marker = 'candidateDomains: weeklyPlanningRegisteredCandidateDomains,';
       expect(code.split(marker)).toHaveLength(2);
