@@ -3,8 +3,9 @@ import { expect, test } from '@playwright/test';
 // The VNext production path with the REAL model, through the real Worker (#926): UI -> Firebase Auth emulator ->
 // Worker (production code on wrangler dev) -> durable turn job -> api.openai.com, with trace into the Firestore
 // emulator. Run only by the owner-only weekly-planning-vnext-worker-real-api workflow. The model is stochastic,
-// so assertions are structural (a reply arrives, no failure notice, a preview exists, a reload mid-turn returns
-// the reply without a second AI run, saving happens exactly once), never exact wording. At most three turns.
+// so assertions are structural (a reply arrives, no failure notice, the preview total follows a correction, a fixed
+// event is registered, a reload mid-turn returns the reply without a second AI run, saving happens exactly once),
+// never exact wording. Five real turns, under the budget of six.
 const FIRESTORE = 'http://127.0.0.1:8180/v1/projects/demo-studyplanner/databases/(default)/documents';
 const VNEXT = '/?weeklyPlanningCore=vnext';
 const FAILURE_NOTICE = 'うまく反映できませんでした';
@@ -36,6 +37,25 @@ async function send(page, text) {
   await page.getByRole('button', { name: '送信' }).click();
 }
 
+/** The preview dialog's own total ("合計 1時間30分"), in minutes, then closed. */
+async function previewTotalMinutes(page) {
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  await expect(preview).toBeVisible();
+  const text = await preview.locator('.ai-planning-preview-total').innerText();
+  const hours = Number(/(\d+)時間/.exec(text)?.[1] ?? 0);
+  const minutes = Number(/(\d+)分/.exec(text)?.[1] ?? 0);
+  await preview.getByRole('button', { name: '閉じる' }).click();
+  await expect(preview).toBeHidden();
+  return hours * 60 + minutes;
+}
+
+/** Tomorrow in Japan as the explicit date the user states (the browser runs with timezoneId Asia/Tokyo). */
+function tomorrowInJapan() {
+  const date = new Date(Date.now() + 24 * 60 * 60_000 + 9 * 60 * 60_000);
+  return `${date.getUTCMonth() + 1}月${date.getUTCDate()}日`;
+}
+
 async function firestoreDocuments(request, collection) {
   const response = await request.get(`${FIRESTORE}/${collection}?pageSize=300`, { headers: { Authorization: 'Bearer owner' } });
   expect(response.ok(), collection).toBe(true);
@@ -49,7 +69,7 @@ function outcomesIn(value) {
     : [];
 }
 
-test('VNext + real model through the Worker: durable turns, return mid-turn, preview, one save', async ({ page, request }) => {
+test('VNext + real model through the Worker: preview, correction, fixed event, consultation, return mid-turn, one save', async ({ page, request }) => {
   const posts = [];
   const failedResponses = [];
   page.on('request', (call) => { if (call.method() === 'POST' && call.url().includes(TURN_ENDPOINT)) posts.push(call.postDataJSON()?.requestId); });
@@ -76,18 +96,36 @@ test('VNext + real model through the Worker: durable turns, return mid-turn, pre
   await idle();
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
+  expect(await previewTotalMinutes(page)).toBe(60);
 
-  // Turn 3: return mid-turn. Reload once the Worker has accepted the turn; the saved receipt must bring the reply
-  // back by reading the same job, never by starting another AI run.
-  await send(page, '英語の音読も毎日10分したいです');
+  // Turn 3: a correction after the preview. The preview total must follow the corrected minutes before approval.
+  await send(page, '60分ではなく90分に変更してください');
   await expect.poll(() => posts.length, { timeout: 60_000 }).toBe(3);
-  await page.reload();
-  await openPlanning(page);
-  await expect(conversation).toContainText('英語の音読', { timeout: 150_000 });
   await idle();
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
-  expect(posts).toHaveLength(3);
-  expect(new Set(posts).size).toBe(3);
+  await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
+  expect(await previewTotalMinutes(page)).toBe(90);
+
+  // Turn 4: a fixed event with an explicit date and time, registered as an event rather than study work.
+  await send(page, `${tomorrowInJapan()}の19:00から20:00にピアノ教室があります。予定として登録してください`);
+  await expect.poll(() => posts.length, { timeout: 60_000 }).toBe(4);
+  await idle();
+  await expect(conversation).toContainText('ピアノ教室');
+  await expect(conversation).not.toContainText(FAILURE_NOTICE);
+
+  // Turn 5: a consultation that changes nothing, with the return mid-turn. Reload once the Worker has accepted
+  // the turn; the saved receipt must bring the reply back by reading the same job, never by another AI run.
+  await send(page, '夜に集中が続かないときはどうしたらいいですか？ 今の予定はそのままで大丈夫です');
+  await expect.poll(() => posts.length, { timeout: 60_000 }).toBe(5);
+  await page.reload();
+  await openPlanning(page);
+  await expect(conversation).toContainText('夜に集中が続かない', { timeout: 150_000 });
+  await idle();
+  await expect(conversation).not.toContainText(FAILURE_NOTICE);
+  expect(posts).toHaveLength(5);
+  expect(new Set(posts).size).toBe(5);
+  // Nothing is saved before approval, and the consultation left the plan as it was.
+  expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toMatch(/ゼミ資料|ピアノ教室/);
 
   // Approve the shown preview through the existing approval and save it once.
   await page.getByRole('button', { name: '計画プレビューを確認' }).click();
@@ -97,6 +135,7 @@ test('VNext + real model through the Worker: durable turns, return mid-turn, pre
   await preview.getByRole('button', { name: 'この内容で保存' }).click();
   await expect(preview).toBeHidden();
   await expect.poll(async () => JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ゼミ資料');
+  expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ピアノ教室');
   const saved = (await firestoreDocuments(request, 'schedule_events'))
     .filter((document) => JSON.stringify(document.fields).includes('ゼミ資料')).length;
   expect(saved).toBeGreaterThanOrEqual(1);

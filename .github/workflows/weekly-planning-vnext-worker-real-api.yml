@@ -7,7 +7,7 @@ env:
 # (VITE_CLOUDFLARE_AI_PROXY_URL is empty), so it never exercises the Worker's auth, durable turn job or output clamp.
 # This run does: the production build with the durable client on, the production Worker code on wrangler dev with
 # the durable job on, the Firebase Auth and Firestore emulators (no test auth bypass, no production account), and
-# api.openai.com as the only allowed provider host. Paid, so owner-only and opt-in; at most three conversation turns.
+# api.openai.com as the only allowed provider host. Paid, so owner-only and opt-in; five conversation turns (budget six).
 on:
   workflow_dispatch:
     inputs:
