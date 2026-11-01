@@ -491,3 +491,89 @@ describe('declining the optional invitation closes it whatever tasks exist (Astr
     expect(h.state().optionalInvitationClosed).toBe(false);
   });
 });
+
+// Run 41336860494 (head 91488442), conversation optional-invitation-busy-decline-reopen: the typed readings below are the
+// model's exact output. The decline of turn 2 was not read there (3 of 3 repetitions), so the invitation stayed open.
+describe('a plan request with new work after the optional invitation', () => {
+  const busy: VNextAddFact[] = [{ kind: 'availability_declaration', localId: 'availability1', availabilityKind: 'unavailable',
+    dateExpression: '2026-11-03', namedTimePeriod: null, startTime: '16:00', endTime: '17:30', recurrenceKind: null, days: [],
+    capacityMinutes: null, constraintLevel: 'hard' } as VNextAddFact];
+  const vocab: VNextAddFact[] = [{ kind: 'task', localId: 'task_vocab', category: 'study', title: '英単語' },
+    { kind: 'study_context', localId: 'context_vocab', taskRef: { localId: 'task_vocab' }, purpose: 'unknown', contextLabel: null, activityKind: 'unknown' } as VNextAddFact,
+    { kind: 'workload', localId: 'work_vocab', taskRef: { localId: 'task_vocab' }, componentRef: null, quantityRole: 'target', amount: 20, unitCode: 'word',
+      unitLabel: '語', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+    { kind: 'effort_estimate', localId: 'estimate_vocab', taskRef: { localId: 'task_vocab' }, targetRef: { localId: 'work_vocab' }, effortKind: 'duration_per_unit',
+      minutes: 2, unitCode: 'word', unitLabel: '語', precision: 'exact' } as VNextAddFact];
+  const TURNS = ['11月2日から8日の予定です。11月3日16時から17時半は勉強できません。', 'ほかの作業は追加しません。', 'わかりました。',
+    'やっぱり英単語を20語、1語2分で勉強する計画をお願いします。'];
+  const decline = [{ kind: 'decline_additional_work', targetRef: null }] as const;
+  const closedFlag = (h: ReturnType<typeof harness>) => h.local.readCheckpoint()!.vnext.state.optionalInvitationClosed;
+  const communicationOf = (h: ReturnType<typeof harness>) => (h.rendererInputs[h.rendererInputs.length - 1] as { communication?: { statusReason?: string; previewAuthorization?: unknown } }).communication;
+  const v5Status = (h: ReturnType<typeof harness>, previousClosed: boolean) => {
+    const graph = h.state().graph;
+    const compilation = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
+      context: { ownerId: OWNER, currentDate: WEEK, planningStartDate: WEEK, planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } });
+    return fixedEventOnlyInteractionStatus({ graph, compilation, semanticChanged: false, previousQuestionSlot: undefined,
+      declinedAdditionalWork: false, requestedEventRegistration: false, previousOptionalInvitationClosed: previousClosed });
+  };
+
+  it('with the invitation still open (decline unread), an explicit plan request with new work is authorized and previewed', async () => {
+    const h = harness([wire(busy, [], 'discuss'), wire([], [], 'discuss'), wire([], [], 'unknown'), wire(vocab, [], 'create_plan')]);
+    for (const text of TURNS.slice(0, 3)) {
+      const result = await h.turn(text);
+      // Unread decline: the optional invitation is asked again and nothing closes it.
+      expect(result.question?.optionalInvitation).toBeDefined(); expect(closedFlag(h)).toBe(false);
+    }
+    const result = await h.turn(TURNS[3]);
+    // The optional invitation was not a required question, so this explicit request authorizes the plan.
+    expect(result.authorizationDecision?.authorized).toBe(true);
+    expect(result.question).toBeNull();
+    expect(result.preview?.blocks).toHaveLength(1);
+    expect(closedFlag(h)).toBe(false);
+    expect(communicationOf(h)?.previewAuthorization).toBeUndefined();
+    expect(h.saved.size).toBe(0);
+  });
+
+  it('with the decline read, it closes exactly as V5 closes it and stays closed, and later new work plus a plan request previews', async () => {
+    const h = harness([wire(busy, [], 'discuss'), wire([], decline as never, 'discuss'), wire([], [], 'unknown'), wire(vocab, [], 'create_plan')]);
+    await h.turn(TURNS[0]);
+    for (const text of TURNS.slice(1, 3)) {
+      const result = await h.turn(text);
+      // Same state V5 reports for the same facts (V5 baseline of the run: closed, no_additional_work, no question).
+      expect(result.question).toBeNull(); expect(result.preview).toBeNull();
+      expect(closedFlag(h)).toBe(true);
+      expect(communicationOf(h)?.statusReason).toBe('no_additional_work');
+      expect(v5Status(h, true)).toBe('no_additional_work');
+    }
+    const result = await h.turn(TURNS[3]);
+    expect(result.authorizationDecision?.authorized).toBe(true);
+    expect(result.preview?.blocks).toHaveLength(1);
+    expect(closedFlag(h)).toBe(false);
+  });
+
+  it('negative control: the answer to a required question still never authorizes planning', async () => {
+    const h = harness([wire([{ kind: 'task', localId: 'math', category: 'study', title: '数学' },
+      { kind: 'workload', localId: 'w', taskRef: { localId: 'math' }, componentRef: null, quantityRole: 'remaining', amount: 8, unitCode: 'problem',
+        unitLabel: '問', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null }], [], 'discuss'), wire([], [], 'create_plan')]);
+    const first = await h.turn('数学の問題は残り8問です。');
+    expect(first.question?.code).toBe('missing_effort_estimate');
+    const second = await h.turn('計画をお願いします。');
+    expect(second.authorizationDecision?.authorized).toBe(false);
+    expect(second.preview).toBeNull();
+  });
+
+  it('gives the reader the presented invitation and the guidance that its answer is the decline act', async () => {
+    const h = harness([wire(busy, [], 'discuss'), wire([], decline as never, 'discuss')]);
+    const requests: { messages: { role: string; content: string }[]; responseFormat?: { json_schema?: { schema?: unknown } } }[] = [];
+    const complete = h.ports.client.createChatCompletion.bind(h.ports.client);
+    h.ports.client.createChatCompletion = async (input) => { requests.push(input as never); return complete(input); };
+    await h.turn(TURNS[0]); await h.turn(TURNS[1]);
+    const second = requests[requests.length - 1];
+    const userMessages = second.messages.filter(message => message.role === 'user');
+    const context = JSON.parse(userMessages[userMessages.length - 1].content) as { presentedQuestion: { optionalInvitation?: { intent: string } } };
+    expect(context.presentedQuestion.optionalInvitation).toMatchObject({ intent: 'missing_task_identity' });
+    const schema = JSON.stringify(second.responseFormat?.json_schema?.schema);
+    expect(schema).toContain('presentedQuestion with an optionalInvitation field is that invitation');
+    expect(schema).toContain('decline_additional_work with an empty delta');
+  });
+});

@@ -324,6 +324,10 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   if (invitation && presented?.questionKey === invitation.key && presented.graphRevision === state.graph.revision) {
     before = { ...before, questions: [invitation] };
   }
+  // The permission gate treats an answer to a pending question as no request to plan. The optional
+  // invitation is not such a question (it never blocks and is only an offer), so an explicit plan request
+  // with new work that follows it still authorizes; a required question's answer never does.
+  const hadRequiredQuestion = before.questions.some((question) => !question.optionalInvitation);
   const presentationFresh = presented !== null && presented.graphRevision === params.shownRevision;
   const presentedQuestion = presentationFresh && presented.graphRevision === state.graph.revision
     ? before.questions.find((question) => question.key === presented.questionKey) ?? null
@@ -380,7 +384,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     // If facts actually change, its normal revision advance already covers the result.
     const priorAuthorization = delta ? resolveVNextPlanningAuthorization({ state, accepted: true,
       previousStatus: read.checkpoint.preview ? 'draft_ready' : before.questions.length ? 'revision_pending' : 'needs_scope',
-      planningIntent: interpretation.planningIntent, hadMachinePendingQuestion: before.questions.length > 0,
+      planningIntent: interpretation.planningIntent, hadMachinePendingQuestion: hadRequiredQuestion,
       semanticChanged: false, provisionalTimeboxRequested: delta.defer.some(item => item.allocation === 'provisional_timebox'),
     }) : null;
     const authorizedCandidateKeys = priorAuthorization?.authorized
@@ -425,7 +429,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const authorization = resolveVNextPlanningAuthorization({ state, accepted,
     previousStatus: read.checkpoint.preview ? 'draft_ready' : before.questions.length ? 'revision_pending' : 'needs_scope',
     planningIntent: interpretation.status === 'interpreted' ? interpretation.planningIntent : null,
-    hadMachinePendingQuestion: before.questions.length > 0, semanticChanged,
+    hadMachinePendingQuestion: hadRequiredQuestion, semanticChanged,
     provisionalTimeboxRequested: delta?.defer.some(item => item.allocation === 'provisional_timebox') ?? false });
   state = authorization.state;
   let projection: WeeklyPlanningVNextProjection = projectWeeklyPlanningVNext(state, observedMemoryPace(state, calendar));
