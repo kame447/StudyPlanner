@@ -164,14 +164,15 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   holds(savedExactlyOnce(await events(), study));
   holds(unchangedSince(savedStudy, await events(), study));
 
-  // A failed provider call: the native reading fails, then the recovery renderer is asked to explain it.
-  // Failing that too must end the turn with VNext's system notice, apply nothing and save nothing.
+  // A failed provider call: current-contract-v5 "Bounded structured-failure recovery" allows no new dispatch after a
+  // provider failure, so the turn ends with VNext's fixed notice, applies nothing and saves nothing, and the provider
+  // receives no further request (no recovery renderer call).
   await send(page, '英語の音読も30分');
   const failed = await nextCall(request);
   expect(failed.schema).toBe('weekly_planning_vnext_native_v1');
+  const providerRequests = async () => (await (await request.get(`${SYNTHETIC}/__synthetic/requests`)).json()).received.length;
+  const requestsAtFailure = await providerRequests(); // includes the failed reading itself
   await answer(request, failed, null, 500);
-  const recovery = await nextCall(request);
-  await answer(request, recovery, null, 500);
   await expect(page.locator('.ai-planning-conversation'))
     .toContainText('うまく反映できませんでした。もう一度、言い方を変えて教えてください。');
   await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
@@ -182,4 +183,6 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   // plan as V5's needs_scope, the previewed turn as preview_ready, the failed one as failed, never idle.
   await expect.poll(async () => withoutBaseline(await traceOutcomes(request), traceBaseline))
     .toEqual(['failed', 'needs_scope', 'preview_ready']);
+  // The failed turn is complete (its trace is written at its end) and the provider saw nothing after the failed reading.
+  expect(await providerRequests()).toBe(requestsAtFailure);
 });
