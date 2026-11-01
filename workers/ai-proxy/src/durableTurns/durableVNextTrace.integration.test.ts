@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyPlanningStableV5DebugTraceForTest(); vi.unstubAllGlobals(); });
 
-it('carries a Worker-executed VNext turn\'s provider and renderer evidence through the existing trace persistence boundary', async () => {
+it.each([false, true])('carries a Worker-executed VNext turn\'s provider and renderer evidence through the existing trace persistence boundary (oversized=%s)', async oversized => {
   const payload: WeeklyPlanningVNextDurableTurnInput = { core: 'vnext', weekStartDate: '2026-10-12', checkpoint: null, legacyV5Checkpoint: null,
     input: { userId: 'alice', conversationId: ids.logicalConversationId, traceRequestId: 'chat:request:1', inputStateRevision: 0, messages: [],
       userText, selectedDate: '2026-10-13', plans: [], scheduleTemplates: [],
@@ -67,7 +67,9 @@ it('carries a Worker-executed VNext turn\'s provider and renderer evidence throu
   expect(events.map(event => event.stage)).toEqual(expect.arrayContaining(['semantic_provider_request', 'semantic_provider_response', 'semantic_validation_result']));
   // A future field must reach storage without any schema being updated for it.
   const validation = events.filter(event => event.stage === 'semantic_validation_result').slice(-1)[0];
-  (validation.data as { parsedDocument: Record<string, unknown> }).parsedDocument.futureVNextTraceField = sentinel;
+  const parsed = (validation.data as { parsedDocument: Record<string, unknown> }).parsedDocument;
+  parsed.futureVNextTraceField = sentinel;
+  if (oversized) parsed.futureLargeVNextTraceField = 'x'.repeat(48 * 1024);
 
   // The Durable Object stores this string and the browser's real codec reads it back.
   const serialized = serializeWeeklyPlanningTurnResult(executed);
@@ -102,6 +104,13 @@ it('carries a Worker-executed VNext turn\'s provider and renderer evidence throu
   const prepared = prepareWeeklyPlanningTraceServerWrite(retried, { token: `wpt_${'a'.repeat(43)}`, epoch: '100' }, ids, '2026-10-14T00:00:00Z');
   expect(prepared.entries).toHaveLength(1);
   expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
-  expect(JSON.stringify(prepared)).toContain(sentinel);
   expect(JSON.stringify(prepared)).not.toContain('server-key');
+  if (oversized) {
+    // A large value never drops the turn: it is truncated with explicit evidence, before and after Worker preparation.
+    expect(entry.diagnostics.truncation).toMatchObject({ applied: true });
+    expect(JSON.stringify(prepared)).not.toContain('x'.repeat(48 * 1024));
+    expect((prepared.entries[0].diagnostics as Record<string, unknown>).truncation).toMatchObject({ applied: true });
+  } else {
+    expect(JSON.stringify(prepared)).toContain(sentinel);
+  }
 });
