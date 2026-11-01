@@ -266,8 +266,9 @@ export function useWeeklyPlanningVNextApplication(
       // loads before any OCR or provider call, and nothing may have moved while that awaited.
       const admission = admitPreparedWeeklyPlanningTurn({ preparation: await prepareTurn(), ports: preparationPorts, start });
       if (!admission.admitted) return admission.result;
-      // A new chat exists only in memory until first saved; its conversation id must survive a reload for the receipt.
-      if (durableWeeklyPlanningEnabled()) chat.checkpoint();
+      // Save the same selected conversation before accepting remote work, including its first turn (as V5 does): its
+      // conversation id must survive a reload for the receipt. A failed save is the chat's own retry/blocked state.
+      if (durableWeeklyPlanningEnabled() && chat.checkpoint().status !== 'saved') return { accepted: false, draftCandidates: [] };
       const result = await submitWeeklyPlanningApplicationTurnWithServices({ ...input, userId: ownerId, ownerId,
         session: runtime.session, userText, supplementalContext, selectedStarterTarget, machineBoundAnswer,
         weekStartsOn, getState, dispatch, now: services.now,

@@ -274,3 +274,55 @@ it('resumes into the chat that owns the receipt and leaves another chat\'s check
   await expectNoLateExecution(second.database);
   expect(rawOf(chatA)).toBe(chatABytes);
 });
+
+// Astra F1: a durable first turn must not be accepted when its chat snapshot could not be saved. Without the saved
+// snapshot a reload mints a new conversation identity and the accepted turn becomes unreachable.
+/** The first chat-slot snapshot write fails once, as a full or blocked store would for a single write. */
+function failFirstSnapshotWrite() {
+  const write = storage.storage.setItem.bind(storage.storage);
+  const injected = { count: 0 };
+  storage.storage.setItem = (key: string, value: string) => {
+    if (injected.count === 0 && key.includes('.vnext.') && key.endsWith('.ui')) { injected.count += 1; throw new Error('one-shot first snapshot write failure'); }
+    write(key, value);
+  };
+  return injected;
+}
+
+it('rejects a durable first turn whose chat snapshot failed: no POST, nothing staged, the chat shows its own blocked state', async () => {
+  const first = await mount();
+  await act(async () => { expect(first.ref.current!.chat.create().status).toBe('saved'); });
+  const injected = failFirstSnapshotWrite();
+  let result!: WeeklyPlanningTurnSubmissionResult;
+  await act(async () => { result = await first.ref.current!.submitTurn('数学を7ページ'); });
+  expect(injected.count).toBe(1);
+  expect(result).toEqual({ accepted: false, draftCandidates: [] });
+  expect(methods, 'no request reached the Worker').toEqual([]);
+  expect(providerCalls).toBe(0);
+  expect(readDurableWeeklyTurnReceipt(OWNER, 'vnext'), 'no receipt was staged').toBeNull();
+  expect(first.ref.current!.state.pendingTurn).toBeUndefined();
+  expect(first.ref.current!.state.messages).toEqual([]);
+  expect(first.ref.current!.chat.result).toMatchObject({ status: 'blocked', reason: 'snapshot-write-failed' });
+});
+
+it('accepts the same turn once the save succeeds on retry, and it resumes after a reload under the saved identity', async () => {
+  const first = await mount();
+  await act(async () => { expect(first.ref.current!.chat.create().status).toBe('saved'); });
+  const chatId = first.ref.current!.chat.index.activeChatId;
+  failFirstSnapshotWrite();
+  await act(async () => { expect((await first.ref.current!.submitTurn('数学を7ページ')).accepted).toBe(false); });
+  await act(async () => { expect(first.ref.current!.chat.retry()).toEqual({ status: 'saved' }); });
+  const { submitted } = await submit(first.ref, '数学を7ページ');
+  const saved = JSON.parse(storage.storage.getItem(`studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.ui`)!) as { conversationId: string };
+  expect(readDurableWeeklyTurnReceipt(OWNER, 'vnext')!.pending.conversationId, 'the receipt names the saved conversation').toBe(saved.conversationId);
+  await act(async () => renderer!.unmount()); renderer = undefined;
+  await runAlarm(); expect(currentRecord()?.status).toBe('completed');
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+  const second = await mount();
+  const detached = track(submitted);
+  await act(async () => { windowTarget.dispatchEvent(new Event('focus'));
+    await until(() => detached.done && second.ref.current!.state.messages.some(m => m.role === 'assistant')); });
+  expect(second.ref.current!.state.messages.filter(m => m.role === 'user')).toHaveLength(1);
+  expect(second.ref.current!.state.messages.filter(m => m.role === 'assistant')).toHaveLength(1);
+  expect(methods.filter(method => method === 'POST'), 'only the accepted turn was ever sent').toHaveLength(1);
+  await expectNoLateExecution(second.database);
+});
