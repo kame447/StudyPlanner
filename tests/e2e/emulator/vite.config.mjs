@@ -23,7 +23,8 @@ Object.assign(process.env, {
   VITE_FIREBASE_MEASUREMENT_ID: '',
   VITE_CLOUDFLARE_AI_PROXY_URL: 'http://127.0.0.1:18787',
   VITE_WEEKLY_PLANNING_TRACE_ENABLED: 'true',
-  VITE_DURABLE_WEEKLY_TURNS: 'disabled',
+  // The explicit real-API workflow (#926) builds the production durable path; every other target does not.
+  VITE_DURABLE_WEEKLY_TURNS: process.env.STUDYPLANNER_E2E_REAL_API === '1' ? 'enabled' : 'disabled',
   // Exercise the production VNext composition even if the shell selected a local V5 comparison.
   VITE_WEEKLY_PLANNING_CORE: 'vnext',
   // Ports from firebase.emulator-e2e.json, apart from the defaults other local tools often hold.
