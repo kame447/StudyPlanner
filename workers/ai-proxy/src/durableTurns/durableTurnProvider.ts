@@ -84,6 +84,9 @@ async function dispatchDurableCandidateChoice(
   sourceIp: string,
   deadlineAt: number,
   label: string,
+  /** A closed choice is optional help: when set, a refused or failed Worker call is journaled as 'unavailable' instead of
+   * stopping the whole turn, so the caller can fall back to its full reading. */
+  optional = false,
 ): Promise<CandidateChoiceEvaluation> {
   const context = { purpose: 'candidate_choice' as const, request };
   if (!isCandidateChoiceDecisionContext(context)) throw new Error(`Invalid durable ${label} candidate context.`);
@@ -111,7 +114,10 @@ async function dispatchDurableCandidateChoice(
         decisionExecutionMode: jevExecutionMode(response), lunaBaselineFailure: lunaBaselineFailure(response),
       }).catch(() => undefined);
     }
-    if (!response.ok) throw new Error(`Durable Jev ${label} choice unavailable.`);
+    if (!response.ok) {
+      if (optional) return JSON.stringify({ status: 'unavailable', reason: `http_${response.status}` });
+      throw new Error(`Durable Jev ${label} choice unavailable.`);
+    }
     return response.text();
   });
   const parsed: unknown = JSON.parse(raw);
@@ -156,7 +162,7 @@ export function createDurableVNextOptionChoicePort(
   deadlineAt = Date.now() + 14 * 60_000,
 ): WeeklyPlanningVNextOptionChoicePort {
   return { policy: calibration.policy, async choose(request, beforeDispatch, observe) {
-    const evaluation = await dispatchDurableCandidateChoice(env, ownerId, dispatch, request, beforeDispatch, sourceIp, deadlineAt, 'VNext option');
+    const evaluation = await dispatchDurableCandidateChoice(env, ownerId, dispatch, request, beforeDispatch, sourceIp, deadlineAt, 'VNext option', true);
     observe?.(structuredClone(evaluation), { ...calibration.semanticPolicy });
     return projectCandidateChoiceSelection(request, evaluation, calibration.semanticPolicy);
   } };
