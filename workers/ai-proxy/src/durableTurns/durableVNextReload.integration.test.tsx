@@ -7,12 +7,12 @@ import { successfulWeeklyPlanningRendererCompletion } from '../../../../src/feat
 import type { WeeklyPlanningApplication, UseWeeklyPlanningApplicationInput } from '../../../../src/features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import { createWeeklyPlanningApprovalMemoryState, createMemoryWeeklyPlanningApprovalPlanRepository } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningApprovalMemoryRepository';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
-import { readDurableWeeklyTurnReceipt } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningDurableTurnClient';
+import { DURABLE_CLIENT_TIMING, readDurableWeeklyTurnReceipt } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningDurableTurnClient';
 import type { WeeklyPlanningTurnSubmissionResult } from '../../../../src/features/weeklyPlanning/weeklyPlanningTurnExecutionTypes';
 import { useWeeklyPlanningVNextApplication, type WeeklyPlanningVNextLocalApplicationServices } from '../../../../src/features/weeklyPlanning/vnext/application/useWeeklyPlanningVNextApplication';
 import { createWeeklyPlanningVNextLocalSession } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextLocalSession';
 import { VNEXT_PROVIDER_RESPONSE_FORMAT } from '../../../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProviderSchema';
-import { DurableTurnJob, type DurableTurnRecord } from './durableTurnJob';
+import { DURABLE_TURN_LIMITS, DurableTurnConflict, DurableTurnJob, type DurableTurnRecord } from './durableTurnJob';
 import { executeDurableVNextTurn } from './durableVNextTurn';
 import { serializeWeeklyPlanningTurnResult } from './weeklyPlanningTurnResult';
 import type { AiProxyWorkerEnv } from '../worker';
@@ -32,21 +32,51 @@ const Harness = forwardRef<WeeklyPlanningApplication, { input: UseWeeklyPlanning
   const app = useWeeklyPlanningVNextApplication(props.input, props.services); useImperativeHandle(ref, () => app, [app]); return null;
 });
 let restoreStorage: (() => void) | undefined; let renderer: ReactTestRenderer | undefined; let storage: ReturnType<typeof createMemoryStorageHarness>;
-let job: DurableTurnJob; let record: DurableTurnRecord | undefined; let methods: string[]; let providerCalls: number; let windowEvents: EventTarget;
+let methods: string[]; let providerCalls: number; let windowTarget: EventTarget;
+/** One Durable Object per chat, as in production (named by owner and conversation): a turn can only ever reach its own. */
+let objects: Map<string, { job: DurableTurnJob; record?: DurableTurnRecord }>;
+let lastConversation: string;
+let outstanding: Promise<unknown>[]; let conflicts: unknown[]; let unhandled: unknown[];
+let windowListeners: Set<unknown>; let documentListeners: Set<unknown>;
+const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+const objectFor = (conversationId: string) => {
+  let entry = objects.get(conversationId);
+  if (!entry) {
+    const created: { job: DurableTurnJob; record?: DurableTurnRecord } = { job: undefined as never };
+    created.job = new DurableTurnJob({ read: async () => created.record && structuredClone(created.record),
+      write: async value => { created.record = structuredClone(value); }, alarmAt: async () => {} });
+    const { accept, cancel } = created.job;
+    // A conflict is a protocol violation in every test of this file; record it where it is raised.
+    created.job.accept = async input => { try { return await accept.call(created.job, input); } catch (error) { if (error instanceof DurableTurnConflict) conflicts.push(error.code); throw error; } };
+    created.job.cancel = async identity => { try { return await cancel.call(created.job, identity); } catch (error) { if (error instanceof DurableTurnConflict) conflicts.push(error.code); throw error; } };
+    objects.set(conversationId, created); entry = created;
+  }
+  lastConversation = conversationId;
+  return entry;
+};
+/** The job record of the chat the last turn addressed. */
+const currentRecord = () => objects.get(lastConversation)?.record;
+const activePolls = () => windowListeners.size + documentListeners.size;
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] }); vi.setSystemTime('2026-11-02T00:00:00Z');
   vi.stubEnv('VITE_DURABLE_WEEKLY_TURNS', 'enabled'); vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'false');
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   storage = createMemoryStorageHarness(); restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
-  windowEvents = new EventTarget();
-  Object.assign(window, { addEventListener: windowEvents.addEventListener.bind(windowEvents), removeEventListener: windowEvents.removeEventListener.bind(windowEvents) });
-  const documentEvents = new EventTarget();
-  vi.stubGlobal('document', { visibilityState: 'visible', addEventListener: documentEvents.addEventListener.bind(documentEvents), removeEventListener: documentEvents.removeEventListener.bind(documentEvents) });
+  methods = []; providerCalls = 0; objects = new Map(); lastConversation = ''; outstanding = []; conflicts = []; unhandled = [];
+  windowListeners = new Set(); documentListeners = new Set();
+  process.on('unhandledRejection', onUnhandled);
+  const registry = (target: EventTarget, listeners: Set<unknown>) => ({
+    // Only the client's poll registers these; a leftover registration is a leftover poll.
+    addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => { listeners.add(listener); target.addEventListener(type, listener); },
+    removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => { listeners.delete(listener); target.removeEventListener(type, listener); },
+  });
+  const windowEvents = new EventTarget(); const documentEvents = new EventTarget();
+  windowTarget = windowEvents;
+  Object.assign(window, registry(windowEvents, windowListeners));
+  vi.stubGlobal('document', { visibilityState: 'visible', ...registry(documentEvents, documentListeners) });
   vi.spyOn(aiConfig, 'getCloudflareAiProxyUrl').mockReturnValue('https://proxy.fixture.test');
   vi.spyOn(firebase, 'getFirebaseAuth').mockReturnValue({ currentUser: { uid: OWNER, getIdToken: async () => 'synthetic' } } as never);
-  record = undefined; methods = []; providerCalls = 0;
-  job = new DurableTurnJob({ read: async () => record && structuredClone(record), write: async value => { record = structuredClone(value); }, alarmAt: async () => {} });
   vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     if (String(url).includes('/observability/')) return Response.json({ ok: true });
     if (!String(url).includes('/weekly-planning/turns')) {
@@ -58,15 +88,31 @@ beforeEach(() => {
       return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content } }] });
     }
     methods.push(init?.method ?? 'GET');
-    if (init?.method === 'POST') { const input = JSON.parse(String(init.body)); return Response.json(await job.accept({ ...input, ownerId: OWNER, payload: JSON.stringify(input.payload) }), { status: 202 }); }
-    const query = new URL(String(url)).searchParams;
-    if (init?.method === 'DELETE') return Response.json(await job.cancel({ ownerId: OWNER, conversationId: query.get('conversationId')!,
+    if (init?.method === 'POST') {
+      const input = JSON.parse(String(init.body));
+      return Response.json(await objectFor(input.conversationId).job.accept({ ...input, ownerId: OWNER, payload: JSON.stringify(input.payload) }), { status: 202 });
+    }
+    const query = new URL(String(url)).searchParams; const conversationId = query.get('conversationId')!;
+    if (init?.method === 'DELETE') return Response.json(await objectFor(conversationId).job.cancel({ ownerId: OWNER, conversationId,
       requestId: query.get('requestId')!, baseRevision: Number(query.get('baseRevision')), startedAt: Number(query.get('startedAt')) }));
-    const state = await job.status({ ownerId: OWNER, conversationId: query.get('conversationId')!, requestId: query.get('requestId')! });
+    const state = await objectFor(conversationId).job.status({ ownerId: OWNER, conversationId, requestId: query.get('requestId')! });
     return state ? Response.json(state) : new Response(null, { status: 404 });
   }));
 });
-afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; restoreStorage?.(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); resetWeeklyPlanningStableV5RuntimeSessionsForTest(); });
+afterEach(async () => {
+  // Teardown at the cause: nothing started by a test may outlive it. The page goes away, then every turn it
+  // started settles and every client poll deregisters before the next test (or a failure report) begins.
+  try {
+    await act(async () => renderer?.unmount()); renderer = undefined;
+    await until(() => outstanding.every(turn => turnState.get(turn)?.done === true) && activePolls() === 0);
+    await passEveryInterval();
+    expect(conflicts, 'no durable conflict may be raised').toEqual([]);
+    expect(unhandled, 'no unhandled rejection may occur').toEqual([]);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+    restoreStorage?.(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+  }
+});
 
 async function mount() {
   const database = createWeeklyPlanningApprovalMemoryState(); const repository = createMemoryWeeklyPlanningApprovalPlanRepository(database);
@@ -84,8 +130,9 @@ async function mount() {
   await act(async () => { expect((await ref.current!.prepareTurn()).ready).toBe(true); });
   return { ref, database };
 }
-async function runAlarm() {
-  await job.run(async (payload, dispatch, sourceIp, deadline) => serializeWeeklyPlanningTurnResult(
+/** The alarm of one chat's Durable Object (default: the chat the last turn addressed). */
+async function runAlarm(conversationId = lastConversation) {
+  await objects.get(conversationId)!.job.run(async (payload, dispatch, sourceIp, deadline) => serializeWeeklyPlanningTurnResult(
     await executeDurableVNextTurn(workerEnv, JSON.parse(payload), dispatch, sourceIp, deadline)));
 }
 const checkpointOf = (chatId: string) => createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId }).readCheckpoint();
@@ -103,15 +150,49 @@ async function until(condition: () => boolean, limitMs = 60_000) {
     await vi.advanceTimersByTimeAsync(10); await realYield();
   }
 }
-/** For a claim that nothing more happens: every client poll interval passes and real tasks drain. */
-async function quiesce() { await vi.advanceTimersByTimeAsync(10_000); for (let i = 0; i < 25; i += 1) await realYield(); }
-const track = (promise: Promise<unknown>) => { const state = { done: false }; void promise.then(() => { state.done = true; }, () => { state.done = true; }); return state; };
+const turnState = new WeakMap<Promise<unknown>, { done: boolean }>();
+/** Every turn a test starts is tracked so teardown can await it. */
+function track<T extends Promise<unknown>>(promise: T): { done: boolean } {
+  const state = turnState.get(promise) ?? { done: false };
+  if (!turnState.has(promise)) { turnState.set(promise, state); outstanding.push(promise); void promise.then(() => { state.done = true; }, () => { state.done = true; }); }
+  return state;
+}
 const rawOf = (chatId: string) => createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId }).checkpoint.read();
 async function submit(app: { current: WeeklyPlanningApplication | null }, text: string) {
   let submitted!: Promise<WeeklyPlanningTurnSubmissionResult>;
-  await act(async () => { submitted = app.current!.submitTurn(text); await until(() => record?.status === 'queued'); expect(record?.status).toBe('queued'); });
+  await act(async () => { submitted = app.current!.submitTurn(text); track(submitted);
+    await until(() => currentRecord()?.status === 'queued'); expect(currentRecord()?.status).toBe('queued'); });
   // Boxed: returning the promise itself would make the caller wait for the turn to finish.
   return { submitted };
+}
+
+/** Past every interval the code defines for polling, request timeout, reconciliation, acceptance and the alarm watchdog. */
+const LONGEST_DEFINED_INTERVAL_MS = Math.max(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.requestTimeoutMs,
+  DURABLE_CLIENT_TIMING.reconcileWindowMs, DURABLE_TURN_LIMITS.acceptanceAgeMs, DURABLE_TURN_LIMITS.executionMs);
+/** Time passes beyond every defined interval and every object's alarm is delivered again, then the real queue drains. */
+async function passEveryInterval() {
+  await vi.advanceTimersByTimeAsync(LONGEST_DEFINED_INTERVAL_MS);
+  for (const conversationId of objects.keys()) await runAlarm(conversationId);
+  for (let i = 0; i < 10; i += 1) await realYield();
+}
+/**
+ * "Nothing more can happen" from observable facts of the existing mechanisms, not from a wait: the job reached
+ * a terminal state, its receipt is consumed or cleared, the client poll is deregistered (no listener, no pending
+ * timer), and the requests, provider calls and saves stay fixed while time passes beyond every defined interval
+ * and the alarm is delivered again. Late duplicates are also covered by the idempotent-accept tests in
+ * durableTurnJob.test.ts (lost acceptance response / repeated request) and by the other-chat case below.
+ */
+async function expectNoLateExecution(database: { metrics: unknown }) {
+  expect(['completed', 'failed', 'expired'], 'the job is terminal').toContain(currentRecord()?.status);
+  expect(readDurableWeeklyTurnReceipt(OWNER), 'the receipt is consumed or cleared').toBeNull();
+  expect(activePolls(), 'the client poll is deregistered').toBe(0);
+  expect(vi.getTimerCount(), 'no poll or request timer is pending').toBe(0);
+  const before = { methods: [...methods], providerCalls, metrics: structuredClone(database.metrics) };
+  await passEveryInterval();
+  expect(methods, 'no further request').toEqual(before.methods);
+  expect(providerCalls, 'no further provider call').toBe(before.providerCalls);
+  expect(database.metrics, 'no further save').toEqual(before.metrics);
+  expect(activePolls()).toBe(0); expect(vi.getTimerCount()).toBe(0);
 }
 
 it('finishes while detached and restores exactly one reply and its checkpoint without another AI call or save', async () => {
@@ -120,12 +201,12 @@ it('finishes while detached and restores exactly one reply and its checkpoint wi
   expect(methods).toEqual(['POST']); expect(first.ref.current!.state.pendingTurn).toBeDefined();
   expect(readDurableWeeklyTurnReceipt(OWNER)?.payload).toMatchObject({ core: 'vnext', checkpoint: null });
   await act(async () => renderer!.unmount()); renderer = undefined;
-  await runAlarm(); expect(record?.status).toBe('completed'); const callsAfterAlarm = providerCalls; expect(callsAfterAlarm).toBeGreaterThan(0);
+  await runAlarm(); expect(currentRecord()?.status).toBe('completed'); const callsAfterAlarm = providerCalls; expect(callsAfterAlarm).toBeGreaterThan(0);
   expect(checkpointOf(chatId)).toBeNull();
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   const second = await mount();
   const detached = track(submitted);
-  await act(async () => { windowEvents.dispatchEvent(new Event('focus'));
+  await act(async () => { windowTarget.dispatchEvent(new Event('focus'));
     await until(() => detached.done && second.ref.current!.state.messages.some(m => m.role === 'assistant')); });
   expect((await submitted).accepted).toBe(false);
   const state = second.ref.current!.state;
@@ -135,9 +216,11 @@ it('finishes while detached and restores exactly one reply and its checkpoint wi
   expect(checkpointOf(chatId)!.vnext.state.graph.tasks.map(task => task.title)).toEqual(['数学']);
   expect(methods.filter(method => method === 'POST')).toHaveLength(1); expect(providerCalls).toBe(callsAfterAlarm);
   expect(second.database.metrics).toEqual({ planWrites: 0, itemWrites: 0, operationWrites: 0 });
+  await expectNoLateExecution(second.database);
   // A later load reads the persisted answer; the old receipt does not apply it again.
   await act(async () => renderer!.unmount()); renderer = undefined; resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-  const third = await mount(); await act(async () => { await quiesce(); });
+  const third = await mount();
+  await expectNoLateExecution(third.database);
   expect(third.ref.current!.state.messages.filter(m => m.role === 'assistant')).toHaveLength(1);
   expect(providerCalls).toBe(callsAfterAlarm); expect(methods.filter(method => method === 'POST')).toHaveLength(1);
 });
@@ -145,13 +228,14 @@ it('finishes while detached and restores exactly one reply and its checkpoint wi
 it('only explicit cancellation stops accepted work, and it is not resumed after reload', async () => {
   const first = await mount(); const chatId = first.ref.current!.chat.index.activeChatId;
   const { submitted } = await submit(first.ref, '数学を7ページ');
-  await act(async () => { expect(first.ref.current!.cancelTurn()).toBe(true); await until(() => record?.failure === 'cancelled'); expect(record?.failure).toBe('cancelled'); });
+  await act(async () => { expect(first.ref.current!.cancelTurn()).toBe(true); await until(() => currentRecord()?.failure === 'cancelled'); expect(currentRecord()?.failure).toBe('cancelled'); });
   await runAlarm(); expect(providerCalls).toBe(0);
   const detached = track(submitted);
-  await act(async () => { windowEvents.dispatchEvent(new Event('focus')); await until(() => detached.done); });
+  await act(async () => { windowTarget.dispatchEvent(new Event('focus')); await until(() => detached.done); });
   expect((await submitted).accepted).toBe(false); expect(readDurableWeeklyTurnReceipt(OWNER)).toBeNull();
   await act(async () => renderer!.unmount()); renderer = undefined; resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-  const second = await mount(); await act(async () => { await quiesce(); });
+  const second = await mount();
+  await expectNoLateExecution(second.database);
   expect(second.ref.current!.state.pendingTurn).toBeUndefined(); expect(providerCalls).toBe(0);
   expect(checkpointOf(chatId)).toBeNull(); expect(methods.filter(method => method === 'POST')).toHaveLength(1); expect(methods).toContain('DELETE');
 });
@@ -159,25 +243,28 @@ it('only explicit cancellation stops accepted work, and it is not resumed after 
 it('resumes into the chat that owns the receipt and leaves another chat\'s checkpoint untouched', async () => {
   const first = await mount(); const chatA = first.ref.current!.chat.index.activeChatId;
   let a!: Promise<WeeklyPlanningTurnSubmissionResult>;
-  await act(async () => { a = first.ref.current!.submitTurn('数学を7ページ'); await until(() => record?.status === 'queued'); expect(record?.status).toBe('queued'); });
+  await act(async () => { a = first.ref.current!.submitTurn('数学を7ページ'); track(a); await until(() => currentRecord()?.status === 'queued'); expect(currentRecord()?.status).toBe('queued'); });
   await runAlarm(); const firstDone = track(a); await act(async () => { await until(() => firstDone.done); });
   expect((await a).accepted).toBe(true);
   const chatABytes = rawOf(chatA);
   expect(chatABytes).not.toBeNull();
   await act(async () => { first.ref.current!.startConversation(); });
   const chatB = first.ref.current!.chat.index.activeChatId; expect(chatB).not.toBe(chatA);
-  record = undefined as DurableTurnRecord | undefined; // One Durable Object exists per chat; this harness models the new chat's object.
   const { submitted } = await submit(first.ref, '英語を7ページ');
   await act(async () => renderer!.unmount()); renderer = undefined;
-  await runAlarm(); expect(record?.status).toBe('completed');
+  await runAlarm(); expect(currentRecord()?.status).toBe('completed');
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   const second = await mount();
   expect(second.ref.current!.chat.index.activeChatId).toBe(chatB);
   const detachedB = track(submitted);
-  await act(async () => { windowEvents.dispatchEvent(new Event('focus'));
+  await act(async () => { windowTarget.dispatchEvent(new Event('focus'));
     await until(() => detachedB.done && second.ref.current!.state.messages.some(m => m.role === 'assistant')); });
   expect((await submitted).accepted).toBe(false);
   expect(second.ref.current!.state.messages.filter(m => m.role === 'user')).toHaveLength(1);
   expect(checkpointOf(chatB)).not.toBeNull();
+  expect(rawOf(chatA)).toBe(chatABytes);
+  // Each chat has its own object, and the earlier chat's finished turn stays finished.
+  expect(objects.size).toBe(2);
+  await expectNoLateExecution(second.database);
   expect(rawOf(chatA)).toBe(chatABytes);
 });

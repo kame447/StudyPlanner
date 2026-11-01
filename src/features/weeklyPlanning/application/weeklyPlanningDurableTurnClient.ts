@@ -6,6 +6,14 @@ import type { DurableTurnResult } from '../../../../workers/ai-proxy/src/durable
 
 export const durableWeeklyPlanningEnabled = () => import.meta.env.VITE_DURABLE_WEEKLY_TURNS === 'enabled';
 const RETENTION_MS = 24 * 60 * 60_000;
+/** Every interval the client itself defines; tests advance past these rather than guess. */
+export const DURABLE_CLIENT_TIMING = {
+  retentionMs: RETENTION_MS,
+  pollBaseMs: 2000,
+  pollMaxMs: 10_000,
+  requestTimeoutMs: 20_000,
+  reconcileWindowMs: 5 * 60_000,
+} as const;
 const key = (ownerId: string) => `studyplanner.durableWeeklyTurn.v1:${encodeURIComponent(ownerId)}`;
 /** Core-neutral identity; each executor validates its own payload at admission. */
 export interface DurableWeeklyTurnPayload {
@@ -96,20 +104,20 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
     try {
       const submit = maySubmit && !needsReconcile;
       response = await ports.fetch(submit ? ports.endpoint : url, {
-        method: submit ? 'POST' : 'GET', signal: AbortSignal.timeout(20_000),
+        method: submit ? 'POST' : 'GET', signal: AbortSignal.timeout(DURABLE_CLIENT_TIMING.requestTimeoutMs),
         headers: { Authorization: `Bearer ${token}`, ...(submit ? { 'Content-Type': 'application/json' } : {}) },
         ...(submit ? { body: JSON.stringify({ conversationId: identity.conversationId, requestId: identity.requestId,
           baseRevision: identity.baseRevision, startedAt: identity.startedAt, payload: receipt.payload }) } : {}),
       });
       if (response.status === 404) {
-        if (needsReconcile && maySubmit && ports.now() - identity.startedAt < 5 * 60_000) {
-          needsReconcile = false; await ports.wait(2000); continue;
+        if (needsReconcile && maySubmit && ports.now() - identity.startedAt < DURABLE_CLIENT_TIMING.reconcileWindowMs) {
+          needsReconcile = false; await ports.wait(DURABLE_CLIENT_TIMING.pollBaseMs); continue;
         }
         throw new Error('保存された返信を確認できませんでした。新しいAI処理は開始していません。');
       }
       if (response.status === 401 || response.status === 403) throw new Error('再ログインして会話を開き直してください。');
       if ((response.status >= 400 && response.status < 500) || response.status === 503) throw new Error('返信の継続を受け付けられませんでした。会話を開き直してください。');
-      if (!response.ok) { needsReconcile = true; await ports.wait(Math.min(10_000, 2000 + attempts++ * 1000)); continue; }
+      if (!response.ok) { needsReconcile = true; await ports.wait(Math.min(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.pollBaseMs + attempts++ * 1000)); continue; }
       const state = await response.json() as DurableTurnResult;
       if (!state || typeof state !== 'object') throw new Error('保存された返信の形式を確認できませんでした。');
       if (JSON.stringify(state.identity) !== JSON.stringify(identity)) {
@@ -132,7 +140,7 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
       if (!(error instanceof TypeError) && !(error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) throw error;
       needsReconcile = true;
     }
-    await ports.wait(Math.min(10_000, 2000 + attempts++ * 1000));
+    await ports.wait(Math.min(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.pollBaseMs + attempts++ * 1000));
   }
   throw new Error('返信の保存期限が切れました。');
 }
@@ -148,7 +156,7 @@ export async function cancelDurableWeeklyTurn(ownerId: string, requestId: string
     const query = new URLSearchParams({ conversationId: receipt.pending.conversationId, requestId,
       baseRevision: String(receipt.pending.baseRevision), startedAt: String(Date.parse(receipt.pending.startedAt)) });
     const response = await ports.fetch(`${ports.endpoint}?${query}`, { method: 'DELETE', keepalive: true,
-      signal: AbortSignal.timeout(20_000), headers: { Authorization: `Bearer ${token}` } });
+      signal: AbortSignal.timeout(DURABLE_CLIENT_TIMING.requestTimeoutMs), headers: { Authorization: `Bearer ${token}` } });
     if (!response.ok) return false;
     const state = await response.json() as DurableTurnResult;
     if (!['completed', 'failed', 'expired'].includes(state.status)
