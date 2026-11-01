@@ -1,5 +1,13 @@
 # Day grid native selection
 
+## Current repository status (2026-10-28)
+
+[PR #648](https://github.com/kame447/StudyPlanner/pull/648) is integrated into `main` as `fe8aa40d9e3ceb594c01f29e6f9f6d2521c69bb2`. The integration is present in the inspected main snapshot `a0ac8a83f9bba49d610385e6eb7f483bfaff125b`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification and does not close the broader owning Issue. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: PR #648 is published; WebKit test-contract correction passed local verification, native rerun and merge pending
 
 - Owner: `implement_day_schedule_actions`, coordinated by the release owner.

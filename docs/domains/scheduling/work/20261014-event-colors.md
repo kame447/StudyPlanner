@@ -1,5 +1,13 @@
 # Selectable general-event colors
 
+## Current repository status (2026-10-28)
+
+[PR #663](https://github.com/kame447/StudyPlanner/pull/663) is integrated into `main` as `1fe7b9029fae3e634f20f02612b797323baa320b`. The integration is present in the inspected main snapshot `a0ac8a83f9bba49d610385e6eb7f483bfaff125b`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification and does not close the broader owning Issue. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: local implementation verified; combined UI integration and publication pending
 Base: `70953efd`
 Branch: `work/event-colors-20261014`

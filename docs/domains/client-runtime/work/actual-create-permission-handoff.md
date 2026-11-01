@@ -1,5 +1,13 @@
 # Actual first-save permission failure
 
+## Current repository status (2026-10-28)
+
+[PR #712](https://github.com/kame447/StudyPlanner/pull/712) is integrated into `main` as `82233e121d9208fc8b520583b7ca32b15c053008`. The integration is present in the inspected main snapshot `a0ac8a83f9bba49d610385e6eb7f483bfaff125b`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification and does not close the broader owning Issue. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: approved publication and integration verification. Current base: `da462379b2ef57d5028762da36a11e8976b5d9b6`. Branch: `fix/actual-create-permission`. Refs #437; limited to the new-Actual existence-query permission failure. This change does not close the broader Issue #437 or authorize production data changes.
 
 ## Evidence and decision

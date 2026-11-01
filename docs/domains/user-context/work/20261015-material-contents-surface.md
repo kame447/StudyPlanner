@@ -1,5 +1,13 @@
 # Saved material contents editor surface
 
+## Current repository status (2026-10-28)
+
+[PR #693](https://github.com/kame447/StudyPlanner/pull/693) is integrated into `main` as `25594fee24149e6e15fd2e4a9099e560481efe7b`. The integration is present in the inspected main snapshot `a0ac8a83f9bba49d610385e6eb7f483bfaff125b`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification and does not close the broader owning Issue. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: active local candidate; publication pending
 Owner: UI umbrella #483, original material-entry requests 21/22
 Base: main `576cf5b5e815c75d2d655b88ac4fbe4250834e78`
