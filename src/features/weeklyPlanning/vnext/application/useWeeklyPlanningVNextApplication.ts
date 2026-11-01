@@ -84,11 +84,22 @@ export function useWeeklyPlanningVNextApplication(
     if (!current()) return runtime.state;
     const next = weeklyPlanningReducer(runtime.state, action);
     if (next !== runtime.state) {
-      // As in V5, an in-flight turn or approval is never persisted: a reload then returns to the last
-      // committed state, which is exactly what a saved durable receipt resumes from.
-      if (!next.pendingTurn && !next.pendingApproval) runtime.local.save(runtime.session.conversationId, next);
+      // An in-flight turn or approval is never persisted: a reload then returns to the last committed
+      // state, which is exactly what a saved durable receipt resumes from.
+      const persisted = !next.pendingTurn && !next.pendingApproval;
+      // A turn's commit is atomic with its write: when it throws, the controller rolls the staged
+      // checkpoint back and the turn is not accepted (pinned by the LocalRuntime commit-failure test).
+      if (persisted && action.type === 'commit_turn') runtime.local.save(runtime.session.conversationId, next);
+      // Any other change is the user's own: as in V5, the reducer's result is the live state whether or
+      // not it could be written. A failed write is reported through the chat session (dirty plus a
+      // blocked result: the existing retry banner and unload warning), and a later successful retry
+      // persists this live state.
       runtime.state = next;
       redraw(value => value + 1);
+      if (persisted && action.type !== 'commit_turn') {
+        try { runtime.local.save(runtime.session.conversationId, next); }
+        catch { chat.checkpoint(); }
+      }
     }
     return next;
   }
