@@ -297,19 +297,27 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     expect(ref.current!.chat.index.chats.length).toBeGreaterThan(0);
   });
 
-  it('does not block the chat UI on unreadable VNext bytes and keeps them for the user', async () => {
+  it.each([
+    { name: 'broken ui bytes', ui: '{broken', core: null },
+    // The browser spec seeds the same shape: parseable JSON in a format this build does not know, in both slots.
+    { name: 'unknown-format ui and core bytes', ui: JSON.stringify({ version: 'future-vnext-ui-format', opaque: 'ui-sentinel' }),
+      core: JSON.stringify({ version: 'future-vnext-core-format', opaque: 'core-sentinel' }) },
+  ])('does not block the chat UI on unreadable VNext bytes ($name) and keeps them for the user', async ({ ui, core }) => {
     const { input, services } = fixture(); const ref = createRef<WeeklyPlanningApplication>();
     await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
     await act(async () => { await ref.current!.submitTurn('数学を30分'); });
     const chatId = ref.current!.chat.index.activeChatId;
     const uiKey = `studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.ui`;
-    storage.storage.setItem(uiKey, '{broken');
+    const coreKey = `studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.core`;
+    storage.storage.setItem(uiKey, ui);
+    if (core !== null) storage.storage.setItem(coreKey, core);
     await act(async () => renderer!.unmount()); renderer = undefined;
     await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
     expect(ref.current!.chat.canStartWithoutRestoring).toBe(true);
     await act(async () => { expect(ref.current!.chat.startWithoutRestoring().status).toBe('saved'); });
     await act(async () => { expect((await ref.current!.submitTurn('英語を30分')).accepted).toBe(true); });
-    expect(storage.storage.getItem(uiKey)).toBe('{broken');
+    expect(storage.storage.getItem(uiKey)).toBe(ui);
+    if (core !== null) expect(storage.storage.getItem(coreKey)).toBe(core);
     expect(ref.current!.chat.index.chats).toHaveLength(2);
   });
 
