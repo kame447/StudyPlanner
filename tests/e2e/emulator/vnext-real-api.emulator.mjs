@@ -3,8 +3,9 @@ import { expect, test } from '@playwright/test';
 // The VNext production path with the REAL model, through the real Worker (#926): UI -> Firebase Auth emulator ->
 // Worker (production code on wrangler dev) -> durable turn job -> api.openai.com, with trace into the Firestore
 // emulator. Run only by the owner-only weekly-planning-real-api-checkpoint workflow (profile vnext-worker). The model is stochastic,
-// so assertions are structural (a reply arrives, no failure notice, the preview total follows a correction, a fixed
-// event is registered, a reload mid-turn returns the reply without a second AI run, saving happens exactly once),
+// so assertions are structural (a reply arrives, no failure notice, the preview total follows a correction, the study plan is
+// saved, a fixed event is registered as its own preview the V5 way, a reload mid-turn returns the reply without a
+// second AI run, each saves exactly once),
 // never exact wording. Five real turns, under the budget of six.
 const FIRESTORE = 'http://127.0.0.1:8180/v1/projects/demo-studyplanner/databases/(default)/documents';
 const VNEXT = '/?weeklyPlanningCore=vnext';
@@ -48,6 +49,16 @@ async function previewTotalMinutes(page) {
   await preview.getByRole('button', { name: '閉じる' }).click();
   await expect(preview).toBeHidden();
   return hours * 60 + minutes;
+}
+
+/** Approves the shown preview through the existing approval and save. */
+async function approveShownPreview(page) {
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  await expect(preview).toBeVisible();
+  await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
+  await preview.getByRole('button', { name: 'この内容で保存' }).click();
+  await expect(preview).toBeHidden();
 }
 
 /** Tomorrow in Japan as the explicit date the user states (the browser runs with timezoneId Asia/Tokyo). */
@@ -106,12 +117,27 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
   expect(await previewTotalMinutes(page)).toBe(90);
 
-  // Turn 4: a fixed event with an explicit date and time, registered as an event rather than study work.
+  // Approve the corrected study preview through the existing approval: saved once, and only that.
+  await approveShownPreview(page);
+  await expect.poll(async () => JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ゼミ資料');
+  expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toContain('ピアノ教室');
+  const seminarEvents = async () => (await firestoreDocuments(request, 'schedule_events'))
+    .filter((document) => JSON.stringify(document.fields).includes('ゼミ資料')).length;
+  const savedSeminar = await seminarEvents();
+  expect(savedSeminar).toBeGreaterThanOrEqual(1);
+
+  // Turn 4: a fixed event with an explicit date and time, registered as an event rather than study work. As in
+  // Stable V5 (current-contract-v5 "Fixed-event registration"), the registration preview carries only the fixed
+  // event: registration neither re-authorizes nor repeats study work (here already saved), so the preview is
+  // exactly the one 60-minute event. (An unapproved study preview would likewise be left out of a registration
+  // turn; the offline EventRegistration test pins that V5 rule.)
   await send(page, `${tomorrowInJapan()}の19:00から20:00にピアノ教室があります。予定として登録してください`);
   await expect.poll(() => posts.length, { timeout: 60_000 }).toBe(4);
   await idle();
   await expect(conversation).toContainText('ピアノ教室');
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
+  await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
+  expect(await previewTotalMinutes(page)).toBe(60);
 
   // Turn 5: a consultation that changes nothing, with the return mid-turn. Reload once the Worker has accepted
   // the turn; the saved receipt must bring the reply back by reading the same job, never by another AI run.
@@ -124,25 +150,18 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
   expect(posts).toHaveLength(5);
   expect(new Set(posts).size).toBe(5);
-  // Nothing is saved before approval, and the consultation left the plan as it was.
-  expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toMatch(/ゼミ資料|ピアノ教室/);
+  // The consultation left the registration preview as it was, and nothing of it is saved before approval.
+  await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
+  expect(await previewTotalMinutes(page)).toBe(60);
+  expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toContain('ピアノ教室');
 
-  // Approve the shown preview through the existing approval and save it once.
-  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
-  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
-  await expect(preview).toBeVisible();
-  await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
-  await preview.getByRole('button', { name: 'この内容で保存' }).click();
-  await expect(preview).toBeHidden();
-  await expect.poll(async () => JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ゼミ資料');
-  expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ピアノ教室');
-  const saved = (await firestoreDocuments(request, 'schedule_events'))
-    .filter((document) => JSON.stringify(document.fields).includes('ゼミ資料')).length;
-  expect(saved).toBeGreaterThanOrEqual(1);
+  // Approve the registration: the event is saved, and the study plan is neither lost nor saved twice.
+  await approveShownPreview(page);
+  await expect.poll(async () => JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ピアノ教室');
+  expect(await seminarEvents()).toBe(savedSeminar);
   await page.reload();
   await openPlanning(page);
-  expect((await firestoreDocuments(request, 'schedule_events'))
-    .filter((document) => JSON.stringify(document.fields).includes('ゼミ資料')).length).toBe(saved);
+  expect(await seminarEvents()).toBe(savedSeminar);
 
   // Trace reached Firestore through the Worker, and no turn ended in failure. The per-document sizes show what
   // the real model's outputs looked like once they had crossed the Worker and the trace boundary.

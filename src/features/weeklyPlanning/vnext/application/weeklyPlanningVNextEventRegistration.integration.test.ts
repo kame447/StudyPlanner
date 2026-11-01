@@ -244,6 +244,29 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     expect(h.state().graph).toEqual(graphAfterNoop); expect(h.saved.size).toBe(2);
   });
 
+  // Real-API run 41329745801: a study preview was shown (unapproved), then a registration turn was read as
+  // planningIntent 'unknown'. V5's shared gate (draft_ready needs update_plan with a semantic change) does not
+  // re-authorize study work, so the preview held only the registration and said the study work is not placed.
+  it('keeps an unapproved study preview out of a later registration turn exactly as V5 does, and returns it on the V5 permissions', async () => {
+    const registerClub = (intent: VNextPlanningIntent, add: VNextAddFact[] = []) => (context: Context) => wire(add, [request(
+      add.length ? null : { factId: context.activeFacts.tasks.find(task => task.title === 'club')!.id })], intent);
+    const h = harness([wire([...event(), ...work], [], 'create_plan'), registerClub('unknown')]);
+    const first = await h.turn('部活は火曜16時から17時半。数学60分で予定を作って');
+    expect(first.draftCandidates?.map(c => c.source)).toEqual(['weekly_exam_prep']);
+    const second = await h.turn('その部活も登録して');
+    expect(second.draftCandidates?.map(c => c.source)).toEqual(['fixed_event_registration']);
+    expect(second.authorizationRequired).toBe(true);
+    // The reply discloses the unplaced study work by its label, as V5's registration communication does.
+    expect(JSON.stringify((h.rendererInputs[1] as { communication: unknown }).communication)).toContain('数学');
+
+    // The same turn, read as update_plan with a semantic change (V5's permission), keeps both.
+    const permitted = harness([wire([...event(), ...work], [], 'create_plan'), registerClub('update_plan', event('seminar', 'non_study', '19:00', '20:00'))]);
+    await permitted.turn('部活は火曜16時から17時半。数学60分で予定を作って');
+    const both = await permitted.turn('ゼミも登録して。予定を更新して');
+    expect(both.draftCandidates?.map(c => c.source).sort()).toEqual(['fixed_event_registration', 'weekly_exam_prep']);
+    expect(both.authorizationRequired).toBe(false);
+  });
+
   it('rejects a bad registration inside the sole transaction without changing state or its revision', () => {
     const state = createEmptyWeeklyPlanningVNextState();
     const result = applyWeeklyPlanningVNextTurn(state, { ...EMPTY, add: event() }, {
