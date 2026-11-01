@@ -19,6 +19,7 @@ import { durableWeeklyPlanningEnabled, cancelDurableWeeklyTurn } from '../../app
 import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../application/weeklyPlanningDurableRecovery';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
+import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn } from '../../application/weeklyPlanningTurnPreparation';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -226,18 +227,34 @@ export function useWeeklyPlanningVNextApplication(
     });
   }, [chat, runtime, revision, runtime.state, runtime.session.conversationId, input.userId, input.plannerDataAvailability]);
   const pendingDraftBlocks = runtime.state.draftBlocks.filter(block => block.status === 'draft');
+  // The preparation sequence is shared with the V5 hook; only these accessors are this core's.
+  const preparationPorts = {
+    isPlannerDataCurrent: () => Boolean(input.userId && isPlannerDataReadyForOwner(input.plannerDataAvailability, input.userId)
+      && input.isPlannerDataSnapshotCurrent()),
+    binding,
+    isRequestCurrent: () => current() && committedInput.current === input,
+    stateIdentity: () => runtime.state,
+    indexIdentity: () => chat.index,
+    preflight: loadWeeklyPlanningVNextRuntimeModule,
+  };
+  const prepareTurn = () => prepareWeeklyPlanningTurn(preparationPorts);
   return { registeredTargetsAvailable: true, chat, state: runtime.state, pendingDraftBlocks,
     approvalAvailability: classifyWeeklyPlanningApprovalAvailability({ blocks: pendingDraftBlocks, userId: ownerId, resolveRuntime: runtime.local.resolveRuntime }),
     canEditDraftBlocks: current() && !runtime.state.pendingTurn && !runtime.state.pendingApproval && !runtime.state.approvalRecovery,
     plannerDataReady: plannerReady(),
-    prepareTurn: async () => plannerReady() && committedInput.current === input ? { ready: true } : { ready: false, reason: 'request-changed' },
+    prepareTurn,
     getModuleRecoveryBinding: binding,
     checkpointForModuleReload: () => {
       const captured = binding(); const state = runtime.state;
       return captured && chat.checkpoint().status === 'saved' ? { binding: captured, isCurrent: () => current() && runtime.state === state } : null;
     },
     submitTurn: async (userText, supplementalContext, selectedStarterTarget, machineBoundAnswer) => {
-      if (!plannerReady() || committedInput.current !== input || runtime.state.approvalRecovery) return { accepted: false, draftCandidates: [] };
+      const start = { state: runtime.state, index: chat.index, binding: binding() };
+      if (!input.userId || !current() || chat.requiresInitialization || runtime.state.approvalRecovery) return { accepted: false, draftCandidates: [] };
+      // The same preparation and admission as V5: stale planner data is reported as such, the lazy runtime
+      // loads before any OCR or provider call, and nothing may have moved while that awaited.
+      const admission = admitPreparedWeeklyPlanningTurn({ preparation: await prepareTurn(), ports: preparationPorts, start });
+      if (!admission.admitted) return admission.result;
       // A new chat exists only in memory until first saved; its conversation id must survive a reload for the receipt.
       if (durableWeeklyPlanningEnabled()) chat.checkpoint();
       const result = await submitWeeklyPlanningApplicationTurnWithServices({ ...input, userId: ownerId, ownerId,

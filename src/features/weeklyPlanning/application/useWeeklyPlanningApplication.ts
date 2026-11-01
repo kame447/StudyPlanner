@@ -2,6 +2,7 @@ import { loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStab
 import { durableWeeklyPlanningEnabled, readDurableWeeklyTurnReceipt, cancelDurableWeeklyTurn } from './weeklyPlanningDurableTurnClient';
 import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from './weeklyPlanningDurableRecovery';
 import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
+import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn, type WeeklyPlanningTurnPreparationResult, type WeeklyPlanningApplicationSubmissionResult } from './weeklyPlanningTurnPreparation';
 import { isPlannerDataReadyForOwner } from '../../../domain/plannerDataReadAuthority';
 import { loadAiPlanningChatSnapshot, readAiPlanningChatIndex } from '../chat/aiPlanningChatStore';
 import { sameAiPlanningModuleRecoveryBinding, type AiPlanningModuleRecoveryBinding } from '../chat/aiPlanningModuleRecovery';
@@ -26,7 +27,6 @@ import type {
   WeeklyPlanningMessage,
 } from '../types';
 import { useWeeklyPlanningState } from '../useWeeklyPlanningState';
-import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutor';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningMachineBoundEffortAnswerV5 } from '../semantic/weeklyPlanningMachineBoundAnswerV5';
 import {
@@ -82,13 +82,7 @@ export interface UseWeeklyPlanningApplicationInput {
   completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
 }
 
-export type WeeklyPlanningTurnPreparationResult =
-  | { ready: true }
-  | { ready: false; reason: 'planner-data-changed' | 'request-changed' };
-
-export interface WeeklyPlanningApplicationSubmissionResult extends WeeklyPlanningTurnSubmissionResult {
-  rejectionReason?: 'planner-data-changed';
-}
+export type { WeeklyPlanningTurnPreparationResult, WeeklyPlanningApplicationSubmissionResult } from './weeklyPlanningTurnPreparation';
 
 export interface WeeklyPlanningApplication {
   /** The isolated local experiment has one conversation per owner/week. */
@@ -265,21 +259,16 @@ export function useWeeklyPlanningApplication({
   }
   const plannerDataReady = isBoundPlannerDataCurrent();
 
-  async function prepareTurn(): Promise<WeeklyPlanningTurnPreparationResult> {
-    if (!isBoundPlannerDataCurrent()) return { ready: false, reason: 'planner-data-changed' };
-    const binding = getModuleRecoveryBinding();
-    if (!binding || committedRequestInput.current !== requestInput) {
-      return { ready: false, reason: 'request-changed' };
-    }
-    const stateAtStart = getPlanningState();
-    const indexAtStart = chat.index;
-    await loadWeeklyPlanningRuntimeModule();
-    if (!isBoundPlannerDataCurrent()) return { ready: false, reason: 'planner-data-changed' };
-    return stateAtStart === getPlanningState() && indexAtStart === chat.index
-      && committedRequestInput.current === requestInput
-      && sameAiPlanningModuleRecoveryBinding(binding, getModuleRecoveryBinding())
-      ? { ready: true } : { ready: false, reason: 'request-changed' };
-  }
+  // The preparation sequence is shared with the VNext hook; only these accessors are this core's.
+  const preparationPorts = {
+    isPlannerDataCurrent: isBoundPlannerDataCurrent,
+    binding: getModuleRecoveryBinding,
+    isRequestCurrent: () => committedRequestInput.current === requestInput,
+    stateIdentity: getPlanningState,
+    indexIdentity: () => chat.index,
+    preflight: loadWeeklyPlanningRuntimeModule,
+  };
+  const prepareTurn = () => prepareWeeklyPlanningTurn(preparationPorts);
 
   function checkpointForModuleReload(): { binding: AiPlanningModuleRecoveryBinding; isCurrent(): boolean } | null {
     const binding = getModuleRecoveryBinding();
@@ -321,14 +310,9 @@ export function useWeeklyPlanningApplication({
     const preparation = await prepareTurn();
     // Recheck the same bound lease at admission, including the continuation after
     // preflight resolves. Do not substitute the latest render's readiness here.
-    if (!isBoundPlannerDataCurrent() || (!preparation.ready && preparation.reason === 'planner-data-changed')) {
-      return { accepted: false, draftCandidates: [], rejectionReason: 'planner-data-changed' };
-    }
-    if (!preparation.ready || committedRequestInput.current !== requestInput
-      || stateAtStart !== getPlanningState() || indexAtStart !== chat.index
-      || !sameAiPlanningModuleRecoveryBinding(bindingAtStart, getModuleRecoveryBinding())) {
-      return { accepted: false, draftCandidates: [] };
-    }
+    const admission = admitPreparedWeeklyPlanningTurn({ preparation, ports: preparationPorts,
+      start: { state: stateAtStart, index: indexAtStart, binding: bindingAtStart } });
+    if (!admission.admitted) return admission.result;
     // Save the same selected conversation before accepting remote work, including its first turn.
     if (durableWeeklyPlanningEnabled() && chat.checkpoint().status !== 'saved') {
       return { accepted: false, draftCandidates: [] };
