@@ -1,248 +1,94 @@
 # Laplance
 
-[![CI](https://github.com/kame447/StudyPlanner/actions/workflows/ci.yml/badge.svg)](https://github.com/kame447/StudyPlanner/actions/workflows/ci.yml)
-[![Browser Regression](https://github.com/kame447/StudyPlanner/actions/workflows/browser-regression.yml/badge.svg)](https://github.com/kame447/StudyPlanner/actions/workflows/browser-regression.yml)
+Laplance（ラプランス）は、学習の予定・実績・教材・時間割をまとめて扱う Web アプリケーションです。自然言語で伝えられた学習内容や制約を、実行可能な週間計画へ変換することを目指しています。
 
-学習計画、実績、教材、時間割を一元管理し、自然言語を使った週間計画の作成を支援する Web アプリケーションです。
+単に空き時間を埋めるのではなく、既存予定との衝突を避け、学習負荷を分散し、予定変更に対応できる余白を残すことを重視しています。本リポジトリはアプリケーションの開発用であり、ソースコードの配布・セルフホストを目的としていません。
 
-Laplance は、学習予定と実績を分けて記録し、教材・時間割・進捗を含む情報から次の学習計画を作成します。AI は自然言語の解釈に利用し、スケジューリング、状態更新、承認、保存はアプリケーション側で管理します。
+## 学習計画の生成
 
-ブランド表記は Laplance（ラプランス）です。`laplance.com` は Cloudflare Pages に接続済みの公開URLです。既存のデプロイURL、Firebase/Cloudflareの識別子、保存データとの互換性は維持します。独自ドメインの認証・API接続の検証状況と切り戻しは [Issue #564](https://github.com/kame447/StudyPlanner/issues/564) で追跡します。旧URLからの自動転送は行いません。ドメインごとにブラウザ内の保存領域は分かれるため、端末内だけにある未同期データを旧URL側から自動移行する変更は含みません。
-
-非公開npmパッケージ名とアプリ内部の製品名は `laplance-app` / `Laplance` に統一します。一方、`kame447/StudyPlanner`、Firebase/Cloudflareのサービス名、保存キー・保存形式、通信ヘッダー、既存の公開アセットURLは互換性を持つ運用識別子として維持します。これらに残る旧名は改名漏れではなく、認証・既存データ・旧クライアントとの接続を保つための固定名です。過去の検証ログや手順も当時の名前のまま保持します。
-
-## 主な機能
-
-### スケジュール管理
-
-月・週・日単位で予定を確認し、作成、編集、削除、実績記録を行えます。予定と実績は別データとして扱い、計画どおりに進んだかを後から確認できます。
-
-学習予定と一般予定は canonical な `ScheduleEvent` を保存上の正本とし、共通の `ScheduleOccurrence` projection を通じて月・週・日・AI計画が同じ occurrence identity / time / busy semantics を参照します。`TimetableTemplate` は別の template lifecycle を維持したまま occurrence projection へ合流し、同じ source から import 済みの Plan がある場合は二重表示・二重 busy を防ぎます。Issue #278 の移行と consumer 統合は完了済みです。正仕様は [`docs/domains/scheduling/`](./docs/domains/scheduling/README.md) にあります。
-
-### AI 計画
-
-チャット形式で学習対象、進捗、期限、利用できない時間、希望時間帯などを伝えると、既存予定や時間割を考慮して週間計画を作成します。生成結果はプレビューとして表示され、修正または承認した後に予定へ保存されます。
-
-学習戦略・教材選択・進める順序・目安期限を予定作成前に相談し、AI の助言をユーザーが採用した場合だけ通常の計画へ接続する機能を Issue #246 で設計中です。これは未実装の planned capability であり、現在の production 機能としては扱いません。正仕様は [`learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md) にあります。
-
-### 教材・進捗管理
-
-教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加では ISBN または教材名から共有 catalog / NDL Search を使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量は Laplance 側が所有します。
-
-### ホーム・時間割
-
-ホームでは、今日の予定、次の予定、週間の進捗、継続状況をまとめて確認できます。時間割は授業などの固定予定として管理し、週間計画の空き時間計算にも利用します。
-
-「次の予定」のイラストは、学習・授業・その他の予定に合わせたコード描画の scene です。設定の「ホームのイラスト」で「ピクセル」「ピクセル・猫」「ピクセル・亀」「イラスト」「ミニマル」の5種類を選び、ゆっくりした動きを任意で有効にできます。初期値はピクセル・動きなしで、ライト/ダークに対応し、OS の「視差効果を減らす」等の reduced-motion 設定を優先します。見た目の設定は利用中のブラウザだけに保存し、アカウントや別端末へ同期しません。
-
-3種類のピクセル系では、端末の現在時刻に合わせて朝・昼・夕方・夜の空へ変わり、夜は現在の瞬間から近似した8段階の月相を表示します。空の時間帯はテーマとは独立した演出で、地域の日の入りや月の出・方位を再現するものではありません。イラスト／ミニマルの描画は従来どおりです。外部通信や位置情報は不要で、天気との連動は含みません。月相計算に使う SunCalc の配布条件は [ライセンス表示](public/licenses/suncalc.txt) を参照してください。
-
-### 学習レポート
-
-ホームの週間進捗から、今日・今週・今月・累計の学習時間、期間ごとの推移、教材・科目別の内訳を確認できます。レポートは主要タブではなく、ホームから必要なときに開く二次画面として扱います。
-
-### レスポンシブ UI
-
-デスクトップ、タブレット、スマートフォンに対応し、ライトモードとダークモードを利用できます。
-
-## AI 計画の設計
-
-週間計画では、AI を意思決定主体として扱いません。AI が担当するのは、ユーザーの発話と会話文脈を構造化された意味へ変換する部分です。
-
-検証、状態管理、確認要否、空き時間計算、スケジューリング、プレビュー、承認、保存はアプリケーション側が管理します。計画へ大きく影響する情報が曖昧な場合はユーザーへ確認し、保存前には明示的な承認を要求します。
+自然言語の理解と予定の配置は、別の責務として実装しています。AI は発話の意味、対象となる教材や作業、時間・数量・期限・希望条件を構造化します。一方、条件の検証、状態の確定、空き時間の計算、配置可否の判断、承認および保存はアプリケーションの決定論的な処理が担当します。
 
 ```text
-User input
-    ↓
-AI semantic interpretation
-    ↓
-Validation / application state
-    ↓
-Scheduler
-    ↓
-Preview
-    ↓
-User approval
-    ↓
-Save
+ユーザーの発話 + 教材・進捗・既存予定
+                  │
+                  ▼
+          AI による意味解釈
+                  │
+                  ▼
+       型付き条件の検証・確定
+                  │
+                  ▼
+     作業量・時間制約・空き枠の整理
+                  │
+                  ▼
+          週間スケジューラ
+                  │
+                  ▼
+            計画プレビュー
+                  │
+                  ▼
+         ユーザーの明示的承認
+                  │
+                  ▼
+              予定の保存
 ```
 
-Issue #246 の planned consultation extension でもこの責任境界を維持します。AI が教材・学習順序・目安期限を提案しても、その回答は user fact、accepted planning condition、preview、saved Plan、durable memory のいずれにも自動昇格しません。ユーザーが採用した scope だけを既存 Stable V5 の planning flow へ戻します。
+曖昧な条件や不足情報によって配置結果が変わる場合は、推測して確定するのではなく確認を挟みます。また、AI が返した文章を再び正規表現などで読み直して予定の意味を決めることはせず、検証済みの構造化データを一貫して扱います。
 
-週間計画の正仕様は [`docs/domains/weekly-planning/`](./docs/domains/weekly-planning/README.md) に集約しています。runtime の責務境界は [`current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、planned learning consultation の要件は [`learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md) を参照してください。
+## 予定配置アルゴリズム
 
-## 技術構成
+### 固定予定と可動作業
 
-フロントエンドは React 18、TypeScript、Vite で構成しています。認証には Firebase Authentication を利用します。永続化は責務別に分かれており、通常の planner data は Firebase / Cloud Firestore repository を中心に扱う一方、週間計画の conversation / working session state には現状 localStorage-backed storage も残っています。client-side execution、local durable state、server authority の現在境界と移行条件は [`docs/domains/client-runtime/`](./docs/domains/client-runtime/README.md) を正本として扱います。公開環境から AI provider へ接続する際は Cloudflare Workers を gateway として利用します。
+開始・終了時刻が決まっている授業や予定は、その時間帯を占有する固定予定として扱います。一方、「数学を1時間勉強する」のように所要時間だけが指定された学習は、空き時間へ配置できる可動作業です。
 
-時間が確定した予定の永続化正本は canonical な `ScheduleEvent` です。月・週・日・AI計画は保存形式を個別に再解釈せず、`src/domain/scheduleOccurrence.ts` の共通 `ScheduleOccurrence` projection を利用します。legacy `Plan` / `MonthEvent` は migration 入力・compatibility shape として残り得ますが、post-cutover の第二の write authority ではありません。現在の責任境界は [`scheduled-event-authority.md`](./docs/domains/scheduling/architecture/scheduled-event-authority.md) を参照してください。
+たとえば「明日の13〜17時の間に数学を1時間」は、13〜17時の4時間を占有する予定ではありません。「その範囲内へ60分の作業を配置する」という制約として扱います。
 
-管理・分析 console は、UI から planner collection を都度全件 scan する構造を最終形にせず、lightweight telemetry、集計 read model、restricted diagnostic trace を分離する方針です。正仕様は [`docs/domains/product-observability/`](./docs/domains/product-observability/README.md) を参照してください。
+学習の総範囲、完了済みの量、残りの量、今回の計画で進めたい量も区別します。既に終えた作業を重複して配置したり、残りの全量を無条件に1週間へ詰め込んだりしないためです。
 
-外部 API は provider 固有 response を product domain へ直接流さず、Cloudflare Worker 上の integration boundary で正規化します。書籍教材の初期実装では共有 catalog を先に参照し、miss 時だけ NDL Search へ問い合わせることで外部依存と不要な request を抑えます。
+### 配置可能な時間を求める
 
-テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。会話のブラウザ操作を補助するTesterArmy/e2e pilotは独立runnerで、`npm ci --prefix tests/agent-e2e`後に`npm run test:agentic:smoke`でモデル不要の検証を実行できます。モデル利用やonline検証の区別は[専用ガイド](./docs/domains/weekly-planning/quality/agentic-browser-e2e.md)を参照してください。
+時間割、既存の学習・一般予定、ユーザーが指定した利用不可の時間帯を統合し、新しい作業を置ける時間を求めます。期限、着手可能日、配置可能な時刻帯、作業間の順序、計画作成時点より前に置かないことなどは、必ず守る制約として評価します。
 
-実装上の責務と主要ディレクトリは [`PROJECT_MAP.md`](./PROJECT_MAP.md) にまとめています。
+「土日は1日8時間まで勉強する」のような1日の学習量の上限と、「13〜17時が空いている」のような時刻帯は別物です。前者は新しい学習予定の合計時間を制限し、後者は配置できる時刻を制限します。8時間という上限から、存在しない空き時間を作りません。
 
-## 開発環境
+希望時間帯や過去の学習傾向は、安全な候補の中で優先順位を付けるために利用します。希望や推奨によって、既存予定との衝突や明示された禁止条件を正当化することはありません。
 
-Node.js と npm が必要です。開発・CI の基準は [`.node-version`](./.node-version) の Node.js 22.23.4 です。2026-10-21 のセキュリティ修正済みの Node 22.23.4 / 24.22.1 / 26.12.1 以降の同一 major 系列を利用してください。`engines` は既定では警告のみなので、依存インストール前に下記の確認を実行します。`npm run verify` と `npm run build` も実際の実行バージョンを検査します。更新の範囲と未検証点は [Node セキュリティ更新記録](docs/domains/client-runtime/work/node-october-2026-security-handoff.md) を参照してください。
+### 期間と負荷を分散する
 
-```bash
-node scripts/ci/check-node-security-version.mjs
-npm install --cache .npm-cache
-npm run dev
-```
+現行の週間配置方針では、対象期間がちょうど7日間の場合、最初の6日間を通常の配置対象、7日目を予備日として扱います。通常日は学習負荷が一日に集中しないように分散し、予備日は不足分の補完や遅延・予定変更の余地として可能な限り残します。
 
-開発サーバーは既定でこの PC 内 (`127.0.0.1`) からだけ接続できます。スマートフォンなど同じ LAN の端末から確認するときは、開発用証明書に開発 PC の LAN IP を含めてから LAN 起動コマンドを使います。
+ただし、予備日を絶対に空ける仕組みではありません。期限や他の確定条件を満たすために必要なら利用します。また、明示された期限などにより7日を超える期間が必要な場合は、適用可能な条件に応じて計画期間を延長できます。
 
-```bash
-npm run cert:dev -- 192.168.0.5
-npm run dev:lan
-```
+### 連続した作業を優先し、必要な場合だけ分割する
 
-`192.168.0.5` は開発 PC の LAN IP に置き換えてください。`dev:lan` は `0.0.0.0` に bind し、Vite は証明書が `.cert/` に存在すれば HTTPS を使います。スマートフォンで HTTPS を開くには、その端末が mkcert のローカル認証局を信頼する必要があります。LAN 公開が必要な作業中だけこのコマンドを使います。build 済み画面の確認には `npm run preview:lan`（Node preview）または `npm run preview:vite:lan` を使えます。明示的な LAN script は OS に依存しない `--host` option を使います。手動で起動先を変える場合は `STUDYPLANNER_DEV_HOST=0.0.0.0` を `npm run dev`、`npm run preview`、または `npm run preview:vite` に指定できます。
+可動作業は、まず連続した時間枠へ配置することを試みます。連続枠が見つからず、その作業が分割可能だと確認されている場合に限り、許容される長さの複数セッションへ分けて再配置します。分割後も合計の作業時間、期限、空き時間、休憩、1日の上限は変えません。
 
-Firebase や AI gateway を設定しなくても、一部機能はローカル fallback で確認できます。本番相当の認証、保存、AI 接続を確認する場合は環境設定が必要です。
+「試験を1回受ける」「連続で1時間取り組む」など、不可分な作業を勝手に分割することはありません。作業量だけから分割可能性を推測することも避けます。
 
-### 環境変数
+### 配置に失敗した場合
 
-Firebase と AI proxy を利用する場合は `.env.local` または `.env` に設定を追加します。
+通常の配置順で全作業が収まらなかった場合は、確定済みの期限や依存順序を尊重した限定的な並べ替えを試みます。ただし、すべての組合せを探索する完全な最適化ソルバーではありません。
 
-```bash
-VITE_FIREBASE_API_KEY=your-api-key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_APP_ID=your-app-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
-VITE_FIREBASE_MEASUREMENT_ID=
-VITE_CLOUDFLARE_AI_PROXY_URL=https://your-worker-name.your-subdomain.workers.dev
-```
+安全に配置できないときは、期限を延ばしたり、空き時間を捏造したりせず、配置不能として扱います。一定条件下では未配置の作業を明示した暫定プレビューを提示できますが、計画の保存には必ずユーザーの明示的な承認を必要とします。
 
-入口の共有キーは不要です。登録・ログイン、メール確認、初回のデータ保存同意と、ユーザーごとのアクセス権は引き続き必要です。旧 `VITE_APP_ACCESS_KEY` 設定や端末に残るキーは参照しません。
+## データと責務の分離
 
-Firestore Rules は次のコマンドでデプロイします。
+保存する予定の正本は `ScheduleEvent` とし、月・週・日表示やAI計画で参照する予定の発生情報は共通の `ScheduleOccurrence` へ投影します。時間割も同じ空き時間計算に統合し、同一予定の二重表示や二重の時間占有を避けます。
 
-```bash
-npm run deploy:firestore-rules
-```
+予定と学習実績は区別して管理します。計画の時刻と、実際に学習した時刻・量を混同せず、進捗や学習レポートへ利用します。
 
-### AI gateway
+フロントエンドは React・TypeScript・Vite を中心に構成し、認証には Firebase Authentication、データ保存には主に Cloud Firestore、AI 接続のサーバー側境界には Cloudflare Workers を利用しています。テストには Vitest・fast-check・Playwright を使用しています。
 
-公開環境では AI provider の secret をフロントエンドへ埋め込まず、Cloudflare Workers 側に設定します。
+## 設計資料
 
-```bash
-npx wrangler login
-npx wrangler secret put OPENAI_API_KEY --config workers/ai-proxy/wrangler.jsonc
-npx wrangler secret put OBSERVABILITY_IDENTITY_SECRET --config workers/ai-proxy/wrangler.jsonc
-npm run deploy:worker
-```
+このREADMEは設計の概要です。厳密な現行仕様や実装上の判断は、各領域の文書を正本として参照してください。
 
-`OBSERVABILITY_IDENTITY_SECRET` は telemetry 上の利用者識別子を Firebase UID から分離するための server-only secret です。十分に長いランダム値を設定し、フロントエンドへ公開しないでください。
+[週間計画の責務と仕様](docs/domains/weekly-planning/README.md)、[予定配置ポリシー](docs/domains/weekly-planning/policies/scheduling.md)、[予定の保存・占有時間の共通仕様](docs/domains/scheduling/architecture/scheduled-event-authority.md)、[プロジェクトの構成](PROJECT_MAP.md)。
 
-`workers/ai-proxy/wrangler.jsonc` の環境設定はデプロイ先に合わせて設定してください。
+## 権利・利用許諾
 
-### Jev focused authorization（OpenRouter）
+Copyright © 2026 kame447 and respective copyright holders. All rights reserved.
 
-[Issue #305](https://github.com/kame447/StudyPlanner/issues/305) の初回対象だけを実装しています。既存の認証済み `/chat/completions` に用途を限定したdecision contextを渡し、Worker内のprovider port / OpenRouter adapterで判定します。既存のfocused生成LLM、generic semantic、承認・保存の境界は維持します。TypeSafe直結やCloudflare Workers AIへの切替は、このprovider portへ別adapterを実装する責務です。
+本リポジトリの独自のソースコード・文書・デザイン等について、権利者の事前の書面による許可なく、複製・改変・再配布・商用利用するためのライセンスは付与していません。GitHubの利用規約および適用法令に基づく権利は除きます。詳細は [LICENSE](LICENSE) を参照してください。
 
-OpenRouterのserver-only secretは次で登録します。値を引数、ソース、Issue、ログへ貼らないでください。
-
-```bash
-npx wrangler secret put OPENROUTER_API_KEY --config workers/ai-proxy/wrangler.jsonc
-```
-
-既定値は `JEV_MODE=off` / `JEV_CANARY_PERCENT=0` です。`shadow` はWorkerの `waitUntil` 内で比較記録だけを行い、既存LLMの応答を待たせず、Jevから正式状態を書き換えません。`canary` は明示した5・25・100%でのみ選択されます。現在の閾値は未校正なので、日本語gold/holdout評価と#152の該当security gateが完了するまで本番canaryを有効化しません。rollbackは `off` へ戻してWorkerを再デプロイします。今回の実装自体はデプロイや本番有効化を行いません。
-
-モデルは `workers/ai-proxy/src/decision/decisionPolicy.ts` へ集約しています。本番の要求はOpenRouterの安定最新版エイリアス `~typesafe/jev-latest` で、新しいJev 1.x releaseへ自動追従します。応答の `model` はJev 1.14以上の同一major releaseまたは妥当な日付付きsnapshotに限定し、旧版・別モデル・不正/未来日付の識別子は拒否して既存生成LLMへ戻します。`JEV_MODEL.responses` は既知のテスト用識別子であり、固定allowlistではありません。未知major versionは自動採用しません。モデル更新で判断分布や料金が変わる可能性は残るため、判定品質の再評価や使用料金の監視は別途必要です。既存の事前登録済み評価（Unit 0）は検証済みのJev 1.13に固定したまま維持します。Jevは1.5秒でtimeoutし再試行せず、canaryのJev＋focused LLM全体を85秒で打ち切ります。OpenRouter応答はstream読取中に32,768 bytesで打ち切り、上限超過時は残りをbufferせずcancelします。
-
-[PR #848](https://github.com/kame447/StudyPlanner/pull/848) は本番Workerのモデル固定を更新したもので、事前登録済みUnit 0評価の `scripts/jev-contextual-unit0-budget.mjs` は比較条件を保持するため1.13のままです。この評価snapshotを本番設定と混同せず、モデル固定の更新だけで品質改善や本番有効化を確認済みとは扱いません。
-
-低確信度・補助判定の不一致・欠落値・モデル不一致・通信障害は既存focused LLMへ戻します。明確な条件変更や独立した意味はgeneric semanticへ渡します。両providerの失敗は現行のcontrolled failureへ戻り、legacy自然言語parserは復活させません。汎用入力や長すぎる入力は従来経路を使います。
-
-旧版についての[TypeSafeのjev-1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13) は、stateをhostileとして扱わず、注入された指示や誘導的な文章が回答を動かし得ると明記しています。catalog内の「untrusted」は助言的なprompt表現であってsecurity boundaryではなく、injection層の評価結果も観測値にすぎません。安全性はdeterministicなeligibilityと権限制限に置き、Jevが選べるのは空のdocumentに対する未保存案の `create_plan` だけで、approval/saveは実行できません。このcontainmentは#152のsecurity gateを置き換えません。
-
-通常テストはmockのみでキー不要です。実APIの疎通試験は環境変数 `OPENROUTER_API_KEY` を設定したプロセスで、次を明示実行します。`.env` の自動読込や通常CIからの課金API起動はありません。既存のsecret managerから環境変数を渡すか、ローカルではshell履歴へ値を残さない非表示入力を使ってください。
-
-```bash
-npm run test:jev:live
-```
-
-この試験は合成した日本語の `create_plan / fallback` 判定を実Jevへ1件送り、HTTP成功に加えてdecision・分布・入力tokenを確認します。1件の疎通成功は日本語品質や本番rolloutの承認を意味しません。キー未設定なら試験は明示的に失敗し、成功扱いにしません。
-
-人手レビュー前のshadow評価候補は `workers/ai-proxy/src/decision/evaluation/` にあります。通常・短い承認・否定・訂正・条件付き承認・mixed turn・stored/indirect injection・Unicode・異常値を `tuning` / `holdout` に会話group単位で分けています。全件 `synthetic_unreviewed` であり、人手確認済みgoldや本番有効化の根拠ではありません。通常CIはmock providerだけでgroup分離、既存gate、全体・split別・layer別のclass別precision/recall、coverage、分母付きselective accuracy、false auto-`create_plan`、abstention/unavailable、evaluated-onlyとunavailable込みを分離したlatency、未知cost保持を検証します。既存生成LLMとの一致はaccuracyとして集計しません。
-
-現在のholdoutは `create_plan` 6件 / `fallback` 16件にすぎません。誤り0件でも二項事象の95%上限を概算するrule of threeは約 `3/n`（それぞれ50% / 18.8%）であり、このsynthetic setからcanaryの安全性は主張できません。単に合成例を水増しせず、十分な件数を持つ人手レビュー済みgoldをcanaryの前提にします。校正は `tuning` だけで行い、`holdout` は最後に一度だけ開封し、各評価で実行したsplitを記録します。
-
-候補を実OpenRouter adapterへ通す任意評価は、環境変数を明示したプロセスでのみ実行します。専用Vitest configで全候補を実行し、通常test globやCIには含まれません。`.env`を自動読込せず、入力本文・key・headerを出力しません。production validatorを通らない候補は`rejected_before_provider`として分離し、APIへ送らず、coverage/selective accuracyの分母から除外して件数を報告します。各caseはthreshold sweep用のchoice・confidence・両class確率・condition/independent確率・modelを数値結果として保持し、reportはfixture/catalog/gate versionと全体・split別・layer別集計を出力します。未知costがある場合、完全な総額は`null`のままです。人手レビューと費用承認の後にだけ実行してください。
-
-```bash
-npm run eval:jev:shadow
-```
-
-キーをCloudflareのSecretに登録済みなら、Wranglerへログインした端末から次の任意試験も実行できます。キーを端末へ取り出さず、一時remote dev内で同じadapterと本番の1.5秒timeoutを検証します。本番コードやroutingはデプロイせず、通常CIにも追加しません。
-
-```bash
-npm exec --yes --package=wrangler@4.151.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
-```
-
-検証コードは3分で失効する認証付きの合成入力専用です。終了時に開発サーバーを停止し、一時ファイルを削除します。判断結果の採用gateは疎通確認とは別に記録し、`abstained`なら既存LLMへ戻す方針を維持します。API仕様・日本語品質・本番設定の問題を隠すためにgateを緩めないでください。
-
-モデル、latency、成功/fallback、raw choiceとgate適用後routeそれぞれのshadow比較、token数、OpenRouter報告costを既存 `ai_request_metric` と内容を限定したWorkerログへ記録します。abstained/unavailableのgate比較は未決定の `null` とし、不明なusage/costもnullのまま保持します。provider callごとのevent IDは一意のまま、Jevが実行されたshadow/canaryではdecisionと既存baseline/fallback metricの `correlation.requestId` に同じopaqueなturn request IDを置き、turn単位でcostをjoinできます。`off` 相当では既存baseline metricのevent ID相関を変更しません。OpenRouterの応答本文、送信state、ユーザー入力全文、key、例外本文を新規のdecisionログやtraceへ保存しません。週間計画traceは既存の結果・byte数・状態を維持し、providerごとの安全な数値診断は#213のtelemetryを使います。運用上の総AI spendはheadline `ai` の総額に `aiByOperationKind.decision` の総額を加えます（decisionはheadlineから除外されます）。
-
-2026-09-26確認の一次資料は [OpenRouter Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request)、[Jev tutorial](https://openrouter.ai/docs/guides/community/jev-tutorial)、[TypeSafe primitives](https://docs.typesafe.ai/introduction)、[TypeSafe confidence](https://docs.typesafe.ai/confidence) です。SDK互換やchat APIから仕様を推測せず、`POST https://openrouter.ai/api/alpha/decisions` の `state / questions / answers / usage` 契約を使います。
-
-### スマートフォンからのローカル確認
-
-LAN 内の端末から HTTPS で開発環境へ接続する場合は、開発用証明書を生成できます。
-
-```bash
-npm run cert:dev -- 192.168.0.5
-npm run dev:lan
-```
-
-IP アドレスは開発 PC の LAN IP に置き換えてください。Vite は既定では loopback のみに bind するため、実機から見るときだけ `dev:lan` を起動します。証明書は開発 PC と実機の両方で信頼されている必要があります。
-
-## テスト
-
-通常の検証は次のコマンドで実行します。
-
-```bash
-npm run verify
-```
-
-`npm run verify` は最終確認用で、キャッシュを使わない app/Worker 型チェック、Vitest 全件、production build を順番に実行します。実装途中は対象テストと `npm run typecheck` を使えます。開発用型チェックはworktree内の `.cache/typecheck/` にapp/Worker別の情報を保存し、変更のない部分を再利用します。キャッシュの有無にかかわらず確認したい場合は `npm run typecheck:full` を使ってください。頻度と最終証拠は [AGENTS.md](./AGENTS.md#verification-cadence) を正本とし、Firestore・browser等のCI検査は別に維持します。
-
-`npm run typecheck` はフロントエンドと AI proxy Worker の両方を検査します。個別には `npm run typecheck:app` / `npm run typecheck:worker` を利用できます。Worker 検査は、固定した Wrangler と `workers/ai-proxy/wrangler.jsonc` の compatibility date / flags から実行環境の型を毎回生成します。生成先 `.wrangler/types/worker-runtime.d.ts` は Git 管理外です。環境変数の型は含めず、ログイン・Secret の取得・デプロイは行いません。Worker の production graph は `tsconfig.worker.json` で検査し、Vitest 専用ファイルと任意の評価用エントリポイントは対象外です。
-
-Playwright を使った Browser Regression は `.github/workflows/browser-regression.yml` で実行します。主要なユーザー操作を同じ条件で繰り返し検証し、別の変更による UI 回帰を検出します。
-
-## ドキュメント
-
-文書の配置ルールは [`docs/DOCUMENT_DICTIONARY.md`](./docs/DOCUMENT_DICTIONARY.md) が正本です。文書は agent 名や用途ではなく、責務・文書種別・lifecycle で配置します。
-
-リポジトリ全体の探索は [`PROJECT_MAP.md`](./PROJECT_MAP.md)、全文書の入口は [`docs/README.md`](./docs/README.md) を使用します。
-
-予定のapp-wide authority / occurrence projection / Plan・MonthEvent統合移行は [`docs/domains/scheduling/README.md`](./docs/domains/scheduling/README.md) を入口とし、正仕様は [`scheduled-event-authority.md`](./docs/domains/scheduling/architecture/scheduled-event-authority.md) を参照してください。
-
-週間計画は [`docs/domains/weekly-planning/README.md`](./docs/domains/weekly-planning/README.md)、current contract は [`docs/domains/weekly-planning/architecture/current-contract-v5.md`](./docs/domains/weekly-planning/architecture/current-contract-v5.md)、planned learning consultation requirement は [`docs/domains/weekly-planning/spec/learning-consultation-and-advice.md`](./docs/domains/weekly-planning/spec/learning-consultation-and-advice.md)、実装順序は [`docs/domains/weekly-planning/roadmap/current.md`](./docs/domains/weekly-planning/roadmap/current.md) を参照してください。
-
-client-first execution と local/server authority の境界は [`docs/domains/client-runtime/README.md`](./docs/domains/client-runtime/README.md) と [`docs/domains/client-runtime/spec/client-first-execution-requirements.md`](./docs/domains/client-runtime/spec/client-first-execution-requirements.md) を参照してください。local planner read の鮮度・再確認・consumer lease は [Planner read projection recovery](./docs/domains/client-runtime/architecture/planner-read-projection-recovery.md) が補足します。
-
-学習レポートは [`docs/domains/reporting/README.md`](./docs/domains/reporting/README.md)、画面要件と集計不変条件は [`docs/domains/reporting/spec/learning-report.md`](./docs/domains/reporting/spec/learning-report.md) を正仕様として扱います。
-
-管理・分析console、AI/API usage、service-wide telemetry、diagnostic drill-downは [`docs/domains/product-observability/README.md`](./docs/domains/product-observability/README.md) を入口とし、要件は [`console-requirements.md`](./docs/domains/product-observability/spec/console-requirements.md)、内部architectureは [`telemetry-and-read-model.md`](./docs/domains/product-observability/architecture/telemetry-and-read-model.md) を正仕様として扱います。
-
-外部API/providerの採否、利用条件、normalization、fallbackは [`docs/domains/external-integrations/README.md`](./docs/domains/external-integrations/README.md) を入口とし、書籍教材検索の正仕様は [`material-metadata.md`](./docs/domains/external-integrations/spec/material-metadata.md) を参照してください。
-
-過去の task、audit、旧 architecture は [`docs/archive/`](./docs/archive/README.md) にあり、current implementation instruction として扱いません。
-
-## 開発状況
-
-Laplance は開発中です。現在の `main` を基準に主要機能とテストを継続的に更新しています。
-
-## ライセンス
-
-ライセンスは未設定です。
+第三者のライブラリや素材にはそれぞれのライセンスが適用されます。たとえば、SunCalcの表示は [第三者ライセンス](public/licenses/suncalc.txt) にあります。
