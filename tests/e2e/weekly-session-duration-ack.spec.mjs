@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { VNEXT_SCHEMA, vnextReadingFromFacts } from './support/weekly-planning-provider.mjs';
+import { VNEXT_SCHEMA, vnextReadingFromFacts, unaliasedRuntimeGatewayStubBody } from './support/weekly-planning-provider.mjs';
 
 // Synthetic UI harness: stub only provider transport/authentication, and run the
 // real semantic validator, scheduler, renderer, approval and local persistence.
@@ -36,7 +36,7 @@ async function boot(page, mode) {
   await page.route('**/*', route => new URL(route.request().url()).origin === ORIGIN ? route.continue() : route.abort());
   await page.route('**/weeklyPlanningTurnRuntimeGateway.stub.js*', route => route.fulfill({
     contentType: 'application/javascript',
-    body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};\nexport { createWeeklyPlanningVNextRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway.ts`)};`,
+    body: unaliasedRuntimeGatewayStubBody(root),
   }));
   const seams = [
     ['lib/aiConfig.ts', 'function getCloudflareAiProxyUrl() {', `return ${JSON.stringify(PROXY)};`],
