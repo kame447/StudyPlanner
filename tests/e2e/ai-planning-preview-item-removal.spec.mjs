@@ -1,6 +1,8 @@
 import { expect, newFixedClockContext, test } from './support/fixed-clock.mjs';
+import { installWeeklyConversationSeeder } from './support/weekly-conversation-seed.mjs';
 
 async function seedPreviewRemovalState(page, { phase }) {
+  await installWeeklyConversationSeeder(page);
   await page.addInitScript(({ seededPhase }) => {
     const seedMarker = 'studyplanner.e2e.previewRemovalSeeded';
     if (localStorage.getItem(seedMarker) === seededPhase) return;
@@ -95,23 +97,7 @@ async function seedPreviewRemovalState(page, { phase }) {
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
-    localStorage.setItem(
-      `studyplanner.weeklyPlanning.${user.id}.${weekStartDate}`,
-      JSON.stringify({
-        version: 3,
-        ownerId: user.id,
-        payload: { version: 2, state: planningState },
-      }),
-    );
-    localStorage.setItem(
-      `studyplanner.weeklyPlanning.activeSession.${user.id}`,
-      JSON.stringify({
-        version: 1,
-        ownerId: user.id,
-        weekStartDate,
-        conversationId: null,
-      }),
-    );
+    window.__seedWeeklyConversation({ ownerId: user.id, weekStartDate, state: planningState });
     localStorage.setItem(seedMarker, seededPhase);
   }, { seededPhase: phase });
 }

@@ -51,3 +51,17 @@ export function vnextReadingFromFacts(document) {
   return { planningIntent: document.planningIntent, conversationActs,
     delta: { add, patch: [], remove: [], relate: [], defer: [] }, answer: null };
 }
+
+/**
+ * Body for a spec's `page.route('**\/weeklyPlanningTurnRuntimeGateway.stub.js*')` that un-aliases the harness stub:
+ * the real turn gateway and the real VNext gateway. The app imports every name below from that module (the hook
+ * reads durable receipts through it), so a replacement that omits one fails module linking: the page never renders
+ * and the spec waits out its timeout. Keep the export list in step with `harness/weeklyPlanningTurnRuntimeGateway.stub.js`.
+ */
+export function unaliasedRuntimeGatewayStubBody(root) {
+  const real = path => JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/${path}`);
+  return [
+    `export { weeklyPlanningTurnRuntimeGateway } from ${real('application/weeklyPlanningTurnRuntimeGateway.ts')};`,
+    `export { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt } from ${real('vnext/application/weeklyPlanningVNextRuntimeGateway.ts')};`,
+  ].join('\n');
+}

@@ -1,4 +1,5 @@
 import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
+import { installWeeklyConversationSeeder } from './support/weekly-conversation-seed.mjs';
 
 function toIsoDate(value) {
   return [
@@ -16,6 +17,7 @@ function weekStartFor(value) {
 }
 
 async function seedUser(page, { withPreview = false } = {}) {
+  await installWeeklyConversationSeeder(page);
   await page.addInitScript(({ today, weekStartDate, seedPreview }) => {
     const now = new Date().toISOString();
     const user = {
@@ -97,23 +99,7 @@ async function seedUser(page, { withPreview = false } = {}) {
       messages: [],
       updatedAt: now,
     };
-    localStorage.setItem(
-      `studyplanner.weeklyPlanning.${user.id}.${weekStartDate}`,
-      JSON.stringify({
-        version: 3,
-        ownerId: user.id,
-        payload: { version: 2, state: planningState },
-      }),
-    );
-    localStorage.setItem(
-      `studyplanner.weeklyPlanning.activeSession.${user.id}`,
-      JSON.stringify({
-        version: 1,
-        ownerId: user.id,
-        weekStartDate,
-        conversationId: null,
-      }),
-    );
+    window.__seedWeeklyConversation({ ownerId: user.id, weekStartDate, state: planningState });
   }, {
     today: E2E_TODAY,
     weekStartDate: weekStartFor(new Date(`${E2E_TODAY}T00:00:00`)),
