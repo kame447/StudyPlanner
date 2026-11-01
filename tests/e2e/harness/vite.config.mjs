@@ -97,6 +97,13 @@ export default defineConfig({
     'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(''),
     'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(''),
   },
+  // A cold dev server answers the first page before its dependency scan (about 5 s) has finished. Whatever the
+  // browser imports that the first optimization lacks is discovered mid-load, Vite re-optimizes, and the old hashed
+  // chunks answer 504 'Outdated Optimize Dep': the first page of a run stays blank (admin-entry-navigation:27 on
+  // CI). Listing every dependency the harness pages import makes the first optimization complete, with no waiting.
+  optimizeDeps: {
+    include: ['react-dom/client', 'firebase/app', 'firebase/auth', 'firebase/firestore', 'lucide-react', 'suncalc'],
+  },
   server: {
     host: '127.0.0.1',
     port: 4174,
