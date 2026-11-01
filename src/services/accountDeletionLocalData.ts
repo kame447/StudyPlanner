@@ -18,13 +18,13 @@ export function clearAccountBrowserStorage(uid: string, local: Storage, session:
   const exact = new Set([
     `studyplanner.accountDeletionStarted.v1.${encoded}`, `studyplanner.activeSession.v1.${encoded}`, `studyplanner.studyRestDays.v1:${encoded}`,
     `studyplanner-weekly-approval-ledger-v2.${encoded}`, `studyplanner-weekly-personalization-v1:${encoded}`,
-    `studyplanner.durableWeeklyTurn.v1:${encoded}`, `studyplanner.aiPlanning.chats.v1.${uid}`,
+    `studyplanner.durableWeeklyTurn.v1:${encoded}`, `studyplanner.durableWeeklyTurn.vnext.v1:${encoded}`, `studyplanner.aiPlanning.chats.v1.${uid}`,
     `studyplanner.weeklyPlanning.activeSession.${uid}`, `studyplanner.userPlanningContext.${uid}`,
     ...['month-timetable', 'day-timetable', 'study-progress'].map(name => `study-planner-${name}:${encoded}`),
   ]);
   const prefixes = [
     `studyplanner.activeSession.v1.${encoded}.dispatch.`, `studyplanner.activeSession.v1.${encoded}.probe.`,
-    `studyplanner.weeklyPlanning.${uid}.`, `studyplanner.weeklyPlanning.stableV5.${uid}.`,
+    `studyplanner.weeklyPlanning.${uid}.`, `studyplanner.weeklyPlanning.stableV5.${uid}.`, `studyplanner.weeklyPlanning.vnext.${uid}.`,
     `studyplanner.weeklyPlanningUnreadable.v1.${encoded}.`, `studyplanner.aiPlanning.chat.v1.${uid}.`,
     `studyplanner.aiPlanning.chatSearch.v1.${uid}.`, `studyplanner:material-detail:v1:${uid}:`,
     `studyplanner.classAttendance.v1:${encoded}:`, `studyplanner.weeklyPlanning.trace.stableV5.${encoded}::`,

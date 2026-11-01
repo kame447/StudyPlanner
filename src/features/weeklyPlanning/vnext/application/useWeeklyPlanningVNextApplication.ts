@@ -207,7 +207,7 @@ export function useWeeklyPlanningVNextApplication(
     const receipt = readWeeklyPlanningVNextDurableReceipt(input.userId);
     const state = runtime.state;
     recoverDurableWeeklyTurn({
-      ownerId, conversationId: runtime.session.conversationId, state, recovering: recoveringDurableRequest, receipt,
+      core: 'vnext', ownerId, conversationId: runtime.session.conversationId, state, recovering: recoveringDurableRequest, receipt,
       plannerDataReady: plannerReady(),
       persistedRevision: () => {
         try {
@@ -252,7 +252,7 @@ export function useWeeklyPlanningVNextApplication(
       const cancelled = cancelWeeklyPlanningControlledTurn({ getState, dispatch });
       if (cancelled && pending && input.userId && durableWeeklyPlanningEnabled()) {
         recoveringDurableRequest.current = pending.requestId;
-        void cancelDurableWeeklyTurn(ownerId, pending.requestId).finally(() => {
+        void cancelDurableWeeklyTurn(ownerId, pending.requestId, undefined, 'vnext').finally(() => {
           if (recoveringDurableRequest.current === pending.requestId) recoveringDurableRequest.current = null;
         });
       }

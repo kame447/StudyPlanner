@@ -1,6 +1,6 @@
 import type { PlanningState } from '../types';
 import { cancelDurableWeeklyTurn, clearDurableWeeklyTurnReceipt,
-  type DurableWeeklyTurnPayload, type DurableWeeklyTurnReceipt } from './weeklyPlanningDurableTurnClient';
+  type DurableReceiptCore, type DurableWeeklyTurnPayload, type DurableWeeklyTurnReceipt } from './weeklyPlanningDurableTurnClient';
 import type { IsolatedWeeklyPlanningTurnInput } from './weeklyPlanningIsolatedTurn';
 
 /** The original request, rebuilt from a saved receipt. The caller adds only its own session and state ports. */
@@ -26,6 +26,8 @@ export function durableReceiptTurnParams(receipt: DurableWeeklyTurnReceipt<{ inp
  * is never applied twice. The caller supplies its core's receipt, saved revision and resubmission.
  */
 export function recoverDurableWeeklyTurn<Payload extends DurableWeeklyTurnPayload>(params: {
+  /** The core whose receipt namespace this recovery owns (default: Stable V5's). */
+  core?: DurableReceiptCore;
   ownerId: string;
   conversationId: string | undefined;
   state: PlanningState;
@@ -44,13 +46,13 @@ export function recoverDurableWeeklyTurn<Payload extends DurableWeeklyTurnPayloa
   const release = () => { if (recovering.current === requestId) recovering.current = null; };
   if (receipt.cancelRequested) {
     recovering.current = requestId;
-    void cancelDurableWeeklyTurn(params.ownerId, requestId).finally(release);
+    void cancelDurableWeeklyTurn(params.ownerId, requestId, undefined, params.core).finally(release);
     return;
   }
   if (state.revision > receipt.pending.baseRevision) {
     const saved = params.persistedRevision();
     if (saved !== undefined && saved >= receipt.pending.baseRevision + 2 && params.chatSaved()) {
-      clearDurableWeeklyTurnReceipt(params.ownerId, requestId);
+      clearDurableWeeklyTurnReceipt(params.ownerId, requestId, params.core);
     }
     return;
   }

@@ -9,7 +9,7 @@ import type { WeeklyPlanningVNextDurableTurnInput, WeeklyPlanningVNextDurableTur
 import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 
 export function readWeeklyPlanningVNextDurableReceipt(ownerId: string) {
-  const receipt = readDurableWeeklyTurnReceipt<WeeklyPlanningVNextDurableTurnInput>(ownerId);
+  const receipt = readDurableWeeklyTurnReceipt<WeeklyPlanningVNextDurableTurnInput>(ownerId, 'vnext');
   return receipt?.payload.core === 'vnext' ? receipt : null;
 }
 

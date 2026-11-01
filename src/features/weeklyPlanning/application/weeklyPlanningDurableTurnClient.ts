@@ -14,7 +14,12 @@ export const DURABLE_CLIENT_TIMING = {
   requestTimeoutMs: 20_000,
   reconcileWindowMs: 5 * 60_000,
 } as const;
-const key = (ownerId: string) => `studyplanner.durableWeeklyTurn.v1:${encodeURIComponent(ownerId)}`;
+/** Each core owns its receipt: a build that predates a core never sees (or resumes) that core's receipt. */
+export type DurableReceiptCore = 'stable_v5' | 'vnext';
+export const durableReceiptKey = (ownerId: string, core: DurableReceiptCore = 'stable_v5') =>
+  `studyplanner.durableWeeklyTurn.${core === 'vnext' ? 'vnext.' : ''}v1:${encodeURIComponent(ownerId)}`;
+const receiptCore = (value: { payload: DurableWeeklyTurnPayload }): DurableReceiptCore =>
+  (value.payload as { core?: unknown }).core === 'vnext' ? 'vnext' : 'stable_v5';
 /** Core-neutral identity; each executor validates its own payload at admission. */
 export interface DurableWeeklyTurnPayload {
   input: { userId: string; conversationId?: string; traceRequestId?: string };
@@ -35,10 +40,11 @@ export interface DurableTurnClientPorts {
   wait(ms: number): Promise<void>;
 }
 
-export function readDurableWeeklyTurnReceipt<Payload extends DurableWeeklyTurnPayload = IsolatedWeeklyPlanningTurnInput>(ownerId: string): DurableWeeklyTurnReceipt<Payload> | null {
+export function readDurableWeeklyTurnReceipt<Payload extends DurableWeeklyTurnPayload = IsolatedWeeklyPlanningTurnInput>(ownerId: string, core: DurableReceiptCore = 'stable_v5'): DurableWeeklyTurnReceipt<Payload> | null {
   if (typeof window === 'undefined') return null;
+  const key = durableReceiptKey(ownerId, core);
   try {
-    const raw = window.localStorage.getItem(key(ownerId)); if (!raw) return null;
+    const raw = window.localStorage.getItem(key); if (!raw) return null;
     if (new TextEncoder().encode(raw).length > 4 * 1024 * 1024) return null;
     const value = JSON.parse(raw) as DurableWeeklyTurnReceipt<Payload>;
     if (value.version !== 1 || value.ownerId !== ownerId || value.payload?.input?.userId !== ownerId
@@ -47,7 +53,7 @@ export function readDurableWeeklyTurnReceipt<Payload extends DurableWeeklyTurnPa
       || value.snapshot?.revision !== value.pending.baseRevision
       || !Number.isFinite(Date.parse(value.pending.startedAt))) return null;
     if (Date.parse(value.pending.startedAt) + RETENTION_MS <= Date.now()) {
-      window.localStorage.removeItem(key(ownerId)); return null;
+      window.localStorage.removeItem(key); return null;
     }
     return value;
   } catch { return null; }
@@ -55,12 +61,13 @@ export function readDurableWeeklyTurnReceipt<Payload extends DurableWeeklyTurnPa
 export function saveDurableWeeklyTurnReceipt(value: DurableWeeklyTurnReceipt<DurableWeeklyTurnPayload>): void {
   if (typeof window === 'undefined') throw new Error('会話の復帰情報を保存できませんでした。');
   const raw = JSON.stringify(value);
-  window.localStorage.setItem(key(value.ownerId), raw);
-  if (window.localStorage.getItem(key(value.ownerId)) !== raw) throw new Error('会話の復帰情報を保存できませんでした。');
+  const key = durableReceiptKey(value.ownerId, receiptCore(value));
+  window.localStorage.setItem(key, raw);
+  if (window.localStorage.getItem(key) !== raw) throw new Error('会話の復帰情報を保存できませんでした。');
 }
-export function clearDurableWeeklyTurnReceipt(ownerId: string, requestId: string): void {
-  const current = readDurableWeeklyTurnReceipt(ownerId);
-  if (current?.pending.requestId === requestId) window.localStorage.removeItem(key(ownerId));
+export function clearDurableWeeklyTurnReceipt(ownerId: string, requestId: string, core: DurableReceiptCore = 'stable_v5'): void {
+  const current = readDurableWeeklyTurnReceipt(ownerId, core);
+  if (current?.pending.requestId === requestId) window.localStorage.removeItem(durableReceiptKey(ownerId, core));
 }
 function defaultPorts(): DurableTurnClientPorts {
   const base = getCloudflareAiProxyUrl().replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
@@ -146,8 +153,8 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
 }
 
 /** Explicit user cancellation only; browser suspension/visibility never invokes this. */
-export async function cancelDurableWeeklyTurn(ownerId: string, requestId: string, ports = defaultPorts()): Promise<boolean> {
-  const receipt = readDurableWeeklyTurnReceipt(ownerId);
+export async function cancelDurableWeeklyTurn(ownerId: string, requestId: string, ports = defaultPorts(), core: DurableReceiptCore = 'stable_v5'): Promise<boolean> {
+  const receipt = readDurableWeeklyTurnReceipt<DurableWeeklyTurnPayload>(ownerId, core);
   if (!receipt || receipt.pending.requestId !== requestId) return false;
   // Keep an unacknowledged cancellation on disk so reload never resumes it as work.
   try { saveDurableWeeklyTurnReceipt({ ...receipt, cancelRequested: true }); } catch { /* Still try to stop server dispatch. */ }
@@ -163,6 +170,6 @@ export async function cancelDurableWeeklyTurn(ownerId: string, requestId: string
       || state.identity?.ownerId !== ownerId || state.identity.requestId !== requestId
       || state.identity.conversationId !== receipt.pending.conversationId
       || state.identity.baseRevision !== receipt.pending.baseRevision) return false;
-    clearDurableWeeklyTurnReceipt(ownerId, requestId); return true;
+    clearDurableWeeklyTurnReceipt(ownerId, requestId, core); return true;
   } catch { return false; }
 }

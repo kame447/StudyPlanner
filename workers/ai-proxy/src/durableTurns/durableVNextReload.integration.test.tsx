@@ -184,7 +184,7 @@ async function passEveryInterval() {
  */
 async function expectNoLateExecution(database: { metrics: unknown }) {
   expect(['completed', 'failed', 'expired'], 'the job is terminal').toContain(currentRecord()?.status);
-  expect(readDurableWeeklyTurnReceipt(OWNER), 'the receipt is consumed or cleared').toBeNull();
+  expect(readDurableWeeklyTurnReceipt(OWNER, 'vnext'), 'the receipt is consumed or cleared').toBeNull();
   expect(activePolls(), 'the client poll is deregistered').toBe(0);
   expect(vi.getTimerCount(), 'no poll or request timer is pending').toBe(0);
   const before = { methods: [...methods], providerCalls, metrics: structuredClone(database.metrics) };
@@ -199,7 +199,7 @@ it('finishes while detached and restores exactly one reply and its checkpoint wi
   const first = await mount(); const chatId = first.ref.current!.chat.index.activeChatId;
   const { submitted } = await submit(first.ref, '数学を7ページ');
   expect(methods).toEqual(['POST']); expect(first.ref.current!.state.pendingTurn).toBeDefined();
-  expect(readDurableWeeklyTurnReceipt(OWNER)?.payload).toMatchObject({ core: 'vnext', checkpoint: null });
+  expect(readDurableWeeklyTurnReceipt(OWNER, 'vnext')?.payload).toMatchObject({ core: 'vnext', checkpoint: null });
   await act(async () => renderer!.unmount()); renderer = undefined;
   await runAlarm(); expect(currentRecord()?.status).toBe('completed'); const callsAfterAlarm = providerCalls; expect(callsAfterAlarm).toBeGreaterThan(0);
   expect(checkpointOf(chatId)).toBeNull();
@@ -232,7 +232,7 @@ it('only explicit cancellation stops accepted work, and it is not resumed after 
   await runAlarm(); expect(providerCalls).toBe(0);
   const detached = track(submitted);
   await act(async () => { windowTarget.dispatchEvent(new Event('focus')); await until(() => detached.done); });
-  expect((await submitted).accepted).toBe(false); expect(readDurableWeeklyTurnReceipt(OWNER)).toBeNull();
+  expect((await submitted).accepted).toBe(false); expect(readDurableWeeklyTurnReceipt(OWNER, 'vnext')).toBeNull();
   await act(async () => renderer!.unmount()); renderer = undefined; resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   const second = await mount();
   await expectNoLateExecution(second.database);

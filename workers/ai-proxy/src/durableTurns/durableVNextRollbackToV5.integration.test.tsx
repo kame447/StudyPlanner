@@ -130,7 +130,7 @@ async function mountV5() {
   return ref;
 }
 
-it('the V5 build ignores a stale VNext receipt: no resubmission to the old Worker, the receipt stays, and rolling forward resumes it once', async () => {
+it('a stale VNext receipt lives under its own key: a V5 build, even one without any VNext guard, finds nothing to resume, and rolling forward resumes it once', async () => {
   // The conversation was started in the V5 build and VNext took it over under the same conversation identity,
   // so the receipt really belongs to the conversation the V5 build loads after the rollback. The V5 state is still at
   // the receipt's base revision, which is exactly the case in which V5 would otherwise resume the request itself.
@@ -141,11 +141,16 @@ it('the V5 build ignores a stale VNext receipt: no resubmission to the old Worke
   const first = await mount();
   const { submitted } = await submit(first.ref, '数学を7ページ');
   expect(methods).toEqual(['POST']);
-  const receipt = readDurableWeeklyTurnReceipt(OWNER);
+  const receipt = readDurableWeeklyTurnReceipt(OWNER, 'vnext');
   expect(receipt?.payload).toMatchObject({ core: 'vnext' });
+  // The Stable V5 key, the only one an older build reads, stays empty.
+  expect(storage.storage.getItem(`studyplanner.durableWeeklyTurn.v1:${encodeURIComponent(OWNER)}`)).toBeNull();
+  expect(readDurableWeeklyTurnReceipt(OWNER)).toBeNull();
   const v5Conversation = JSON.parse(storage.storage.getItem(`studyplanner.aiPlanning.chat.v1.${OWNER}.${v5ChatId}`)!).conversationId;
   expect(receipt?.pending.conversationId).toBe(v5Conversation);
-  const receiptBytes = storage.storage.getItem(`studyplanner.durableWeeklyTurn.v1:${encodeURIComponent(OWNER)}`);
+  const vnextReceiptKey = `studyplanner.durableWeeklyTurn.vnext.v1:${encodeURIComponent(OWNER)}`;
+  const receiptBytes = storage.storage.getItem(vnextReceiptKey);
+  expect(receiptBytes).not.toBeNull();
   await act(async () => renderer!.unmount()); renderer = undefined; resetWeeklyPlanningStableV5RuntimeSessionsForTest();
 
   // Pages rolled back: the V5 build mounts with durable turns enabled and the VNext receipt in storage.
@@ -154,7 +159,8 @@ it('the V5 build ignores a stale VNext receipt: no resubmission to the old Worke
   expect(methods).toEqual(['POST']);          // nothing resubmitted, polled or cancelled against the Worker
   expect(providerCalls).toBe(0);
   expect(v5.current!.state.pendingTurn).toBeUndefined();
-  expect(storage.storage.getItem(`studyplanner.durableWeeklyTurn.v1:${encodeURIComponent(OWNER)}`)).toBe(receiptBytes);
+  expect(storage.storage.getItem(vnextReceiptKey)).toBe(receiptBytes);
+  expect(storage.storage.getItem(`studyplanner.durableWeeklyTurn.v1:${encodeURIComponent(OWNER)}`)).toBeNull();
   await act(async () => renderer!.unmount()); renderer = undefined; resetWeeklyPlanningStableV5RuntimeSessionsForTest();
 
   // Rolled forward again: the same receipt reads the same job (no second POST, no second AI run).
