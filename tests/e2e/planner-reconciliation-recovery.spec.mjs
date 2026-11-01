@@ -2,7 +2,7 @@ import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
 const HARNESS_URL = 'http://127.0.0.1:4174/full-planner-recovery.html';
 // Gate the actual Vite-served production module, never a replacement loader.
-const RUNTIME_MODULE_SOURCE = /\/weeklyPlanningStableV5InstrumentedRuntimeExecutor\.ts(?:\?.*)?$/;
+const RUNTIME_MODULE_SOURCE = /\/(?:weeklyPlanningVNextRuntimeModule|weeklyPlanningStableV5InstrumentedRuntimeExecutor)\.ts(?:\?.*)?$/;
 const cases = [
   { label: 'desktop', width: 1280, height: 900 },
   { label: 'mobile', width: 390, height: 844 },
