@@ -11,7 +11,7 @@ Owner: PurplePasteur（親 Opus 5.5、standalone）。Issue [#926](https://githu
 ## 現在地
 
 - 再起動前の親 SturdyGauss の未コミット統合（任意の「ほかに作業は？」質問・辞退・closed の V5 再利用）と Luna の OI03 評価修正を `a5946cc9` に統合し、push 済み。focused 511 pass、typecheck exit 0。元の worktree（SturdyGauss / JauntyRamanujan / DarkFeynman）は変更していない。
-- 本番接続は未実施。現状の VNext はローカル開発ホスト＋ビルドフラグ＋クエリのときだけ選ばれる。
+- （開始時点）本番接続は未実施で、VNext はローカル開発ホスト＋ビルドフラグ＋クエリのときだけ選ばれていた。現在の選択は下の「本番化で確定した設計」のとおり。
 
 ## 本番化で確定した設計
 

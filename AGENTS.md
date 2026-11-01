@@ -282,7 +282,7 @@ Rules:
 
 ## Natural language scheduling rules
 
-Stable V5 is the production baseline for weekly planning.
+VNext is the production weekly-planning conversation core (Issue #926). Stable V5 stays in source as the local comparison core and as the owner of the pure responsibilities VNext reuses through `src/features/weeklyPlanning/vnext/weeklyPlanningVNextV5Boundary.ts`; production builds do not route to it.
 
 ### Ownership boundary
 
