@@ -529,7 +529,10 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     replySource = 'system';
     shows = 'unchanged';
   } else {
-    const rendered = await ports.createRenderer({ canDispatchRecovery }).render(renderBase(question, preview));
+    // As Stable V5 (dialogueActionKind): the renderer presents a preview only when this turn made one. A preview kept
+    // from an earlier turn stays shown and approvable, but a turn that adds nothing is told as a status, so the
+    // reply answers what the user said instead of repeating the approval guidance (N2).
+    const rendered = await ports.createRenderer({ canDispatchRecovery }).render(renderBase(question, made.preview ? preview : null));
     if (rendered.status === 'rendered') {
       reply = rendered.text;
       replySource = 'renderer';

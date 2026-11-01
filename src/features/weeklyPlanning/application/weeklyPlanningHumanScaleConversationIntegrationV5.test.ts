@@ -1,3 +1,5 @@
+import { renderWeeklyPlanningStableV5AssistantMessageCore, type WeeklyPlanningTurnDialoguePorts } from '../dialogue/weeklyPlanningStableV5TurnDialogueCore';
+import type { WeeklyPlanningStableV5DialogueRenderInput } from '../dialogue/weeklyPlanningStableV5DialogueContracts';
 import { buildWeeklyPlanningPlanSourceId } from '../planning/weeklyPlanningPlanProvenance';
 import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import { boundWeeklyPlanningDialogueRendererTraceForTransport } from '../trace/weeklyPlanningDialogueRendererTrace';
@@ -1104,6 +1106,27 @@ describe('Stable V5 human-scale conversation integration', () => {
       expect(next.result.stableV5Graph!.temporalConstraints).toEqual(firstGraph.temporalConstraints);
       expect(next.result.stableV5Graph!.availabilityDeclarations).toEqual(firstGraph.availabilityDeclarations);
     }
+  });
+
+  // N2: what V5's renderer is told on a turn with no new facts after a registration preview (run, not read).
+  // VNext parity: weeklyPlanningVNextEventRegistration.integration "a turn with no new facts ... follows V5".
+  it('V5 tells the renderer a status (no preview, no promotion label) on a no-new-facts turn after a registration preview', async () => {
+    const conversationId = 'fixed-handoff-render-facts';
+    const userText = '8月17日から23日の予定です。8月17日の10:30から12:00は部活なので、その予定を入れてください。';
+    const renderInputs: WeeklyPlanningStableV5DialogueRenderInput[] = [];
+    const ports = { createRenderer: () => ({ render: async (input: WeeklyPlanningStableV5DialogueRenderInput) => {
+      renderInputs.push(input); return { status: 'rendered' as const, text: '説明', rawResponse: '' }; } }),
+      getSession: getWeeklyPlanningStableV5RuntimeSession } as WeeklyPlanningTurnDialoguePorts;
+    const first = await runFixedHandoffReading({ conversationId, userText,
+      document: fixedHandoffDocument(userText, 'fixed_task'), act: 'request_event_registration' });
+    await renderWeeklyPlanningStableV5AssistantMessageCore({ input: turnInput({ conversationId, userText, traceRequestId: 'render-1' }), result: first.result }, ports);
+    const second = await runFixedHandoffReading({ conversationId, userText: '夜に集中が続かないときはどうしたらいいですか？', document: noNewEventFacts(), act: null });
+    await renderWeeklyPlanningStableV5AssistantMessageCore({ input: turnInput({ conversationId, userText: '夜に集中が続かないときはどうしたらいいですか？',
+      traceRequestId: 'render-2', previousState: first.result.state }), result: second.result }, ports);
+    expect(renderInputs[0]).toMatchObject({ actionKind: 'preview_ready', previewCount: 1,
+      communication: { goal: 'present_preview', statusReason: 'fixed_event_registration_preview' } });
+    expect(renderInputs[1]).toMatchObject({ actionKind: 'status', previewCount: 0, previewPromotionControlLabel: null,
+      communication: { goal: 'acknowledge', statusReason: 'no_additional_work' } });
   });
 
   it('scopes registration acts to named tasks or current-turn contributions while older commitments stay busy', async () => {

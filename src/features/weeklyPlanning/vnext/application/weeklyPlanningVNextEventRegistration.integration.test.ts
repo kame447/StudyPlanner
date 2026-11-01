@@ -606,4 +606,60 @@ describe('a plan request with new work after the optional invitation', () => {
     expect(schema).toContain('whichever question is presented');
     expect(schema).toContain('never dismiss a required question');
   });
+
+  // N2: the renderer is told what Stable V5 tells it (HumanScale V5 "tells the renderer a status ... after a registration
+  // preview"): a preview kept from an earlier turn stays shown and approvable, but only a preview this turn made is presented.
+  describe('a turn that adds nothing while a preview is kept (N2, V5 renderer facts)', () => {
+    const consult = '夜に集中が続かないときはどうしたらいいですか？ 今の予定はそのままで大丈夫です';
+    const V5_STATUS = { actionKind: 'status', previewCount: 0, previewPromotionControlLabel: null, communication: { goal: 'acknowledge' } } as const;
+    const renderFacts = (input: unknown) => { const i = input as { communication: { goal: string; statusReason?: string }; actionKind: string;
+      previewCount: number; previewPromotionControlLabel: string | null; requiredLabels: string[] }; return i; };
+
+    it('the exact Worker-run state: after a registration preview, a consultation is a status with no preview facts, and the preview stays approvable', async () => {
+      const h = harness([wire(event('piano', 'non_study', '19:00', '20:00'), [request()]), wire()]);
+      const first = await h.turn('11月3日19時から20時までピアノ教室があります。登録してください。');
+      expect(renderFacts(h.rendererInputs[0])).toMatchObject({ actionKind: 'preview_ready', previewCount: 1, communication: { goal: 'present_preview', statusReason: 'fixed_event_registration_preview' } });
+      const second = await h.turn(consult);
+      const facts = renderFacts(h.rendererInputs[1]);
+      expect(facts).toMatchObject({ actionKind: V5_STATUS.actionKind, previewCount: 0, previewPromotionControlLabel: null, communication: { goal: V5_STATUS.communication.goal, statusReason: 'no_additional_work' } });
+      expect(facts.requiredLabels).toEqual([]);
+      // V5's own decision for the same graph (the status the V5 renderer receives in the HumanScale V5 test).
+      const graph = h.state().graph;
+      const compilation = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
+        context: { ownerId: OWNER, currentDate: WEEK, planningStartDate: WEEK, planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } });
+      expect(fixedEventOnlyInteractionStatus({ graph, compilation, semanticChanged: false, previousQuestionSlot: undefined,
+        declinedAdditionalWork: false, requestedEventRegistration: false, previousOptionalInvitationClosed: false })).toBe(facts.communication.statusReason);
+      // The preview is still there (its card is shown) and approvable; nothing was saved or changed by the consultation.
+      expect(second.preview).toEqual(first.preview);
+      expect(h.local.readCheckpoint()?.vnext.preview).toEqual(first.preview);
+      expect(h.saves()).toBe(0);
+      expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
+      expect(h.saves()).toBe(1);
+    });
+
+    it('control: the registration turn, a renewed explicit registration request and a turn adding a new registration still present the preview', async () => {
+      const h = harness([wire(event(), [request()]), wire(), (context: Context) => wire([], [request({ factId: context.activeFacts.tasks.find(task => task.title === 'club')!.id })]),
+        wire(event('piano', 'non_study', '19:00', '20:00'), [request()])]);
+      await h.turn('部活を登録して');
+      expect(renderFacts(h.rendererInputs[0])).toMatchObject({ actionKind: 'preview_ready', previewCount: 1 });
+      await h.turn(consult);
+      expect(renderFacts(h.rendererInputs[1])).toMatchObject(V5_STATUS);
+      await h.turn('その予定を登録してください');
+      expect(renderFacts(h.rendererInputs[2])).toMatchObject({ actionKind: 'preview_ready', previewCount: 1, communication: { goal: 'present_preview' } });
+      await h.turn('ピアノ教室も11月3日19時から20時です。登録して');
+      expect(renderFacts(h.rendererInputs[3])).toMatchObject({ actionKind: 'preview_ready', communication: { goal: 'present_preview' } });
+    });
+
+    it('control (D1 untouched): a study preview kept from an earlier turn is a status on a no-new-facts turn and still approves', async () => {
+      const h = harness([wire(work, [], 'create_plan'), wire(), wire([], [], 'discuss', { patch: [] })]);
+      const first = await h.turn('数学は60分です。予定を作って');
+      expect(first.preview).not.toBeNull();
+      expect(renderFacts(h.rendererInputs[0])).toMatchObject({ actionKind: 'preview_ready', communication: { goal: 'present_preview' } });
+      const second = await h.turn(consult);
+      expect(renderFacts(h.rendererInputs[1])).toMatchObject(V5_STATUS);
+      expect(second.preview).toEqual(first.preview);
+      expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
+      expect(h.saves()).toBeGreaterThan(0);
+    });
+  });
 });
