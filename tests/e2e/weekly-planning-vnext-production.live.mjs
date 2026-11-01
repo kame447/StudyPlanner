@@ -1,8 +1,10 @@
 // Post-deploy production smoke for the VNext weekly-planning core (Issue #926).
 // Runs only through the Live Account Browser Verification workflow (playwright.live.config.mjs,
-// non-local https origin, existing secrets). It sends ONE fixed-event utterance for an isolated
-// far-future date, never approves or saves anything, and spends the real provider calls of that
-// single turn. The D5 smoke cannot gate VNext: it reads V5 storage and Jev schema names.
+// non-local https origin, existing secrets). Real provider calls are bounded per flow:
+//   1+4 consultation only, then reload and a second chat (1 turn, no plan)
+//   2   fixed-event registration preview on an isolated far-future date (1 turn, never saved)
+//   3   plan with a splittable duration + a correction, approve, verify, clean up via the UI (2 turns)
+// The D5 smoke cannot gate VNext: it reads V5 storage and Jev schema names.
 import { expect, test } from '@playwright/test';
 import { fillSecret } from './support/fill-secret.mjs';
 import { classifyFirestoreWrite } from './support/d5-production-smoke-observation.mjs';
@@ -77,68 +79,161 @@ const readVNextStorage = page => page.evaluate(() => {
   };
 });
 
-test('production serves VNext: fixed-event preview, no save, reload and multi-chat persistence', async ({ page }) => {
-  const providerSchemas = [];
-  const forbiddenWrites = [];
-  let unclassifiedWrites = 0;
+
+const tag = `E2E-VNEXT-${process.env.GITHUB_RUN_ID?.trim() || Date.now()}`;
+
+// Observes provider schemas and Firestore writes for one test; counts and classifications only.
+function observe(page) {
+  const seen = { schemas: [], forbidden: [], unclassified: 0 };
   page.on('request', request => {
     const url = new URL(request.url());
     if (request.method() === 'POST' && url.pathname.endsWith('/chat/completions')) {
-      try { providerSchemas.push(request.postDataJSON()?.response_format?.json_schema?.name ?? 'none'); }
-      catch { providerSchemas.push('unreadable'); }
+      try { seen.schemas.push(request.postDataJSON()?.response_format?.json_schema?.name ?? 'none'); }
+      catch { seen.schemas.push('unreadable'); }
     }
     if (url.hostname === 'firestore.googleapis.com') {
       const write = classifyFirestoreWrite({ url: request.url(), method: request.method(), postData: request.postData() });
-      if (write?.classification === 'forbidden') forbiddenWrites.push(write);
-      if (write?.classification === 'unclassified') unclassifiedWrites++;
+      if (write?.classification === 'forbidden') seen.forbidden.push(write);
+      if (write?.classification === 'unclassified') seen.unclassified++;
     }
   });
+  return seen;
+}
+const assertProviderBound = (seen, maxCalls) => {
+  expect(seen.schemas).toContain(VNEXT_SCHEMA);
+  expect(seen.schemas.filter(name => V5_SEMANTIC_SCHEMAS.includes(name))).toEqual([]);
+  expect(seen.schemas.length).toBeLessThanOrEqual(maxCalls);
+};
 
-  await signIn(page);
-  await openAiPlanning(page);
-  const before = await readVNextStorage(page);
+const composer = page => page.locator('.ai-planning-composer textarea');
+const assistantBubbles = page => page.locator('.ai-planning-message-row.assistant .ai-planning-bubble');
+const userBubble = (page, text) => page.locator('.ai-planning-message-row.user .ai-planning-bubble').filter({ hasText: text });
 
-  const { month, day } = isolatedFutureDate();
-  const text = `${month}月${day}日の10:30から12:00まで部活があります。その予定を登録したいです。`;
-  const composer = page.locator('.ai-planning-composer textarea');
-  await composer.fill(text);
+// One turn: send, wait for a new assistant bubble, and for the composer to be usable again.
+async function sendTurn(page, text) {
+  const baseline = await assistantBubbles(page).count();
+  await composer(page).fill(text);
   await page.getByRole('button', { name: '送信', exact: true }).click();
+  await expect.poll(() => assistantBubbles(page).count(), { timeout: 120_000 }).toBeGreaterThan(baseline);
+  await expect(userBubble(page, text)).toHaveCount(1);
+  await expect(composer(page)).toBeEnabled({ timeout: 60_000 });
+}
 
-  // The turn is finished when an assistant bubble follows the user bubble and the composer is usable again.
-  const assistant = page.locator('.ai-planning-message-row.assistant .ai-planning-bubble');
-  const baselineAssistants = await assistant.count();
-  await expect.poll(() => assistant.count(), { timeout: 120_000 }).toBeGreaterThan(baselineAssistants);
-  await expect(page.locator('.ai-planning-message-row.user .ai-planning-bubble').filter({ hasText: text })).toHaveCount(1);
-  await expect(composer).toBeEnabled({ timeout: 60_000 });
+test.describe('VNext production core', () => {
+  test.setTimeout(420_000);
 
-  const after = await readVNextStorage(page);
-  // The selected core is VNext: it persists its own checkpoint and never a V5 weekly slot.
-  expect(after.vnextUiKeys).toBeGreaterThan(before.vnextUiKeys);
-  expect(after.vnextCoreKeys).toBeGreaterThan(0);
-  expect(after.stableV5Keys).toBe(before.stableV5Keys);
-  // A fixed event request previews only; nothing becomes a draft block or a saved plan.
-  expect(after.previewSources).toContain('fixed_event_registration');
-  expect(after.draftBlocks).toBe(0);
-  // One turn: VNext reading present, V5 semantic pipeline absent, bounded provider spend.
-  expect(providerSchemas).toContain(VNEXT_SCHEMA);
-  expect(providerSchemas.filter(name => V5_SEMANTIC_SCHEMAS.includes(name))).toEqual([]);
-  expect(providerSchemas.length).toBeLessThanOrEqual(MAX_TURN_PROVIDER_CALLS);
-  expect(forbiddenWrites).toEqual([]);
-  test.info().annotations.push({ type: 'provider-calls', description: String(providerSchemas.length) },
-    { type: 'unclassified-firestore-writes', description: String(unclassifiedWrites) });
+  test('flow 1+4: consultation only, then reload and a second chat', async ({ page }) => {
+    const seen = observe(page);
+    await signIn(page);
+    await openAiPlanning(page);
+    const before = await readVNextStorage(page);
+    const text = `英語の勉強法について相談したいです。計画はまだ作らず、アドバイスだけください。(${tag})`;
+    await sendTurn(page, text);
+    const after = await readVNextStorage(page);
+    expect(after.vnextUiKeys).toBeGreaterThan(before.vnextUiKeys);
+    expect(after.stableV5Keys).toBe(before.stableV5Keys);
+    // Consultation never creates a preview, a draft block or a write.
+    expect(after.previewSources).toEqual(before.previewSources);
+    expect(after.draftBlocks).toBe(0);
+    assertProviderBound(seen, MAX_TURN_PROVIDER_CALLS);
+    expect(seen.forbidden).toEqual([]);
 
-  // Reload keeps the conversation (local VNext checkpoint, no provider call).
-  const callsBeforeReload = providerSchemas.length;
-  await page.reload();
-  await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
-  await openAiPlanning(page);
-  await expect(page.locator('.ai-planning-message-row.user .ai-planning-bubble').filter({ hasText: text })).toHaveCount(1);
+    // Flow 4: reload keeps the conversation without a provider call.
+    const calls = seen.schemas.length;
+    await page.reload();
+    await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
+    await openAiPlanning(page);
+    await expect(userBubble(page, text)).toHaveCount(1);
+    // A second chat is independent; selecting the first chat restores its messages.
+    await page.getByLabel('チャット一覧を開く').click();
+    await page.getByRole('button', { name: '新しいチャット' }).click();
+    await expect(page.locator('.ai-planning-message-row')).toHaveCount(0);
+    await expect.poll(async () => (await readVNextStorage(page)).chats).toBeGreaterThanOrEqual(2);
+    await page.getByLabel('チャット一覧を開く').click();
+    await page.locator('.ai-chat-list').getByText('英語の勉強法').first().click();
+    await expect(userBubble(page, text)).toHaveCount(1);
+    expect(seen.schemas.length).toBe(calls);
+    expect(seen.forbidden).toEqual([]);
+  });
 
-  // A second chat is independent and the first remains in the index.
-  await page.getByLabel('チャット一覧を開く').click();
-  await page.getByRole('button', { name: '新しいチャット' }).click();
-  await expect(page.locator('.ai-planning-message-row')).toHaveCount(0);
-  await expect.poll(async () => (await readVNextStorage(page)).chats).toBeGreaterThanOrEqual(2);
-  expect(providerSchemas.length).toBe(callsBeforeReload);
-  expect(forbiddenWrites).toEqual([]);
+  test('flow 2: fixed-event registration previews only and saves nothing', async ({ page }) => {
+    const seen = observe(page);
+    await signIn(page);
+    await openAiPlanning(page);
+    const before = await readVNextStorage(page);
+    const { month, day } = isolatedFutureDate();
+    await sendTurn(page, `${month}月${day}日の10:30から12:00まで部活があります。その予定を登録したいです。`);
+    const after = await readVNextStorage(page);
+    expect(after.vnextUiKeys).toBeGreaterThan(before.vnextUiKeys);
+    expect(after.vnextCoreKeys).toBeGreaterThan(0);
+    expect(after.stableV5Keys).toBe(before.stableV5Keys);
+    expect(after.previewSources).toContain('fixed_event_registration');
+    expect(after.draftBlocks).toBe(0);
+    assertProviderBound(seen, MAX_TURN_PROVIDER_CALLS);
+    expect(seen.forbidden).toEqual([]);
+  });
+
+  test('flow 3: plan with a splittable duration and a correction, approve, verify, clean up', async ({ page }) => {
+    const seen = observe(page);
+    const title = `E2E-${tag}-読書`;
+    let saved = false;
+    let primaryError = null;
+    let cleanupError = null;
+    try {
+      await signIn(page);
+      await openAiPlanning(page);
+      const when = `${jstTomorrow().getUTCMonth() + 1}月${jstTomorrow().getUTCDate()}日`;
+      await sendTurn(page, `${when}の夜に「${title}」を合計90分したいです。30分ずつに分けても構いません。計画案を作ってください。`);
+      await sendTurn(page, `訂正です。「${title}」は合計60分にしてください。`);
+      const previewButton = page.locator('.ai-planning-preview-button').first();
+      await expect(previewButton, 'a plan preview must exist after the correction').toBeVisible({ timeout: 30_000 });
+      await previewButton.click();
+      const dialog = page.locator('.ai-planning-preview-dialog, [role="dialog"]').filter({ hasText: 'この内容で仮予定にする' }).first();
+      await dialog.getByRole('button', { name: 'この内容で仮予定にする' }).click();
+      await dialog.getByRole('button', { name: 'この内容で保存' }).click();
+      saved = true;
+      await expect(dialog).toBeHidden({ timeout: 60_000 });
+      // Saved plans carry the corrected total (60 min), split into 30 min blocks at most.
+      await openScheduleDay(page, jstTomorrow());
+      const entries = visibleEntries(page, title);
+      await expect.poll(() => entries.count(), { timeout: 30_000 }).toBeGreaterThan(0);
+      assertProviderBound(seen, 2 * MAX_TURN_PROVIDER_CALLS);
+    } catch (error) {
+      primaryError = error;
+    } finally {
+      if (saved) {
+        try { await removeSavedPlans(page, title, jstTomorrow()); }
+        catch (error) { cleanupError = error; }
+      }
+    }
+    if (primaryError && cleanupError) throw new AggregateError([primaryError, cleanupError], 'VNext plan flow and its cleanup both failed.');
+    if (primaryError) throw primaryError;
+    if (cleanupError) throw cleanupError;
+  });
 });
+
+// Only visible nodes: the hidden AI view still holds the same title in its messages.
+const visibleEntries = (page, title) => page.getByText(title).locator('visible=true');
+function jstTomorrow() { return new Date(Date.now() + 9 * 3600_000 + 86_400_000); }
+
+async function openScheduleDay(page, date) {
+  await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
+  await page.getByRole('tab', { name: '日', exact: true }).click();
+  // The day view opens on today; tomorrow is one period ahead.
+  const label = `${date.getUTCMonth() + 1}月${date.getUTCDate()}日`;
+  const next = page.getByRole('button', { name: '次の期間へ' });
+  for (let step = 0; step < 3 && !(await page.getByText(label).first().isVisible()); step++) await next.click();
+}
+
+// Deletes every saved block carrying this run's unique title through the schedule UI, then proves none remain.
+async function removeSavedPlans(page, title, date) {
+  await openScheduleDay(page, date);
+  const entries = visibleEntries(page, title);
+  for (let guard = 0; guard < 6 && (await entries.count()) > 0; guard++) {
+    await entries.first().click();
+    page.once('dialog', dialog => { void dialog.accept(); });
+    await page.getByRole('button', { name: '削除', exact: true }).click();
+    await page.waitForTimeout(500);
+  }
+  await expect(entries).toHaveCount(0, { timeout: 30_000 });
+}
