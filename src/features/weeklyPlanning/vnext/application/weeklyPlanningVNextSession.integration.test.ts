@@ -9,7 +9,7 @@ import {
 import type { PlanningIntakeState } from '../../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningMessage } from '../../types';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
-import { applyWeeklyPlanningVNextTurn } from '../semantic/weeklyPlanningVNextTransaction';
+import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from '../semantic/weeklyPlanningVNextTransaction';
 import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 import type { WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import { bindWeeklyPlanningVNextAnswer } from './weeklyPlanningVNextAnswerBinding';
@@ -184,5 +184,34 @@ describe('VNext session: migration, answer binding inside presentation freshness
       presentationFresh: freshness.status === 'fresh', presented: { questionKey: question.key, graphRevision: projection.graphRevision }, projection,
       lineageOf: createVNextLineageResolver(state.graph).lineageOf, answer: { kind: 'delta', delta },
     })).toMatchObject({ status: 'bound', delta });
+  });
+});
+
+describe('VNext session: a stated amount whose role does not change the work', () => {
+  const horizon = { startDate: '2026-11-02', endDate: '2026-11-08' };
+  const turn = (state: WeeklyPlanningVNextState, add: unknown[], key: string) => {
+    const result = applyWeeklyPlanningVNextTurn(state, { add, patch: [], remove: [], relate: [], defer: [] } as never, {
+      expectedRevision: state.graph.revision, acceptedDate: horizon.startDate, weekStartsOn: 'monday', planningHorizon: horizon,
+      defaultPlanningHorizon: horizon, conversationId, turnId: key, turnKey: key, sourceText: 'scripted reading' });
+    if (result.status !== 'applied') throw new Error(JSON.stringify(result));
+    return result.state;
+  };
+  const task = { kind: 'task', localId: 'seminar', category: 'study', title: 'ゼミ資料の準備' };
+  const minutes = (role: string, amount: number, localId = 'work') => ({ kind: 'workload', localId, taskRef: { localId: 'seminar' },
+    componentRef: null, quantityRole: role, amount, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
+    perOccurrence: false, periodExpression: null });
+
+  it('the real-API reading (one declared 60 minutes) is ready to plan: no role question, 60 schedulable minutes', () => {
+    const projection = projectWeeklyPlanningVNext(turn(createEmptyWeeklyPlanningVNextState(), [task, minutes('declared', 60)], 'turn-1'));
+    expect(projection.questions).toEqual([]);
+    expect(projection.readiness).toBe('ready');
+    expect(projection.owners.flatMap(owner => owner.work).reduce((sum, work) => sum + (work.minutes ?? 0), 0)).toBe(60);
+  });
+
+  it('the same amount stated with a conflicting remainder still asks for the role (negative control)', () => {
+    const projection = projectWeeklyPlanningVNext(turn(createEmptyWeeklyPlanningVNextState(),
+      [task, minutes('declared', 60), minutes('remaining', 30, 'left')], 'turn-1'));
+    expect(projection.questions[0]).toMatchObject({ code: 'quantity_role_unresolved' });
+    expect(projection.readiness).toBe('needs_resolution');
   });
 });

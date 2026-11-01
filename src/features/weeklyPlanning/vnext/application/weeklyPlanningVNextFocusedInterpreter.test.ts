@@ -90,12 +90,13 @@ describe('VNext uses existing focused contextual purpose and native fallback', (
   });
 
   it('applies only the exact pending quantity role as one ordinary patch', async () => {
-    const params = input(seed([work('declared', 'declared', 8)]), '残りです');
+    // Another stated remaining makes the two answers differ (target governs vs two remainders), so the role is asked.
+    const params = input(seed([work('declared', 'declared', 8), work('stated', 'remaining', 5)]), '残りです');
     params.client = { createChatCompletion: async () => JSON.stringify(decision('quantity_role_answer')) };
     const result = await createWeeklyPlanningVNextFocusedInterpreter({ fullReading: async () => { throw new Error('unexpected fallback'); } })(params);
     if (result.status !== 'interpreted') throw new Error('not interpreted');
     expect(result.delta.patch).toHaveLength(1);
-    expect(apply(params.state, result.delta).graph.workloads[1]).toMatchObject({ quantityRole: 'remaining', amount: 8 });
+    expect(apply(params.state, result.delta).graph.workloads.find(item => item.quantityRole === 'remaining' && item.amount === 8)).toBeDefined();
   });
 
   it.each(['abstain', 'shape', 'transport', 'stale', 'extra meaning', 'unavailable estimate target'] as const)(

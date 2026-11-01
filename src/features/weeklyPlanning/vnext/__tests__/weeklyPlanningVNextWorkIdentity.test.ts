@@ -7,6 +7,7 @@ import {
   vnextQuantityBasisKey,
 } from '../weeklyPlanningVNextWorkIdentity';
 import type { WeeklyPlanningVNextGraph } from '../weeklyPlanningVNextTypes';
+import { compileGenericPlanningWorkItems } from '../../semantic/weeklyPlanningGenericWorkItems';
 
 const source = (semanticLocalId: string) => ({
   conversationId: 'vnext-identity-fixture',
@@ -113,6 +114,63 @@ describe('VNext work identity kernel', () => {
     const lineages = vnextLineageIdByFactId(graph);
     expect(lineages.get('replacement-completed')).toBe('old-completed');
     expect(lineages.get('reintroduced-completed')).toBe('reintroduced-completed');
+  });
+});
+
+/**
+ * Real-API finding (run 41328196858): "合計60分かかります。今週の夜にやりたいです" was read as one `declared`
+ * minute amount, and the role question was asked twice although its two offered answers (the plan's target amount,
+ * the remaining total) schedule the same 60 minutes. The question stays only where its answers differ.
+ */
+describe('an unresolved declared quantity', () => {
+  const minutes = (id: string, role: WorkloadFactV5['quantityRole'], amount: number) =>
+    workload({ id, role, amount, unitCode: 'minute', unitLabel: '分' });
+  const unitsOf = (...facts: WorkloadFactV5[]) => computeVNextWorkUnits(graphWithWorkloads(facts))[0];
+
+  it('is not asked when both offered answers schedule the same work (the exact real-API reading)', () => {
+    const owner = unitsOf(minutes('declared', 'declared', 60));
+    expect(owner.issue).toBeNull();
+    expect(owner.units).toMatchObject([{ workLineageId: 'declared', definingFactId: 'declared', amount: 60 }]);
+  });
+
+  it('is not asked when the other stated quantities agree with either answer', () => {
+    // 100 in all, 40 done: the remaining reading derives 60, the target reading is 60.
+    const owner = unitsOf(minutes('declared', 'declared', 60), minutes('total', 'scope_total', 100), minutes('done', 'completed', 40));
+    expect(owner.issue).toBeNull();
+    expect(owner.units.map(unit => unit.amount)).toEqual([60]);
+  });
+
+  it.each([
+    ['a stated remaining of another amount', [minutes('declared', 'declared', 8), minutes('left', 'remaining', 5)]],
+    ['progress that contradicts the remaining reading', [minutes('declared', 'declared', 50), minutes('total', 'scope_total', 100), minutes('done', 'completed', 40)]],
+    ['a second declared amount of another size', [minutes('declared', 'declared', 30), { ...minutes('other', 'declared', 45) }]],
+  ])('is still asked when %s makes the answers differ', (_name, facts) => {
+    const owner = unitsOf(...facts);
+    expect(owner.issue).toMatchObject({ code: 'quantity_role_unresolved' });
+    expect(owner.units).toEqual([]);
+  });
+
+  it('keeps asking for an unknown role: its admissible answers include completed work', () => {
+    expect(unitsOf(minutes('unknown', 'unknown', 60)).issue).toMatchObject({ code: 'quantity_role_unresolved' });
+  });
+
+  it('keeps the stated fact as it was said and resolves a later answer by an ordinary role patch', () => {
+    const graph = graphWithWorkloads([minutes('declared', 'declared', 60)]);
+    computeVNextWorkUnits(graph);
+    expect(graph.workloads[0].quantityRole).toBe('declared');
+  });
+
+  // Stable V5 has no equal-outcome rule: it blocks every declared amount (its own tests keep that). VNext's rule
+  // is the question's own contract, so on the differing case both cores agree.
+  it('agrees with Stable V5 where the answers differ, and differs only where asking changes nothing', () => {
+    const differing = graphWithWorkloads([minutes('declared', 'declared', 8), minutes('left', 'remaining', 5)]);
+    const lone = graphWithWorkloads([minutes('declared', 'declared', 60)]);
+    const blocked = (graph: WeeklyPlanningVNextGraph) => compileGenericPlanningWorkItems(graph).issues
+      .some(issue => issue.code === 'quantity_role_unresolved' && issue.blocking);
+    expect(blocked(differing)).toBe(true);
+    expect(computeVNextWorkUnits(differing)[0].issue).toMatchObject({ code: 'quantity_role_unresolved' });
+    expect(blocked(lone)).toBe(true);
+    expect(computeVNextWorkUnits(lone)[0].issue).toBeNull();
   });
 });
 

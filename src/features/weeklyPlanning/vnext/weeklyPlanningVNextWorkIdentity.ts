@@ -200,11 +200,31 @@ function byRole(group: WorkloadFactV5[], role: WorkloadFactV5['quantityRole']): 
  * alone is a record of progress, not work. A zero amount is not work.
  */
 export function computeVNextWorkUnits(graph: WeeklyPlanningVNextGraph, workRelations: readonly VNextWorkRelation[] = []): VNextWorkUnitsByOwner[] {
+  const stated = computeUnits(graph, workRelations, null);
+  if (!stated.some(entry => entry.issue?.code === 'quantity_role_unresolved')) return stated;
+  // A `declared` amount is asked about only when the question's own two answers differ. The question offers
+  // the plan's target amount or the remaining total; when both readings schedule the same work, asking
+  // changes nothing, so that work stands. Any other disagreement (another quantity, a total, progress) still asks.
+  const asTarget = computeUnits(graph, workRelations, 'target');
+  const asRemaining = computeUnits(graph, workRelations, 'remaining');
+  const same = (a: VNextWorkUnitsByOwner, b: VNextWorkUnitsByOwner | undefined) => b !== undefined && !a.issue && !b.issue
+    && JSON.stringify(a.units.map(workUnitIdentity)) === JSON.stringify(b.units.map(workUnitIdentity));
+  return stated.map(entry => {
+    if (entry.issue?.code !== 'quantity_role_unresolved') return entry;
+    const target = asTarget.find(item => item.ownerKey === entry.ownerKey)!;
+    return same(target, asRemaining.find(item => item.ownerKey === entry.ownerKey)) ? target : entry;
+  });
+}
+
+const workUnitIdentity = (unit: VNextWorkUnit) => [unit.workLineageId, unit.definingFactId, unit.basisKey, unit.derivedFromTotal, unit.amount];
+
+function computeUnits(graph: WeeklyPlanningVNextGraph, workRelations: readonly VNextWorkRelation[], declaredAs: 'target' | 'remaining' | null): VNextWorkUnitsByOwner[] {
   const resolver = createVNextLineageResolver(graph);
   const lineageOf = (fact: { id: string }) => resolver.lineageOf(fact.id);
   const distinct = new Set(workRelations.filter(relation => relation.kind === 'distinct')
     .map(relation => JSON.stringify([...relation.lineageIds].sort())));
-  const workloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads);
+  const workloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads)
+    .map(workload => declaredAs && workload.quantityRole === 'declared' ? { ...workload, quantityRole: declaredAs } : workload);
   const owners = new Map<string, WorkloadFactV5[]>();
   for (const workload of workloads) {
     const key = resolver.ownerKeyOf(workload);
