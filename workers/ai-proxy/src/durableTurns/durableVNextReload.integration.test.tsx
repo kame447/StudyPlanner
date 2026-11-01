@@ -89,8 +89,23 @@ async function runAlarm() {
     await executeDurableVNextTurn(workerEnv, JSON.parse(payload), dispatch, sourceIp, deadline)));
 }
 const checkpointOf = (chatId: string) => createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId }).readCheckpoint();
-/** Lets the controller's async admission and the fake-timer client run until the condition holds. */
-async function until(condition: () => boolean) { for (let i = 0; i < 400 && !condition(); i += 1) await vi.advanceTimersByTimeAsync(10); }
+/**
+ * Waits for a condition the way a user would: fake client timers advance (10ms at a time) while real macrotasks
+ * run, bounded by real elapsed time. A tick count is not a bound: the first turn also waits on real module and
+ * I/O latency, which differs between machines (a slow CI runner needs far more than a fast one).
+ */
+const realSetTimeout = globalThis.setTimeout;
+const realYield = () => new Promise<void>(resolve => { realSetTimeout(resolve, 2); });
+async function until(condition: () => boolean, limitMs = 60_000) {
+  const started = performance.now();
+  while (!condition()) {
+    if (performance.now() - started > limitMs) throw new Error('Condition not reached within the real-time limit.');
+    await vi.advanceTimersByTimeAsync(10); await realYield();
+  }
+}
+/** For a claim that nothing more happens: every client poll interval passes and real tasks drain. */
+async function quiesce() { await vi.advanceTimersByTimeAsync(10_000); for (let i = 0; i < 25; i += 1) await realYield(); }
+const track = (promise: Promise<unknown>) => { const state = { done: false }; void promise.then(() => { state.done = true; }, () => { state.done = true; }); return state; };
 const rawOf = (chatId: string) => createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId }).checkpoint.read();
 async function submit(app: { current: WeeklyPlanningApplication | null }, text: string) {
   let submitted!: Promise<WeeklyPlanningTurnSubmissionResult>;
@@ -109,7 +124,9 @@ it('finishes while detached and restores exactly one reply and its checkpoint wi
   expect(checkpointOf(chatId)).toBeNull();
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   const second = await mount();
-  await act(async () => { windowEvents.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(10_000); });
+  const detached = track(submitted);
+  await act(async () => { windowEvents.dispatchEvent(new Event('focus'));
+    await until(() => detached.done && second.ref.current!.state.messages.some(m => m.role === 'assistant')); });
   expect((await submitted).accepted).toBe(false);
   const state = second.ref.current!.state;
   expect(state.pendingTurn).toBeUndefined();
@@ -120,7 +137,7 @@ it('finishes while detached and restores exactly one reply and its checkpoint wi
   expect(second.database.metrics).toEqual({ planWrites: 0, itemWrites: 0, operationWrites: 0 });
   // A later load reads the persisted answer; the old receipt does not apply it again.
   await act(async () => renderer!.unmount()); renderer = undefined; resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-  const third = await mount(); await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  const third = await mount(); await act(async () => { await quiesce(); });
   expect(third.ref.current!.state.messages.filter(m => m.role === 'assistant')).toHaveLength(1);
   expect(providerCalls).toBe(callsAfterAlarm); expect(methods.filter(method => method === 'POST')).toHaveLength(1);
 });
@@ -130,10 +147,11 @@ it('only explicit cancellation stops accepted work, and it is not resumed after 
   const { submitted } = await submit(first.ref, '数学を7ページ');
   await act(async () => { expect(first.ref.current!.cancelTurn()).toBe(true); await until(() => record?.failure === 'cancelled'); expect(record?.failure).toBe('cancelled'); });
   await runAlarm(); expect(providerCalls).toBe(0);
-  await act(async () => { windowEvents.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(10_000); });
+  const detached = track(submitted);
+  await act(async () => { windowEvents.dispatchEvent(new Event('focus')); await until(() => detached.done); });
   expect((await submitted).accepted).toBe(false); expect(readDurableWeeklyTurnReceipt(OWNER)).toBeNull();
   await act(async () => renderer!.unmount()); renderer = undefined; resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-  const second = await mount(); await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  const second = await mount(); await act(async () => { await quiesce(); });
   expect(second.ref.current!.state.pendingTurn).toBeUndefined(); expect(providerCalls).toBe(0);
   expect(checkpointOf(chatId)).toBeNull(); expect(methods.filter(method => method === 'POST')).toHaveLength(1); expect(methods).toContain('DELETE');
 });
@@ -142,7 +160,7 @@ it('resumes into the chat that owns the receipt and leaves another chat\'s check
   const first = await mount(); const chatA = first.ref.current!.chat.index.activeChatId;
   let a!: Promise<WeeklyPlanningTurnSubmissionResult>;
   await act(async () => { a = first.ref.current!.submitTurn('数学を7ページ'); await until(() => record?.status === 'queued'); expect(record?.status).toBe('queued'); });
-  await runAlarm(); await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  await runAlarm(); const firstDone = track(a); await act(async () => { await until(() => firstDone.done); });
   expect((await a).accepted).toBe(true);
   const chatABytes = rawOf(chatA);
   expect(chatABytes).not.toBeNull();
@@ -155,7 +173,9 @@ it('resumes into the chat that owns the receipt and leaves another chat\'s check
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   const second = await mount();
   expect(second.ref.current!.chat.index.activeChatId).toBe(chatB);
-  await act(async () => { windowEvents.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(10_000); });
+  const detachedB = track(submitted);
+  await act(async () => { windowEvents.dispatchEvent(new Event('focus'));
+    await until(() => detachedB.done && second.ref.current!.state.messages.some(m => m.role === 'assistant')); });
   expect((await submitted).accepted).toBe(false);
   expect(second.ref.current!.state.messages.filter(m => m.role === 'user')).toHaveLength(1);
   expect(checkpointOf(chatB)).not.toBeNull();
