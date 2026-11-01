@@ -1,5 +1,15 @@
 # Inquiry return navigation
 
+## Current disposition — 2026-10-29
+
+Integrated through [PR #621](https://github.com/kame447/StudyPlanner/pull/621) (`7668a090a522d05bda6759a5289302bf234e8202`), an ancestor of audited main `a60fc5e8bca2ff745efaf603e939967b3e54e4a9`.
+
+The navigation repair is integrated. Final PR evidence records native history/focus/portal assertions, not retained successful screenshot/trace inspection; the timer regression uses browser clock and mobile WebKit is not a physical device.
+
+## Preserved implementation and verification checkpoints
+
+Publication and integration statements below describe their checkpoint dates. Original evidence, failures, behavioral constraints and unresolved acceptance limits are preserved; this correction claims no new test, device or deployment verification.
+
 Status: locally implemented and verified; remote browser gates and publication approval pending
 Branch: `fix/inquiry-return-navigation`
 Base: `840e7aeb6dd962fdc51de43cc3ab54818b82b427`

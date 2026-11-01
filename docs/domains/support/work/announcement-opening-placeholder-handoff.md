@@ -1,5 +1,15 @@
 # Quiet announcement opening
 
+## Current disposition — 2026-10-29
+
+Integrated through [PR #671](https://github.com/kame447/StudyPlanner/pull/671) (`e9a234102d570878933e0034e182b08e31a3c833`), an ancestor of audited main `a60fc5e8bca2ff745efaf603e939967b3e54e4a9`.
+
+The null pending-module fallback is integrated; page loading/errors, lazy loading and navigation remain separate. The PR records native CI for its historical head, not physical-iPhone or authenticated-production acceptance.
+
+## Preserved implementation and verification checkpoints
+
+Publication and integration statements below describe their checkpoint dates. Original evidence, failures, behavioral constraints and unresolved acceptance limits are preserved; this correction claims no new test, device or deployment verification.
+
 - Active local branch: `fix/announcement-opening-placeholder`.
 - Base: `b4b82e578b777828fc87a0e4d87df306eeb4d652`.
 - Scope: remove only the bell's temporary “お知らせを開いています” text while the announcement page module loads. Preserve lazy loading, page loading/error states, navigation, and unread behavior.

@@ -1,5 +1,15 @@
 # Announcement unread indicator and presentation
 
+## Current disposition — 2026-10-29
+
+Integrated through [PR #651](https://github.com/kame447/StudyPlanner/pull/651) (`1c014b725fe4d0d9e181f3d3b60286c34c34134a`), an ancestor of audited main `a60fc5e8bca2ff745efaf603e939967b3e54e4a9`.
+
+The unread indicator and reader presentation are integrated. The PR records adopted-main browser/admin evidence and unresolved budget failures. Bounded unknown-state/ACK/owner contracts and physical-device limits below remain applicable.
+
+## Preserved implementation and verification checkpoints
+
+Publication and integration statements below describe their checkpoint dates. Original evidence, failures, behavioral constraints and unresolved acceptance limits are preserved; this correction claims no new test, device or deployment verification.
+
 Status: active
 Owner: announcement reader UI
 Branch: `fix/announcement-unread-presentation`
