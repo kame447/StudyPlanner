@@ -104,7 +104,10 @@ function scenario(roster, { jev = {}, luna = {}, labels = {} } = {}) {
 }
 const decide = (roster, input) => evaluateUnit0({ roster, ...input, replicates: 2_000, dryRun: true, runTerminal: { status: 'PASS' } });
 
-describe('decision computation (preregistration §2–§5, §9–§12)', () => {
+// Each decide() runs a 2,000-replicate bootstrap (about 0.5 s CPU); the zero-baseline test calls it eight times
+// (about 2-4 s CPU). Like the CLI/Worker tests below, state the budget instead of relying on vitest's 5 s wall
+// clock, which a loaded machine exceeds without any assertion being wrong (reproduced with `taskpolicy -b`).
+describe('decision computation (preregistration §2–§5, §9–§12)', { timeout: 60_000 }, () => {
   const roster = syntheticRoster(30, 35);
   // Output-only usage makes the upper and lower bounds coincide, so a real
   // saving can pass the bound-based cost gate (identical input usage cannot:
