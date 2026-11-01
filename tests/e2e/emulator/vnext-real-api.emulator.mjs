@@ -90,6 +90,17 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   const conversation = page.locator('.ai-planning-conversation');
   const composer = page.locator('.ai-planning-composer textarea');
   const idle = async () => { await expect(composer).toBeEnabled({ timeout: 150_000 }); };
+  // Review evidence: the assistant text the user saw after each turn, and the preview card text when shown.
+  // Attached on success and failure so the Japanese reply quality can be reviewed without another AI run.
+  const replies = [];
+  const capture = async (label) => {
+    const bubbles = page.locator('.ai-planning-message-row.assistant .ai-planning-bubble');
+    const card = page.locator('.ai-planning-plan-card');
+    replies.push({ label, reply: await bubbles.last().innerText().catch(() => null),
+      card: (await card.isVisible().catch(() => false)) ? await card.innerText().catch(() => null) : null });
+    // One attachment per turn: a later failing assertion cannot lose the earlier replies.
+    await test.info().attach(`reply-${label}.json`, { body: JSON.stringify(replies[replies.length - 1], null, 2), contentType: 'application/json' });
+  };
 
   await signIn(page);
   await openPlanning(page);
@@ -99,6 +110,7 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await expect.poll(() => posts.length, { timeout: 60_000 }).toBe(1);
   await idle();
   await expect(conversation).toContainText('ゼミ資料');
+  await capture('turn1-stated-work');
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
 
   // Turn 2: an explicit request; the accepted facts become a preview without restating them.
@@ -107,6 +119,7 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await idle();
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
+  await capture('turn2-create-plan');
   expect(await previewTotalMinutes(page)).toBe(60);
 
   // Turn 3: a correction after the preview. The preview total must follow the corrected minutes before approval.
@@ -116,6 +129,7 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
   expect(await previewTotalMinutes(page)).toBe(90);
+  await capture('turn3-correction-60-to-90');
 
   // Approve the corrected study preview through the existing approval: saved once, and only that.
   await approveShownPreview(page);
@@ -135,6 +149,7 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await expect.poll(() => posts.length, { timeout: 60_000 }).toBe(4);
   await idle();
   await expect(conversation).toContainText('ピアノ教室');
+  await capture('turn4-fixed-event');
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
   expect(await previewTotalMinutes(page)).toBe(60);
@@ -149,6 +164,7 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await idle();
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
   expect(posts).toHaveLength(5);
+  await capture('turn5-consultation-after-reload');
   expect(new Set(posts).size).toBe(5);
   // The consultation left the registration preview as it was, and nothing of it is saved before approval.
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
