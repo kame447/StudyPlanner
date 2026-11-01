@@ -419,7 +419,8 @@ describe('VNext session → gateway → existing controller and trace owner', ()
   });
 
   it.each([true, false])('binds the next answer to the actual retained presentation (verified recovery=%s)', async verified => {
-    const failed: WeeklyPlanningVNextInterpretation = { status: 'failed', reason: 'provider_error', errors: [], metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
+    // A structured rejection: the only failure the renderer may recover (a provider failure gets the fixed notice).
+    const failed: WeeklyPlanningVNextInterpretation = { status: 'failed', reason: 'rejected_after_repair', errors: [], metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
     let count = 0;
     const shown = '数学8枚は全部で何分ですか？'; const recovered = '反映していません。数学8枚は全部で何分ですか？';
     const h = harness({ interpret: async input => {
@@ -498,7 +499,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     const h = harness({ interpret: createWeeklyPlanningVNextOptionChoiceInterpreter({ choice, scope: { ownerId: OWNER, conversationId: CONVERSATION },
       fullReading: async () => ++fullReadings === 1
         ? reading([task, work('total', 'scope_total', 20), work('done', 'completed', 12), work('left', 'remaining', 7)])
-        : { status: 'failed', reason: 'provider_error', errors: [], metrics: { calls: 1, repairs: 0, latencyMs: 1 } } }),
+        : { status: 'failed', reason: 'rejected_after_repair', errors: [], metrics: { calls: 1, repairs: 0, latencyMs: 1 } } }),
     createRenderer: () => ({ render: async input => input.recovery
       ? verified ? { status: 'rendered', text: recovery, rawResponse: '', recoveryVerified: true }
         : { status: 'fallback', reason: 'recovery_verification_failed', rawResponse: '' }

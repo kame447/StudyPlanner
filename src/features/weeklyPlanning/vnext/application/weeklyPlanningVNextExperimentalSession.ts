@@ -198,6 +198,18 @@ function compilePreviewInput(scope: WeeklyPlanningVNextExperimentalScope, ports:
     estimateCalibrationMultiplier: estimateCalibration.multiplier });
 }
 
+/**
+ * The Stable V5 bound for recovering a failed turn with the renderer (current-contract-v5 "Bounded structured-failure
+ * recovery"): every provider dispatch of the interpretation was observed, completed and successful (1-6 dispatches,
+ * no provider failure at any point) and only its structured result was rejected. A provider or transport failure
+ * (including a timeout), an unknown or out-of-range dispatch count, or an invalidated turn allows no new dispatch.
+ */
+export function recoveryMayDispatch(interpretation: WeeklyPlanningVNextInterpretation): boolean {
+  const calls = interpretation.metrics?.calls;
+  return !(interpretation.status === 'failed' && interpretation.reason === 'provider_error')
+    && Number.isSafeInteger(calls) && calls >= 1 && calls <= 6;
+}
+
 function shownPreview(
   scope: WeeklyPlanningVNextExperimentalScope,
   ports: WeeklyPlanningVNextExperimentalPorts,
@@ -485,7 +497,10 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     // Unverified, unavailable or no longer current → the fixed notice.
     const base = renderBase(stillShown, null);
     const evidence = stillShown ? recoveryQuestionEvidenceForStableV5Dialogue(base) : undefined;
-    const rendered = stillShown && !evidence ? null : await ports.createRenderer({ canDispatchRecovery }).render({
+    // current-contract-v5 "Bounded structured-failure recovery": only a rejected structured result may be
+    // recovered, never a provider failure or an unknown dispatch history; otherwise the fixed notice.
+    const rendered = !recoveryMayDispatch(interpretation) || !canDispatchRecovery() || (stillShown && !evidence) ? null
+      : await ports.createRenderer({ canDispatchRecovery }).render({
       ...base,
       currentTurnGrounding: { mode: 'none', acceptedFacts: [] },
       fallbackText: '',

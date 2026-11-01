@@ -69,6 +69,32 @@ describe('VNext durable execution', () => {
     expect(checkpoint!.vnext.state.graph.tasks.map(item => item.title)).toEqual(['数学']);
   });
 
+  it('after a provider failure in the Worker no recovery renderer request follows (the V5 bound), while a structured rejection still recovers', async () => {
+    const schemas: string[] = [];
+    const countingFetch = (semantic: 'fail' | 'invalid') => vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const body = JSON.parse(init!.body as string) as { response_format?: { json_schema?: { name?: string } }; messages: { content: string }[] };
+      const schema = body.response_format?.json_schema?.name ?? 'none';
+      schemas.push(schema);
+      if (schema === VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name) {
+        if (semantic === 'fail') throw new TypeError('synthetic network outage');
+        return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content: '{}' } }] });
+      }
+      return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content: await successfulWeeklyPlanningRendererCompletion(body) } }] });
+    });
+    vi.stubGlobal('fetch', countingFetch('fail'));
+    const failed = await executeDurableVNextTurn(providerEnv, payload(), journal().dispatch);
+    expect(schemas.filter(name => name !== VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name)).toEqual([]);
+    // Nothing of the failed turn was accepted.
+    const kept = failed.checkpointAfter === null ? null
+      : parseWeeklyPlanningVNextSessionCheckpoint({ raw: failed.checkpointAfter, ownerId: 'alice', weekStartDate: WEEK });
+    expect(kept?.vnext.state.graph.tasks ?? []).toEqual([]);
+    schemas.length = 0;
+    vi.stubGlobal('fetch', countingFetch('invalid'));
+    await executeDurableVNextTurn(providerEnv, payload({ requestId: 'chat:request:2' }), journal().dispatch);
+    // A rejected structured reading (every dispatch completed) is the case the renderer may recover.
+    expect(schemas.filter(name => name !== VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name).length).toBeGreaterThan(0);
+  });
+
   it('replays the whole turn byte for byte from the journal, including a second turn on the saved checkpoint', async () => {
     const first = journal();
     vi.stubGlobal('fetch', providerFetch());

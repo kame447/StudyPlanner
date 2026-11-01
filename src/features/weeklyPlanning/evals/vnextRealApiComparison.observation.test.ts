@@ -1290,7 +1290,7 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     let calls = 0;
     const interpreter: WeeklyPlanningVNextExperimentalPorts['interpret'] = async () => ++calls === 1
       ? { status: 'interpreted', planningIntent: 'create_plan', delta: initialDelta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }
-      : { status: 'failed', reason: 'provider_error', errors: [], metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
+      : { status: 'failed', reason: 'rejected_after_repair', errors: [], metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
     const renderer: WeeklyPlanningVNextExperimentalPorts['createRenderer'] = () => ({
       async render(input) {
         if (!input.recovery) return { status: 'rendered', text: '35問には何分かかりますか？', rawResponse: '' };

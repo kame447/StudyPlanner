@@ -434,7 +434,7 @@ describe('VNext observed memory pace through the session and scheduler', () => {
     expect(shown.preview).not.toBeNull();
 
     if (removeCalibrationActual) calendar.actuals = [];
-    h.ports.interpret = async () => ({ status: 'failed', reason: 'provider_error', errors: [],
+    h.ports.interpret = async () => ({ status: 'failed', reason: 'rejected_after_repair', errors: [],
       metrics: { calls: 1, repairs: 0, latencyMs: 1 } });
     const recoveryInputs: Array<{ recovery?: { retainedPreviewUnchanged: boolean } }> = [];
     h.ports.createRenderer = () => ({ async render(input) {

@@ -24,7 +24,7 @@ import type {
 } from '../weeklyPlanningVNextInterpretationContract';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import type { VNextAddFact, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
-import { readWeeklyPlanningVNextExperimentalSession, submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
+import { recoveryMayDispatch, readWeeklyPlanningVNextExperimentalSession, submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
 import { approveWeeklyPlanningVNextExperimentalPreview } from './weeklyPlanningVNextExperimentalApproval';
 
 const scope: WeeklyPlanningVNextExperimentalScope = {
@@ -331,7 +331,8 @@ describe('VNext experimental session end to end (offline)', () => {
 
   it('a failed turn is recovered as Stable V5 does: a verified reply re-asks the question still shown, otherwise a notice', async () => {
     const seed = interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] });
-    const failedReading: WeeklyPlanningVNextInterpretation = { status: 'failed', reason: 'provider_error', errors: [], metrics };
+    // A structured rejection after a successful dispatch: the one case current-contract-v5 lets the renderer recover.
+    const failedReading: WeeklyPlanningVNextInterpretation = { status: 'failed', reason: 'rejected_after_repair', errors: [], metrics };
     const recovering = (verified: boolean) => (h: ReturnType<typeof harness>) => {
       h.ports.createRenderer = ({ canDispatchRecovery }) => ({ async render(input) {
         h.rendered.push(input);
@@ -374,6 +375,57 @@ describe('VNext experimental session end to end (offline)', () => {
     } });
     expect(await turn(raced.ports, 't2', '…')).toMatchObject({ outcome: 'stale' });
     expect(raced.slots.get('vnext')).toBe('bytes another tab saved');
+  });
+
+  describe('recovery dispatch follows the V5 bound (current-contract-v5 "Bounded structured-failure recovery")', () => {
+    const seed = interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] });
+    const verifyingRenderer = (h: ReturnType<typeof harness>) => {
+      h.ports.createRenderer = () => ({ async render(input) {
+        h.rendered.push(input);
+        return input.recovery ? { status: 'rendered', text: '（回復して問い直す）', rawResponse: '', recoveryVerified: true }
+          : { status: 'rendered', text: `（説明 ${input.actionKind}）`, rawResponse: '' };
+      } });
+    };
+    const failed = (reason: 'provider_error' | 'unparseable' | 'rejected_after_repair', calls: number): WeeklyPlanningVNextInterpretation =>
+      ({ status: 'failed', reason, errors: [], metrics: { ...metrics, calls, repairs: Math.max(0, calls - 1) } });
+
+    it.each([
+      ['a provider or transport failure', failed('provider_error', 1)],
+      ['a timeout (a failed dispatch, here the repair after a rejected first reading)', failed('provider_error', 2)],
+      ['an unknown dispatch history (no dispatch counted)', failed('rejected_after_repair', 0)],
+      ['an out-of-range dispatch count', failed('rejected_after_repair', 7)],
+    ])('%s gets the fixed notice and no renderer call, and nothing is persisted', async (_name, reading) => {
+      const h = harness([seed, reading]); verifyingRenderer(h);
+      await turn(h.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+      const before = JSON.parse(h.slots.get('vnext')!).vnext;
+      const renderedBefore = h.rendered.length;
+      const result = await turn(h.ports, 't2', '…');
+      expect(h.rendered.length).toBe(renderedBefore);
+      expect(h.rendered.filter(input => input.recovery)).toEqual([]);
+      expect(result).toMatchObject({ outcome: 'interpretation_failed', replySource: 'system', graphRevision: before.state.graph.revision });
+      expect(JSON.parse(h.slots.get('vnext')!).vnext.state).toEqual(before.state);
+    });
+
+    it.each([
+      ['an unparseable reading after one successful dispatch', failed('unparseable', 1)],
+      ['a rejected reading after the repair dispatch succeeded', failed('rejected_after_repair', 2)],
+    ])('control: %s still recovers through the renderer', async (_name, reading) => {
+      const h = harness([seed, reading]); verifyingRenderer(h);
+      await turn(h.ports, 't1', 'ゼミ資料は20枚で12枚できた');
+      const before = JSON.parse(h.slots.get('vnext')!).vnext;
+      const result = await turn(h.ports, 't2', '…');
+      expect(h.rendered.filter(input => input.recovery)).toHaveLength(1);
+      expect(result).toMatchObject({ outcome: 'interpretation_failed', replySource: 'renderer_recovery', reply: '（回復して問い直す）' });
+      expect(JSON.parse(h.slots.get('vnext')!).vnext.state).toEqual(before.state);
+    });
+
+    it('the bound itself: provider failures and unknown counts are refused, 1-6 successful dispatches allowed', () => {
+      expect(recoveryMayDispatch(failed('provider_error', 3))).toBe(false);
+      expect(recoveryMayDispatch(failed('unparseable', 0))).toBe(false);
+      expect(recoveryMayDispatch(failed('unparseable', 7))).toBe(false);
+      expect(recoveryMayDispatch(failed('rejected_after_repair', 6))).toBe(true);
+      expect(recoveryMayDispatch(interpreted({}))).toBe(true);
+    });
   });
 
   it('a correction before approval replaces the shown preview, so the old preview cannot be saved', async () => {
