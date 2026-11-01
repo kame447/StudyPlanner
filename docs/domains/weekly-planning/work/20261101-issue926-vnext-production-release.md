@@ -52,3 +52,7 @@ Owner: PurplePasteur（親 Opus 5.5、standalone）。Issue [#926](https://githu
 | BrassLovelace | 開始対象・出力上限・Worker リリース計画（統合済み）→ full suite 負荷時の Jev テスト失敗の原因特定 | 調査中 |
 
 残り：durable の統合、VNext runtime の遅延読み込み（bundle 予算）、全 E2E、Jev テスト失敗の原因、origin/main（`7643adc5`）の取り込み、push 後の CI、有料 VNext 実 API ×3、最終 Astra、merge、Worker→Pages の順で deploy、本番確認。
+
+- 2026-11-02 05:20 JST（最終監査前）: 候補 `fb067ac9` で、CI・Browser・UI Matrix 全 7 job・Agentic・UI Quality・Admin・Lighthouse・有料実 API（vnext×3：36/37・37/37・37/37、vnext-worker：成功）が green。ゲートごとの根拠表、挙動の変更台帳、rollback の実対象（`7643adc5` / `be237c6d`）での確認、Jev の本番ゲート、日本語レビューは、Issue #926 の checkpoint 32–34 と PR #928 本文に記録した。最終 HEAD はこの記録と durable reload テストの堅牢化（遅い再開を正しく busy と扱う）を含む。全ゲートを最終 HEAD で再実行してから、Astra の read-only 監査を行う。
+- 残る非 blocking（backlog）：renderer の表現（訂正で旧値が出ない、「毎週」と言わない、初回の短い応答。L×S 14 以下。V5 と共有の renderer なので有料の確認が必要）、否定された登録を model が固定タスクとして読む揺れ（L3×S2=6）。
+- 文書とコードの不一致：`current-contract-v5.md` は空き時間だけの入力に任意の招待が要らないと書くが、V5 の実装と契約テストは招待を出す。コードに従った（AGENTS.md の規則）。
