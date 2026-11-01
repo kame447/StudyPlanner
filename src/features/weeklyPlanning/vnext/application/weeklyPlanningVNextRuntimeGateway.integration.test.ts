@@ -23,7 +23,8 @@ import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weekly
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { createWeeklyPlanningVNextRuntimeGateway } from './weeklyPlanningVNextRuntimeGateway';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
-import { createWeeklyPlanningVNextOptionChoiceInterpreter, createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoice';
+import { createWeeklyPlanningVNextOptionChoiceInterpreter } from './weeklyPlanningVNextOptionChoice';
+import { createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoiceBrowserPort';
 
 const OWNER = 'synthetic-gateway-owner'; const WEEK = '2026-11-02'; const NOW = `${WEEK}T00:00:00.000Z`;
 const CONVERSATION = 'weekly-conversation-423e4567-e89b-52d3-a456-426614174000';

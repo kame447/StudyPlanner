@@ -24,13 +24,8 @@ import type {
 } from '../weeklyPlanningVNextInterpretationContract';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import type { VNextAddFact, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
-import {
-  approveWeeklyPlanningVNextExperimentalPreview,
-  readWeeklyPlanningVNextExperimentalSession,
-  submitWeeklyPlanningVNextExperimentalTurn,
-  type WeeklyPlanningVNextExperimentalPorts,
-  type WeeklyPlanningVNextExperimentalScope,
-} from './weeklyPlanningVNextExperimentalSession';
+import { readWeeklyPlanningVNextExperimentalSession, submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
+import { approveWeeklyPlanningVNextExperimentalPreview } from './weeklyPlanningVNextExperimentalApproval';
 
 const scope: WeeklyPlanningVNextExperimentalScope = {
   ownerId: 'owner-1', weekStartDate: '2026-11-02', conversationId: 'conversation-e2e',

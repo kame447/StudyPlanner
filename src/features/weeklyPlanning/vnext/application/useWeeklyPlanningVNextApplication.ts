@@ -18,9 +18,8 @@ import { hasStoredAiPlanningChatIndex, readAiPlanningChatSnapshotRaw, saveAiPlan
 import { createWeeklyPlanningVNextLocalSession, type WeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { createWeeklyPlanningVNextRuntimeGateway } from './weeklyPlanningVNextRuntimeGateway';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
-import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
-import { createWeeklyPlanningVNextFocusedInterpreter } from './weeklyPlanningVNextFocusedInterpreter';
-import { createWeeklyPlanningVNextOptionChoiceInterpreter, createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoice';
+import { createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoiceBrowserPort';
+import { createWeeklyPlanningVNextRuntimeInterpreter, VNEXT_OPTION_CHOICE_POLICY, VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } from './weeklyPlanningVNextRuntimeInterpreter';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../weeklyPlanningVNextV5Boundary';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
@@ -44,15 +43,8 @@ function localServices(): WeeklyPlanningVNextLocalApplicationServices {
       if (!getCloudflareAiProxyUrl()) throw new Error('The local VNext experiment requires the authenticated Worker proxy.');
       return createOpenAiCompatibleClient({ ...getAiConfig(), provider: 'openai' });
     },
-    interpret: scope => createWeeklyPlanningVNextOptionChoiceInterpreter({ scope,
-      fullReading: createWeeklyPlanningVNextFocusedInterpreter({ fullReading: createWeeklyPlanningVNextProviderInterpreter() }),
-      choice: createWeeklyPlanningVNextOptionChoicePort({
-        policy: { id: 'vnext-frozen-dev', calibrationEvidenceId: 'vnext-dev-frozen-a25c9899', rules: [
-          { menuKind: 'leaves', optionCount: 3, depth: 0, minimumTopProbability: 0.91, minimumMargin: 0.82 },
-          { menuKind: 'leaves', optionCount: 4, depth: 0, minimumTopProbability: 0.59, minimumMargin: 0.20 },
-        ] },
-        client: { semanticPolicy: { calibrationEvidenceId: 'vnext-dev-frozen-a25c9899', maximumConditionChange: 0.36, maximumIndependentMeaning: 0.69 } },
-      }) }),
+    interpret: scope => createWeeklyPlanningVNextRuntimeInterpreter(scope, { choice: createWeeklyPlanningVNextOptionChoicePort({
+      policy: VNEXT_OPTION_CHOICE_POLICY, client: { semanticPolicy: VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } }) }),
     createRenderer: (client, options) => createWeeklyPlanningStableV5DialogueRendererCore(client, options),
     now: () => new Date().toISOString() };
 }

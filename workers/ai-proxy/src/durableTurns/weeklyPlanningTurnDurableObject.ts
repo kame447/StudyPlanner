@@ -3,6 +3,8 @@ import { DurableTurnJob, DurableTurnConflict, type DurableTurnInput, type Durabl
 import { createDurableTurnStorage } from './durableTurnStorage';
 import { serializeWeeklyPlanningTurnResult } from './weeklyPlanningTurnResult';
 import { executeIsolatedWeeklyPlanningTurn, type IsolatedWeeklyPlanningTurnInput } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningIsolatedTurn';
+import { executeDurableVNextTurn } from './durableVNextTurn';
+import type { WeeklyPlanningVNextDurableTurnInput } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextDurableTurn';
 import { createDurableTurnProvider, createDurableReplyReferenceChoicePort } from './durableTurnProvider';
 import { readReplyReferenceCalibrationV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningReplyReferenceChoiceV5';
 import type { AiProxyWorkerEnv } from '../worker';
@@ -21,7 +23,12 @@ export class WeeklyPlanningTurnDurableObject extends DurableObject<AiProxyWorker
   status(scope: Pick<DurableTurnIdentity, 'ownerId' | 'conversationId' | 'requestId'>) { return this.job.status(scope); }
   async alarm(): Promise<void> {
     await this.job.run(async (payload, dispatch, sourceIp, deadlineAt) => {
-      const parsed = JSON.parse(payload) as IsolatedWeeklyPlanningTurnInput;
+      const envelope = JSON.parse(payload) as IsolatedWeeklyPlanningTurnInput | WeeklyPlanningVNextDurableTurnInput;
+      if ('core' in envelope && envelope.core === 'vnext') {
+        return serializeWeeklyPlanningTurnResult(
+          await executeDurableVNextTurn(this.env, envelope, dispatch, sourceIp, deadlineAt));
+      }
+      const parsed = envelope as IsolatedWeeklyPlanningTurnInput;
       const referenceCalibration = readReplyReferenceCalibrationV5();
       const referencePort = referenceCalibration
         ? createDurableReplyReferenceChoicePort(

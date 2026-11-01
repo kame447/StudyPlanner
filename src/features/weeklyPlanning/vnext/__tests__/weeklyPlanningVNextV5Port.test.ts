@@ -7,13 +7,8 @@ import type {
 } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextAddFact, VNextTurnDelta, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import { resolveWeeklyPlanningDateExpressionsV5 } from '../../semantic/weeklyPlanningResolvedDateExpressionsV5';
-import {
-  approveWeeklyPlanningVNextExperimentalPreview,
-  readWeeklyPlanningVNextExperimentalSession,
-  submitWeeklyPlanningVNextExperimentalTurn,
-  type WeeklyPlanningVNextExperimentalPorts,
-  type WeeklyPlanningVNextExperimentalScope,
-} from '../application/weeklyPlanningVNextExperimentalSession';
+import { readWeeklyPlanningVNextExperimentalSession, submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from '../application/weeklyPlanningVNextExperimentalSession';
+import { approveWeeklyPlanningVNextExperimentalPreview } from '../application/weeklyPlanningVNextExperimentalApproval';
 
 const scope: WeeklyPlanningVNextExperimentalScope = {
   ownerId: 'owner-1',

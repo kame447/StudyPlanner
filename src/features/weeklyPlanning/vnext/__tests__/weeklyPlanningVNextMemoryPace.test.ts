@@ -17,13 +17,8 @@ import type {
   WeeklyPlanningVNextInterpretationInput,
 } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextAddFact, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
-import {
-  approveWeeklyPlanningVNextExperimentalPreview,
-  readWeeklyPlanningVNextExperimentalSession,
-  submitWeeklyPlanningVNextExperimentalTurn,
-  type WeeklyPlanningVNextExperimentalPorts,
-  type WeeklyPlanningVNextExperimentalScope,
-} from '../application/weeklyPlanningVNextExperimentalSession';
+import { readWeeklyPlanningVNextExperimentalSession, submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from '../application/weeklyPlanningVNextExperimentalSession';
+import { approveWeeklyPlanningVNextExperimentalPreview } from '../application/weeklyPlanningVNextExperimentalApproval';
 
 const OWNER = 'memory-pace-vnext-test';
 const WEEK_START = '2026-08-17';

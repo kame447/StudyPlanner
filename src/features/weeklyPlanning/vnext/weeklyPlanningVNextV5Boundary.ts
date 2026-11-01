@@ -24,10 +24,10 @@ export {
 export {
   parseWeeklyPlanningStableV5PersistedSession,
   WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
+  weeklyPlanningStableV5StorageKey,
 } from '../application/weeklyPlanningStableV5SessionCodec';
 export { scheduleWeeklyPlanningStableV5Preview, WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION } from '../semantic/weeklyPlanningStableV5PlacementEngine';
 export { createStableV5ExternalConstraintSources } from '../application/weeklyPlanningStableV5ExternalSources';
-export { getWeeklyPlanningStableV5StorageSnapshot } from '../application/weeklyPlanningStableV5SessionStorage';
 export type { ExternalConstraintSourceSnapshot } from '../semantic/weeklyPlanningAvailabilityResolver';
 export { evaluateWeeklyPlanningLearningStrategyProposalsV5 } from '../application/weeklyPlanningStableV5LearningStrategyProposal';
 export {

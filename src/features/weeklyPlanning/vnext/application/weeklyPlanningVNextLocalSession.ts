@@ -3,7 +3,7 @@
 // a V5 slot or manufacture a V5 runtime graph. LocalRuntime integration tests guard rollback.
 import { createInitialPlanningState } from '../../weeklyPlanningReducer';
 import { isPersistedWeeklyPlanningState } from '../../weeklyPlanningStateCodec';
-import { getWeeklyPlanningStableV5StorageSnapshot, parseWeeklyPlanningStableV5PersistedSession } from '../weeklyPlanningVNextV5Boundary';
+import { weeklyPlanningStableV5StorageKey, parseWeeklyPlanningStableV5PersistedSession } from '../weeklyPlanningVNextV5Boundary';
 import type { resolveWeeklyPlanningApprovalRuntime } from '../../application/weeklyPlanningApprovalRuntimeResolver';
 import type { PlanningState } from '../../types';
 import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
@@ -24,7 +24,7 @@ export function createWeeklyPlanningVNextLocalSession(params: {
     write: (raw: string) => storage.setItem(`${prefix}.core`, raw), remove: () => storage.removeItem(`${prefix}.core`) };
   const legacyV5Checkpoint = { read: () => {
     const raw = params.legacyV5Raw === undefined
-      ? storage.getItem(getWeeklyPlanningStableV5StorageSnapshot(ownerId, weekStartDate).key) : params.legacyV5Raw;
+      ? storage.getItem(weeklyPlanningStableV5StorageKey(ownerId, weekStartDate)) : params.legacyV5Raw;
     // Invalid legacy data stays untouched and cannot block a fresh VNext conversation.
     return raw !== null && parseWeeklyPlanningStableV5PersistedSession({ raw, ownerId, weekStartDate }) ? raw : null;
   } };

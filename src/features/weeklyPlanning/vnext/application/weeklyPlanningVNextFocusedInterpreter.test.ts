@@ -64,6 +64,20 @@ describe('VNext uses existing focused contextual purpose and native fallback', (
     expect(state.graph.workloads).toHaveLength(1);
   });
 
+  it('uses the injected request identity so a durable replay sends identical bytes, and a random one by default', async () => {
+    const bodies: string[] = [];
+    const run = async (requestId?: () => string) => {
+      const params = input();
+      params.client = { createChatCompletion: async request => { bodies.push(JSON.stringify(request)); return JSON.stringify(decision('effort_answer')); } };
+      await createWeeklyPlanningVNextFocusedInterpreter({ fullReading: async () => fullResult, requestId })(params);
+    };
+    await run(() => 'turn-1:focused'); await run(() => 'turn-1:focused'); await run(); await run();
+    expect(bodies[0]).toContain('turn-1:focused');
+    expect(bodies[1]).toBe(bodies[0]);
+    expect(bodies[2]).toContain('vnext-focused:');
+    expect(bodies[3]).not.toBe(bodies[2]);
+  });
+
   it('presents derived remaining work, never the stored whole, as the focused target', async () => {
     const params = input(seed([work('total', 'scope_total', 20), work('done', 'completed', 12)]));
     params.client = { async createChatCompletion(request) {

@@ -1,5 +1,6 @@
 import type { IsolatedWeeklyPlanningTurnInput } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningIsolatedTurn';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFactGraphValidatorV5';
+import { parseWeeklyPlanningVNextSessionCheckpoint } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
 import type { DurableTurnInput } from './durableTurnJob';
 import { createWeeklyPlanningTurnRequestContext } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningTemporalContext';
 import { decodeWeeklyPlanningMachineBoundEffortAnswerV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningMachineBoundAnswerV5';
@@ -9,16 +10,8 @@ const text = (v: unknown, max: number) => typeof v === 'string' && v.length > 0 
 const only = (v: Record<string, unknown>, keys: readonly string[]) => Object.keys(v).every((key) => keys.includes(key));
 const date = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v));
 
-/** Structural/owner validation only; never interprets the user's words or creates planning truth. */
-export function decodeDurableTurnInput(value: unknown, ownerId: string): DurableTurnInput | null {
-  if (!record(value) || !only(value, ['conversationId', 'requestId', 'baseRevision', 'startedAt', 'payload'])
-    || !text(value.conversationId, 256) || !text(value.requestId, 256)
-    || !Number.isSafeInteger(value.baseRevision) || (value.baseRevision as number) < 0
-    || !Number.isSafeInteger(value.startedAt) || !record(value.payload)) return null;
-  const payload = value.payload;
-  if (!only(payload, ['input', 'graph', 'userContextRecords', 'weekStartDate']) || !record(payload.input)
-    || !date(payload.weekStartDate) || !Array.isArray(payload.userContextRecords) || payload.userContextRecords.length > 200) return null;
-  const input = payload.input;
+/** The turn input every core shares: owner/identity binding, captured clock and bounded lists. */
+function validCommonTurnInput(value: Record<string, unknown>, input: Record<string, unknown>, ownerId: string): boolean {
   if (!only(input, ['previousState', 'messages', 'userText', 'supplementalContext', 'selectedStarterTarget',
     'selectedDate', 'userId', 'plans', 'monthEvents', 'actuals', 'studyMaterials', 'scheduleTemplates',
     'timetableTermId', 'timetableTerm', 'timetableTerms', 'conversationId', 'traceRequestId', 'weekStartsOn',
@@ -28,22 +21,37 @@ export function decodeDurableTurnInput(value: unknown, ownerId: string): Durable
     || input.traceRequestId !== value.requestId || input.inputStateRevision !== value.baseRevision
     || !text(input.userText, 4000) || !date(input.selectedDate) || !record(input.requestContext)
     || !Array.isArray(input.messages) || input.messages.length > 80
-    || input.messages.some((m) => !record(m) || !['user', 'assistant'].includes(String(m.role)) || !text(m.content, 16_000))) return null;
+    || input.messages.some((m) => !record(m) || !['user', 'assistant'].includes(String(m.role)) || !text(m.content, 16_000))) return false;
   const context = input.requestContext;
   if (!date(context.currentDate) || !text(context.timeZone, 100)
-    || !['monday', 'sunday'].includes(String(context.weekStartsOn))) return null;
+    || !['monday', 'sunday'].includes(String(context.weekStartsOn))) return false;
   // Replay must use the originally captured clock, never an incomplete context or ambient time.
   try {
     const captured = createWeeklyPlanningTurnRequestContext({ startedAtIso: new Date(value.startedAt as number).toISOString(),
       timeZone: context.timeZone as string, weekStartsOn: context.weekStartsOn as 'monday' | 'sunday' });
-    if (Object.entries(captured).some(([key, expected]) => context[key] !== expected)) return null;
-  } catch { return null; }
+    if (Object.entries(captured).some(([key, expected]) => context[key] !== expected)) return false;
+  } catch { return false; }
   for (const key of ['plans', 'scheduleTemplates', 'monthEvents', 'actuals', 'studyMaterials', 'timetableTerms']) {
     const list = input[key];
     if (list === undefined && !['plans', 'scheduleTemplates'].includes(key)) continue;
-    if (!Array.isArray(list) || list.length > 5000 || list.some((entry) => !record(entry) || entry.userId !== ownerId)) return null;
+    if (!Array.isArray(list) || list.length > 5000 || list.some((entry) => !record(entry) || entry.userId !== ownerId)) return false;
   }
-  if (input.timetableTerm != null && (!record(input.timetableTerm) || input.timetableTerm.userId !== ownerId)) return null;
+  if (input.timetableTerm != null && (!record(input.timetableTerm) || input.timetableTerm.userId !== ownerId)) return false;
+  return true;
+}
+
+/** Structural/owner validation only; never interprets the user's words or creates planning truth. */
+export function decodeDurableTurnInput(value: unknown, ownerId: string): DurableTurnInput | null {
+  if (!record(value) || !only(value, ['conversationId', 'requestId', 'baseRevision', 'startedAt', 'payload'])
+    || !text(value.conversationId, 256) || !text(value.requestId, 256)
+    || !Number.isSafeInteger(value.baseRevision) || (value.baseRevision as number) < 0
+    || !Number.isSafeInteger(value.startedAt) || !record(value.payload)) return null;
+  const payload = value.payload;
+  if (payload.core === 'vnext') return decodeVNextTurn(value, payload, ownerId);
+  if (!only(payload, ['input', 'graph', 'userContextRecords', 'weekStartDate']) || !record(payload.input)
+    || !date(payload.weekStartDate) || !Array.isArray(payload.userContextRecords) || payload.userContextRecords.length > 200) return null;
+  const input = payload.input;
+  if (!validCommonTurnInput(value, input, ownerId)) return null;
   if (payload.userContextRecords.some((entry) => !record(entry) || entry.ownerId !== ownerId
     || !text(entry.id, 512) || !text(entry.label, 240) || !text(entry.kind, 100) || !text(entry.status, 100))) return null;
   const graph = validateWeeklyPlanningFactGraphValueV5(payload.graph).graph;
@@ -55,4 +63,22 @@ export function decodeDurableTurnInput(value: unknown, ownerId: string): Durable
   return { ownerId, conversationId: value.conversationId as string, requestId: value.requestId as string,
     baseRevision: value.baseRevision as number, startedAt: value.startedAt as number,
     payload: JSON.stringify(payload as unknown as IsolatedWeeklyPlanningTurnInput) };
+}
+
+const CHECKPOINT_BYTES = 400 * 1024;
+const checkpointText = (v: unknown) => v === null || (typeof v === 'string' && v.length > 0 && v.length <= CHECKPOINT_BYTES);
+
+/** The VNext envelope carries its own checkpoint as the only graph authority; V5 payload bytes are untouched. */
+function decodeVNextTurn(value: Record<string, unknown>, payload: Record<string, unknown>, ownerId: string): DurableTurnInput | null {
+  if (!only(payload, ['core', 'input', 'weekStartDate', 'checkpoint', 'legacyV5Checkpoint']) || !record(payload.input)
+    || !date(payload.weekStartDate) || !checkpointText(payload.checkpoint) || !checkpointText(payload.legacyV5Checkpoint)
+    || !validCommonTurnInput(value, payload.input, ownerId)) return null;
+  if (payload.checkpoint !== null) {
+    const checkpoint = parseWeeklyPlanningVNextSessionCheckpoint({ raw: payload.checkpoint as string,
+      ownerId, weekStartDate: payload.weekStartDate as string });
+    if (!checkpoint || checkpoint.conversationId !== value.conversationId) return null;
+  }
+  return { ownerId, conversationId: value.conversationId as string, requestId: value.requestId as string,
+    baseRevision: value.baseRevision as number, startedAt: value.startedAt as number,
+    payload: JSON.stringify(payload) };
 }

@@ -1,18 +1,15 @@
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { createWeeklyPlanningVNextFocusedInterpreter } from './weeklyPlanningVNextFocusedInterpreter';
-import { createWeeklyPlanningVNextOptionChoiceInterpreter, createWeeklyPlanningVNextOptionChoicePort,
-  type WeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoice';
+import { createWeeklyPlanningVNextOptionChoiceInterpreter, type WeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoice';
 
-/** One frozen composition for browser and durable execution. Only transport and replay identity vary. */
+/** One frozen composition for browser and durable execution. Only the closed-choice transport and the
+ * focused request identity (durable replay needs identical bytes) vary. No browser dependency may enter here.
+ */
 export function createWeeklyPlanningVNextRuntimeInterpreter(
   scope: { ownerId: string; conversationId: string },
-  options: { choice?: WeeklyPlanningVNextOptionChoicePort; focusedRequestId?: () => string } = {},
+  options: { choice: WeeklyPlanningVNextOptionChoicePort; focusedRequestId?: () => string },
 ) {
-  const choice = options.choice ?? createWeeklyPlanningVNextOptionChoicePort({
-    policy: VNEXT_OPTION_CHOICE_POLICY,
-    client: { semanticPolicy: VNEXT_OPTION_CHOICE_SEMANTIC_POLICY },
-  });
-  return createWeeklyPlanningVNextOptionChoiceInterpreter({ scope, choice,
+  return createWeeklyPlanningVNextOptionChoiceInterpreter({ scope, choice: options.choice,
     fullReading: createWeeklyPlanningVNextFocusedInterpreter({ fullReading: createWeeklyPlanningVNextProviderInterpreter(),
       requestId: options.focusedRequestId }) });
 }

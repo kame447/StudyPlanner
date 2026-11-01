@@ -15,7 +15,8 @@ import {
   type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope,
 } from './weeklyPlanningVNextExperimentalSession';
-import { createWeeklyPlanningVNextOptionChoiceInterpreter, createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoice';
+import { createWeeklyPlanningVNextOptionChoiceInterpreter } from './weeklyPlanningVNextOptionChoice';
+import { createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoiceBrowserPort';
 import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
 
 const pages = (localId: string, role: 'scope_total' | 'completed' | 'remaining', amount: number): VNextAddFact => ({

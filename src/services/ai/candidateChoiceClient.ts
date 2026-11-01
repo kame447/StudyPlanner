@@ -1,13 +1,8 @@
-import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../shared/d5AnswerPolicy';
-import { isCandidateChoiceDecisionContext, isCandidateChoiceEvaluation, type CandidateChoiceWireRequest, type CandidateChoiceEvaluation } from '../../../shared/candidateChoiceDecision';
+import { isCandidateChoiceDecisionContext, isCandidateChoiceEvaluation, projectCandidateChoiceSelection, type CandidateSemanticGatePolicy, type CandidateChoiceWireRequest, type CandidateChoiceEvaluation } from '../../../shared/candidateChoiceDecision';
 import { getCloudflareAiProxyUrl } from '../../lib/aiConfig';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
 
-export interface CandidateSemanticGatePolicy {
-  readonly calibrationEvidenceId: string;
-  readonly maximumConditionChange: number;
-  readonly maximumIndependentMeaning: number;
-}
+export type { CandidateSemanticGatePolicy };
 /** Structural match for A's invocation-local SemanticCensusRequestObserver; no runtime dependency. */
 export interface CandidateChoiceCensusObserver {
   observe<T>(stage: 'focused', dispatch: (join: unknown) => Promise<T>): Promise<T>;
@@ -55,17 +50,8 @@ export function createCandidateChoiceClient(options: {
           const r = captured.decisionContext.request;
           if (!isCandidateChoiceEvaluation(result, r)) throw new Error('Unavailable or invalid candidate response.');
           options.onEvaluation?.(structuredClone(r), structuredClone(result));
-          return {
-            nodeId: result.nodeId, requestId: result.requestId, selectionEpoch: result.selectionEpoch,
-            candidateSetHash: result.candidateSetHash, optionId: result.optionId, probabilities: result.probabilities,
-            semanticSufficiency: (r.context.question.code === 'missing_effort_estimate' && r.context.scope.domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION
-              // The common gate still enforces the complete distribution, unique
-              // top-1 and none rejection. Auxiliary heads are diagnostic for v2.
-              ? r.menu.options.some(option => option.kind === 'leaf' && option.id === result.optionId)
-              : result.conditionChange <= policy.maximumConditionChange && result.independentMeaning <= policy.maximumIndependentMeaning)
-              ? 'only_candidate_meaning' : 'extra_or_uncertain_meaning',
-        };
-      } finally { clearTimeout(timer); }
+          return projectCandidateChoiceSelection(r, result, policy);
+        } finally { clearTimeout(timer); }
       };
       return options.semanticCensusObserver ? options.semanticCensusObserver.observe('focused', execute) : execute(options.semanticCensus);
     },

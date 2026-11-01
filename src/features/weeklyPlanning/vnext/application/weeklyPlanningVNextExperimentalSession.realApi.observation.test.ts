@@ -19,14 +19,8 @@ import { createInitialPlanningState } from '../../weeklyPlanningReducer';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import { vnextUnitIdentity } from '../weeklyPlanningVNextWorkIdentity';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
-import {
-  approveWeeklyPlanningVNextExperimentalPreview,
-  readWeeklyPlanningVNextExperimentalSession,
-  submitWeeklyPlanningVNextExperimentalTurn,
-  type WeeklyPlanningVNextExperimentalPorts,
-  type WeeklyPlanningVNextExperimentalScope,
-  type WeeklyPlanningVNextExperimentalTurn,
-} from './weeklyPlanningVNextExperimentalSession';
+import { readWeeklyPlanningVNextExperimentalSession, submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope, type WeeklyPlanningVNextExperimentalTurn } from './weeklyPlanningVNextExperimentalSession';
+import { approveWeeklyPlanningVNextExperimentalPreview } from './weeklyPlanningVNextExperimentalApproval';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const outputDir = `${process.env.WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR ?? 'artifacts/issue156-real-api'}/vnext-session-e2e`;

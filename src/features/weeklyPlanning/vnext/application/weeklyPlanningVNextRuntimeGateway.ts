@@ -1,13 +1,17 @@
 import type { WeeklyPlanningTurnRuntimeGateway, ExecuteWeeklyPlanningTurnRuntimeParams } from '../../application/weeklyPlanningTurnRuntimeGateway';
 import type { WeeklyPlanningTurnStagingLifecycle } from '../../application/weeklyPlanningTurnSideEffects';
 import { createWeeklyPlanningTurnRequestContext } from '../../application/weeklyPlanningTemporalContext';
-import { durableWeeklyPlanningEnabled, executeDurableWeeklyTurn, saveDurableWeeklyTurnReceipt } from '../../application/weeklyPlanningDurableTurnClient';
+import { durableWeeklyPlanningEnabled, executeDurableWeeklyTurn, readDurableWeeklyTurnReceipt, saveDurableWeeklyTurnReceipt } from '../../application/weeklyPlanningDurableTurnClient';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import type { WeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { executeIsolatedWeeklyPlanningVNextTurn } from './weeklyPlanningVNextIsolatedTurn';
-import { readWeeklyPlanningVNextDurableReceipt, type WeeklyPlanningVNextDurableTurnInput,
-  type WeeklyPlanningVNextDurableTurnResult } from './weeklyPlanningVNextDurableTurn';
+import type { WeeklyPlanningVNextDurableTurnInput, WeeklyPlanningVNextDurableTurnResult } from './weeklyPlanningVNextDurableTurn';
 import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
+
+function vnextReceipt(ownerId: string) {
+  const receipt = readDurableWeeklyTurnReceipt<WeeklyPlanningVNextDurableTurnInput>(ownerId);
+  return receipt?.payload.core === 'vnext' ? receipt : null;
+}
 
 /** The existing controller owns admission and publication. Stage the session's single checkpoint
  * write until that controller prepares commit; cancellation/discard writes nothing. Rollback uses
@@ -37,7 +41,7 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
           retainedPreviewCount: input.snapshot.previewCandidates?.length ?? 0 } };
       let completed: WeeklyPlanningVNextDurableTurnResult;
       if (durableWeeklyPlanningEnabled()) {
-        const receipt = input.resumeDurable ? readWeeklyPlanningVNextDurableReceipt(input.userId) : {
+        const receipt = input.resumeDurable ? vnextReceipt(input.userId) : {
           version: 1 as const, ownerId: input.userId, snapshot: input.snapshot, pending: input.pending, payload,
         };
         if (!receipt || receipt.pending.requestId !== input.pending.requestId

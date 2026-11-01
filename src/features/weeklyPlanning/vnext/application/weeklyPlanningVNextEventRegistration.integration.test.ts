@@ -13,8 +13,8 @@ import type { VNextAddFact, VNextPlanningIntent, VNextTurnDelta } from '../weekl
 import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
 import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
-import { approveWeeklyPlanningVNextExperimentalPreview, submitWeeklyPlanningVNextExperimentalTurn,
-  type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
+import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
+import { approveWeeklyPlanningVNextExperimentalPreview } from './weeklyPlanningVNextExperimentalApproval';
 
 const OWNER = 'synthetic-registration-owner'; const WEEK = '2026-11-02';
 const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartDate: WEEK,
