@@ -93,6 +93,46 @@ const turn = async (ports: WeeklyPlanningVNextExperimentalPorts, turnId: string,
 };
 
 describe('VNext experimental session end to end (offline)', () => {
+  const discuss = (delta: Partial<VNextTurnDelta>): WeeklyPlanningVNextInterpretation => ({ status: 'interpreted', planningIntent: 'discuss', delta: { ...EMPTY, ...delta }, answer: null, metrics });
+  it('the real-API reading (one declared 60 minutes, then an explicit create_plan) reaches a preview_ready of 60 minutes', async () => {
+    // Run 41328196858: the reading carried quantityRole 'declared'; V5's work-item compiler blocks every declared
+    // amount, so this follows the same path the real run takes (session -> V5 scheduler graph -> V5 placement).
+    const declared: VNextAddFact = { kind: 'workload', localId: 'work', taskRef: { localId: 'seminar' }, componentRef: null,
+      quantityRole: 'declared', amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
+      perOccurrence: false, periodExpression: null };
+    const h = harness([
+      discuss({ add: [{ kind: 'task', localId: 'seminar', category: 'study', title: 'ゼミ資料の準備' }, declared] }),
+      interpreted({}),
+    ]);
+
+    const first = await turn(h.ports, 't1', 'ゼミ資料の準備に合計60分かかります。今週の夜にやりたいです。');
+    expect(first.question).toBeNull();
+    expect(first.readiness).toBe('ready');
+    // Facts alone are not a request to plan: the application asks for scope instead of showing this preview.
+    expect(first.authorizationRequired).toBe(true);
+
+    const second = await turn(h.ports, 't2', 'この条件で予定を作ってください');
+    expect(second).toMatchObject({ outcome: 'applied', readiness: 'ready', question: null, previewBlockedBy: [] });
+    expect(h.rendered[h.rendered.length - 1]?.actionKind).toBe('preview_ready');
+    const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+    expect(second.preview!.blocks.reduce((sum, block) => sum + minutes(block.endTime) - minutes(block.startTime), 0)).toBe(60);
+    expect(second.draftCandidates).toHaveLength(second.preview!.blocks.length);
+  });
+
+  // The negative control: a conflicting remainder keeps the role question, so the same request yields no preview.
+  it('keeps the role question, and no preview, when the declared amount conflicts with a stated remainder', async () => {
+    const add: VNextAddFact[] = [{ kind: 'task', localId: 'seminar', category: 'study', title: 'ゼミ資料の準備' },
+      ...[['work', 'declared', 60], ['left', 'remaining', 30]].map(([localId, quantityRole, amount]) => ({ kind: 'workload', localId, taskRef: { localId: 'seminar' },
+        componentRef: null, quantityRole, amount, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null }) as VNextAddFact)];
+    const h = harness([discuss({ add }), interpreted({})]);
+    const first = await turn(h.ports, 't1', '合計60分、残りは30分です');
+    expect(first.question).toMatchObject({ code: 'quantity_role_unresolved' });
+    const second = await turn(h.ports, 't2', 'この条件で予定を作ってください');
+    expect(second.preview).toBeNull();
+    expect(second.question).toMatchObject({ code: 'quantity_role_unresolved' });
+  });
+
   it('asks, binds the answer to the asked work, previews, saves partially, resumes, and never saves twice', async () => {
     const h = harness([
       interpreted({ add: [{ kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' }, pages('total', 'scope_total', 20), pages('done', 'completed', 12)] }),
