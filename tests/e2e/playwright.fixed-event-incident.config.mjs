@@ -6,6 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export default defineConfig({
   ...base,
   testMatch: '**/fixed-event-registration.incident.spec.mjs',
+  projects: [{ name: process.env.INCIDENT_REPLAY === '1' ? 'chromium-stable-v5-replay' : 'chromium' }],
   timeout: 300_000,
   outputDir: path.join(root, `artifacts/incident20261026/browser-${process.env.INCIDENT_LIVE === '1' ? 'live' : process.env.INCIDENT_REPLAY === '1' ? 'replay' : 'injected'}`),
   reporter: [['list'], ['json', { outputFile: path.join(root, 'artifacts/incident20261026/e2e-results.json') }]],

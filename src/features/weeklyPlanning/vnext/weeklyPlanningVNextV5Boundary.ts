@@ -6,7 +6,7 @@
 // contingency texts, and the recovery evidence for a failed turn; the renderer
 // core is created without V5's prompt trace).
 // VNext never writes V5 planning state, preview or storage through this seam.
-// The sole external composition entry permits VNext only in an explicitly enabled local runtime.
+// The sole external composition entry selects VNext in production and V5 only for local comparison.
 // That application's gateway alone captures bounded invocation diagnostics for the existing
 // trace owner; the core, interpreter and session never write trace or an outbox.
 export { createWeeklyPlanningSystemDialogueRendererTrace, createWeeklyPlanningFallbackDialogueTrace,
@@ -35,6 +35,8 @@ export {
   type WeeklyPlanningSemanticDocumentV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 export { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
+export { WEEKLY_PLANNING_SELECTED_STARTER_TARGET_INSTRUCTION_V5,
+  type WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 export type { WeeklyPlanningLearningStrategyProposalRecord, PlanningDraftGenerationIntent } from '../intake/weeklyPlanningIntakeTypes';
 export { isWeeklyPlanningStableV5PreviewAuthorized } from '../application/weeklyPlanningStableV5PlanningEvaluation';
 export { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,

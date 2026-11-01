@@ -1,11 +1,13 @@
 import type { WeeklyPlanningTurnRuntimeGateway, ExecuteWeeklyPlanningTurnRuntimeParams } from '../../application/weeklyPlanningTurnRuntimeGateway';
 import type { WeeklyPlanningTurnStagingLifecycle } from '../../application/weeklyPlanningTurnSideEffects';
 import { createWeeklyPlanningTurnRequestContext } from '../../application/weeklyPlanningTemporalContext';
-import { addCalendarDays } from '../../semantic/weeklyPlanningCalendarResolver';
-import { createInitialPlanningIntakeState } from '../weeklyPlanningVNextV5Boundary';
-import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
+import { durableWeeklyPlanningEnabled, executeDurableWeeklyTurn, saveDurableWeeklyTurnReceipt } from '../../application/weeklyPlanningDurableTurnClient';
+import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import type { WeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
-import { captureWeeklyPlanningVNextTurnDiagnostics } from './weeklyPlanningVNextTurnDiagnostics';
+import { executeIsolatedWeeklyPlanningVNextTurn } from './weeklyPlanningVNextIsolatedTurn';
+import { readWeeklyPlanningVNextDurableReceipt, type WeeklyPlanningVNextDurableTurnInput,
+  type WeeklyPlanningVNextDurableTurnResult } from './weeklyPlanningVNextDurableTurn';
+import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 
 /** The existing controller owns admission and publication. Stage the session's single checkpoint
  * write until that controller prepares commit; cancellation/discard writes nothing. Rollback uses
@@ -19,31 +21,47 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
   return {
     runtimeGateway: { async execute(input) {
       const ports = params.ports(input);
-      const diagnostic = captureWeeklyPlanningVNextTurnDiagnostics(input.pending.requestId, ports);
       const before = params.session.checkpoint.read();
-      let after: string | null = null;
       const clock = createWeeklyPlanningTurnRequestContext({ startedAtIso: input.pending.startedAt,
         timeZone: input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'Asia/Tokyo',
         weekStartsOn: input.weekStartsOn ?? 'monday' });
-      const read = params.session.readCheckpoint();
-      const planningEndDate = addCalendarDays(input.snapshot.weekStartDate, 6);
-      if (!planningEndDate) throw new Error('Invalid selected planning week.');
-      const turn = await submitWeeklyPlanningVNextExperimentalTurn({
-        scope: { ownerId: input.userId, weekStartDate: input.snapshot.weekStartDate,
-          conversationId: input.pending.conversationId, notBeforeTime: clock.notBeforeTime,
-          clock: { currentDate: clock.currentDate, weekStartsOn: clock.weekStartsOn, timeZone: clock.timeZone,
-            planningStartDate: input.snapshot.weekStartDate, planningEndDate } },
-        ports: { ...diagnostic.ports, checkpoint: { read: () => after ?? params.session.checkpoint.read(), write: raw => { after = raw; } } },
-        turnId: input.pending.requestId, userText: input.userText,
-        supplementalContext: input.supplementalContext,
-        shownRevision: read?.vnext.presentedQuestion?.graphRevision ?? null,
-      });
-      if (after !== null && input.isCurrentTurn?.() !== false) stages.set(input.pending.requestId, { before, after });
-      const intake = input.snapshot.intakeState ?? createInitialPlanningIntakeState();
-      return { state: turn.authorizationRequired ? { ...intake, status: 'needs_scope' } : intake, message: turn.reply,
-        draftCandidates: turn.draftCandidates ?? [],
-        preserveExistingPreview: Boolean(turn.preview && !turn.draftCandidates?.length),
-        ...diagnostic.finish(turn) };
+      const payload: WeeklyPlanningVNextDurableTurnInput = { core: 'vnext', checkpoint: before,
+        legacyV5Checkpoint: params.session.legacyV5Checkpoint.read(), weekStartDate: input.snapshot.weekStartDate,
+        input: { previousState: input.snapshot.intakeState, messages: input.snapshot.messages,
+          userText: input.userText, supplementalContext: input.supplementalContext, selectedStarterTarget: input.selectedStarterTarget,
+          selectedDate: input.selectedDate, userId: input.userId, plans: input.plans, actuals: input.actuals,
+          monthEvents: input.monthEvents, studyMaterials: input.studyMaterials, scheduleTemplates: input.scheduleTemplates,
+          timetableTermId: input.timetableTermId, timetableTerm: input.timetableTerm, timetableTerms: input.timetableTerms,
+          conversationId: input.pending.conversationId, traceRequestId: input.pending.requestId,
+          weekStartsOn: clock.weekStartsOn, requestContext: clock, inputStateRevision: input.pending.baseRevision,
+          retainedPreviewCount: input.snapshot.previewCandidates?.length ?? 0 } };
+      let completed: WeeklyPlanningVNextDurableTurnResult;
+      if (durableWeeklyPlanningEnabled()) {
+        const receipt = input.resumeDurable ? readWeeklyPlanningVNextDurableReceipt(input.userId) : {
+          version: 1 as const, ownerId: input.userId, snapshot: input.snapshot, pending: input.pending, payload,
+        };
+        if (!receipt || receipt.pending.requestId !== input.pending.requestId
+          || receipt.pending.conversationId !== input.pending.conversationId || receipt.payload.checkpoint !== before) {
+          throw new Error('VNext durable receipt does not match the current conversation.');
+        }
+        if (!input.resumeDurable) saveDurableWeeklyTurnReceipt(receipt);
+        completed = await executeDurableWeeklyTurn<WeeklyPlanningVNextDurableTurnResult>(receipt, {
+          resumeOnly: input.resumeDurable, isCurrent: input.isCurrentTurn,
+        });
+      } else completed = await executeIsolatedWeeklyPlanningVNextTurn(payload, ports);
+      if (input.isCurrentTurn?.() === false) throw new Error('Conversation changed before the VNext result returned.');
+      if (completed.core !== 'vnext' || completed.checkpointBefore !== before
+        || (completed.checkpointAfter !== null && typeof completed.checkpointAfter !== 'string')) {
+        throw new Error('Invalid VNext durable result.');
+      }
+      const after = completed.checkpointAfter;
+      if (after !== null) {
+        const parsed = parseWeeklyPlanningVNextSessionCheckpoint({ raw: after, ownerId: input.userId,
+          weekStartDate: input.snapshot.weekStartDate });
+        if (!parsed || parsed.conversationId !== input.pending.conversationId) throw new Error('Invalid VNext result checkpoint.');
+        stages.set(input.pending.requestId, { before, after });
+      }
+      return completed.result;
     } },
     stagingLifecycle: {
       prepare({ pending }) {

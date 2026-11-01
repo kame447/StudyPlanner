@@ -5,7 +5,7 @@ import { createMemoryStorageHarness, createDeferred, installWeeklyPlanningTestSt
 import { createReadyPlannerDataAvailability } from '../../testUtils/plannerDataAvailabilityTest';
 import { useWeeklyPlanningApplication, type WeeklyPlanningApplication, type UseWeeklyPlanningApplicationInput } from '../../application/useWeeklyPlanningApplication';
 import { useWeeklyPlanningVNextApplication, type WeeklyPlanningVNextLocalApplicationServices } from './useWeeklyPlanningVNextApplication';
-import { resolveLocalWeeklyPlanningConversationCore, WEEKLY_PLANNING_VNEXT_SWITCH_PARTS } from './weeklyPlanningVNextCoreSwitch';
+import { resolveWeeklyPlanningConversationCore } from './weeklyPlanningVNextCoreSwitch';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { createInitialPlanningState } from '../../weeklyPlanningReducer';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../weeklyPlanningVNextV5Boundary';
@@ -21,10 +21,10 @@ import { resetWeeklyPlanningStableV5TraceRuntimeForTest } from '../../trace/week
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AiPlanningView as PlanningView } from '../../../../components/AiPlanningViewLegacy';
+import { createAiPlanningChat, loadAiPlanningChatIndex, saveAiPlanningChatIndex, saveAiPlanningChatSnapshot, updateAiPlanningChatRecord, searchAiPlanningChats } from '../../chat/aiPlanningChatStore';
 import { buildAiPlanningStarterPromptOptions } from '../../ui/aiPlanningStarterPrompts';
 
 const OWNER = 'local-vnext-owner'; const WEEK = '2026-11-02'; const NOW = '2026-11-02T00:00:00.000Z';
-const readyParts = new Set(WEEKLY_PLANNING_VNEXT_SWITCH_PARTS);
 const seed: WeeklyPlanningVNextInterpretation = { status: 'interpreted', planningIntent: 'create_plan' as const, answer: null,
   delta: { add: [{ kind: 'task', localId: 'task', category: 'study', title: '数学' },
     { kind: 'workload', localId: 'work', taskRef: { localId: 'task' }, componentRef: null,
@@ -50,26 +50,29 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     setWeeklyPlanningTraceRepositoryForTests(undefined); vi.unstubAllEnvs(); restore(); });
 
   it.each([
-    { allowance: 'true', hostname: 'localhost', search: '?weeklyPlanningCore=vnext', expected: 'vnext' },
-    { allowance: 'true', hostname: 'localhost', search: '', expected: 'stable_v5' },
-    { allowance: undefined, hostname: 'localhost', search: '?weeklyPlanningCore=vnext', expected: 'stable_v5' },
-    { allowance: 'true', hostname: 'studyplanner.example', search: '?weeklyPlanningCore=vnext', expected: 'stable_v5' },
-    { allowance: 'false', hostname: 'localhost', search: '?weeklyPlanningCore=vnext', expected: 'stable_v5' },
-    { allowance: 'true', hostname: 'localhost', search: '?weeklyPlanningCore=v5', expected: 'stable_v5' },
-  ])('resolves $hostname, allowance=$allowance, $search to $expected', ({ expected, ...params }) => {
-    expect(resolveLocalWeeklyPlanningConversationCore({ ...params, readyParts }).core).toBe(expected);
-    expect(resolveLocalWeeklyPlanningConversationCore({ ...params, readyParts: new Set() }).core).toBe('stable_v5');
+    { configuredCore: undefined, hostname: 'localhost', expected: 'vnext' },
+    { configuredCore: undefined, hostname: 'laplance.com', expected: 'vnext' },
+    { configuredCore: 'vnext', hostname: 'localhost', expected: 'vnext' },
+    { configuredCore: 'stable_v5', hostname: 'localhost', expected: 'stable_v5' },
+    { configuredCore: 'stable_v5', hostname: '127.0.0.1', expected: 'stable_v5' },
+    { configuredCore: 'stable_v5', hostname: '192.168.1.3', expected: 'stable_v5' },
+    { configuredCore: 'stable_v5', hostname: 'laplance.com', expected: 'vnext' },
+    { configuredCore: 'stable_v5', hostname: '', expected: 'vnext' },
+    { configuredCore: 'unknown', hostname: 'localhost', expected: 'vnext' },
+  ])('resolves $hostname, core=$configuredCore to $expected', ({ expected, ...params }) => {
+    expect(resolveWeeklyPlanningConversationCore(params)).toBe(expected);
   });
 
   it.each([
-    { allowance: 'true', hostname: 'localhost', expected: 'vnext' },
-    { allowance: undefined, hostname: 'localhost', expected: 'stable_v5' },
-    { allowance: 'true', hostname: 'laplance.com', expected: 'stable_v5' },
-  ])('production-build composition on $hostname, allowance=$allowance chooses $expected', async ({ allowance, hostname, expected }) => {
+    { configuredCore: undefined, hostname: 'localhost', expected: 'vnext' },
+    { configuredCore: undefined, hostname: 'laplance.com', expected: 'vnext' },
+    { configuredCore: 'stable_v5', hostname: 'localhost', expected: 'stable_v5' },
+    { configuredCore: 'stable_v5', hostname: 'laplance.com', expected: 'vnext' },
+  ])('production-build composition on $hostname, core=$configuredCore chooses $expected', async ({ configuredCore, hostname, expected }) => {
     vi.stubEnv('DEV', false); vi.stubEnv('PROD', true);
-    vi.stubEnv('VITE_ENABLE_WEEKLY_PLANNING_VNEXT', allowance ?? '');
-    Object.defineProperty(window, 'location', { configurable: true, value: { hostname, search: '?weeklyPlanningCore=vnext' } });
-    // The composition chooses once per page load; reload its real entry under these build inputs.
+    vi.stubEnv('VITE_WEEKLY_PLANNING_CORE', configuredCore ?? '');
+    // Old query values have no selection authority.
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname, search: '?weeklyPlanningCore=stable_v5' } });
     vi.resetModules();
     const [entry, vnext, stable] = await Promise.all([
       import('../../application/useWeeklyPlanningConversationApplication'),
@@ -106,7 +109,7 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     await act(async () => { expect((await ref.current!.submitTurn('数学を30分')).accepted).toBe(true); });
     const candidates = ref.current!.state.previewCandidates!;
     expect(candidates).toHaveLength(1);
-    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage });
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId });
     const core = local.readCheckpoint()!;
     const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: OWNER, createdAt: NOW });
     expect(blocks[0].behaviorMetadata?.previewMetadata).toEqual(core.vnext.preview!.blocks[0].behaviorMetadata?.previewMetadata);
@@ -130,7 +133,7 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     expect(storage.storage.getItem(v5Key)).toBe(v5Bytes);
 
     await act(async () => renderer!.unmount()); renderer = undefined;
-    expect(resolveLocalWeeklyPlanningConversationCore({ allowance: 'true', hostname: 'localhost', search: '', readyParts }).core).toBe('stable_v5');
+    expect(resolveWeeklyPlanningConversationCore({ configuredCore: 'stable_v5', hostname: 'localhost' })).toBe('stable_v5');
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     await act(async () => { renderer = create(<V5Harness ref={ref} {...input} />); });
     expect(ref.current!.state.messages).toEqual(v5State.messages);
@@ -142,12 +145,11 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     expect(resumed.conversationId).toBe(original.conversationId);
     expect(memory.plans.size).toBe(1);
     await act(async () => renderer!.unmount()); renderer = undefined;
-    expect(resolveLocalWeeklyPlanningConversationCore({ allowance: 'true', hostname: 'localhost',
-      search: '?weeklyPlanningCore=vnext', readyParts }).core).toBe('vnext');
+    expect(resolveWeeklyPlanningConversationCore({ configuredCore: undefined, hostname: 'localhost' })).toBe('vnext');
     await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
     expect(local.readCheckpoint()!.vnext.state).toEqual(core.vnext.state);
     expect(ref.current!.state.messages.some(message => message.content === '数学を30分')).toBe(true);
-    expect(ref.current!.state.messages.some(message => message.content === '旧版の会話')).toBe(false);
+    expect(ref.current!.state.messages.some(message => message.content === '旧版の会話')).toBe(true);
     expect(memory.plans.size).toBe(1);
   });
 
@@ -160,7 +162,7 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     let pending: ReturnType<WeeklyPlanningApplication['submitTurn']>;
     await act(async () => { pending = ref.current!.submitTurn('数学を30分'); await started.promise; });
     await act(async () => { expect(ref.current!.cancelTurn()).toBe(true); reading.resolve(seed); await pending!; });
-    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage });
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId });
     expect(local.checkpoint.read()).toBeNull();
     expect(ref.current!.state.previewCandidates).toEqual([]);
   });
@@ -178,7 +180,7 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     const supplementalContext = '合成OCR: 数学 30分';
     await act(async () => { expect((await ref.current!.submitTurn(userText, supplementalContext)).accepted).toBe(true); });
     expect(providerInput).toMatchObject({ userText, supplementalContext });
-    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage });
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId });
     const graph = local.readCheckpoint()!.vnext.state.graph;
     expect([...graph.tasks, ...graph.workloads].map(fact => fact.source.sourceText)).toEqual([userText, userText]);
     expect(ref.current!.state.messages.find(message => message.role === 'user')?.content).toBe(userText);
@@ -197,7 +199,7 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
       write(key, raw);
     };
     await act(async () => { await expect(ref.current!.submitTurn('数学を30分')).rejects.toThrow('synthetic storage quota failure'); });
-    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage });
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId });
     expect(failed).toBe(true);
     expect(local.checkpoint.read()).toBeNull();
     expect(ref.current!.state.previewCandidates).toEqual([]);
@@ -205,7 +207,80 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     expect(local.readCheckpoint()!.vnext.state.graph.tasks).toHaveLength(1);
   });
 
-  it('visibly disables registered-target controls only for the local composition and rejects programmatic target input', async () => {
+  it('migrates the active V5 multi-chat conversation on open without changing legacy bytes', async () => {
+    const initial = loadAiPlanningChatIndex(OWNER);
+    const created = createAiPlanningChat(initial);
+    const conversationId = 'existing-active-v5';
+    const state = createInitialPlanningState(WEEK);
+    state.messages = [{ id: 'legacy-user', role: 'user', content: '既存の数学の相談', createdAt: NOW }];
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    graph.revision = 1;
+    graph.tasks = [{ id: 'legacy-task', category: 'study', title: '既存の数学', createdRevision: 1,
+      source: { conversationId, turnId: 'legacy-turn', semanticLocalId: 'task', sourceText: '既存の数学', origin: 'user' } }];
+    graph.factLifecycles = [{ factId: 'legacy-task', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null }];
+    expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK, conversationId, graph, planningState: state })).toBe(true);
+    const saved = JSON.parse(storage.storage.getItem(getWeeklyPlanningStableV5StorageSnapshot(OWNER, WEEK).key)!);
+    expect(saveAiPlanningChatSnapshot(OWNER, created.chat.id, saved)).toBe(true);
+    expect(saveAiPlanningChatIndex(OWNER, updateAiPlanningChatRecord(created.index, created.chat.id, { weekStartDate: WEEK }))).toBe(true);
+    const originals = new Map([...storage.values].filter(([key]) => !key.includes('chats.v1')));
+    const { input, services } = fixture(); const ref = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
+    expect(ref.current!.plannerDataReady).toBe(true);
+    expect(ref.current!.chat.index.activeChatId).toBe(created.chat.id);
+    expect(ref.current!.state.messages).toEqual(state.messages);
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: created.chat.id });
+    expect(local.readCheckpoint()).toMatchObject({ conversationId, vnext: { state: { graph: { revision: 2, tasks: [{ title: '既存の数学' }] } } } });
+    for (const [key, value] of originals) expect(storage.storage.getItem(key)).toBe(value);
+  });
+
+  it.each(['{malformed', JSON.stringify({ conversationId: 'invalid-v5' })])('retains unreadable V5 bytes and starts an interactive conversation: %s', async raw => {
+    const key = getWeeklyPlanningStableV5StorageSnapshot(OWNER, WEEK).key;
+    storage.storage.setItem(key, raw);
+    const { input, services } = fixture(); const ref = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
+    expect(ref.current!.plannerDataReady).toBe(true);
+    expect(ref.current!.chat.requiresInitialization).toBe(false);
+    await act(async () => { expect((await ref.current!.submitTurn('数学を30分')).accepted).toBe(true); });
+    expect(ref.current!.state.previewCandidates).toHaveLength(1);
+    expect(storage.storage.getItem(key)).toBe(raw);
+  });
+
+  it('creates, searches, switches, reloads and removes independent VNext chats; week reset keeps history and saved plans', async () => {
+    const { input, services, memory } = fixture(); const ref = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
+    const firstId = ref.current!.chat.index.activeChatId;
+    await act(async () => { await ref.current!.submitTurn('数学を30分'); });
+    const firstState = ref.current!.state;
+    const firstCore = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: firstId }).checkpoint.read();
+    expect(firstCore).not.toBeNull();
+    await act(async () => { expect(ref.current!.chat.create().status).toBe('saved'); });
+    const secondId = ref.current!.chat.index.activeChatId;
+    expect(secondId).not.toBe(firstId);
+    expect(ref.current!.state.messages).toEqual([]);
+    await act(async () => { await ref.current!.submitTurn('英語を30分'); });
+    expect(searchAiPlanningChats(OWNER, ref.current!.chat.index.chats, '数学').map(chat => chat.id)).toEqual([firstId]);
+    await act(async () => { expect(ref.current!.chat.select(firstId).status).toBe('saved'); });
+    expect(ref.current!.state).toEqual(firstState);
+    expect(createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: firstId }).checkpoint.read()).toBe(firstCore);
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
+    expect(ref.current!.chat.index.activeChatId).toBe(firstId);
+    expect(ref.current!.state.messages).toEqual(firstState.messages);
+    await act(async () => { expect(ref.current!.chat.remove(secondId).status).toBe('saved'); });
+    expect(ref.current!.chat.index.chats.map(chat => chat.id)).toEqual([firstId]);
+    await act(async () => { ref.current!.resetSession(); });
+    expect(ref.current!.state.messages).toEqual([]);
+    expect(ref.current!.state.draftBlocks).toEqual([]);
+    expect(ref.current!.chat.index.chats).toHaveLength(2);
+    expect(memory.plans.size).toBe(0);
+    await act(async () => { expect(ref.current!.chat.select(firstId).status).toBe('saved'); });
+    expect(ref.current!.state.messages).toEqual(firstState.messages);
+    await act(async () => { expect(ref.current!.clearConversation()).toBe(true); });
+    expect(ref.current!.state.messages).toEqual([]);
+    expect(ref.current!.state.previewCandidates).toEqual(firstState.previewCandidates);
+  });
+
+  it('offers registered-target starter controls exactly as the Stable V5 composition does', async () => {
     const { input, services } = fixture(); const ref = createRef<WeeklyPlanningApplication>();
     await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
     const material = { id: 'm', userId: OWNER, name: '合成教材', subjectId: 's', subjectName: '数学', status: 'active' as const,
@@ -213,13 +288,12 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     const catalog = { ready: true, todos: [], materials: [material] };
     const option = buildAiPlanningStarterPromptOptions({ referenceDate: WEEK, plans: [], ...catalog }).find(item => item.target)!;
     const props = { application: ref.current!, userId: OWNER, selectedDate: WEEK, plans: [], starterCatalog: catalog };
-    const localHtml = renderToStaticMarkup(<PlanningView {...props} />);
-    const normalHtml = renderToStaticMarkup(<PlanningView {...props} application={{ ...ref.current!, registeredTargetsAvailable: undefined }} />);
+    const vnextHtml = renderToStaticMarkup(<PlanningView {...props} />);
+    const v5Html = renderToStaticMarkup(<PlanningView {...props} application={{ ...ref.current!, registeredTargetsAvailable: undefined }} />);
     const openingButton = (html: string) => html.slice(html.lastIndexOf('<button', html.indexOf(option.displayText)), html.indexOf(option.displayText));
-    expect(openingButton(localHtml)).toContain('disabled=""');
-    expect(openingButton(normalHtml)).not.toContain('disabled=""');
-    expect(localHtml).toContain('この実験モードでは未対応');
-    await expect(ref.current!.submitTurn(option.requestText, undefined, option.target!)).rejects.toThrow('この実験モードでは未対応');
-    expect(ref.current!.state.messages).toEqual([]);
+    expect(ref.current!.registeredTargetsAvailable).toBe(true);
+    expect(openingButton(vnextHtml)).toBe(openingButton(v5Html));
+    expect(openingButton(vnextHtml)).not.toContain('disabled=""');
+    expect(vnextHtml).not.toContain('この実験モードでは未対応');
   });
 });

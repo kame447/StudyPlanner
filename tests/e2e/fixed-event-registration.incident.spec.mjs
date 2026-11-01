@@ -2,9 +2,12 @@ import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
+import { VNEXT_SCHEMA, vnextReadingFromFacts } from './support/weekly-planning-provider.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const ORIGIN = 'http://127.0.0.1:4174';
+const replay = process.env.INCIDENT_REPLAY === '1';
+const ORIGIN = `http://127.0.0.1:${replay ? 4177 : 4174}`;
+const SEMANTIC_SCHEMA = replay ? 'weekly_planning_semantic_document_v5' : VNEXT_SCHEMA;
 const PROXY = `${ORIGIN}/incident-proxy/chat/completions`;
 const original = '明日の予定にいれて欲しいんだけど、バンドAの合わせが9~10:30\nバンドBの合わせが16~17:30で、全体ゼミが13~15、15~16時が領域ゼミで17~21時までカンファレンスになりそうです';
 const events = [
@@ -61,12 +64,11 @@ async function boot(page, calls, scenario) {
   await page.route('**/*', route => new URL(route.request().url()).origin === ORIGIN ? route.continue() : route.abort());
   await page.route('**/weeklyPlanningTurnRuntimeGateway.stub.js*', route => route.fulfill({
     contentType: 'application/javascript',
-    body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};`,
+    body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};\nexport { createWeeklyPlanningVNextRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway.ts`)};`,
   }));
   const seams = [
     ['lib/aiConfig.ts', 'function getCloudflareAiProxyUrl() {', `return ${JSON.stringify(PROXY)};`],
     ['lib/firebaseClient.ts', 'function getFirebaseAuth() {', 'return { currentUser: { uid: "planner-recovery-owner", getIdToken: async () => "synthetic-local-session" } };'],
-    ['features/weeklyPlanning/useWeeklyPlanningState.ts', 'const getPlanningState = useCallback(() => planningStateRef.current, []);', 'globalThis.__incidentReadState = getPlanningState;'],
     ['features/weeklyPlanning/trace/weeklyPlanningStableV5DebugTrace.ts', 'function recordWeeklyPlanningStableV5DebugTrace(params) {', '(globalThis.__incidentTrace ??= []).push(structuredClone(params));'],
   ];
   for (const [file, marker, added] of seams) await page.route(`**/src/${file}*`, async route => {
@@ -111,7 +113,7 @@ async function boot(page, calls, scenario) {
       return route.fulfill({ status: response.status, body: text, headers: { 'Content-Type': 'application/json', 'X-StudyPlanner-AI-Provider': call.provider ?? 'unknown' } });
     }
     let content;
-    if (call.schema === 'weekly_planning_semantic_document_v5') content = fixedReading();
+    if (call.schema === SEMANTIC_SCHEMA) content = vnextReadingFromFacts(fixedReading());
     else if (call.schema === 'weekly_planning_stable_v5_dialogue_response') content = rendererReply(request);
     else if (call.schema === 'weekly_planning_recovery_verdict') {
       const prompt = JSON.parse(request.messages.at(-1).content);
@@ -155,10 +157,10 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
   await page.getByRole('button', { name: '送信', exact: true }).click();
   await expect.poll(() => calls.length, { timeout: 30_000 }).toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() => {
-    const state = globalThis.__incidentReadState?.();
+    const state = globalThis.__weeklyPlanningApplication?.state;
     return Boolean(state && !state.pendingTurn && state.messages.at(-1)?.role === 'assistant');
   }), { timeout: 240_000 }).toBe(true);
-  const snapshot = await page.evaluate(() => ({ state: globalThis.__incidentReadState(), trace: globalThis.__incidentTrace ?? [],
+  const snapshot = await page.evaluate(() => ({ state: globalThis.__weeklyPlanningApplication.state, trace: globalThis.__incidentTrace ?? [],
     savedEvents: JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]') }));
   const visibleText = await page.locator('body').innerText();
   const evidence = { scenario: { ...scenario, recorded: undefined }, boundary: bridge ? 'real-provider, real-Worker-chat-ingress, real-browser-pipeline; synthetic-auth, local-only-persistence; no-production-save' : recording ? 'recorded-semantic-provider, stub-renderer, real-browser-pipeline, local-only-persistence' : 'injected-provider, real-browser-pipeline, local-only-persistence', calls, errors, ...snapshot, visibleText };
@@ -171,7 +173,8 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
   // Preview generation never saves an event.
   expect(snapshot.savedEvents).toEqual([]);
   const candidates = snapshot.state.previewCandidates ?? [];
-  const semanticCalls = calls.filter(c => c.schema === 'weekly_planning_semantic_document_v5');
+  const semanticCalls = calls.filter(c => c.schema === SEMANTIC_SCHEMA);
+  expect(semanticCalls.length).toBeGreaterThan(0);
   expect(semanticCalls.length, 'initial interpretation plus at most one repair').toBeLessThanOrEqual(2);
   const accepted = [...snapshot.trace].reverse().find(e => e.stage === 'semantic_validation_result' && e.data.accepted)?.data.parsedDocument;
 
@@ -186,7 +189,10 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
   const lastBranchEvent = [...snapshot.trace].reverse().find(e => e.stage === 'runtime_branch_selected')?.data;
   const lastBranch = lastBranchEvent?.branch;
   // A question outcome: an explicit question branch, or a no-candidate branch that carries a question.
-  const askedQuestion = lastBranch === 'ask_question' || Boolean(lastBranchEvent?.basis?.questionCode);
+  const askedQuestion = lastBranch === 'ask_question' || Boolean(lastBranchEvent?.basis?.questionCode)
+    || calls.some(call => call.request.messages.some(message => {
+      try { return Boolean(JSON.parse(message.content).applicationDecision?.questionCode); } catch { return false; }
+    }));
   const reply = snapshot.state.messages.at(-1)?.content ?? '';
   // Every live outcome, with or without candidates, must reach the user as a real reply.
   if (bridge) expect(reply, 'live reply must not be the technical fallback').not.toContain('返信を作れませんでした');
@@ -194,7 +200,10 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
     expect(candidates, 'an unresolved time must not become a guessed registration').toEqual([]);
     // A real question or the truthful manual-entry handoff; never a rejected interpretation or fallback.
     expect(lastBranch).not.toBe('normalization_rejected');
-    expect(askedQuestion || lastBranch === 'fixed_event_manual_entry', `question or manual entry expected, got ${lastBranch}`).toBe(true);
+    const manualEntry = calls.some(call => call.request.messages.some(message => {
+      try { return JSON.parse(message.content).applicationDecision?.communication?.eventRegistration?.unregistered?.length > 0; } catch { return false; }
+    }));
+    expect(askedQuestion || lastBranch === 'fixed_event_manual_entry' || manualEntry, `question or manual entry expected, got ${lastBranch}`).toBe(true);
     expect(reply).not.toContain('返信を作れませんでした');
     return;
   }
@@ -225,9 +234,12 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
   }
 
   // Registration of the original five appointments.
-  expect(accepted?.tasks).toHaveLength(5);
+  const tasks = replay ? accepted?.tasks : accepted?.delta.add.filter(fact => fact.kind === 'task').map(task => ({ ...task,
+    temporalConstraints: accepted.delta.add.filter(fact => fact.kind === 'temporal_constraint' && fact.taskRef.localId === task.localId)
+      .map(fact => ({ ...fact, kind: fact.constraintKind })) }));
+  expect(tasks).toHaveLength(5);
   for (const [title, startTime, endTime] of events) {
-    const task = accepted.tasks.find(task => task.title === title);
+    const task = tasks.find(task => task.title === title);
     expect(task?.temporalConstraints, `${title}: uncertainty must not grant rescheduling`).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'fixed_interval', startTime, endTime }),
     ]));
@@ -248,10 +260,10 @@ for (const scenario of cases) test(scenario.name, async ({ page }, testInfo) => 
     await composer.fill('カンファレンスも17時から21時で確定です。5件とも予定に入れてください。');
     await page.getByRole('button', { name: '送信', exact: true }).click();
     await expect.poll(() => page.evaluate(count => {
-      const state = globalThis.__incidentReadState?.();
+      const state = globalThis.__weeklyPlanningApplication?.state;
       return Boolean(state && !state.pendingTurn && state.messages.length > count && state.messages.at(-1)?.role === 'assistant');
     }, before), { timeout: 240_000 }).toBe(true);
-    Object.assign(snapshot, await page.evaluate(() => ({ state: globalThis.__incidentReadState(),
+    Object.assign(snapshot, await page.evaluate(() => ({ state: globalThis.__weeklyPlanningApplication.state,
       savedEvents: JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]') })));
     expect(snapshot.savedEvents).toEqual([]);
     candidates.splice(0, candidates.length, ...(snapshot.state.previewCandidates ?? []));

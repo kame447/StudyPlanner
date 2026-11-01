@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { WeeklyPlanningApplication, UseWeeklyPlanningApplicationInput } from '../../application/useWeeklyPlanningApplication';
 import { weeklyPlanningReducer, createInitialPlanningState } from '../../weeklyPlanningReducer';
-import { createWeeklyPlanningControllerSession, cancelWeeklyPlanningControlledTurn, clearWeeklyPlanningControlledConversation } from '../../weeklyPlanningTurnController';
+import { createWeeklyPlanningControllerSession, inferWeeklyPlanningControllerRequestSequence, cancelWeeklyPlanningControlledTurn, clearWeeklyPlanningControlledConversation } from '../../weeklyPlanningTurnController';
 import { submitWeeklyPlanningApplicationTurn, weeklyPlanningTurnApplicationServices } from '../../application/weeklyPlanningTurnApplication';
 import { createWeeklyPlanningTurnOutcomeLifecycle } from '../../application/weeklyPlanningTurnOutcomeLifecycle';
 import { approveWeeklyPlanningDraftBlocks } from '../../application/weeklyPlanningApprovalApplication';
@@ -13,8 +13,9 @@ import { isPlannerDataReadyForOwner } from '../../../../domain/plannerDataReadAu
 import { createOpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClient';
 import { getAiConfig, getCloudflareAiProxyUrl } from '../../../../lib/aiConfig';
 import type { WeeklyPlanningAction, PlanningState } from '../../types';
-import type { AiPlanningChatSession, AiPlanningChatResult } from '../../chat/aiPlanningChatSession';
-import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
+import { createAiPlanningChatSessionWithStore } from '../../chat/aiPlanningChatSession';
+import { hasStoredAiPlanningChatIndex, readAiPlanningChatSnapshotRaw, saveAiPlanningChatSearchText } from '../../chat/aiPlanningChatStore';
+import { createWeeklyPlanningVNextLocalSession, type WeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { createWeeklyPlanningVNextRuntimeGateway } from './weeklyPlanningVNextRuntimeGateway';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
@@ -52,7 +53,7 @@ function localServices(): WeeklyPlanningVNextLocalApplicationServices {
     now: () => new Date().toISOString() };
 }
 
-/** Local-only composition, one conversation per owner/week. The same controller and reducer own
+/** Production composition with one VNext checkpoint per owned chat. The same controller and reducer own
  * visible turns; the VNext session owns accepted facts; the existing approval application owns
  * saving and the shared ledger. Never hydrate/export a pretend V5 runtime graph for this state.
  * LocalRuntime integration guards turn → preview → approval, reload, cancellation and rollback.
@@ -70,7 +71,8 @@ export function useWeeklyPlanningVNextApplication(
     const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: week, storage: services.storage });
     let loaded: ReturnType<typeof local.load>;
     let ready = true;
-    try { loaded = local.load(); } catch { ready = false; loaded = { state: createInitialPlanningState(week), conversationId: 'unreadable-vnext' }; }
+    try { loaded = hasStoredAiPlanningChatIndex(ownerId)
+      ? { state: createInitialPlanningState(week), conversationId: 'uninitialized-vnext' } : local.load(); } catch { ready = false; loaded = { state: createInitialPlanningState(week), conversationId: 'unreadable-vnext' }; }
     return { local, ready, state: loaded.state,
       session: createWeeklyPlanningControllerSession(ownerId, week, loaded.conversationId),
       operations: loadWeeklyPlanningApprovalOperations(ownerId) };
@@ -93,70 +95,128 @@ export function useWeeklyPlanningVNextApplication(
     }
     return next;
   }
-  const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: runtime.local,
+  interface Snapshot {
+    ownerId: string;
+    weekStartDate: string;
+    conversationId: string;
+    planningState: PlanningState;
+    savedAt: string;
+    local: WeeklyPlanningVNextLocalSession;
+  }
+  function localFor(chatId: string, weekStartDate: string) {
+    return createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate, storage: services.storage, chatId,
+      legacyV5Raw: readAiPlanningChatSnapshotRaw(ownerId, chatId, services.storage) });
+  }
+  function install(snapshot: Snapshot) {
+    runtime.local = snapshot.local; runtime.state = snapshot.planningState; runtime.ready = true;
+    runtime.session = createWeeklyPlanningControllerSession(ownerId, snapshot.weekStartDate, snapshot.conversationId);
+    runtime.session.requestSequence = Math.max(snapshot.planningState.conversationRequestSequence ?? 0,
+      inferWeeklyPlanningControllerRequestSequence(snapshot.planningState.messages, snapshot.conversationId));
+    redraw(value => value + 1);
+  }
+  const chat = useMemo(() => createAiPlanningChatSessionWithStore<Snapshot>(ownerId, {
+    isCurrent: () => active.current === runtime,
+    isBusy: () => Boolean(runtime.state.pendingTurn || runtime.state.pendingApproval),
+    isApplicationStateReady: () => runtime.ready,
+    exportSnapshot: includeEmpty => {
+      const state = runtime.state;
+      if (!runtime.ready || state.pendingTurn || state.pendingApproval
+        || (!includeEmpty && !state.messages.length && !state.draftBlocks.length && !runtime.local.checkpoint.read())) return null;
+      return { ownerId, weekStartDate: state.weekStartDate, conversationId: runtime.session.conversationId,
+        planningState: state, savedAt: services.now(), local: runtime.local };
+    },
+    prepareImport: snapshot => () => install(snapshot),
+    prepareNew: record => {
+      if (!runtime.ready || runtime.state.pendingTurn || runtime.state.pendingApproval) return null;
+      const weekStartDate = runtime.state.weekStartDate;
+      const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate, storage: services.storage,
+        chatId: record.id, legacyV5Raw: null });
+      const loaded = local.load();
+      return () => install({ ownerId, weekStartDate, conversationId: loaded.conversationId,
+        planningState: loaded.state, savedAt: services.now(), local });
+    },
+    changed: () => redraw(value => value + 1),
+  }, {
+    load: (_owner, record) => {
+      if (!record.weekStartDate) return null;
+      try {
+        const local = localFor(record.id, record.weekStartDate);
+        const loaded = local.load();
+        return { ownerId, weekStartDate: record.weekStartDate, conversationId: loaded.conversationId,
+          planningState: loaded.state, savedAt: services.now(), local };
+      } catch { return null; }
+    },
+    save: (_owner, chatId, snapshot) => {
+      try {
+        const destination = localFor(chatId, snapshot.weekStartDate);
+        const core = snapshot.local.checkpoint.read();
+        if (core !== null) destination.checkpoint.write(core);
+        else destination.checkpoint.remove();
+        destination.save(snapshot.conversationId, snapshot.planningState);
+        saveAiPlanningChatSearchText(ownerId, chatId, snapshot.planningState.messages);
+        if (runtime.session.conversationId === snapshot.conversationId) runtime.local = destination;
+        return true;
+      } catch { return false; }
+    },
+    remove: (_owner, chatId) => {
+      // Explicit chat deletion removes only VNext bytes. Legacy V5 snapshots stay read-only.
+      const record = chat.index.chats.find(item => item.id === chatId);
+      if (record?.weekStartDate) localFor(chatId, record.weekStartDate).clear();
+    },
+  }), [runtime, ownerId, services]);
+  useLayoutEffect(() => { if (chat.initialize().status === 'saved') chat.checkpoint(); }, [chat]);
+  const local = runtime.local;
+  const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: local,
     ports: turn => {
       const client = services.client();
       return { client, interpret: services.interpret({ ownerId, conversationId: turn.pending.conversationId }),
-        checkpoint: runtime.local.checkpoint, legacyV5Checkpoint: runtime.local.legacyV5Checkpoint,
+        checkpoint: local.checkpoint, legacyV5Checkpoint: local.legacyV5Checkpoint,
         // This composition uses the ordinary approval application below, never the session's save entry.
         approvalLedger: { read: () => null, write: () => { throw new Error('Approval belongs to the existing application.'); } },
         plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { throw new Error('Approval belongs to the existing application.'); } },
         calendar: () => ({ plans: turn.plans, actuals: turn.actuals ?? [], monthEvents: turn.monthEvents ?? [],
           scheduleTemplates: turn.scheduleTemplates, timetableTermId: turn.timetableTermId }),
         createRenderer: options => services.createRenderer(client, options), now: services.now };
-    } }), [runtime, services, ownerId]);
+    } }), [local, services, ownerId]);
   const turnServices = { ...weeklyPlanningTurnApplicationServices, ...gateway,
     outcomeLifecycle: createWeeklyPlanningTurnOutcomeLifecycle({ saveOwnedState: (_owner, state) => {
       if (!current()) return false;
       runtime.local.save(runtime.session.conversationId, state); return true;
     } }) };
-  const plannerReady = () => Boolean(input.userId && current() && isPlannerDataReadyForOwner(input.plannerDataAvailability, input.userId)
-    && input.isPlannerDataSnapshotCurrent());
-  const checkpoint = (): AiPlanningChatResult => {
-    if (!current()) return { status: 'blocked', reason: 'initialization-unavailable' };
-    try { runtime.local.save(runtime.session.conversationId, runtime.state); return { status: 'saved' }; }
-    catch { return { status: 'blocked', reason: 'snapshot-write-failed' }; }
-  };
-  const unavailable = (): AiPlanningChatResult => ({ status: 'blocked', reason: 'target-unavailable' });
-  const chat = useMemo<AiPlanningChatSession>(() => ({
-    get index() { return { version: 1 as const, activeChatId: runtime.session.conversationId,
-      chats: [{ id: runtime.session.conversationId, title: '今週の計画', createdAt: runtime.state.updatedAt,
-        updatedAt: runtime.state.updatedAt, weekStartDate: week }] }; },
-    get requiresInitialization() { return !runtime.ready; },
-    get result() { return null; }, dirty: false, canStartWithoutRestoring: false,
-    initialize: checkpoint, checkpoint, retry: checkpoint, startWithoutRestoring: unavailable,
-    select: id => id === runtime.session.conversationId ? checkpoint() : unavailable(), create: unavailable, remove: unavailable,
-  }), [runtime, week]);
+  const plannerReady = () => Boolean(input.userId && current() && !chat.requiresInitialization
+    && isPlannerDataReadyForOwner(input.plannerDataAvailability, input.userId) && input.isPlannerDataSnapshotCurrent());
   function binding() {
-    return current() && !runtime.state.pendingTurn && !runtime.state.pendingApproval
-      ? { ownerId, chatId: runtime.session.conversationId, conversationId: runtime.session.conversationId,
-        weekStartDate: week, revision: runtime.state.revision } : null;
+    return current() && !chat.requiresInitialization && !runtime.state.pendingTurn && !runtime.state.pendingApproval
+      ? { ownerId, chatId: chat.index.activeChatId, conversationId: runtime.session.conversationId,
+        weekStartDate: runtime.state.weekStartDate, revision: runtime.state.revision } : null;
   }
   const pendingDraftBlocks = runtime.state.draftBlocks.filter(block => block.status === 'draft');
-  return { conversationNavigation: 'single', registeredTargetsAvailable: false, chat, state: runtime.state, pendingDraftBlocks,
+  return { registeredTargetsAvailable: true, chat, state: runtime.state, pendingDraftBlocks,
     approvalAvailability: classifyWeeklyPlanningApprovalAvailability({ blocks: pendingDraftBlocks, userId: ownerId, resolveRuntime: runtime.local.resolveRuntime }),
     canEditDraftBlocks: current() && !runtime.state.pendingTurn && !runtime.state.pendingApproval && !runtime.state.approvalRecovery,
-    plannerDataReady: Boolean(input.userId && runtime.ready && isPlannerDataReadyForOwner(input.plannerDataAvailability, input.userId)
-      && input.isPlannerDataSnapshotCurrent()),
+    plannerDataReady: plannerReady(),
     prepareTurn: async () => plannerReady() && committedInput.current === input ? { ready: true } : { ready: false, reason: 'request-changed' },
     getModuleRecoveryBinding: binding,
     checkpointForModuleReload: () => {
       const captured = binding(); const state = runtime.state;
-      return captured && checkpoint().status === 'saved' ? { binding: captured, isCurrent: () => current() && runtime.state === state } : null;
+      return captured && chat.checkpoint().status === 'saved' ? { binding: captured, isCurrent: () => current() && runtime.state === state } : null;
     },
     submitTurn: async (userText, supplementalContext, selectedStarterTarget, machineBoundAnswer) => {
-      if (selectedStarterTarget) throw new Error('教材や登録項目の選択はこの実験モードでは未対応です。対象を文章で入力してください。');
       if (!plannerReady() || committedInput.current !== input || runtime.state.approvalRecovery) return { accepted: false, draftCandidates: [] };
-      return submitWeeklyPlanningApplicationTurn({ ...input, userId: ownerId, ownerId,
+      const result = await submitWeeklyPlanningApplicationTurn({ ...input, userId: ownerId, ownerId,
         session: runtime.session, userText, supplementalContext, selectedStarterTarget, machineBoundAnswer,
         weekStartsOn, getState, dispatch, now: services.now,
         isPlannerDataSnapshotCurrent: plannerReady, isApplicationCurrent: current }, turnServices);
+      if (current()) chat.checkpoint();
+      return result;
     },
     cancelTurn: () => cancelWeeklyPlanningControlledTurn({ getState, dispatch }),
     clearConversation: () => clearWeeklyPlanningControlledConversation({ getState, dispatch }),
     appendMessage: message => { dispatch({ type: 'append_message', message }); },
-    // The local experiment has one conversation. Starting another is intentionally not a V5 chat import.
-    resetSession: () => {}, startConversation: () => {}, exportConversationSnapshot: () => null, loadConversationSnapshot: () => false,
+    resetSession: () => { if (!runtime.state.pendingTurn && !runtime.state.pendingApproval) chat.create(); },
+    startConversation: () => { chat.create(); },
+    // Production UI uses the chat session ports above, not V5-shaped snapshot export/import.
+    exportConversationSnapshot: () => null, loadConversationSnapshot: () => false,
     createDraftBlocks: blocks => { const before = runtime.state; return dispatch({ type: 'add_draft_blocks', blocks }) !== before; },
     removePreviewCandidate: candidateId => { dispatch({ type: 'remove_preview_candidate', candidateId }); },
     removeDraftBlock: blockId => { dispatch({ type: 'remove_draft_block', blockId }); },

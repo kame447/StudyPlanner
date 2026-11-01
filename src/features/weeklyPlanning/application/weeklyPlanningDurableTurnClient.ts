@@ -7,13 +7,17 @@ import type { DurableTurnResult } from '../../../../workers/ai-proxy/src/durable
 export const durableWeeklyPlanningEnabled = () => import.meta.env.VITE_DURABLE_WEEKLY_TURNS === 'enabled';
 const RETENTION_MS = 24 * 60 * 60_000;
 const key = (ownerId: string) => `studyplanner.durableWeeklyTurn.v1:${encodeURIComponent(ownerId)}`;
-export interface DurableWeeklyTurnReceipt {
+/** Core-neutral identity; each executor validates its own payload at admission. */
+export interface DurableWeeklyTurnPayload {
+  input: { userId: string; conversationId?: string; traceRequestId?: string };
+}
+export interface DurableWeeklyTurnReceipt<Payload extends DurableWeeklyTurnPayload = IsolatedWeeklyPlanningTurnInput> {
   version: 1;
   cancelRequested?: boolean;
   ownerId: string;
   snapshot: PlanningState;
   pending: WeeklyPlanningPendingTurn;
-  payload: IsolatedWeeklyPlanningTurnInput;
+  payload: Payload;
 }
 export interface DurableTurnClientPorts {
   fetch: typeof fetch;
@@ -23,12 +27,12 @@ export interface DurableTurnClientPorts {
   wait(ms: number): Promise<void>;
 }
 
-export function readDurableWeeklyTurnReceipt(ownerId: string): DurableWeeklyTurnReceipt | null {
+export function readDurableWeeklyTurnReceipt<Payload extends DurableWeeklyTurnPayload = IsolatedWeeklyPlanningTurnInput>(ownerId: string): DurableWeeklyTurnReceipt<Payload> | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(key(ownerId)); if (!raw) return null;
     if (new TextEncoder().encode(raw).length > 4 * 1024 * 1024) return null;
-    const value = JSON.parse(raw) as DurableWeeklyTurnReceipt;
+    const value = JSON.parse(raw) as DurableWeeklyTurnReceipt<Payload>;
     if (value.version !== 1 || value.ownerId !== ownerId || value.payload?.input?.userId !== ownerId
       || value.pending?.conversationId !== value.payload.input.conversationId
       || value.pending?.requestId !== value.payload.input.traceRequestId
@@ -40,7 +44,7 @@ export function readDurableWeeklyTurnReceipt(ownerId: string): DurableWeeklyTurn
     return value;
   } catch { return null; }
 }
-export function saveDurableWeeklyTurnReceipt(value: DurableWeeklyTurnReceipt): void {
+export function saveDurableWeeklyTurnReceipt(value: DurableWeeklyTurnReceipt<DurableWeeklyTurnPayload>): void {
   if (typeof window === 'undefined') throw new Error('会話の復帰情報を保存できませんでした。');
   const raw = JSON.stringify(value);
   window.localStorage.setItem(key(value.ownerId), raw);
@@ -70,10 +74,10 @@ function defaultPorts(): DurableTurnClientPorts {
 }
 
 /** Resume is GET-only. An uncertain POST is reconciled by reading its same identity first. */
-export async function executeDurableWeeklyTurn(
-  receipt: DurableWeeklyTurnReceipt,
+export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlanningTurnResult = IsolatedWeeklyPlanningTurnResult>(
+  receipt: DurableWeeklyTurnReceipt<DurableWeeklyTurnPayload>,
   options: { resumeOnly?: boolean; isCurrent?: () => boolean; ports?: DurableTurnClientPorts } = {},
-): Promise<IsolatedWeeklyPlanningTurnResult> {
+): Promise<Result> {
   if (receipt.cancelRequested) throw new Error('この返信はキャンセルされています。');
   const ports = options.ports ?? defaultPorts();
   const identity = { ownerId: receipt.ownerId, conversationId: receipt.pending.conversationId,
@@ -118,7 +122,7 @@ export async function executeDurableWeeklyTurn(
       maySubmit = false; needsReconcile = false;
       if (state.status === 'completed') {
         if (typeof state.result !== 'string') throw new Error('保存された返信の形式を確認できませんでした。');
-        const result = JSON.parse(state.result) as IsolatedWeeklyPlanningTurnResult;
+        const result = JSON.parse(state.result) as Result;
         if (!result || typeof result !== 'object' || !result.result || typeof result.result.message !== 'string' || !Array.isArray(result.result.draftCandidates)
           || !Array.isArray(result.stagedContextFacts) || typeof result.observedDate !== 'string') throw new Error('保存された返信の形式を確認できませんでした。');
         return result;

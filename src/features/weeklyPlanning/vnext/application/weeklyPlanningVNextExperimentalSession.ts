@@ -338,6 +338,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   turnId: string;
   userText: string;
   supplementalContext?: string;
+  selectedStarterTarget?: import('../weeklyPlanningVNextV5Boundary').WeeklyPlanningSelectedStarterTargetV5;
   /**
    * Graph revision of the reply the user is answering (`graphRevision` of the turn shown), or null
    * before any reply. Another tab may have moved the conversation on since; then the stored question is
@@ -382,6 +383,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const interpretation = await ports.interpret({
     client: ports.client, state, projection: before, presentedQuestion, userText: params.userText, clock,
     ...(params.supplementalContext === undefined ? {} : { supplementalContext: params.supplementalContext }),
+    ...(params.selectedStarterTarget === undefined ? {} : { selectedStarterTarget: params.selectedStarterTarget }),
     observedMemoryPace: pace,
     recentConversation: read.checkpoint.messages,
     // The reply the question was shown in: what the user's words answer (e.g. an ordinal over its options).

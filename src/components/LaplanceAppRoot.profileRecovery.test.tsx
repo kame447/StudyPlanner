@@ -56,8 +56,8 @@ vi.mock('../App', async () => {
   function Standalone() { const visible = useStartupContentVisible(); const state = usePlannerAppState({ noticeAutoDismiss: visible }); return <Probe state={state} />; }
   return { default: ({ state, onReady }: any) => fixture.realApp ? <RealApp state={state} onReady={onReady} /> : state ? <Probe state={state} onReady={onReady} /> : <Standalone /> };
 });
-vi.mock('../features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({
-  useWeeklyPlanningApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }),
+vi.mock('../features/weeklyPlanning/application/useWeeklyPlanningConversationApplication', () => ({
+  useWeeklyPlanningConversationApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }),
 }));
 vi.mock('../lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => {} }));
 const owner = (id: string): User => ({ id, username: id, email: `${id}@example.test`, avatar: '', createdAt: STAMP });

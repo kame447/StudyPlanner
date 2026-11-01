@@ -13,7 +13,6 @@ import { applyWeeklyPlanningVNextTurn } from '../semantic/weeklyPlanningVNextTra
 import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
 import type { WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import { bindWeeklyPlanningVNextAnswer } from './weeklyPlanningVNextAnswerBinding';
-import { resolveWeeklyPlanningConversationCore, WEEKLY_PLANNING_VNEXT_SWITCH_PARTS } from './weeklyPlanningVNextCoreSwitch';
 import {
   migrateWeeklyPlanningV5GraphToVNextSession,
   parseWeeklyPlanningVNextSessionCheckpoint,
@@ -145,18 +144,6 @@ describe('VNext session: migration, answer binding inside presentation freshness
     const tampered = JSON.parse(raw);
     tampered.vnext.state.graph.effortEstimates = [{ bogus: true }];
     expect(parseWeeklyPlanningVNextSessionCheckpoint({ raw: JSON.stringify(tampered), ownerId: 'owner-1', weekStartDate: '2026-11-02' })).toBeNull();
-  });
-
-  it('keeps Stable V5 unless every part of the switch is ready and adoption is requested', () => {
-    const all = new Set(WEEKLY_PLANNING_VNEXT_SWITCH_PARTS);
-    expect(resolveWeeklyPlanningConversationCore({ vnextRequested: false, readyParts: all })).toMatchObject({ core: 'stable_v5' });
-    for (const part of WEEKLY_PLANNING_VNEXT_SWITCH_PARTS) {
-      const partial = new Set(all);
-      partial.delete(part);
-      expect(resolveWeeklyPlanningConversationCore({ vnextRequested: true, readyParts: partial }))
-        .toEqual({ core: 'stable_v5', missing: [part] });
-    }
-    expect(resolveWeeklyPlanningConversationCore({ vnextRequested: true, readyParts: all })).toEqual({ core: 'vnext' });
   });
 
   it('E01 migrates a V5 graph whose later work names a renamed task, and an answer by work identity applies', () => {

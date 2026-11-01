@@ -3,22 +3,31 @@
 // a V5 slot or manufacture a V5 runtime graph. LocalRuntime integration tests guard rollback.
 import { createInitialPlanningState } from '../../weeklyPlanningReducer';
 import { isPersistedWeeklyPlanningState } from '../../weeklyPlanningStateCodec';
-import { getWeeklyPlanningStableV5StorageSnapshot } from '../weeklyPlanningVNextV5Boundary';
+import { getWeeklyPlanningStableV5StorageSnapshot, parseWeeklyPlanningStableV5PersistedSession } from '../weeklyPlanningVNextV5Boundary';
 import type { resolveWeeklyPlanningApprovalRuntime } from '../../application/weeklyPlanningApprovalRuntimeResolver';
 import type { PlanningState } from '../../types';
-import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
+import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
+import { readWeeklyPlanningVNextExperimentalSession } from './weeklyPlanningVNextExperimentalSession';
 import { createWeeklyPlanningApplicationRequestId } from '../../application/weeklyPlanningApplicationIdentity';
 
 export function createWeeklyPlanningVNextLocalSession(params: {
   ownerId: string;
   weekStartDate: string;
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+  chatId?: string;
+  /** Explicit null starts a new chat; undefined reads the pre-multi-chat weekly slot. */
+  legacyV5Raw?: string | null;
 }) {
   const { ownerId, weekStartDate, storage } = params;
-  const prefix = `studyplanner.weeklyPlanning.vnext.${ownerId}.${weekStartDate}`;
+  const prefix = `studyplanner.weeklyPlanning.vnext.${ownerId}.${weekStartDate}${params.chatId ? `.${params.chatId}` : ''}`;
   const checkpoint = { read: () => storage.getItem(`${prefix}.core`),
     write: (raw: string) => storage.setItem(`${prefix}.core`, raw), remove: () => storage.removeItem(`${prefix}.core`) };
-  const legacyV5Checkpoint = { read: () => storage.getItem(getWeeklyPlanningStableV5StorageSnapshot(ownerId, weekStartDate).key) };
+  const legacyV5Checkpoint = { read: () => {
+    const raw = params.legacyV5Raw === undefined
+      ? storage.getItem(getWeeklyPlanningStableV5StorageSnapshot(ownerId, weekStartDate).key) : params.legacyV5Raw;
+    // Invalid legacy data stays untouched and cannot block a fresh VNext conversation.
+    return raw !== null && parseWeeklyPlanningStableV5PersistedSession({ raw, ownerId, weekStartDate }) ? raw : null;
+  } };
   const core = () => {
     const raw = checkpoint.read();
     if (raw === null) return null;
@@ -57,15 +66,20 @@ export function createWeeklyPlanningVNextLocalSession(params: {
       return { conversationId: accepted.conversationId, state };
     }
     const legacyRaw = legacyV5Checkpoint.read();
-    // The existing migration port requires the legacy conversation identity, but only reads its bytes.
-    let conversationId: string | undefined;
     if (legacyRaw !== null) {
-      const value: unknown = JSON.parse(legacyRaw);
-      if (typeof value === 'object' && value !== null && 'conversationId' in value && typeof value.conversationId === 'string') {
-        conversationId = value.conversationId;
+      const legacy = parseWeeklyPlanningStableV5PersistedSession({ raw: legacyRaw, ownerId, weekStartDate })!;
+      const scope = { ownerId, weekStartDate, conversationId: legacy.conversationId };
+      const migrated = readWeeklyPlanningVNextExperimentalSession(scope, { checkpoint, legacyV5Checkpoint });
+      if (migrated.status !== 'ready') throw new Error('V5 migration is unavailable; existing bytes were retained.');
+      const next = serializeWeeklyPlanningVNextSessionCheckpoint({ ...scope, vnext: migrated.checkpoint, savedAt: legacy.savedAt });
+      if (next === null) throw new Error('V5 migration exceeds the checkpoint limit; existing bytes were retained.');
+      checkpoint.write(next);
+      // Old previews/questions used a different revision. Keep the conversation visible,
+      // while the migrated core derives a fresh question or preview on the next turn.
+      state.messages = legacy.planningState.messages;
+      return { conversationId: legacy.conversationId, state };
       }
-    }
-    return { conversationId: conversationId ?? createWeeklyPlanningApplicationRequestId('vnext-conversation'), state };
+    return { conversationId: createWeeklyPlanningApplicationRequestId('vnext-conversation'), state };
   }
   function save(conversationId: string, state: PlanningState): void {
     storage.setItem(`${prefix}.ui`, JSON.stringify({ ownerId, conversationId, payload: { version: 2, state } }));

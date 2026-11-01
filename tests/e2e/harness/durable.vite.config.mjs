@@ -20,6 +20,8 @@ export default defineConfig({
     },
   }, react()],
   define: { ...base.define,
+    // DurableTurnJob executes the historical V5 isolated-turn payload.
+    'import.meta.env.VITE_WEEKLY_PLANNING_CORE': JSON.stringify('stable_v5'),
     'import.meta.env.VITE_DURABLE_WEEKLY_TURNS': JSON.stringify('enabled'),
     'import.meta.env.VITE_CLOUDFLARE_AI_PROXY_URL': JSON.stringify('http://127.0.0.1:4175'),
   },

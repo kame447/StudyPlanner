@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
+import { stableV5HarnessServer, stableV5Specs } from './support/stable-v5-specs.mjs';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, '../..');
@@ -43,10 +44,26 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: stableV5Specs,
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'chromium-stable-v5',
+      testMatch: stableV5Specs,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:4178' },
     },
   ],
   webServer: [
+    stableV5HarnessServer(repoRoot),
+    {
+      // Keep the comparison build separate from the production dist directory.
+      command: 'VITE_WEEKLY_PLANNING_CORE=stable_v5 npm run build -- --outDir artifacts/e2e-stable-v5-build'
+        + ' && npm run preview:vite -- --outDir artifacts/e2e-stable-v5-build --port 4178 --host 127.0.0.1',
+      cwd: repoRoot,
+      url: 'http://127.0.0.1:4178',
+      reuseExistingServer: !isCi,
+      timeout: 300_000,
+    },
     {
       command: 'npm run preview:vite -- --port 4173',
       cwd: repoRoot,

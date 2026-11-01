@@ -27,6 +27,10 @@ const runtimeGatewayStubPlugin = {
     const normalizedImporter = importer
       ? path.normalize(stripViteQuery(importer))
       : '';
+    if (source === './features/weeklyPlanning/application/useWeeklyPlanningConversationApplication'
+      && normalizedImporter.endsWith(path.normalize('src/App.tsx'))) {
+      return '\0weekly-application-observer';
+    }
     if (source === './LaplanceAppRoot' && normalizedImporter.endsWith(path.normalize('src/components/ApplicationRouteRoot.tsx'))) {
       return path.resolve(harnessDir, 'admin-entry-root.jsx');
     }
@@ -63,7 +67,21 @@ const runtimeGatewayStubPlugin = {
     ) {
       return runtimeGatewayStub;
     }
+    if (source === './weeklyPlanningVNextRuntimeGateway'
+      && normalizedImporter.endsWith(path.normalize('src/features/weeklyPlanning/vnext/application/useWeeklyPlanningVNextApplication.ts'))) {
+      return runtimeGatewayStub;
+    }
     return null;
+  },
+  load(id) {
+    if (id !== '\0weekly-application-observer') return null;
+    // Observe the real facade instead of rewriting either core's implementation.
+    return `import { useWeeklyPlanningConversationApplication as useProduction } from ${JSON.stringify(path.join(repositoryRoot, 'src/features/weeklyPlanning/application/useWeeklyPlanningConversationApplication.ts'))};
+      export function useWeeklyPlanningConversationApplication(...args) {
+        const application = useProduction(...args);
+        globalThis.__weeklyPlanningApplication = application;
+        return application;
+      }`;
   },
 };
 
@@ -71,6 +89,7 @@ export default defineConfig({
   root: harnessDir,
   plugins: [runtimeGatewayStubPlugin, react()],
   define: {
+    'import.meta.env.VITE_WEEKLY_PLANNING_CORE': JSON.stringify('vnext'),
     'import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED': JSON.stringify('false'),
     // This synthetic harness must not inherit live Firebase/AI credentials.
     'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify(''),

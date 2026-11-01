@@ -89,8 +89,7 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'trace/weeklyPlanningTraceOutbox.ts',
   'trace/weeklyPlanningTraceRemoteRepository.ts',
   'trace/weeklyPlanningTurnDiagnosticV2.ts',
-  // #926 VNext (experimental, unwired; vnext/weeklyPlanningVNextIsolation.test.ts proves no production
-  // importer): the single read-only seam to the V5 Fact Graph shape and session envelope version.
+  // #926 VNext production: the single seam to reused V5 pure responsibilities and read-only migration.
   'vnext/weeklyPlanningVNextV5Boundary.ts',
 ]);
 

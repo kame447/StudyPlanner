@@ -1,6 +1,6 @@
 # VNext core changes
 
-Read the repository and weekly-planning `AGENTS.md` first, then the supporting [VNext core contract](../../../../docs/domains/weekly-planning/architecture/vnext-conversation-core.md). Stable V5 remains the production authority; Issue #926 owns the exact scope and verified HEAD. Do not infer permission to deploy from this file.
+Read the repository and weekly-planning `AGENTS.md` first, then the [VNext core contract](../../../../docs/domains/weekly-planning/architecture/vnext-conversation-core.md). VNext is the production conversation core. Stable V5 is available only in explicit local comparison builds (`VITE_WEEKLY_PLANNING_CORE=stable_v5`); ordinary builds exclude its application hook. Issue #926 owns the exact scope and verified HEAD. Do not infer permission to deploy from this file.
 
 Keep one typed transaction, one derived-work projection and one shared current-reference view. Settle all horizon operations before anchoring dependent dates. Bind answers to the actual presentation result, never an error notice or a reconstructed option order. AI interprets meaning; domain functions calculate and validate explicit contracts; I/O stays in injected session ports.
 

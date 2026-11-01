@@ -6,6 +6,7 @@
 // Code owns ids, revisions, validity, math and freshness.
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
+import type { WeeklyPlanningSelectedStarterTargetV5 } from './weeklyPlanningVNextV5Boundary';
 import type {
   VNextQuestion,
   VNextTurnDelta,
@@ -49,6 +50,8 @@ export interface WeeklyPlanningVNextInterpretationInput {
   recentConversation?: readonly { role: 'user' | 'assistant'; content: string }[];
   /** Attachment-derived supplemental evidence; userText remains the user's source/intent channel. */
   supplementalContext?: string;
+  /** UI-selected stored reference, with V5's provenance contract; never a Fact Graph reference or instruction. */
+  selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
   clock: WeeklyPlanningVNextInterpretationClock;
 }
 

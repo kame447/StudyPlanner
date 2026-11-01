@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
+import { VNEXT_SCHEMA, vnextReadingFromFacts } from './support/weekly-planning-provider.mjs';
 
 // Synthetic UI harness: stub only provider transport/authentication, and run the
 // real semantic validator, scheduler, renderer, approval and local persistence.
@@ -10,7 +11,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const capture = JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/weekly-session-duration-873.json'), 'utf8'));
 const ORIGIN = 'http://127.0.0.1:4174';
 const PROXY = `${ORIGIN}/session-ack-proxy/chat/completions`;
-const SEMANTIC_SCHEMA = 'weekly_planning_semantic_document_v5';
+const SEMANTIC_SCHEMA = VNEXT_SCHEMA;
 const RENDERER_SCHEMA = 'weekly_planning_stable_v5_dialogue_response';
 const RECOVERY_SCHEMA = 'weekly_planning_recovery_verdict';
 const RECOVERY_TEXT = '今回の内容は計画へ反映していません。1回の長さをもう一度教えてください。';
@@ -35,12 +36,11 @@ async function boot(page, mode) {
   await page.route('**/*', route => new URL(route.request().url()).origin === ORIGIN ? route.continue() : route.abort());
   await page.route('**/weeklyPlanningTurnRuntimeGateway.stub.js*', route => route.fulfill({
     contentType: 'application/javascript',
-    body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};`,
+    body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};\nexport { createWeeklyPlanningVNextRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway.ts`)};`,
   }));
   const seams = [
     ['lib/aiConfig.ts', 'function getCloudflareAiProxyUrl() {', `return ${JSON.stringify(PROXY)};`],
     ['lib/firebaseClient.ts', 'function getFirebaseAuth() {', 'return { currentUser: { uid: "planner-recovery-owner", getIdToken: async () => "synthetic-session" } };'],
-    ['features/weeklyPlanning/useWeeklyPlanningState.ts', 'const getPlanningState = useCallback(() => planningStateRef.current, []);', 'globalThis.__sessionAckState = getPlanningState;'],
   ];
   for (const [file, marker, added] of seams) await page.route(`**/src/${file}*`, async route => {
     const response = await route.fetch();
@@ -53,7 +53,7 @@ async function boot(page, mode) {
     const schema = request.response_format?.json_schema?.name;
     calls.push(schema);
     let content;
-    if (schema === SEMANTIC_SCHEMA) content = JSON.stringify(reading);
+    if (schema === SEMANTIC_SCHEMA) content = JSON.stringify(vnextReadingFromFacts(reading));
     else if (schema === RENDERER_SCHEMA) {
       const prompt = request.messages.filter(message => message.role === 'user').map(message => {
         try { return JSON.parse(message.content); } catch { return null; }
@@ -94,10 +94,10 @@ async function boot(page, mode) {
   await page.evaluate(() => { window.__sessionAckWriteBaseline = window.__plannerRecoveryStorageWrites.length; });
   await page.getByRole('button', { name: '送信', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
-    const state = globalThis.__sessionAckState?.();
+    const state = globalThis.__weeklyPlanningApplication?.state;
     return Boolean(state && !state.pendingTurn && state.messages.at(-1)?.role === 'assistant');
   }), { timeout: 60_000 }).toBe(true);
-  return { state: await page.evaluate(() => globalThis.__sessionAckState()), calls, modelText };
+  return { state: await page.evaluate(() => globalThis.__weeklyPlanningApplication.state), calls, modelText };
 }
 
 for (const width of [390, 1280]) test.describe(`Issue #873 session duration UI harness at ${width}px`, () => {
