@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test';
+import {
+  emulatorUserId, notSavedYet, placement, savedAtLeastOnce, savedExactlyOnce, savedFor, unchangedSince,
+} from '../support/schedule-event-ledger.mjs';
 
 // The VNext production path with the REAL model, through the real Worker (#926): UI -> Firebase Auth emulator ->
 // Worker (production code on wrangler dev) -> durable turn job -> api.openai.com, with trace into the Firestore
@@ -61,6 +64,11 @@ async function approveShownPreview(page) {
   await expect(preview).toBeHidden();
 }
 
+/** Tomorrow in Japan as an ISO date, the date the saved fixed event must carry. */
+function tomorrowIsoInJapan() {
+  return new Date(Date.now() + 24 * 60 * 60_000 + 9 * 60 * 60_000).toISOString().slice(0, 10);
+}
+
 /** Tomorrow in Japan as the explicit date the user states (the browser runs with timezoneId Asia/Tokyo). */
 function tomorrowInJapan() {
   const date = new Date(Date.now() + 24 * 60 * 60_000 + 9 * 60 * 60_000);
@@ -102,8 +110,17 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
     await test.info().attach(`reply-${label}.json`, { body: JSON.stringify(replies[replies.length - 1], null, 2), contentType: 'application/json' });
   };
 
+  // What is saved is judged for this account and these exact targets only: the emulator holds other specs' events.
+  const userId = await emulatorUserId(request, { email: email(), password: password() });
+  const study = { userId, title: 'ゼミ資料' };
+  const fixed = { userId, title: 'ピアノ教室', date: tomorrowIsoInJapan() };
+  const events = () => firestoreDocuments(request, 'schedule_events');
+  const holds = (problems) => expect(problems).toEqual([]);
+
   await signIn(page);
   await openPlanning(page);
+  holds(notSavedYet(await events(), study));
+  holds(notSavedYet(await events(), fixed));
 
   // Turn 1: stated work. The real model reads it through the durable job and the Worker's real output clamp.
   await send(page, 'ゼミ資料の準備に合計60分かかります。今週の夜にやりたいです。');
@@ -121,6 +138,7 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
   await capture('turn2-create-plan');
   expect(await previewTotalMinutes(page)).toBe(60);
+  holds(notSavedYet(await events(), study));
 
   // Turn 3: a correction after the preview. The preview total must follow the corrected minutes before approval.
   await send(page, '60分ではなく90分に変更してください');
@@ -130,15 +148,15 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
   expect(await previewTotalMinutes(page)).toBe(90);
   await capture('turn3-correction-60-to-90');
+  // The preview and the correction are only shown: no study plan may be saved before its approval.
+  holds(notSavedYet(await events(), study));
 
-  // Approve the corrected study preview through the existing approval: saved once, and only that.
+  // Approve the corrected study preview through the existing approval. The study blocks are then saved (how
+  // many is the planner's choice, so the count is not pinned); the fixed event is not.
   await approveShownPreview(page);
-  await expect.poll(async () => JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ゼミ資料');
-  expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toContain('ピアノ教室');
-  const seminarEvents = async () => (await firestoreDocuments(request, 'schedule_events'))
-    .filter((document) => JSON.stringify(document.fields).includes('ゼミ資料')).length;
-  const savedSeminar = await seminarEvents();
-  expect(savedSeminar).toBeGreaterThanOrEqual(1);
+  await expect.poll(async () => savedAtLeastOnce(await events(), study)).toEqual([]);
+  const savedStudy = placement(savedFor(await events(), study));
+  holds(notSavedYet(await events(), fixed));
 
   // Turn 4: a fixed event with an explicit date and time, registered as an event rather than study work. As in
   // Stable V5 (current-contract-v5 "Fixed-event registration"), the registration preview carries only the fixed
@@ -153,6 +171,9 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   await expect(conversation).not.toContainText(FAILURE_NOTICE);
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
   expect(await previewTotalMinutes(page)).toBe(60);
+  // Registering a fixed event neither saves it before approval nor touches the saved study blocks.
+  holds(notSavedYet(await events(), fixed));
+  holds(unchangedSince(savedStudy, await events(), study));
 
   // Turn 5: a consultation that changes nothing, with the return mid-turn. Reload once the Worker has accepted
   // the turn; the saved receipt must bring the reply back by reading the same job, never by another AI run.
@@ -169,15 +190,22 @@ test('VNext + real model through the Worker: preview, correction, fixed event, c
   // The consultation left the registration preview as it was, and nothing of it is saved before approval.
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible({ timeout: 30_000 });
   expect(await previewTotalMinutes(page)).toBe(60);
-  expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toContain('ピアノ教室');
+  holds(notSavedYet(await events(), fixed));
+  holds(unchangedSince(savedStudy, await events(), study));
 
-  // Approve the registration: the event is saved, and the study plan is neither lost nor saved twice.
+  // Approve the registration: the fixed event is saved exactly once, on the stated day and hours, and the study
+  // blocks stay exactly as saved. After a reload both are still the same documents at the same times.
   await approveShownPreview(page);
-  await expect.poll(async () => JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ピアノ教室');
-  expect(await seminarEvents()).toBe(savedSeminar);
+  await expect.poll(async () => savedExactlyOnce(await events(), fixed)).toEqual([]);
+  const savedFixed = savedFor(await events(), fixed);
+  expect(savedFixed.map(({ date, startTime, endTime }) => ({ date, startTime, endTime })))
+    .toEqual([{ date: fixed.date, startTime: '19:00', endTime: '20:00' }]);
+  holds(unchangedSince(savedStudy, await events(), study));
   await page.reload();
   await openPlanning(page);
-  expect(await seminarEvents()).toBe(savedSeminar);
+  holds(savedExactlyOnce(await events(), fixed));
+  holds(unchangedSince(placement(savedFixed), await events(), fixed));
+  holds(unchangedSince(savedStudy, await events(), study));
 
   // Trace reached Firestore through the Worker, and no turn ended in failure. The per-document sizes show what
   // the real model's outputs looked like once they had crossed the Worker and the trace boundary.

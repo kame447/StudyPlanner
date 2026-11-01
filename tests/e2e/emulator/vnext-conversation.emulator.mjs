@@ -1,4 +1,5 @@
 import { expect, test } from '../support/fixed-clock.mjs';
+import { emulatorUserId, notSavedYet, placement, savedAtLeastOnce, savedExactlyOnce, savedFor, unchangedSince } from '../support/schedule-event-ledger.mjs';
 
 // Runs on the shared fixed clock (Asia/Tokyo, E2E_FIXED_NOW): the preview needs capacity left in the week, so a
 // live clock late on Sunday makes turn 2 correctly answer insufficient_capacity and never call the renderer.
@@ -99,6 +100,10 @@ async function firestoreDocuments(request, collection) {
 
 test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approval → save → reload → failure', async ({ page, request }) => {
   const traceBaseline = await traceOutcomes(request);
+  // Saved events are judged for this account and this target only (the emulator holds other specs' events).
+  const study = { userId: await emulatorUserId(request, { email: email(), password: password() }), title: 'ゼミ資料' };
+  const events = () => firestoreDocuments(request, 'schedule_events');
+  const holds = (problems) => expect(problems).toEqual([]);
   await signIn(page, PLANNING);
   await openPlanning(page);
 
@@ -141,21 +146,23 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   const preview = page.getByRole('dialog', { name: '計画プレビュー' });
   await expect(preview).toBeVisible();
   await expect(preview.locator('.ai-planning-draft-block')).toHaveCount(1);
+  // Shown, not yet approved: nothing of it is saved.
+  holds(notSavedYet(await events(), study));
   await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
   await preview.getByRole('button', { name: 'この内容で保存' }).click();
   await expect(preview).toBeHidden();
 
   // Saved in Firestore by the existing plan repository (schedule_events), and traced through the Worker.
-  await expect.poll(async () => JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).toContain('ゼミ資料');
+  await expect.poll(async () => savedAtLeastOnce(await events(), study)).toEqual([]);
+  const savedStudy = placement(savedFor(await events(), study));
   await expect.poll(async () => (await firestoreDocuments(request, 'weekly_planning_trace_sessions')).length).toBeGreaterThan(0);
 
   // Reload: the VNext conversation resumes from its own checkpoint, and the plan was saved exactly once.
   await page.reload();
   await openPlanning(page);
   await expect(page.locator('.ai-planning-conversation')).toContainText('ゼミ資料を60分');
-  const seminarEvents = async () => (await firestoreDocuments(request, 'schedule_events'))
-    .filter((document) => JSON.stringify(document.fields).includes('ゼミ資料')).length;
-  expect(await seminarEvents()).toBe(1);
+  holds(savedExactlyOnce(await events(), study));
+  holds(unchangedSince(savedStudy, await events(), study));
 
   // A failed provider call: the native reading fails, then the recovery renderer is asked to explain it.
   // Failing that too must end the turn with VNext's system notice, apply nothing and save nothing.
@@ -169,7 +176,7 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
     .toContainText('うまく反映できませんでした。もう一度、言い方を変えて教えてください。');
   await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
   expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toContain('英語の音読');
-  expect(await seminarEvents()).toBe(1);
+  holds(unchangedSince(savedStudy, await events(), study));
 
   // Trace (through the Worker into Firestore) records each turn's own result: facts without a request to
   // plan as V5's needs_scope, the previewed turn as preview_ready, the failed one as failed, never idle.
