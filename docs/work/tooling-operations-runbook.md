@@ -83,7 +83,13 @@ The temporary preview upload succeeded, but direct Python HTTP readiness request
 
 The next failure was an immediate redirect-related TypeError from the Worker's outbound fetch, normalized by the adapter as `unavailable/network`. The configured runtime rejected `redirect: 'error'`. Use `redirect: 'manual'` and reject non-2xx responses without following Location. This preserves credential isolation; switching to automatic redirects is not an acceptable fix. Redirect regression tests cover 301/302/303/307/308.
 
-Prerequisites are an existing authenticated Wrangler session and `OPENROUTER_API_KEY` registered as a Secret on the selected Worker. The optional smoke uses a short-lived authenticated remote dev script and a fixed synthetic authorization input; it does not publish production code or change routing. Never export the Secret or print raw provider responses, exception messages or headers. The harness stops the development server and removes temporary files on completion. Verify an actual validated decision and usage, not just preview upload HTTP 200; record gate abstention separately from successful transport. See README for the invocation.
+Prerequisites are an existing authenticated Wrangler session and `OPENROUTER_API_KEY` registered as a Secret on the selected Worker. The optional smoke uses a short-lived authenticated remote dev script and a fixed synthetic authorization input; it does not publish production code or change routing. Never export the Secret or print raw provider responses, exception messages or headers. The harness stops the development server and removes temporary files on completion. Verify an actual validated decision and usage, not just preview upload HTTP 200; record gate abstention separately from successful transport. The current pinned invocation is kept here rather than in the public-facing project README. It requires an authenticated Wrangler session and the existing Worker Secret, and does not prove that a live API test passed:
+
+```bash
+npm exec --yes --package=wrangler@4.151.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
+```
+
+The pin is owned by `package.json` and verified by `scripts/ci/worker-toolchain-security.test.mjs`. Do not silently use an older CLI version.
 
 ## Wrangler production dry-run completes but the process does not exit
 

@@ -21,9 +21,9 @@ describe('Worker toolchain security and launcher pin contract', () => {
     expect(source).toContain('return loadVerifiedWrangler({');
   });
 
-  it('keeps the executable README example aligned with the pin', () => {
-    const readme = fs.readFileSync(new URL('README.md', root), 'utf8');
-    expect(readme).toContain(`--package=wrangler@${pinnedVersion} -- node scripts/jev-cloud-smoke.mjs`);
+  it('keeps the executable internal runbook example aligned with the pin', () => {
+    const runbook = fs.readFileSync(new URL('docs/work/tooling-operations-runbook.md', root), 'utf8');
+    expect(runbook).toContain(`--package=wrangler@${pinnedVersion} -- node scripts/jev-cloud-smoke.mjs`);
   });
 
   it('uses the patched transport from the real Miniflare installation', () => {
