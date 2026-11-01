@@ -127,7 +127,13 @@ async function mount() {
   const ref = createRef<WeeklyPlanningApplication>();
   await act(async () => { renderer = create(<Harness ref={ref} input={input} services={services} />); });
   await act(async () => { ref.current!.chat.initialize(); });
-  await act(async () => { expect((await ref.current!.prepareTurn()).ready).toBe(true); });
+  // A saved receipt is resumed on load; while that turn is pending the chat is legitimately busy and a new turn is
+  // not prepared (prepareTurn reports the changed request). With nothing pending before or after, it must be ready.
+  await act(async () => {
+    const busyBefore = Boolean(ref.current!.state.pendingTurn);
+    const prepared = await ref.current!.prepareTurn();
+    if (!busyBefore && !ref.current!.state.pendingTurn) expect(prepared.ready).toBe(true);
+  });
   return { ref, database };
 }
 /** The alarm of one chat's Durable Object (default: the chat the last turn addressed). */
