@@ -37,4 +37,3 @@ export function readWeeklyPlanningVNextExperimentalSession(
       presentedQuestion: null, preview: null, messages: [] },
   };
 }
-
