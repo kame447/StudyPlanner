@@ -17,14 +17,15 @@ const empty = (): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [
 /** Translate only the presented slot. Projected work is not misrepresented as a stored fact. */
 function contextualInput(input: WeeklyPlanningVNextInterpretationInput, requestId: string): WeeklyPlanningSemanticNormalizerInputV5 | null {
   const question = input.presentedQuestion;
-  if (input.supplementalContext || !question || input.presentedText === null || input.projection.graphRevision !== input.state.graph.revision
+  if (input.supplementalContext || !question || question.taskId === null || input.presentedText === null || input.projection.graphRevision !== input.state.graph.revision
     || !input.projection.questions.some(item => item.key === question.key)
     || !['missing_effort_estimate', 'quantity_role_unresolved'].includes(question.code)
     || question.effortMeasurement === 'session_duration') return null;
   const resolver = createVNextLineageResolver(input.state.graph);
   const graph = withCurrentVNextReferences(input.state.graph, id => resolver.leafOf(id) ?? id);
   const active = new Set(graph.factLifecycles.filter(item => item.status === 'active').map(item => item.factId));
-  const task = graph.tasks.find(item => item.id === resolver.leafOf(question.taskId));
+  const taskId = resolver.leafOf(question.taskId);
+  const task = graph.tasks.find(item => item.id === taskId);
   if (!task) return null;
   const unit = question.forWork ? computeVNextWorkUnits(graph, input.state.workRelations).flatMap(owner => owner.units)
     .find(item => item.workLineageId === question.forWork!.workLineageId) : null;

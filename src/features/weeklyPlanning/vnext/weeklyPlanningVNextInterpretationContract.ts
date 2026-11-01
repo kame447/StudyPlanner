@@ -16,9 +16,9 @@ import type {
   WeeklyPlanningVNextState,
 } from './weeklyPlanningVNextTypes';
 
-/** Current-turn meaning only: a request to preview registration, never permission to save. */
+/** Supported additive V5 acts: optional-work decline or registration request, never permission to save. */
 export interface VNextEventRegistrationAct {
-  kind: 'request_event_registration';
+  kind: 'request_event_registration' | 'decline_additional_work';
   /** null follows V5's current-turn task selection; explicit refs never degrade to null. */
   targetRef: VNextFactRef | null;
 }

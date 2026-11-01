@@ -14,6 +14,7 @@ export function presentWeeklyPlanningVNextQuestion(
   state: WeeklyPlanningVNextState,
   question: VNextQuestion,
 ): WeeklyPlanningVNextQuestionPresentation {
+  if (question.optionalInvitation) return { text: question.optionalInvitation.message, optionLabels: {} };
   const { graph } = state;
   const resolver = createVNextLineageResolver(graph);
   const factOf = (factId: string) => graph.workloads.find((workload) => workload.id === resolver.leafOf(factId));

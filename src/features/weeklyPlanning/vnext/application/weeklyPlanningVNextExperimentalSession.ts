@@ -26,7 +26,7 @@ import type { WeeklyPlanDraftBlock } from '../../types';
 import type { WeeklyDraftCandidate } from '../../scheduling/weeklyDraftCandidateGenerator';
 import { projectWeeklyPlanningVNext, type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
-  fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts,
+  fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts, decideWeeklyPlanningStableDialogueV5,
   type SemanticConversationActV5, type WeeklyPlanningFixedEventCommunicationFacts } from '../weeklyPlanningVNextV5Boundary';
 import { createVNextLineageResolver, withCurrentVNextReferences, vnextUnitIdentity } from '../weeklyPlanningVNextWorkIdentity';
 import type { Actual, MonthEvent, Plan, ScheduleTemplate } from '../../../../types/domain';
@@ -63,6 +63,7 @@ import {
   type WeeklyPlanningStableV5DialogueRenderer,
 } from '../weeklyPlanningVNextV5Boundary';
 import { resolveWeeklyPlanningVNextTurnDelta } from './weeklyPlanningVNextAnswerBinding';
+import { createVNextOptionalInvitation } from './weeklyPlanningVNextOptionalInvitation';
 import { createWeeklyPlanningVNextRenderInput, VNEXT_RECENT_MESSAGE_LIMIT } from './weeklyPlanningVNextDialogue';
 import {
   migrateWeeklyPlanningV5GraphToVNextSession,
@@ -249,15 +250,12 @@ function shownPreview(
   currentTurnId: string,
   semanticChanged: boolean,
   previousQuestionSlot: string | undefined,
+  declinedAdditionalWork = false,
 ): { preview: WeeklyPlanningVNextShownPreview | null; unplacedOwnerKeys: string[]; previewBlockedBy: string[];
-  draftCandidates?: WeeklyDraftCandidate[]; authorizationRequired?: boolean; registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts } {
+  draftCandidates?: WeeklyDraftCandidate[]; authorizationRequired?: boolean; registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts;
+  optionalQuestion?: VNextQuestion | null } {
   const compiled = compilePreviewInput(scope, ports, calendar, state, projection);
   if (compiled.status !== 'compiled') return { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] };
-  if (!compiled.compilation.input) {
-    const codes = compiled.compilation.issues.filter((issue) => issue.blocking).map((issue) => issue.code);
-    return { preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys,
-      previewBlockedBy: compiled.compilation.status === 'empty' ? [] : [...new Set(codes.length ? codes : [compiled.compilation.status])] };
-  }
   // V5 projects explicit registrations at their own fixed intervals before ordinary work placement.
   // Consent applies only to movable study work. The mixed/busy-only/save controls in
   // EventRegistration integration prevent registration from becoming work or granting study consent.
@@ -267,14 +265,24 @@ function shownPreview(
     graph: currentGraph,
     compilation: compiled.compilation, registrationActs, currentTurnId,
   });
-  // V5 owns busy-only closure and manual-entry guidance too. Its registration preview/omission
-  // path has priority. No new invitation, decline act, closed state or save capability is inferred.
-  // EventRegistration integration maps the same V5 inputs and the null/movable-work controls.
+  // V5 owns invitation closure and manual-entry guidance. Registration/omission has priority;
+  // the compilation guards required questions and movable work before an optional invitation.
   const handoff = registration.candidates.length || registration.unregistered.length ? null : fixedEventOnlyInteractionStatus({
     graph: currentGraph, compilation: compiled.compilation, semanticChanged, previousQuestionSlot,
-    declinedAdditionalWork: false, previousOptionalInvitationClosed: false,
+    declinedAdditionalWork, previousOptionalInvitationClosed: state.optionalInvitationClosed,
     requestedEventRegistration: registrationActs.some(act => act.kind === 'request_event_registration'),
   });
+  // V5 ResponseRouting:239 uses this pure dialogue decision after registration/closure routing.
+  // V5 owns both eligibility and wording; a required task question never becomes optional here.
+  const dialogue = decideWeeklyPlanningStableDialogueV5(compiled.compilation);
+  const optionalQuestion = !handoff && !registration.candidates.length && !registration.unregistered.length
+    && dialogue.status === 'nothing_to_schedule' ? createVNextOptionalInvitation(state) : null;
+  if (!compiled.compilation.input) {
+    const codes = compiled.compilation.issues.filter((issue) => issue.blocking).map((issue) => issue.code);
+    return { preview: null, unplacedOwnerKeys: compiled.unplacedOwnerKeys,
+      previewBlockedBy: compiled.compilation.status === 'empty' ? [] : [...new Set(codes.length ? codes : [compiled.compilation.status])],
+      optionalQuestion, registrationCommunication: handoff ? fixedEventCommunicationFacts(handoff) : undefined };
+  }
   const work = compiled.compilation.input.movableWorkItems;
   const authorizationRequired = !authorized && work.length > 0;
   const scheduled = !authorizationRequired && work.length > 0 ? scheduleWeeklyPlanningStableV5Preview({
@@ -298,7 +306,7 @@ function shownPreview(
   const previewId = blocks[0]?.behaviorMetadata?.previewMetadata?.previewId;
   return { preview: previewId ? { previewId, graphRevision: state.graph.revision, blocks } : null,
     draftCandidates: candidates, unplacedOwnerKeys: compiled.unplacedOwnerKeys, previewBlockedBy: [],
-    authorizationRequired, registrationCommunication };
+    authorizationRequired, registrationCommunication, optionalQuestion };
 }
 
 /** Notices for turns that changed nothing the renderer could explain: a failure, a stale turn, or a blocked preview. */
@@ -349,14 +357,21 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   // One calendar snapshot per turn: the observed pace before and after the turn, and the preview, agree.
   const calendar = ports.calendar();
   const pace = observedMemoryPace(state, calendar);
-  const before = projectWeeklyPlanningVNext(state, pace);
+  let before: WeeklyPlanningVNextProjection = projectWeeklyPlanningVNext(state, pace);
   const presented = read.checkpoint.presentedQuestion;
+  // Reconstruct only the saved invitation's identity, not an unshown question. V5's final
+  // compilation below owns asking; the stored presentation owns what this reply answers.
+  const invitation = !state.optionalInvitationClosed && !before.questions.length ? createVNextOptionalInvitation(state) : null;
+  if (invitation && presented?.questionKey === invitation.key && presented.graphRevision === state.graph.revision) {
+    before = { ...before, questions: [invitation] };
+  }
   const presentationFresh = presented !== null && presented.graphRevision === params.shownRevision;
   const presentedQuestion = presentationFresh && presented.graphRevision === state.graph.revision
     ? before.questions.find((question) => question.key === presented.questionKey) ?? null
     : null;
 
-  const previousQuestionSlot = presentedQuestion ? `stable_v5:${presentedQuestion.code}` : undefined;
+  const previousQuestionSlot = presentedQuestion && (presentedQuestion.code !== 'missing_schedulable_work'
+    || presentedQuestion.optionalInvitation) ? `stable_v5:${presentedQuestion.code}` : undefined;
 
   // The model reads dates against the horizon the state currently has (a stated planning window moves it).
   const horizon = schedulingContext(scope, ports, state);
@@ -453,19 +468,28 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     hadMachinePendingQuestion: before.questions.length > 0, semanticChanged,
     provisionalTimeboxRequested: delta?.defer.some(item => item.allocation === 'provisional_timebox') ?? false });
   state = authorization.state;
-  const projection = projectWeeklyPlanningVNext(state, observedMemoryPace(state, calendar));
-  const question = projection.questions[0] ?? null;
+  let projection: WeeklyPlanningVNextProjection = projectWeeklyPlanningVNext(state, observedMemoryPace(state, calendar));
+  let question = projection.questions[0] ?? null;
   // A shown preview belongs to its revision: while the revision is current it is
   // exactly what the user saw (and may have approved), so it is not made again.
   const shown = read.checkpoint.preview;
   const made = question || !accepted
     ? { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] }
-    : shownPreview(scope, ports, calendar, state, projection, authorization.authorized, registrationActs, params.turnId, semanticChanged, previousQuestionSlot);
+    : shownPreview(scope, ports, calendar, state, projection, authorization.authorized, registrationActs, params.turnId, semanticChanged, previousQuestionSlot,
+      registrationActs.some(act => act.kind === 'decline_additional_work'));
+  const optionalQuestion = 'optionalQuestion' in made ? made.optionalQuestion : null;
+  if (!question && (optionalQuestion || !accepted && before.questions[0]?.optionalInvitation)) {
+    question = optionalQuestion ?? before.questions[0];
+    projection = { ...projection, questions: [question] };
+  }
   const authorizationRequired = !question && !(shown && shown.graphRevision === state.graph.revision)
     && 'authorizationRequired' in made && made.authorizationRequired === true;
   const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision
     ? { preview: shown, unplacedOwnerKeys: made.unplacedOwnerKeys, previewBlockedBy: [] }
     : made;
+  // Mirrors V5 CompatibilityState's needs_scope/no-question closure at the application layer,
+  // like draftGenerationIntent: one state, one checkpoint commit, no mutation on a rejected turn.
+  if (accepted) state = { ...state, optionalInvitationClosed: !question && !preview };
   // Everything the user is told about the plan comes from the renderer; only a blocked preview and a
   // failed turn the renderer could not verify are notices. What the reply shows decides, once, which
   // question the user's next words answer (it is not the question the state still asks): a question it

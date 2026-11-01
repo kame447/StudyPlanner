@@ -92,7 +92,8 @@ function withLearningStrategyRecords(value: unknown): unknown {
 }
 
 function validState(value: unknown, conversationId: string): value is WeeklyPlanningVNextState {
-  if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals', 'learningStrategyProposalRecords', 'draftGenerationIntent'])
+  if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals', 'learningStrategyProposalRecords', 'draftGenerationIntent', 'optionalInvitationClosed'])
+    || typeof value.optionalInvitationClosed !== 'boolean'
     || typeof value.draftGenerationIntent !== 'string'
     || !['not_requested', 'assistant_suggested', 'user_authorized'].includes(value.draftGenerationIntent)
     || value.version !== WEEKLY_PLANNING_VNEXT_STATE_VERSION || !isRecord(value.graph)
@@ -180,7 +181,9 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
     // facts and raw storage, but invalidate that derived preview; only a new request can replace it.
     const missingAuthorization = isRecord(value.vnext.state) && !('draftGenerationIntent' in value.vnext.state);
     const upgraded = missingAuthorization ? { ...value.vnext.state as Record<string, unknown>, draftGenerationIntent: 'not_requested' } : value.vnext.state;
-    const state = withLearningStrategyRecords(withDeferralAllocation(withStatedActivity(upgraded)));
+    const withInvitation = isRecord(upgraded) && !('optionalInvitationClosed' in upgraded)
+      ? { ...upgraded, optionalInvitationClosed: false } : upgraded;
+    const state = withLearningStrategyRecords(withDeferralAllocation(withStatedActivity(withInvitation)));
     if (!validState(state, value.conversationId) || !validPreview(value.vnext.preview)
       || !validMessages(value.vnext.messages)) return null;
     const presented = value.vnext.presentedQuestion;

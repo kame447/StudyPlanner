@@ -51,6 +51,15 @@ export interface RealApiFixedEventRegistrationOracle {
   requireBusyInterval?: boolean;
 }
 
+export interface RealApiOptionalInvitationOracle {
+  question: 'optional' | 'required' | 'none';
+  conversationActKinds: readonly string[];
+  statusReason: string | null;
+  closed: boolean;
+  candidateCount?: number;
+  saveWritesBeforeApproval: number;
+}
+
 export interface RealApiTurnOracle {
   /** false means this turn is deliberately excluded from VNext success counts. */
   inVNextScope: boolean;
@@ -84,6 +93,8 @@ export interface RealApiTurnOracle {
   /** Some regression cases intentionally isolate a different semantic failure. */
   checkTemporal?: boolean;
   fixedEventRegistration?: RealApiFixedEventRegistrationOracle;
+  /** Same typed interaction outcome is asserted by the V5 and VNext runners. */
+  optionalInvitation?: RealApiOptionalInvitationOracle;
 }
 
 export interface RealApiConversationTurn {
@@ -354,6 +365,50 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
       { userText: '1枚あたりだいたい8分くらいです', oracle: ready(64,
         [workload('slides', 'scope_total', 20, 'custom', '枚'), workload('slides', 'completed', 12, 'custom', '枚')],
         [rate('slides', 8, 'custom', '枚')], [], { checkTemporal: false, expectedTaskCount: 1, sameWorkloadPairs: [[0, 1]], projectedWorkloads: [workload('slides', 'remaining', 8, 'custom', '枚')] }) },
+    ],
+  },
+  {
+    id: 'optional-invitation-busy-decline-reopen', source: 'V5 HumanScale decline controls / #926 optional-invitation parity',
+    description: 'Busy-only information opens an optional invitation; typed decline closes it; new work reopens planning.',
+    turns: [
+      { userText: '11月2日から8日の予定です。11月3日16時から17時半は勉強できません。', oracle: {
+        ...ready(0, [], [], [], { projectedMinutes: null, checkTemporal: false }),
+        questionCode: 'missing_schedulable_work',
+        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
+        optionalInvitation: { question: 'optional', conversationActKinds: [], statusReason: null, closed: false, candidateCount: 0, saveWritesBeforeApproval: 0 },
+      } },
+      { userText: 'ほかの作業は追加しません。', oracle: {
+        ...ready(0, [], [], [], { projectedMinutes: null, checkTemporal: false }),
+        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
+        optionalInvitation: { question: 'none', conversationActKinds: ['decline_additional_work'], statusReason: 'no_additional_work', closed: true, candidateCount: 0, saveWritesBeforeApproval: 0 },
+      } },
+      { userText: 'わかりました。', oracle: {
+        ...ready(0, [], [], [], { projectedMinutes: null, checkTemporal: false }),
+        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
+        optionalInvitation: { question: 'none', conversationActKinds: [], statusReason: 'no_additional_work', closed: true, candidateCount: 0, saveWritesBeforeApproval: 0 },
+      } },
+      { userText: 'やっぱり英単語を20語、1語2分で勉強する計画をお願いします。', oracle: {
+        ...ready(40, [workload('vocabulary', 'target', 20, 'word', '語')],
+          [rate('vocabulary', 2, 'word', '語', 'target')], [], { expectedTaskCount: 1 }),
+        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
+        optionalInvitation: { question: 'none', conversationActKinds: [], statusReason: null, closed: false, saveWritesBeforeApproval: 0 },
+      } },
+    ],
+  },
+  {
+    id: 'optional-decline-does-not-close-required-effort', source: 'V5 HumanScale decline-vs-required-question negative control / #926',
+    description: 'The model must read the decline-like turn as decline_additional_work while preserving the required effort question; omitting that act fails the oracle.',
+    turns: [
+      { userText: '数学の問題を10問やりたいです。', oracle: {
+        ...q('missing_effort_estimate', [workload('math', 'target', 10, 'problem', '問')]),
+        questionForWork: workload('math', 'target', 10, 'problem', '問'),
+        optionalInvitation: { question: 'required', conversationActKinds: [], statusReason: null, closed: false, candidateCount: 0, saveWritesBeforeApproval: 0 },
+      } },
+      { userText: 'ほかの作業は追加しません。', oracle: {
+        ...q('missing_effort_estimate', [workload('math', 'target', 10, 'problem', '問')]),
+        questionForWork: workload('math', 'target', 10, 'problem', '問'),
+        optionalInvitation: { question: 'required', conversationActKinds: ['decline_additional_work'], statusReason: null, closed: false, candidateCount: 0, saveWritesBeforeApproval: 0 },
+      } },
     ],
   },
   {

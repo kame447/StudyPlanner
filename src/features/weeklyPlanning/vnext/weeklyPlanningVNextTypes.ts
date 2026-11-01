@@ -90,6 +90,8 @@ export interface WeeklyPlanningVNextState {
   learningStrategyProposalRecords: WeeklyPlanningLearningStrategyProposalRecord[];
   /** Durable application permission, never inferred from complete facts or a shown preview. */
   draftGenerationIntent: PlanningDraftGenerationIntent;
+  /** V5's optional invitation ended; unchanged turns do not invite again. */
+  optionalInvitationClosed: boolean;
 }
 
 export type VNextPlanningIntent = WeeklyPlanningSemanticDocumentV5['planningIntent'];
@@ -399,8 +401,10 @@ export interface VNextQuestionOption {
   delta: VNextTurnDelta;
 }
 
-export interface VNextQuestion {
+export interface VNextTaskQuestion {
   code: VNextQuestionCode;
+  /** Owner-bound questions are required; the conversation invitation is the separate union arm. */
+  optionalInvitation?: undefined;
   proposal?: WeeklyPlanningLearningStrategyProposalRecord;
   effortMeasurement?: 'total_duration' | 'session_duration';
   /** Deterministic from code, owner, subject lineages and work amount. */
@@ -420,6 +424,13 @@ export interface VNextQuestion {
   } | null;
   options: VNextQuestionOption[];
 }
+
+export type VNextQuestion = VNextTaskQuestion | (Omit<VNextTaskQuestion, 'taskId' | 'forWork' | 'optionalInvitation' | 'code'> & {
+  code: 'missing_schedulable_work';
+  taskId: null;
+  forWork: null;
+  optionalInvitation: { message: string; intent: string };
+});
 
 export type VNextEstimateBasis =
   | 'intrinsic_duration'
@@ -458,7 +469,7 @@ export interface VNextOwnerProjection {
   componentId: string | null;
   status: 'ready' | 'question' | 'nothing_to_schedule';
   work: VNextWorkItem[];
-  question: VNextQuestion | null;
+  question: VNextTaskQuestion | null;
   /** Explicitly accepted measurement trial; V5's calibration compiler owns its work item. */
   calibration?: { workloadFactId: string; sessionMinutes: number };
 }

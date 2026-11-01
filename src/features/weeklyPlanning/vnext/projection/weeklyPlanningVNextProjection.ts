@@ -15,7 +15,7 @@ import type {
   VNextEffortEstimateFact,
   VNextEstimateBasis,
   VNextOwnerProjection,
-  VNextQuestion,
+  VNextTaskQuestion,
   VNextQuestionCode,
   VNextQuestionOption,
   VNextTurnDelta,
@@ -133,7 +133,7 @@ function amountOption(optionId: string, targetFactId: string, amount: number): V
   };
 }
 
-function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; componentId: string | null }): VNextQuestion {
+function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; componentId: string | null }): VNextTaskQuestion {
   const base = {
     code: issue.code,
     key: questionKey({
@@ -272,7 +272,7 @@ function ownerQuestion(
   owner: OwnerWorkUnits,
   code: VNextQuestionCode,
   lineageIds: string[],
-  extra: { values?: number[]; forWork?: VNextQuestion['forWork']; options?: VNextQuestionOption[] } = {},
+  extra: { values?: number[]; forWork?: VNextTaskQuestion['forWork']; options?: VNextQuestionOption[] } = {},
 ): VNextOwnerProjection {
   return {
     ownerKey: owner.ownerKey,
@@ -447,7 +447,7 @@ function missingWorkOwner(context: ProjectionContext, taskId: string): VNextOwne
 export function projectWeeklyPlanningVNext(
   state: WeeklyPlanningVNextState,
   observedMemoryPace: WeeklyPlanningVNextObservedMemoryPace = {},
-): WeeklyPlanningVNextProjection {
+): WeeklyPlanningVNextProjection & { questions: VNextTaskQuestion[]; deferredQuestions: VNextTaskQuestion[] } {
   const graph = state.graph;
   const resolver = createVNextLineageResolver(graph);
   const activeWorkloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads);

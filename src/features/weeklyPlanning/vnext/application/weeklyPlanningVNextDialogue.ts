@@ -101,7 +101,10 @@ export function createWeeklyPlanningVNextRenderInput(params: {
     actionKind,
     questionCode: question?.code ?? null,
     questionTarget: targetFactId ? questionTargetForStableV5Dialogue({ planningInformation, targetFactId }) : null,
-    questionIntent: question && targetFactId ? questionIntent(state, question, planningInformation, targetFactId) : null,
+    questionIntent: question?.optionalInvitation
+      ? questionIntentForStableV5Dialogue({ questionCode: question.code, questionTarget: null, planningInformation,
+        effortMeasurement: question.optionalInvitation.intent })
+      : question && targetFactId ? questionIntent(state, question, planningInformation, targetFactId) : null,
     previewPromotionControlLabel: preview ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL : null,
     requiredLabels: [...new Set([...requiredLabelsForStableV5Dialogue({ planningInformation, targetFactId,
       includePreviewPromotionControl: preview !== null }), ...optionLabels])],

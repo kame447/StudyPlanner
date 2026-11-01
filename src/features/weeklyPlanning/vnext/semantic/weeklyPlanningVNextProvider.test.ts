@@ -62,6 +62,19 @@ function changedUnitInput(): WeeklyPlanningVNextInterpretationInput {
 }
 
 describe('VNext native provider', () => {
+  it('decodes V5 optional decline alongside registration and rejects every other new act kind', async () => {
+    const raw = { ...output(), conversationActs: [{ kind: 'decline_additional_work', targetRef: null },
+      { kind: 'request_event_registration', targetRef: null }] };
+    expect(decodeVNextProviderOutput(raw)).toMatchObject({ status: 'decoded', reading: { conversationActs: raw.conversationActs } });
+    const request = input([JSON.stringify(raw)]);
+    expect(await createWeeklyPlanningVNextProviderInterpreter()(request)).toMatchObject({ status: 'interpreted', conversationActs: raw.conversationActs,
+      metrics: { calls: 1, repairs: 0 } });
+    expect(decodeVNextProviderOutput({ ...raw, conversationActs: [{ kind: 'topic_shift', targetRef: null }] }).status).toBe('rejected');
+    const schema = JSON.stringify(VNEXT_PROVIDER_RESPONSE_FORMAT);
+    expect(schema).toContain('decline_additional_work: optional only');
+    expect(buildWeeklyPlanningVNextProviderMessages(request)[0].content).toContain('never dismiss a required question');
+  });
+
   it('repairs a study activity once using the shared requirement without rewriting independent work', async () => {
     const context = { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' },
       purpose: 'self_study', contextLabel: null, activityKind: 'memorization' };

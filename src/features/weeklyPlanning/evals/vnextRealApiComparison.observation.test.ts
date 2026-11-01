@@ -226,6 +226,12 @@ interface V5TurnObservation {
   wrongRejection: boolean;
   repeatedQuestionCount: number;
   oracleDifferences: string[];
+  optionalInvitationKind: 'optional' | 'required' | 'none';
+  conversationActKinds: string[];
+  communicationStatusReason: string | null;
+  optionalInvitationClosed: boolean;
+  finalCandidateCount: number;
+  saveWritesBeforeApproval: number;
 }
 
 interface VNextTurnObservation extends V5TurnObservation {
@@ -291,6 +297,12 @@ function questionCode(questionContext: unknown): string | null {
   const targetSlot = (questionContext as Record<string, unknown>).targetSlot;
   if (typeof targetSlot !== 'string') return null;
   return targetSlot.startsWith('stable_v5:') ? targetSlot.slice('stable_v5:'.length) : targetSlot;
+}
+
+function presentedV5QuestionCode(questionContext: unknown): string | null {
+  if (typeof questionContext !== 'object' || questionContext === null
+    || !('presentation' in questionContext) || !questionContext.presentation) return null;
+  return questionCode(questionContext);
 }
 
 function observedFacts(graph: WeeklyPlanningFactGraphV5): ObservedFacts {
@@ -569,7 +581,8 @@ function compareFixedEventRegistrationOracle(
 ): string[] {
   if (!oracle) return [];
   const differences: string[] = [];
-  const finalActs = interpretation?.status === 'interpreted' ? interpretation.conversationActs ?? [] : [];
+  const finalActs = interpretation?.status === 'interpreted'
+    ? (interpretation.conversationActs ?? []).filter(act => act.kind === 'request_event_registration') : [];
   if ((finalActs.length > 0) !== oracle.requested || (oracle.requested && finalActs.length !== 1)) {
     differences.push(`registration acts expected=${oracle.requested ? 1 : 0} observed=${finalActs.length}`);
   }
@@ -593,6 +606,51 @@ function compareFixedEventRegistrationOracle(
     differences.push('study candidate overlaps fixed event interval');
   }
   return differences;
+}
+
+type OptionalInvitationObservation = Pick<V5TurnObservation, 'optionalInvitationKind' | 'conversationActKinds'
+  | 'communicationStatusReason' | 'optionalInvitationClosed' | 'finalCandidateCount' | 'saveWritesBeforeApproval'>;
+
+function compareOptionalInvitationOracle(
+  oracle: RealApiTurnOracle['optionalInvitation'],
+  observed: OptionalInvitationObservation,
+): string[] {
+  if (!oracle) return [];
+  const differences: string[] = [];
+  if (observed.optionalInvitationKind !== oracle.question) {
+    differences.push(`invitation question expected=${oracle.question} observed=${observed.optionalInvitationKind}`);
+  }
+  if (JSON.stringify(observed.conversationActKinds) !== JSON.stringify(oracle.conversationActKinds)) {
+    differences.push(`conversation act kinds expected=${oracle.conversationActKinds.join(',') || 'none'} observed=${observed.conversationActKinds.join(',') || 'none'}`);
+  }
+  if (observed.communicationStatusReason !== oracle.statusReason) {
+    differences.push(`communication status reason expected=${oracle.statusReason ?? 'none'} observed=${observed.communicationStatusReason ?? 'none'}`);
+  }
+  if (observed.optionalInvitationClosed !== oracle.closed) {
+    differences.push(`invitation closed expected=${oracle.closed} observed=${observed.optionalInvitationClosed}`);
+  }
+  if (oracle.candidateCount !== undefined && observed.finalCandidateCount !== oracle.candidateCount) {
+    differences.push(`candidate count expected=${oracle.candidateCount} observed=${observed.finalCandidateCount}`);
+  }
+  if (observed.saveWritesBeforeApproval !== oracle.saveWritesBeforeApproval) {
+    differences.push(`save writes before approval expected=${oracle.saveWritesBeforeApproval} observed=${observed.saveWritesBeforeApproval}`);
+  }
+  return differences;
+}
+
+function observedTypedConversationActKinds(calls: readonly RawProviderCallObservation[]): string[] {
+  const semanticCalls = calls.filter(call => call.request.purpose === 'weekly_planning_semantic_normalizer');
+  const finalCall = semanticCalls[semanticCalls.length - 1];
+  if (!finalCall?.rawResponseText) return [];
+  try {
+    const value: unknown = JSON.parse(finalCall.rawResponseText);
+    if (typeof value !== 'object' || value === null || !('conversationActs' in value)
+      || !Array.isArray(value.conversationActs)) return [];
+    return value.conversationActs.flatMap((act: unknown) => typeof act === 'object' && act !== null
+      && 'kind' in act && typeof act.kind === 'string' ? [act.kind] : []);
+  } catch {
+    return [];
+  }
 }
 
 interface V5BusyConstraints {
@@ -745,13 +803,24 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     const graph = runtime?.graph;
     const busyConstraints = graph ? resolveV5BusyConstraints(graph, conversation) : null;
     const facts: ObservedFacts = graph ? observedFacts(graph) : { taskIds: [], workloads: [], efforts: [], temporal: [] };
-    const currentQuestion = questionCode(store.getState().intakeState?.lastQuestionContext ?? null);
+    const lastQuestionContext = store.getState().intakeState?.lastQuestionContext ?? null;
+    const currentQuestion = presentedV5QuestionCode(lastQuestionContext);
+    const optionalInvitationKind = currentQuestion === 'missing_schedulable_work' && lastQuestionContext?.topicId == null
+      ? 'optional' : currentQuestion ? 'required' : 'none';
+    const communicationStatusReason = resultForDiagnostics?.communicationFacts?.statusReason ?? null;
+    const conversationActKinds = observedTypedConversationActKinds(rawProviderCalls);
+    const optionalInvitationClosed = communicationStatusReason === 'no_additional_work';
+    const finalCandidateCount = resultForDiagnostics?.draftCandidates.length ?? 0;
     if (fixtureTurn.oracle.inVNextScope && currentQuestion !== null) clarificationCount += 1;
     const questionSignature = currentQuestion === null ? null : JSON.stringify({ question: currentQuestion, workloads: facts.workloads });
     if (questionSignature !== null && questionSignature === previousQuestionSignature && !fixtureTurn.oracle.preservePreviousTypedState) repeatedQuestionCount += 1;
     const preview = graph ? previewMinutes(graph, conversation) : { status: 'no_graph', minutes: null, workMinutes: null, workEstimateBases: [] };
     const oracleDifferences = error ? [error] : graph ? compareTypedOracle(facts, currentQuestion, preview.workMinutes, fixtureTurn.oracle, [], preview.workEstimateBases) : ['typed state unavailable'];
     oracleDifferences.push(...compareBusyIntervalOracle(fixtureTurn.oracle.fixedEventRegistration, busyConstraints));
+    oracleDifferences.push(...compareOptionalInvitationOracle(fixtureTurn.oracle.optionalInvitation, {
+      optionalInvitationKind, conversationActKinds, communicationStatusReason, optionalInvitationClosed,
+      finalCandidateCount, saveWritesBeforeApproval: 0,
+    }));
     const expectedClarification = fixtureTurn.oracle.questionCode !== null;
     const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification && currentQuestion === null;
     const wrongRejection = fixtureTurn.oracle.inVNextScope && !expectedClarification && currentQuestion !== null;
@@ -772,6 +841,8 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
       rendererCalls: debugTrace.filter((event) => event.stage === 'dialogue_renderer_request').length,
       latencyMs, clarificationCount, wrongAcceptance, wrongRejection, repeatedQuestionCount,
       oracleDifferences,
+      optionalInvitationKind, conversationActKinds, communicationStatusReason,
+      optionalInvitationClosed, finalCandidateCount, saveWritesBeforeApproval: 0,
     });
     previousQuestionSignature = questionSignature;
   }
@@ -828,6 +899,7 @@ async function runVNextConversation(
     ?? ((options) => createWeeklyPlanningStableV5DialogueRendererCore(client, options));
   const interpreter = overrides.interpret ?? createWeeklyPlanningVNextProviderInterpreter();
   let rendererCalls = 0;
+  let rendererCommunicationStatusReason: string | null = null;
   let presentedText: string | null = null;
   let presentedQuestion: WeeklyPlanningVNextInterpretationInput['presentedQuestion'] = null;
   const ports: WeeklyPlanningVNextExperimentalPorts = {
@@ -854,6 +926,7 @@ async function runVNextConversation(
       const renderer = rendererFactory(options);
       return { async render(input) {
         rendererCalls += 1;
+        rendererCommunicationStatusReason = input.communication?.statusReason ?? null;
         return renderer.render(input);
       } };
     },
@@ -870,6 +943,7 @@ async function runVNextConversation(
     const fixtureTurn = conversation.turns[index];
     rawProviderCalls = [];
     rendererCalls = 0;
+    rendererCommunicationStatusReason = null;
     const startedAt = performance.now();
     let error: string | null = null;
     let outcome = 'not_reached';
@@ -930,10 +1004,13 @@ async function runVNextConversation(
       const observed = observedFacts(state.graph);
       const busyConstraints = resolveV5BusyConstraints(state.graph, conversation);
       facts = observed;
-      question = projection.questions[0]?.code ?? null;
+      const committedPresentation = read.checkpoint.presentedQuestion;
+      const observedQuestion = typedQuestion
+        && committedPresentation?.graphRevision === result.graphRevision
+        && committedPresentation.questionKey === typedQuestion.key
+        ? typedQuestion : null;
+      question = observedQuestion?.code ?? null;
       deferredQuestionCodes = projection.deferredQuestions.map(({ code }) => code);
-      const observedQuestion = projection.questions[0]
-        ?? projection.deferredQuestions.find(({ code }) => code === fixtureTurn.oracle.questionCode);
       const askedWork = observedQuestion?.forWork;
       questionForWork = askedWork ? {
         taskId: observedQuestion.taskId,
@@ -959,6 +1036,16 @@ async function runVNextConversation(
         facts, question, workMinutes, fixtureTurn.oracle, projectedWorkloads, workEstimateBases,
         { questionForWork, deferredQuestionCodes, checkQuestionForWork: true },
       );
+      const optionalInvitationKind = observedQuestion
+        ? ('optionalInvitation' in observedQuestion && observedQuestion.optionalInvitation ? 'optional' : 'required') : 'none';
+      const conversationActKinds = interpretation?.status === 'interpreted'
+        ? (interpretation.conversationActs ?? []).map(act => act.kind) : [];
+      const communicationStatusReason = rendererCommunicationStatusReason;
+      const optionalInvitationClosed = state.optionalInvitationClosed;
+      differences.push(...compareOptionalInvitationOracle(fixtureTurn.oracle.optionalInvitation, {
+        optionalInvitationKind, conversationActKinds, communicationStatusReason, optionalInvitationClosed,
+        finalCandidateCount: finalCandidates.length, saveWritesBeforeApproval,
+      }));
       differences.push(...compareFixedEventRegistrationOracle(
         fixtureTurn.oracle.fixedEventRegistration, interpretation, finalCandidates, saveWritesBeforeApproval, observed.temporal,
       ));
@@ -1010,6 +1097,11 @@ async function runVNextConversation(
         conversationActReadings: observedConversationActReadings(rawProviderCalls),
         finalCandidates,
         saveWritesBeforeApproval,
+        optionalInvitationKind,
+        conversationActKinds,
+        communicationStatusReason,
+        optionalInvitationClosed,
+        finalCandidateCount: finalCandidates.length,
       } as VNextTurnObservation);
       previousQuestionSignature = signature;
     } catch (cause) {
@@ -1055,6 +1147,13 @@ async function runVNextConversation(
         conversationActReadings: observedConversationActReadings(rawProviderCalls),
         finalCandidates,
         saveWritesBeforeApproval,
+        optionalInvitationKind: typedQuestion
+          ? ('optionalInvitation' in typedQuestion && typedQuestion.optionalInvitation ? 'optional' : 'required') : 'none',
+        conversationActKinds: interpretation?.status === 'interpreted'
+          ? (interpretation.conversationActs ?? []).map(act => act.kind) : [],
+        communicationStatusReason: rendererCommunicationStatusReason,
+        optionalInvitationClosed: false,
+        finalCandidateCount: finalCandidates.length,
       } as VNextTurnObservation);
     }
   }
@@ -1159,6 +1258,9 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     expect(observed.turns[0]).toMatchObject({
       shownReply: shownText,
       typedQuestion: { code: 'missing_effort_estimate', forWork: { amount: 35, unitCode: 'problem' } },
+      questionCode: 'missing_effort_estimate',
+      clarificationCount: 1,
+      questionForWork: { amount: 35, unitCode: 'problem' },
       rendererCalls: 1,
       replySource: 'renderer',
     });
@@ -1166,8 +1268,178 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     expect(summarize([observed])).toMatchObject({ aiCalls: 2, rendererCalls: 2, providerCalls: 4 });
   });
 
+  it('does not count an unpresented question after a renderer technical stop', async () => {
+    const conversation: RealApiConversation = {
+      id: 'renderer-fallback-question-observation', source: 'offline contract test', description: 'renderer fallback parity',
+      turns: [{ userText: '数学の問題を35問やる', oracle: {
+        inVNextScope: true,
+        workloads: [{ task: 'math', role: 'target', amount: 35, unitCode: 'problem', unitLabel: '問' }],
+        efforts: [], temporal: [], questionCode: 'missing_effort_estimate', projectedMinutes: null,
+        questionForWork: { task: 'math', role: 'target', amount: 35, unitCode: 'problem', unitLabel: '問' },
+      } }],
+    };
+    const emptyDelta: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
+    const initialDelta: VNextTurnDelta = { ...emptyDelta, add: [
+      { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+      { kind: 'workload', localId: 'problems', taskRef: { localId: 'math' }, componentRef: null,
+        quantityRole: 'target', amount: 35, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null },
+    ] };
+    const interpreter: WeeklyPlanningVNextExperimentalPorts['interpret'] = async () => ({
+      status: 'interpreted', planningIntent: 'create_plan', delta: initialDelta, answer: null,
+      metrics: { calls: 1, repairs: 0, latencyMs: 1 },
+    });
+    const renderer: WeeklyPlanningVNextExperimentalPorts['createRenderer'] = () => ({
+      async render() { return { status: 'fallback', reason: 'provider_error', rawResponse: null }; },
+    });
+    const client: OpenAiCompatibleClient = { async createChatCompletion() { throw new Error('offline fallback test must not call a provider'); } };
+
+    const observed = await runVNextConversation(conversation, { client, interpret: interpreter, createRenderer: renderer });
+    expect(observed.turns[0]).toMatchObject({
+      typedQuestion: { code: 'missing_effort_estimate' },
+      shownReply: expect.any(String),
+      replySource: 'renderer_fallback',
+      presentedQuestion: null,
+      questionCode: null,
+      questionForWork: null,
+      clarificationCount: 0,
+      oracleDifferences: ['question expected=missing_effort_estimate observed=none', 'question forWork differs'],
+      status: 'fail',
+    });
+  });
+
+  it('reopens a closed optional invitation when a synthetic typed turn adds new work', async () => {
+    const conversation = vnextRealApiConversations.find(({ id }) => id === 'optional-invitation-busy-decline-reopen')!;
+    const emptyDelta: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
+    const busyDelta: VNextTurnDelta = { ...emptyDelta, add: [{
+      kind: 'planning_window', localId: 'week-window', windowKind: 'absolute', value: '2026-11-02/2026-11-08',
+      start: '2026-11-02', end: '2026-11-08',
+    }, {
+      kind: 'availability_declaration', localId: 'busy', availabilityKind: 'unavailable',
+      dateExpression: '2026-11-03', namedTimePeriod: null, startTime: '16:00', endTime: '17:30',
+      recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard',
+    }] };
+    const newWorkDelta: VNextTurnDelta = { ...emptyDelta, add: [
+      { kind: 'task', localId: 'vocabulary', category: 'study', title: '英単語' },
+      { kind: 'workload', localId: 'vocabulary-work', taskRef: { localId: 'vocabulary' }, componentRef: null,
+        quantityRole: 'target', amount: 20, unitCode: 'word', unitLabel: '語', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null },
+      { kind: 'effort_estimate', localId: 'vocabulary-rate', taskRef: { localId: 'vocabulary' },
+        targetRef: { localId: 'vocabulary-work' }, effortKind: 'duration_per_unit', minutes: 2,
+        unitCode: 'word', unitLabel: '語', precision: 'exact' },
+    ] };
+    const decline = { kind: 'decline_additional_work' as const, targetRef: null };
+    const scripts = [
+      { planningIntent: 'create_plan' as const, delta: busyDelta, conversationActs: [] },
+      { planningIntent: 'discuss' as const, delta: emptyDelta, conversationActs: [decline] },
+      { planningIntent: 'discuss' as const, delta: emptyDelta, conversationActs: [] },
+      { planningIntent: 'create_plan' as const, delta: newWorkDelta, conversationActs: [] },
+    ];
+    const inputs: WeeklyPlanningVNextInterpretationInput[] = [];
+    const interpreter: WeeklyPlanningVNextExperimentalPorts['interpret'] = async (input) => {
+      inputs.push(input);
+      const script = scripts[inputs.length - 1];
+      if (!script) throw new Error('synthetic optional-invitation script exhausted');
+      return { status: 'interpreted', ...script, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
+    };
+    const client: OpenAiCompatibleClient = {
+      async createChatCompletion() { throw new Error('offline optional-invitation proof must not call a provider'); },
+    };
+    const renderer: WeeklyPlanningVNextExperimentalPorts['createRenderer'] = () => ({
+      async render() { return { status: 'rendered', text: '合成の応答', rawResponse: '' }; },
+    });
+
+    const observed = await runVNextConversation(conversation, { client, interpret: interpreter, createRenderer: renderer });
+    const [busyTurn, declineTurn, unchangedTurn, reopenedTurn] = observed.turns;
+
+    expect(inputs).toHaveLength(4);
+    expect(busyTurn).toMatchObject({ optionalInvitationKind: 'optional', optionalInvitationClosed: false });
+    expect(declineTurn).toMatchObject({ conversationActKinds: ['decline_additional_work'],
+      communicationStatusReason: 'no_additional_work', optionalInvitationClosed: true });
+    expect(unchangedTurn).toMatchObject({ communicationStatusReason: 'no_additional_work', optionalInvitationClosed: true });
+    expect(inputs[3].state.optionalInvitationClosed).toBe(true);
+    expect(reopenedTurn).toMatchObject({ accepted: true, questionCode: null, optionalInvitationKind: 'none',
+      communicationStatusReason: null, optionalInvitationClosed: false, saveWritesBeforeApproval: 0 });
+    expect(reopenedTurn.workloads).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'target', amount: 20, unitCode: 'word', unitLabel: '語' }),
+    ]));
+    expect(observed.turns.map(turn => turn.oracleDifferences)).toEqual([[], [], [], []]);
+    expect(observed.turns.map(turn => turn.status)).toEqual(['pass', 'pass', 'pass', 'pass']);
+    expect(observed.turns.map(turn => turn.clarificationCount)).toEqual([1, 1, 1, 1]);
+    expect(observed.error).toBeNull();
+    expect(summarize([{ ...observed, error: 'synthetic interruption', turns: [{ ...observed.turns[0], status: 'not_reached' }] }]))
+      .toMatchObject({ passedOracle: 0, failedOracle: 0, notReached: 1 });
+  });
+
+  it('scores the V5 presented-question sequence and keeps omission/required-question controls discriminating', () => {
+    const conversation = vnextRealApiConversations.find(({ id }) => id === 'optional-invitation-busy-decline-reopen')!;
+    const emptyFacts: ObservedFacts = { taskIds: [], workloads: [], efforts: [], temporal: [] };
+    const workFacts: ObservedFacts = {
+      taskIds: ['vocabulary-task'],
+      workloads: [{ factId: 'vocabulary-work', taskId: 'vocabulary-task', role: 'target', amount: 20,
+        unitCode: 'word', unitLabel: '語', perOccurrence: false, periodExpression: null }],
+      efforts: [{ factId: 'vocabulary-rate', taskId: 'vocabulary-task', kind: 'duration_per_unit', minutes: 2,
+        unitCode: 'word', unitLabel: '語', forRole: 'target' }],
+      temporal: [],
+    };
+    const v5Turns = [
+      { context: { targetSlot: 'stable_v5:missing_schedulable_work', topicId: null, presentation: {} }, facts: emptyFacts,
+        acts: [], statusReason: null, closed: false, candidateCount: 0, workMinutes: null },
+      { context: null, facts: emptyFacts, acts: ['decline_additional_work'], statusReason: 'no_additional_work',
+        closed: true, candidateCount: 0, workMinutes: null },
+      { context: null, facts: emptyFacts, acts: [], statusReason: 'no_additional_work',
+        closed: true, candidateCount: 0, workMinutes: null },
+      { context: null, facts: workFacts, acts: [], statusReason: null, closed: false, candidateCount: 0, workMinutes: 40 },
+    ];
+    expect(presentedV5QuestionCode(v5Turns[0].context)).toBe('missing_schedulable_work');
+    expect(presentedV5QuestionCode({ targetSlot: 'stable_v5:missing_schedulable_work' })).toBeNull();
+    let clarificationCount = 0;
+    const v5Scored = conversation.turns.map((turn, index) => {
+      const observed = v5Turns[index];
+      const observedQuestion = presentedV5QuestionCode(observed.context);
+      if (observedQuestion !== null) clarificationCount += 1;
+      const questionKind = observedQuestion === 'missing_schedulable_work'
+        && (observed.context as { topicId?: string | null } | null)?.topicId == null
+        ? 'optional' : observedQuestion ? 'required' : 'none';
+      const oracleDifferences = compareTypedOracle(observed.facts, observedQuestion, observed.workMinutes, turn.oracle);
+      oracleDifferences.push(...compareOptionalInvitationOracle(turn.oracle.optionalInvitation, {
+        optionalInvitationKind: questionKind, conversationActKinds: observed.acts,
+        communicationStatusReason: observed.statusReason, optionalInvitationClosed: observed.closed,
+        finalCandidateCount: observed.candidateCount, saveWritesBeforeApproval: 0,
+      }));
+      return { status: oracleDifferences.length === 0 ? 'pass' : 'fail', oracleDifferences, clarificationCount };
+    });
+    expect(v5Scored.map(({ oracleDifferences }) => oracleDifferences)).toEqual([[], [], [], []]);
+    expect(v5Scored.map(({ status }) => status)).toEqual(['pass', 'pass', 'pass', 'pass']);
+    expect(v5Scored.map(({ clarificationCount: count }) => count)).toEqual([1, 1, 1, 1]);
+
+    const omittedWorkDifferences = compareTypedOracle(emptyFacts, null, null, conversation.turns[3].oracle);
+    expect(omittedWorkDifferences).toContain('workloads differ');
+
+    const requiredCase = vnextRealApiConversations.find(({ id }) => id === 'optional-decline-does-not-close-required-effort')!;
+    const requiredOracle = requiredCase.turns[1].oracle;
+    const requiredContext = { targetSlot: 'stable_v5:missing_effort_estimate', topicId: 'math', presentation: {} };
+    const requiredQuestion = presentedV5QuestionCode(requiredContext);
+    expect(requiredQuestion).toBe('missing_effort_estimate');
+    const requiredFacts: ObservedFacts = { ...emptyFacts, taskIds: ['math-task'], workloads: [{
+      factId: 'math-work', taskId: 'math-task', role: 'target', amount: 10, unitCode: 'problem', unitLabel: '問',
+      perOccurrence: false, periodExpression: null,
+    }] };
+    const requiredDifferences = compareTypedOracle(requiredFacts, requiredQuestion, null, requiredOracle);
+    requiredDifferences.push(...compareOptionalInvitationOracle(requiredOracle.optionalInvitation, {
+      optionalInvitationKind: 'required', conversationActKinds: ['decline_additional_work'],
+      communicationStatusReason: null, optionalInvitationClosed: false, finalCandidateCount: 0, saveWritesBeforeApproval: 0,
+    }));
+    expect(requiredDifferences).toEqual([]);
+    expect(compareOptionalInvitationOracle(requiredOracle.optionalInvitation, {
+      optionalInvitationKind: 'optional', conversationActKinds: ['decline_additional_work'],
+      communicationStatusReason: 'no_additional_work', optionalInvitationClosed: true,
+      finalCandidateCount: 0, saveWritesBeforeApproval: 0,
+    })).not.toEqual([]);
+  });
+
   it('contains only synthetic turns and typed per-turn oracles', () => {
-    expect(vnextRealApiConversations).toHaveLength(20);
+    expect(vnextRealApiConversations).toHaveLength(22);
     expect(new Set(vnextRealApiConversations.map(({ id }) => id)).size).toBe(vnextRealApiConversations.length);
     for (const conversation of vnextRealApiConversations) {
       expect(conversation.turns.length, conversation.id).toBeGreaterThan(0);
@@ -1187,11 +1459,12 @@ describe('VNext real API conversation fixture contract (offline)', () => {
       'fixed-event-registration-negated',
       'fixed-event-yes-after-rendered-offer',
       'fixed-event-yes-without-registration-offer',
+      'optional-invitation-busy-decline-reopen',
     ]);
     expect(fixedEventCases.flatMap(conversation => conversation.turns)
       .filter(turn => turn.oracle.inVNextScope && turn.oracle.fixedEventRegistration?.requested)).toHaveLength(2);
     expect(fixedEventCases.flatMap(conversation => conversation.turns)
-      .filter(turn => turn.oracle.inVNextScope && turn.oracle.fixedEventRegistration && !turn.oracle.fixedEventRegistration.requested)).toHaveLength(3);
+      .filter(turn => turn.oracle.inVNextScope && turn.oracle.fixedEventRegistration && !turn.oracle.fixedEventRegistration.requested)).toHaveLength(7);
     for (const conversation of fixedEventCases) {
       for (const turn of conversation.turns.filter(turn => turn.oracle.fixedEventRegistration)) {
         expect(turn.oracle.fixedEventRegistration).toMatchObject({
@@ -1223,6 +1496,18 @@ describe('VNext real API conversation fixture contract (offline)', () => {
       'no registration offer exists in V5/VNext; contextual acceptance after an offer is not applicable (user decision 2026-11-01)')).toBe(true);
     expect(fixedEventCases.find(({ id }) => id === 'fixed-event-yes-without-registration-offer')?.turns[1].userText)
       .toBe('11月3日16時から17時半までゼミがあります。うん、お願い。');
+    const optionalInvitation = vnextRealApiConversations.find(({ id }) => id === 'optional-invitation-busy-decline-reopen')!;
+    expect(optionalInvitation.turns.map(({ oracle }) => oracle.optionalInvitation)).toEqual([
+      { question: 'optional', conversationActKinds: [], statusReason: null, closed: false, candidateCount: 0, saveWritesBeforeApproval: 0 },
+      { question: 'none', conversationActKinds: ['decline_additional_work'], statusReason: 'no_additional_work', closed: true, candidateCount: 0, saveWritesBeforeApproval: 0 },
+      { question: 'none', conversationActKinds: [], statusReason: 'no_additional_work', closed: true, candidateCount: 0, saveWritesBeforeApproval: 0 },
+      { question: 'none', conversationActKinds: [], statusReason: null, closed: false, saveWritesBeforeApproval: 0 },
+    ]);
+    const requiredDeclineControl = vnextRealApiConversations.find(({ id }) => id === 'optional-decline-does-not-close-required-effort')!;
+    expect(requiredDeclineControl.turns.map(({ oracle }) => oracle.optionalInvitation)).toEqual([
+      { question: 'required', conversationActKinds: [], statusReason: null, closed: false, candidateCount: 0, saveWritesBeforeApproval: 0 },
+      { question: 'required', conversationActKinds: ['decline_additional_work'], statusReason: null, closed: false, candidateCount: 0, saveWritesBeforeApproval: 0 },
+    ]);
     const deadlineCase = vnextRealApiConversations.find(({ id }) => id === 'issue881-final-b-deadline-at-13');
     expect(deadlineCase?.turns.map(({ userText }) => userText)).toEqual([
       '明日の予定を立てたいです',
@@ -1592,6 +1877,12 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           wrongRejection: false,
           repeatedQuestionCount: 0,
           oracleDifferences: ['not reached'],
+        optionalInvitationKind: 'none',
+        conversationActKinds: [],
+        communicationStatusReason: null,
+        optionalInvitationClosed: false,
+        finalCandidateCount: 0,
+        saveWritesBeforeApproval: 0,
         })),
         error,
       });
@@ -1646,6 +1937,11 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
           conversationActReadings: [],
           finalCandidates: [],
           saveWritesBeforeApproval: 0,
+          optionalInvitationKind: 'none',
+          conversationActKinds: [],
+          communicationStatusReason: null,
+          optionalInvitationClosed: false,
+          finalCandidateCount: 0,
         } as VNextTurnObservation)),
         error,
       });

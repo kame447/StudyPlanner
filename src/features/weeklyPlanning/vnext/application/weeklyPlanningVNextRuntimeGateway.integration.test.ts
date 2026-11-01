@@ -40,13 +40,15 @@ const reading = (add: VNextAddFact[], answer: Extract<WeeklyPlanningVNextInterpr
 let restore: () => void;
 let writes: { session: WeeklyPlanningTraceSession; entries: WeeklyPlanningTraceEntry[] }[];
 let failAppend: boolean;
+let appendAttempts: typeof writes;
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW);
   restore = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
   resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyPlanningStableV5DebugTraceForTest();
-  writes = []; failAppend = false;
+  writes = []; appendAttempts = []; failAppend = false;
   const repository = createInMemoryWeeklyPlanningTraceRepository();
   setWeeklyPlanningTraceRepositoryForTests({ ...repository, async appendEntries(write) {
+    appendAttempts.push(structuredClone(write));
     if (failAppend) { failAppend = false; throw new Error('synthetic append failure'); }
     writes.push(structuredClone(write));
   } });
@@ -126,6 +128,93 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(diagnosticEntries()[0].assistantOutput.responseSource).toBe('system');
     expect(h.local.readCheckpoint()!.vnext.state.graph.tasks).toEqual([]);
     expect(h.getState().messages[h.getState().messages.length - 1].content).toBe(h.results[0].failure!.userMessage);
+  });
+
+  it.each([
+    { phase: 'invitation', oversized: false }, { phase: 'invitation', oversized: true },
+    { phase: 'decline', oversized: false }, { phase: 'decline', oversized: true },
+  ] as const)('persists native $phase evidence through failed append, reload and Worker (oversized=$oversized)', async ({ phase, oversized }) => {
+    const initial = { planningIntent: 'discuss', conversationActs: [], delta: EMPTY, answer: null };
+    const declined = { ...initial, conversationActs: [{ kind: 'decline_additional_work', targetRef: null }] };
+    const rendererContexts: unknown[] = [];
+    const h = harness({ nativeReadings: [initial, declined], createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        // A future, unregistered renderer field must survive the generic transport; the large
+        // sibling must be bounded explicitly, without dropping this turn or its semantic reading.
+        Object.assign(input.communication!, { futureInvitationSentinel: 'retain-optional-evidence',
+          ...(oversized ? { futureInvitationDetails: 'z'.repeat(48 * 1024) } : {}) });
+        rendererContexts.push(structuredClone(input));
+        return renderer.render(input);
+      } };
+    } });
+    const isDecline = phase === 'decline';
+    if (isDecline) await h.submit('今週の計画を相談したいです');
+    failAppend = true;
+    expect(await h.submit(isDecline ? '追加する作業はありません' : '今週の計画を相談したいです'))
+      .toEqual({ accepted: true, draftCandidates: [] });
+    const persisted = h.local.readCheckpoint()!.vnext;
+    expect(persisted.state.optionalInvitationClosed).toBe(isDecline);
+    expect(persisted.state.draftGenerationIntent).toBe('not_requested');
+    expect(persisted.presentedQuestion === null).toBe(isDecline);
+    expect(persisted.preview).toBeNull();
+    const result = h.results[h.results.length - 1];
+    const sent = h.requests[h.requests.length - 1] as { messages: { role: string; content: string }[] };
+    const wire = isDecline ? declined : initial;
+    const events = result.debugTraceEvents!;
+    // The collector bounds deep schema data intentionally; exact sent messages and original
+    // request byte count prove which invocation was captured without demanding unbounded schema.
+    expect(events.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    expect(events.find(event => event.stage === 'semantic_provider_response')!.data).toMatchObject({ rawResponse: JSON.stringify(wire) });
+    expect(result.dialogueRendererTrace!.request!.promptContext).toMatchObject(isDecline
+      ? { questionCode: null, communication: { askQuestion: false, statusReason: 'no_additional_work' } }
+      : { questionCode: 'missing_schedulable_work', questionTarget: null,
+        questionIntent: { kind: 'schedulable_work_detail', mode: 'missing_task_identity' }, communication: { askQuestion: true } });
+    if (isDecline) expect(JSON.parse(sent.messages[1].content).presentedQuestion)
+      .toMatchObject({ code: 'missing_schedulable_work', taskId: null, optionalInvitation: { intent: 'missing_task_identity' } });
+
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();expect(queued.input.debugTraceEvents).toEqual(events);
+    const failedWrite = appendAttempts[appendAttempts.length - 1];
+    expect(failedWrite.entries).toHaveLength(1);
+    expect(measureWeeklyPlanningTraceJsonBytes(failedWrite.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-optional-evidence', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(failedWrite.entries);
+    const entry = write.entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing optional-invitation diagnostic');
+    expect(entry.aiInterpreter.input.requests).toHaveLength(1);
+    expect(entry.aiInterpreter.input.requests[0]).toMatchObject({
+      requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength,
+      messages: expect.arrayContaining([sent.messages[1]]),
+    });
+    expect(entry.aiInterpreter.rawResponses[0].text).toBe(JSON.stringify(wire));
+    expect(entry.aiInterpreter.structuredResults[0].structuredResult).toMatchObject({ conversationActs: wire.conversationActs,
+      authorizationDecision: { authorized: false, draftGenerationIntent: 'not_requested' } });
+    expect(JSON.stringify(entry)).toContain('retain-optional-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ rawResponses: [expect.objectContaining({ text: JSON.stringify(wire) })],
+      structuredResults: [expect.objectContaining({ structuredResult: expect.objectContaining({ conversationActs: wire.conversationActs }) })] });
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('retain-optional-evidence');
+    expect(saved).toContain(isDecline ? 'no_additional_work' : 'missing_task_identity');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (oversized) {
+      const renderer = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      const originalBytes = new TextEncoder().encode(JSON.stringify(rendererContexts[rendererContexts.length - 1])).byteLength;
+      expect(renderer.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true, originalBytes,
+        jsonHead: expect.any(String), jsonTail: expect.any(String) });
+      expect(saved).not.toContain('z'.repeat(48 * 1024));
+    }
   });
 
   it.each([false, true])('persists actual intent and authorization presentation through append failure/reload/Worker (large=%s)', async large => {

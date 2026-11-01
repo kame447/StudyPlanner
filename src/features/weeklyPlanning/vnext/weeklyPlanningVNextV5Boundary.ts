@@ -42,6 +42,9 @@ export { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRe
   type WeeklyPlanningFixedEventCommunicationFacts,
 } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 export type { SemanticConversationActV5 } from '../semantic/weeklyPlanningConversationActsV5';
+export { stableV5MissingSchedulableWorkQuestion } from '../application/weeklyPlanningStableV5RuntimeQuestions';
+export { decideWeeklyPlanningStableDialogueV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
+export { WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 } from '../semantic/weeklyPlanningSemanticMeaningPolicyV5';
 export { applyAcceptedMemorySessionProjectionV5 } from '../semantic/weeklyPlanningAcceptedMemorySessionProjectionV5';
 export { compileWeeklyPlanningMemoryCalibrationSchedulerInputV5 } from '../semantic/weeklyPlanningMemoryCalibrationSchedulerInputV5';
 export { deriveWeeklyPlanningEstimateCalibration } from '../personalization/weeklyPlanningEstimateCalibration';

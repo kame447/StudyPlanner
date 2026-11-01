@@ -3,13 +3,15 @@ import { createMemoryStorageHarness } from '../../testUtils/weeklyPlanningApplic
 import type { WeeklyPlanDraftBlock } from '../../types';
 import { compileGenericSchedulerInput } from '../../semantic/weeklyPlanningGenericSchedulerInput';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
-import { projectWeeklyPlanningFixedEventRegistration } from '../weeklyPlanningVNextV5Boundary';
+import { stableV5MissingSchedulableWorkQuestion, projectWeeklyPlanningFixedEventRegistration } from '../weeklyPlanningVNextV5Boundary';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
 import { validateWeeklyPreviewApproval } from '../../planning/weeklyPlanningApproval';
 import { fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts } from '../../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { VNextEventRegistrationAct } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextAddFact, VNextPlanningIntent, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
+import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
+import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { approveWeeklyPlanningVNextExperimentalPreview, submitWeeklyPlanningVNextExperimentalTurn,
   type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
@@ -103,7 +105,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     expect(result.question).toBeNull(); expect(result.preview).toBeNull(); expect(h.saved.size).toBe(0);
   });
 
-  it('keeps the V5 optional-decline path distinct from VNext task questions (no new invitation)', async () => {
+  it('presents the V5 optional invitation for unavailable-only information, distinct from required task questions', async () => {
     const h = harness([wire([{ kind: 'availability_declaration', localId: 'busy', availabilityKind: 'unavailable',
       dateExpression: '2026-11-03', namedTimePeriod: null, startTime: '16:00', endTime: '17:30', recurrenceKind: null,
       days: [], capacityMinutes: null, constraintLevel: 'hard' }])]);
@@ -115,11 +117,12 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     const input = { graph, compilation, semanticChanged: true, previousQuestionSlot: undefined,
       requestedEventRegistration: false, previousOptionalInvitationClosed: false };
     expect(fixedEventOnlyInteractionStatus({ ...input, declinedAdditionalWork: false })).toBeNull();
-    // V5's supported declined optional invitation is a separate, currently unported path.
+    // V5 owns optional closure; the native invitation now presents that same slot.
     expect(fixedEventOnlyInteractionStatus({ ...input, previousQuestionSlot: 'stable_v5:missing_schedulable_work',
       declinedAdditionalWork: true })).toBe('no_additional_work');
-    expect(result.question).toBeNull(); expect(result.preview).toBeNull();
-    expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull();
+    expect(result.question).toMatchObject({ code: 'missing_schedulable_work', taskId: null, optionalInvitation: { intent: 'missing_task_identity' } });
+    expect(result.preview).toBeNull();
+    expect(h.local.readCheckpoint()!.vnext.presentedQuestion?.questionKey).toBe(result.question!.key);
     expect(h.state().graph.availabilityDeclarations).toHaveLength(1); expect(h.saved.size).toBe(0);
   });
 
@@ -316,4 +319,121 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     const saves = h.saves(); await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports });
     expect(h.saves()).toBe(saves); expect(h.local.checkpoint.read()).toBe(raw); expect(h.slots.get('v5')).toBe('untouched-v5-checkpoint');
   });
+  const decline: VNextEventRegistrationAct = { kind: 'decline_additional_work', targetRef: null };
+  const busy = (id = 'busy'): VNextAddFact => ({ kind: 'availability_declaration', localId: id,
+    availabilityKind: 'unavailable', dateExpression: '2026-11-03', namedTimePeriod: null, startTime: '16:00', endTime: '17:30',
+    recurrenceKind: null, days: [], capacityMinutes: null, constraintLevel: 'hard' });
+
+  it.each(['empty', 'unavailable'] as const)('V5 optional parity: %s invites, declines, stays closed after reload, and new work reopens', async mode => {
+    const h = harness([wire(mode === 'empty' ? [] : [busy()], [], 'create_plan'), wire(), wire([], [decline]), wire(), wire(work, [], 'create_plan')]);
+    const first = await h.turn(mode === 'empty' ? '今週の学習計画を作ってください。' : '11月3日16時から17時半は勉強できません。');
+    expect(first.question).toMatchObject({ code: 'missing_schedulable_work', taskId: null, optionalInvitation: { intent: 'missing_task_identity' } });
+    const v5Question = stableV5MissingSchedulableWorkQuestion(h.state().graph);
+    expect(presentWeeklyPlanningVNextQuestion(h.state(), first.question!).text).toBe(v5Question.message);
+    expect(h.rendererInputs[0]).toMatchObject({ actionKind: 'question', questionCode: v5Question.questionCode,
+      questionTarget: null, questionIntent: { kind: 'schedulable_work_detail', mode: 'missing_task_identity' },
+      communication: { askQuestion: true } });
+    expect(h.local.readCheckpoint()!.vnext.presentedQuestion?.questionKey).toBe(first.question!.key);
+    expect(h.state().optionalInvitationClosed).toBe(false);
+    const repeat = await h.turn('わかりました');
+    expect(repeat.question?.key).toBe(first.question!.key);
+    const closed = await h.turn('特にないです');
+    const compilation = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(h.state().graph),
+      context: { ownerId: OWNER, currentDate: WEEK, planningStartDate: WEEK, planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } });
+    expect(fixedEventOnlyInteractionStatus({ graph: h.state().graph, compilation, semanticChanged: false,
+      previousQuestionSlot: 'stable_v5:missing_schedulable_work', declinedAdditionalWork: true,
+      requestedEventRegistration: false, previousOptionalInvitationClosed: false })).toBe('no_additional_work');
+    expect(closed.question).toBeNull(); expect(closed.preview).toBeNull();
+    expect(h.rendererInputs[2]).toMatchObject({ communication: { askQuestion: false, statusReason: 'no_additional_work' } });
+    expect(h.state().optionalInvitationClosed).toBe(true);
+    expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull();
+    // Every turn reloads through the real codec, so the next call reads the persisted closed state.
+    const unchanged = await h.turn('変わりません');
+    expect(unchanged.question).toBeNull(); expect(h.state().optionalInvitationClosed).toBe(true);
+    expect(h.rendererInputs[3]).toMatchObject({ communication: { statusReason: 'no_additional_work', askQuestion: false } });
+    expect(h.state().graph.availabilityDeclarations).toHaveLength(mode === 'empty' ? 0 : 1);
+    const reopened = await h.turn('数学を60分、予定にしてください');
+    expect(h.state().optionalInvitationClosed).toBe(false);
+    expect(reopened.preview).not.toBeNull(); expect(reopened.draftCandidates).toHaveLength(1);
+    expect(reopened.authorizationDecision?.authorized).toBe(true);
+    expect(h.saves()).toBe(0);
+    expect(h.calls()).toBe(5); // One native reading each; invitation/decline adds no provider call.
+  });
+
+  it('reopens V5 optional invitation when new unavailable facts arrive after a decline', async () => {
+    const h = harness([wire(), wire([], [decline]), wire([busy()])]);
+    await h.turn('今週の相談です'); await h.turn('特にないです');
+    expect(h.state().optionalInvitationClosed).toBe(true);
+    const next = await h.turn('11月3日の16時から17時半は勉強できません');
+    expect(next.question?.optionalInvitation).toBeDefined();expect(h.state().optionalInvitationClosed).toBe(false);
+    expect(h.saves()).toBe(0);
+  });
+
+  it('does not let a decline dismiss a required task quantity question with the same question code', async () => {
+    const h = harness([wire([{ kind: 'task', localId: 'math', title: '数学', category: 'study' }]), wire([], [decline])]);
+    const first = await h.turn('数学をやります');
+    expect(first.question).toMatchObject({ code: 'missing_schedulable_work', taskId: expect.any(String) });
+    expect(first.question?.optionalInvitation).toBeUndefined();
+    const next = await h.turn('特にないです');
+    expect(next.question?.key).toBe(first.question?.key);
+    expect(h.state().optionalInvitationClosed).toBe(false);expect(next.preview).toBeNull();expect(h.saves()).toBe(0);
+    expect(h.rendererInputs[1]).toMatchObject({ communication: { askQuestion: true } });
+    expect((h.rendererInputs[1] as { communication: { statusReason?: string } }).communication.statusReason).toBeUndefined();
+  });
+
+  it('keeps a required estimate ahead of an unrelated decline and preserves movable work', async () => {
+    const pages: VNextAddFact[] = [work[0], { ...work[1], localId: 'pages', unitCode: 'page', unitLabel: 'ページ', amount: 10 } as VNextAddFact];
+    const h = harness([wire(pages), wire([], [decline])]); const first = await h.turn('数学は残り10ページです');
+    expect(first.question?.code).toBe('missing_effort_estimate');
+    const next = await h.turn('追加はないです');expect(next.question?.key).toBe(first.question?.key);
+    expect(h.state().optionalInvitationClosed).toBe(false);expect(h.state().graph.workloads).toHaveLength(1);expect(h.saves()).toBe(0);
+  });
+
+  it('keeps registration priority when decline and registration are stated together after an invitation', async () => {
+    const h = harness([wire(), wire(event(), [decline, request({ localId: 'club' })])]);
+    await h.turn('今週の相談です');const next = await h.turn('ほかの作業はありません。部活はその時間で登録してください');
+    expect(next.question).toBeNull();expect(next.draftCandidates).toHaveLength(1);expect(next.preview).not.toBeNull();
+    expect(h.rendererInputs[1]).toMatchObject({ communication: { statusReason: 'fixed_event_registration_preview' } });
+    expect(h.state().optionalInvitationClosed).toBe(false);expect(h.state().draftGenerationIntent).toBe('not_requested');expect(h.saves()).toBe(0);
+  });
+
+  it('matches V5 fixed-task handoff, immediate decline, repeat and targeted acknowledgment registration', async () => {
+    const h = harness([wire(event()), wire([], [decline]), wire(), (context: Context) => wire([], [request({ factId: context.activeFacts.tasks[0].id })], 'unknown')]);
+    const first = await h.turn('11月3日16時から17時半までゼミがあります。');
+    expect(first.question).toBeNull();expect(h.rendererInputs[0]).toMatchObject({ communication: { statusReason: 'fixed_event_manual_entry' } });
+    await h.turn('特にないです');await h.turn('変わりません');
+    for (const input of h.rendererInputs.slice(1)) expect(input).toMatchObject({ communication: { askQuestion: false, statusReason: 'no_additional_work' } });
+    const last = await h.turn('うん、お願い。');expect(last.draftCandidates).toHaveLength(1);expect(h.saves()).toBe(0);
+  });
+
+  it('does not close the empty invitation from a stale presented reply', async () => {
+    const h = harness([wire(), wire([], [decline])]);await h.turn('今週の相談です');
+    const next = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports: h.ports, turnId: 'stale-decline', userText: '特にないです', shownRevision: -1 });
+    expect(next.question?.optionalInvitation).toBeDefined();expect(h.state().optionalInvitationClosed).toBe(false);expect(h.saves()).toBe(0);
+  });
+
+  it.each(['unsupported wire', 'rejected transaction'] as const)('persists no decline state for %s', async mode => {
+    const unsupported = { ...wire(), conversationActs: [{ kind: 'topic_shift', targetRef: null }] };
+    const h = harness([wire(), unsupported, unsupported]);await h.turn('今週の相談です');const before = structuredClone(h.state());
+    if (mode === 'rejected transaction') h.ports.interpret = async () => ({ status: 'interpreted', planningIntent: 'discuss',
+      conversationActs: [decline], delta: { ...EMPTY, remove: [{ targetFactId: 'missing-fact' }] }, answer: null,
+      metrics: { calls: 1, repairs: 0, latencyMs: 0 } });
+    const result = await h.turn('追加はないです');
+    expect(result.outcome).toBe(mode === 'unsupported wire' ? 'interpretation_failed' : 'rejected');
+    expect(h.state()).toEqual(before);expect(h.saves()).toBe(0);
+  });
+
+  it('defaults an old checkpoint to not closed and rejects an invalid closed flag', async () => {
+    const h = harness([wire()]);await h.turn('今週の相談です');
+    const old = JSON.parse(h.local.checkpoint.read()!);delete old.vnext.state.optionalInvitationClosed;
+    const raw = JSON.stringify(old);
+    const loaded = parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: OWNER, weekStartDate: WEEK });
+    expect(loaded?.vnext.state.optionalInvitationClosed).toBe(false);
+    expect(JSON.parse(raw).vnext.state).not.toHaveProperty('optionalInvitationClosed');
+    for (const flag of [null, 0, 'true']) {
+      old.vnext.state.optionalInvitationClosed = flag;
+      expect(parseWeeklyPlanningVNextSessionCheckpoint({ raw: JSON.stringify(old), ownerId: OWNER, weekStartDate: WEEK })).toBeNull();
+    }
+  });
+
 });

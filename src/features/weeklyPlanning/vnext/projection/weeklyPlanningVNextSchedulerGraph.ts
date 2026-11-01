@@ -83,8 +83,9 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
   const currentOrNull = (id: string | null) => (id === null ? null : current(id));
   const base = withCurrentVNextReferences(createWeeklyPlanningActiveSchedulerGraphViewV5(state.graph), current);
   // A plain work deferral still has nothing compilable. The empty-work extension is only
-  // for actual active hard fixed intervals; it never gives deferred work a timebox.
-  if (projection.readiness === 'empty' && !base.temporalConstraints.some(bound =>
+  // for actual active hard fixed intervals when work was deferred. Otherwise V5 compiles
+  // empty/busy-only information too, so its optional-invitation policy can run; no work is invented.
+  if (projection.readiness === 'empty' && projection.deferredQuestions.length > 0 && !base.temporalConstraints.some(bound =>
     bound.kind === 'fixed_interval' && bound.constraintLevel === 'hard')) return { status: 'not_ready' };
   const sources = new Map([...state.graph.workloads, ...state.graph.tasks].map((fact) => [fact.id, fact.source]));
 
