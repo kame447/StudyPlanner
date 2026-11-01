@@ -85,6 +85,9 @@ const runtimeGatewayStubPlugin = {
   },
 };
 
+/** Each harness dev server owns its dependency cache; see `cacheDir` below. */
+export const harnessCacheDir = port => path.join(repositoryRoot, 'tests/e2e/node_modules/.vite-harness', String(port));
+
 export default defineConfig({
   root: harnessDir,
   plugins: [runtimeGatewayStubPlugin, react()],
@@ -104,6 +107,10 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react-dom/client', 'firebase/app', 'firebase/auth', 'firebase/firestore', 'lucide-react', 'suncalc'],
   },
+  // Playwright starts several harness dev servers at once (4174 default, 4175 durable, 4177 stable-v5). They all
+  // resolve to the same default cache directory, so one server's optimization replaces the dependency files another
+  // server's page has just been told to load (504 'Outdated Optimize Dep', blank first page). One cache per port.
+  cacheDir: harnessCacheDir(4174),
   server: {
     host: '127.0.0.1',
     port: 4174,
