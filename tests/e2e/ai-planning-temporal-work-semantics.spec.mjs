@@ -2,7 +2,7 @@ import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { VNEXT_SCHEMA, vnextReadingFromFacts } from './support/weekly-planning-provider.mjs';
+import { VNEXT_SCHEMA, vnextReadingFromFacts, unaliasedRuntimeGatewayStubBody } from './support/weekly-planning-provider.mjs';
 
 // Issue #870: fixed time occupies its exact interval; movable work is an amount
 // placed in free time, split only as a fallback and never when one sitting is stated.
@@ -80,7 +80,7 @@ async function boot(page, calls, reading) {
   await page.route('**/*', route => new URL(route.request().url()).origin === ORIGIN ? route.continue() : route.abort());
   await page.route('**/weeklyPlanningTurnRuntimeGateway.stub.js*', route => route.fulfill({
     contentType: 'application/javascript',
-    body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};\nexport { createWeeklyPlanningVNextRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway.ts`)};`,
+    body: unaliasedRuntimeGatewayStubBody(root),
   }));
   const seams = [
     ['lib/aiConfig.ts', 'function getCloudflareAiProxyUrl() {', `return ${JSON.stringify(PROXY)};`],

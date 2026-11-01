@@ -2,7 +2,7 @@ import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { VNEXT_SCHEMA, vnextReadingFromFacts } from './support/weekly-planning-provider.mjs';
+import { VNEXT_SCHEMA, vnextReadingFromFacts, unaliasedRuntimeGatewayStubBody } from './support/weekly-planning-provider.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const replay = process.env.INCIDENT_REPLAY === '1';
@@ -64,7 +64,7 @@ async function boot(page, calls, scenario) {
   await page.route('**/*', route => new URL(route.request().url()).origin === ORIGIN ? route.continue() : route.abort());
   await page.route('**/weeklyPlanningTurnRuntimeGateway.stub.js*', route => route.fulfill({
     contentType: 'application/javascript',
-    body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};\nexport { createWeeklyPlanningVNextRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway.ts`)};`,
+    body: unaliasedRuntimeGatewayStubBody(root),
   }));
   const seams = [
     ['lib/aiConfig.ts', 'function getCloudflareAiProxyUrl() {', `return ${JSON.stringify(PROXY)};`],
