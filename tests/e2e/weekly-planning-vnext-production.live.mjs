@@ -177,32 +177,48 @@ test.describe('VNext production core', () => {
     const seen = observe(page);
     const title = `E2E-${tag}-読書`;
     let saved = false;
+    let target = null;
     let primaryError = null;
     let cleanupError = null;
     try {
       await signIn(page);
       await openAiPlanning(page);
-      const when = `${jstTomorrow().getUTCMonth() + 1}月${jstTomorrow().getUTCDate()}日`;
+      // The target day must lie inside the week the AI planner is planning (selected date's week).
+      const week = await plannerWeekStart(page);
+      const plan = chooseTargetDay(week);
+      target = plan.date;
+      if (plan.switchWeek) {
+        await openScheduleDay(page, plan.date);
+        await openAiPlanning(page);
+        await expect.poll(() => plannerWeekStart(page), { timeout: 30_000 }).toBe(plan.weekStart);
+      }
+      const when = `${target.getUTCMonth() + 1}月${target.getUTCDate()}日`;
       await sendTurn(page, `${when}の夜に「${title}」を合計90分したいです。30分ずつに分けても構いません。計画案を作ってください。`);
       await sendTurn(page, `訂正です。「${title}」は合計60分にしてください。`);
       const previewButton = page.locator('.ai-planning-preview-button').first();
       await expect(previewButton, 'a plan preview must exist after the correction').toBeVisible({ timeout: 30_000 });
       await previewButton.click();
-      const dialog = page.locator('.ai-planning-preview-dialog, [role="dialog"]').filter({ hasText: 'この内容で仮予定にする' }).first();
+      const dialog = page.locator('[role="dialog"]').filter({ hasText: 'この内容で仮予定にする' }).first();
+      await expect(dialog).toBeVisible();
+      // The correction must be reflected in the preview itself: blocks for the title total 60 minutes.
+      const previewBlocks = dialog.locator('[data-ai-preview-action-block]');
+      const previewMinutes = await shownMinutes(previewBlocks, title, /^(.*) (\d{2}:\d{2})-(\d{2}:\d{2})$/u, 'data-ai-preview-action-block');
+      expect(previewMinutes, 'preview blocks for the title must total the corrected 60 minutes').toBe(60);
       await dialog.getByRole('button', { name: 'この内容で仮予定にする' }).click();
       await dialog.getByRole('button', { name: 'この内容で保存' }).click();
       saved = true;
       await expect(dialog).toBeHidden({ timeout: 60_000 });
-      // Saved plans carry the corrected total (60 min), split into 30 min blocks at most.
-      await openScheduleDay(page, jstTomorrow());
-      const entries = visibleEntries(page, title);
-      await expect.poll(() => entries.count(), { timeout: 30_000 }).toBeGreaterThan(0);
+      await openScheduleDay(page, target);
+      await expect.poll(() => visibleEntries(page, title).count(), { timeout: 30_000 }).toBeGreaterThan(0);
+      const savedMinutes = await shownMinutes(page.locator(`[title*="${title}"]`).locator('visible=true'), title,
+        /^(.*?) \/ (\d{2}:\d{2})-(\d{2}:\d{2})(?: \/ .*)?$/u);
+      expect(savedMinutes, 'saved entries for the title must total the corrected 60 minutes').toBe(60);
       assertProviderBound(seen, 2 * MAX_TURN_PROVIDER_CALLS);
     } catch (error) {
       primaryError = error;
     } finally {
       if (saved) {
-        try { await removeSavedPlans(page, title, jstTomorrow()); }
+        try { await removeSavedPlans(page, title, target); }
         catch (error) { cleanupError = error; }
       }
     }
@@ -212,6 +228,50 @@ test.describe('VNext production core', () => {
   });
 });
 
+const pad = value => String(value).padStart(2, '0');
+const isoDay = date => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+const addDays = (date, days) => new Date(date.getTime() + days * 86_400_000);
+
+// Reads the planner's current week start from the active chat's VNext checkpoint (counts/dates only).
+const plannerWeekStart = page => page.evaluate(() => {
+  const indexKey = Object.keys(localStorage).find(key => key.startsWith('studyplanner.aiPlanning.chats.v1.'));
+  if (!indexKey) return null;
+  let active;
+  try { active = JSON.parse(localStorage.getItem(indexKey)).activeChatId; } catch { return null; }
+  const key = Object.keys(localStorage).find(name => name.startsWith('studyplanner.weeklyPlanning.vnext.') && name.endsWith(`.${active}.ui`));
+  try { return key ? JSON.parse(localStorage.getItem(key)).payload.state.weekStartDate : null; } catch { return null; }
+});
+
+// Tomorrow when it stays inside the planner's week; otherwise a later day (week start + 9 days, i.e.
+// the third day) of the next week, with the planner switched to that week first.
+function chooseTargetDay(weekStart) {
+  expect(weekStart, 'the planner week must be readable from the checkpoint').toMatch(/^\d{4}-\d{2}-\d{2}$/u);
+  const start = new Date(`${weekStart}T00:00:00Z`);
+  const tomorrow = jstTomorrow();
+  const tomorrowUtcDay = new Date(Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate()));
+  if (tomorrowUtcDay.getTime() <= addDays(start, 6).getTime() && tomorrowUtcDay.getTime() >= start.getTime()) {
+    return { date: tomorrowUtcDay, switchWeek: false, weekStart };
+  }
+  const nextStart = addDays(start, 7);
+  return { date: addDays(nextStart, 2), switchWeek: true, weekStart: isoDay(nextStart) };
+}
+
+// Sums the shown start-end minutes of entries for this title. Existence alone is not a correction check.
+async function shownMinutes(locator, title, pattern, idAttribute) {
+  const rows = await locator.evaluateAll((nodes, idAttr) => nodes.map(node => ({
+    text: node.getAttribute('title') ?? '', id: idAttr ? node.getAttribute(idAttr) : null })), idAttribute ?? null);
+  const seenIds = new Set();
+  let total = 0;
+  for (const row of rows) {
+    if (row.id) { if (seenIds.has(row.id)) continue; seenIds.add(row.id); }
+    const match = row.text.match(pattern);
+    if (!match || !match[1].includes(title)) continue;
+    const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+    total += minutes(match[3]) - minutes(match[2]);
+  }
+  return total;
+}
+
 // Only visible nodes: the hidden AI view still holds the same title in its messages.
 const visibleEntries = (page, title) => page.getByText(title).locator('visible=true');
 function jstTomorrow() { return new Date(Date.now() + 9 * 3600_000 + 86_400_000); }
@@ -219,10 +279,10 @@ function jstTomorrow() { return new Date(Date.now() + 9 * 3600_000 + 86_400_000)
 async function openScheduleDay(page, date) {
   await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
   await page.getByRole('tab', { name: '日', exact: true }).click();
-  // The day view opens on today; tomorrow is one period ahead.
+  // The day view opens on the selected date (today by default); step forward until the target day shows.
   const label = `${date.getUTCMonth() + 1}月${date.getUTCDate()}日`;
   const next = page.getByRole('button', { name: '次の期間へ' });
-  for (let step = 0; step < 3 && !(await page.getByText(label).first().isVisible()); step++) await next.click();
+  for (let step = 0; step < 6 && !(await page.getByText(label).first().isVisible()); step++) await next.click();
 }
 
 // Deletes every saved block carrying this run's unique title through the schedule UI, then proves none remain.
