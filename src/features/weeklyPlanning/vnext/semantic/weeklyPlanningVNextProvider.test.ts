@@ -4,10 +4,11 @@ import type { WeeklyPlanningVNextInterpretationInput } from '../weeklyPlanningVN
 import type { VNextAddFact } from '../weeklyPlanningVNextTypes';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
-import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
+import { createWeeklyPlanningVNextProviderInterpreter, VNEXT_PROVIDER_MAX_COMPLETION_TOKENS } from './weeklyPlanningVNextProvider';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT,
   VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_NAMED_TIME_PERIOD_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT,
   VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../../shared/aiProxyContract';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
@@ -62,6 +63,15 @@ function changedUnitInput(): WeeklyPlanningVNextInterpretationInput {
 }
 
 describe('VNext native provider', () => {
+  it('requests no more output than the production Worker grants, on the first call and the repair', async () => {
+    expect(VNEXT_PROVIDER_MAX_COMPLETION_TOKENS).toBeLessThanOrEqual(AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens);
+    const request = input([JSON.stringify(output([task(), { ...workload(), amount: 'many' }])), JSON.stringify(output([task(), workload()]))]);
+    await createWeeklyPlanningVNextProviderInterpreter()(request);
+    const calls = vi.mocked(request.client.createChatCompletion).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [call] of calls) expect(call.maxCompletionTokens).toBe(AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens);
+  });
+
   it('decodes V5 optional decline alongside registration and rejects every other new act kind', async () => {
     const raw = { ...output(), conversationActs: [{ kind: 'decline_additional_work', targetRef: null },
       { kind: 'request_event_registration', targetRef: null }] };

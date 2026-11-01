@@ -8,6 +8,15 @@ import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_ESTIMATE_A
   VNEXT_PROVIDER_RESPONSE_FORMAT, type VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
 import { resolveVNextEventRegistrationActs } from '../weeklyPlanningVNextEventRegistration';
 import { createVNextProviderReferences } from './weeklyPlanningVNextProviderReferences';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../../shared/aiProxyContract';
+
+/**
+ * The production Worker clamps every chat completion to AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens, so a
+ * larger request is only a promise the Worker silently breaks (and lets direct-API evals see a budget
+ * production never gives). Real-API run 41238397000: 204 native calls, largest completion 1241 tokens
+ * including 956 reasoning; a finish_reason=length stops the turn as a provider error, never a partial reading.
+ */
+export const VNEXT_PROVIDER_MAX_COMPLETION_TOKENS = AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens;
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -112,7 +121,7 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
     const request = async () => {
       metrics.calls++;
       return input.client.createChatCompletion({ messages, responseFormat: VNEXT_PROVIDER_RESPONSE_FORMAT,
-        purpose: 'weekly_planning_semantic_normalizer', maxCompletionTokens: 12_000 });
+        purpose: 'weekly_planning_semantic_normalizer', maxCompletionTokens: VNEXT_PROVIDER_MAX_COMPLETION_TOKENS });
     };
     let raw: string;
     try { raw = await request(); }
