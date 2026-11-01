@@ -126,4 +126,3 @@ describe('durable VNext closed-choice port (Jev) in the Worker', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
-
