@@ -13,20 +13,23 @@ const isCi = Boolean(process.env.CI);
 const sharedCoreSpecs = new Set(['**/weekly-planning-module-recovery.spec.mjs']);
 const stableV5OnlySpecs = stableV5Specs.filter(spec => !sharedCoreSpecs.has(spec));
 
+// A project's own testIgnore replaces the config-level one, so the default project repeats this list.
+const configIgnored = [
+  '**/admin-overview-render.spec.mjs',
+  '**/admin-mobile-navigation.spec.mjs',
+  '**/admin-system-environment.spec.mjs',
+  '**/admin-analysis-query-snapshot.spec.mjs',
+  '**/support-inquiries.spec.mjs',
+  '**/announcements.spec.mjs',
+  '**/cross-browser-smoke.spec.mjs',
+  '**/home-add-mobile-motion.spec.mjs',
+  '**/quality-gates.spec.mjs',
+  '**/visual-regression.spec.mjs',
+];
+
 export default defineConfig({
   testDir: configDir,
-  testIgnore: [
-    '**/admin-overview-render.spec.mjs',
-    '**/admin-mobile-navigation.spec.mjs',
-    '**/admin-system-environment.spec.mjs',
-    '**/admin-analysis-query-snapshot.spec.mjs',
-    '**/support-inquiries.spec.mjs',
-    '**/announcements.spec.mjs',
-    '**/cross-browser-smoke.spec.mjs',
-    '**/home-add-mobile-motion.spec.mjs',
-    '**/quality-gates.spec.mjs',
-    '**/visual-regression.spec.mjs',
-  ],
+  testIgnore: configIgnored,
   fullyParallel: false,
   forbidOnly: isCi,
   retries: isCi ? 1 : 0,
@@ -49,7 +52,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: stableV5OnlySpecs,
+      testIgnore: [...configIgnored, ...stableV5OnlySpecs],
       use: { ...devices['Desktop Chrome'] },
     },
     {
