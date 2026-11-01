@@ -1004,10 +1004,13 @@ async function runVNextConversation(
       const observed = observedFacts(state.graph);
       const busyConstraints = resolveV5BusyConstraints(state.graph, conversation);
       facts = observed;
+      // Shown by this turn's reply, not merely still bound from an earlier one: the session records a
+      // presentation with the text that showed it, and a retained one keeps its earlier text.
       const committedPresentation = read.checkpoint.presentedQuestion;
       const observedQuestion = typedQuestion
         && committedPresentation?.graphRevision === result.graphRevision
         && committedPresentation.questionKey === typedQuestion.key
+        && committedPresentation.shownText === result.reply
         ? typedQuestion : null;
       question = observedQuestion?.code ?? null;
       deferredQuestionCodes = projection.deferredQuestions.map(({ code }) => code);
@@ -1266,6 +1269,37 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     });
     expect(observed.turns[1]).toMatchObject({ presentedText: shownText, rendererCalls: 1 });
     expect(summarize([observed])).toMatchObject({ aiCalls: 2, rendererCalls: 2, providerCalls: 4 });
+  });
+
+  it.each([false, true])('counts a question kept from an earlier turn only when this reply shows it again (verified recovery=%s)', async (verified) => {
+    const oracle: RealApiTurnOracle = { inVNextScope: true, workloads: [{ task: 'math', role: 'target', amount: 35, unitCode: 'problem', unitLabel: '問' }],
+      efforts: [], temporal: [], questionCode: 'missing_effort_estimate', projectedMinutes: null };
+    const conversation: RealApiConversation = { id: 'retained-presentation-observation', source: 'offline contract test',
+      description: 'a failed turn retains the earlier question', turns: [{ userText: '数学の問題を35問やる', oracle }, { userText: '少し待って', oracle }] };
+    const emptyDelta: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
+    const initialDelta: VNextTurnDelta = { ...emptyDelta, add: [
+      { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+      { kind: 'workload', localId: 'problems', taskRef: { localId: 'math' }, componentRef: null,
+        quantityRole: 'target', amount: 35, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null },
+    ] };
+    let calls = 0;
+    const interpreter: WeeklyPlanningVNextExperimentalPorts['interpret'] = async () => ++calls === 1
+      ? { status: 'interpreted', planningIntent: 'create_plan', delta: initialDelta, answer: null, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }
+      : { status: 'failed', reason: 'provider_error', errors: [], metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
+    const renderer: WeeklyPlanningVNextExperimentalPorts['createRenderer'] = () => ({
+      async render(input) {
+        if (!input.recovery) return { status: 'rendered', text: '35問には何分かかりますか？', rawResponse: '' };
+        return verified ? { status: 'rendered', text: '反映できませんでした。35問には何分かかりますか？', rawResponse: '', recoveryVerified: true }
+          : { status: 'fallback', reason: 'recovery_verification_failed', rawResponse: '' };
+      },
+    });
+    const client: OpenAiCompatibleClient = { async createChatCompletion() { throw new Error('offline test must not call a provider'); } };
+    const observed = await runVNextConversation(conversation, { client, interpret: interpreter, createRenderer: renderer });
+    expect(observed.turns[0]).toMatchObject({ questionCode: 'missing_effort_estimate', clarificationCount: 1 });
+    expect(observed.turns[1]).toMatchObject(verified
+      ? { replySource: 'renderer_recovery', questionCode: 'missing_effort_estimate', clarificationCount: 2 }
+      : { replySource: 'system', questionCode: null, clarificationCount: 1 });
   });
 
   it('does not count an unpresented question after a renderer technical stop', async () => {

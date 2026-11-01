@@ -437,3 +437,34 @@ describe('VNext native fixed-event registration through the unchanged V5 project
   });
 
 });
+
+describe('declining the optional invitation closes it whatever tasks exist (Astra a5946cc9)', () => {
+  const doneWork: VNextAddFact[] = [{ kind: 'task', localId: 'done-task', title: '数学', category: 'study' },
+    ...(['scope_total', 'completed'] as const).map(role => ({ kind: 'workload' as const, localId: role, taskRef: { localId: 'done-task' },
+      componentRef: null, quantityRole: role, amount: 10, unitCode: 'page' as const, unitLabel: 'ページ', rangeStart: null, rangeEnd: null,
+      perOccurrence: false, periodExpression: null }))];
+  const decline: VNextEventRegistrationAct = { kind: 'decline_additional_work', targetRef: null };
+
+  it('closes after all requested work is complete, stays closed, and writes nothing', async () => {
+    const h = harness([wire(doneWork), wire([], [decline]), wire()]);
+    const asked = await h.turn('数学は全10ページで10ページ終わっています');
+    expect(asked.question?.optionalInvitation?.intent).toBe('all_requested_work_complete');
+    const declined = await h.turn('追加はありません');
+    expect(declined.outcome).toBe('noop');
+    expect(declined.question).toBeNull();
+    expect(h.state().optionalInvitationClosed).toBe(true);
+    expect((await h.turn('変わりません')).question).toBeNull();
+    expect(h.state().optionalInvitationClosed).toBe(true);
+    expect(h.saves()).toBe(0);
+  });
+
+  it('keeps the required question when work remains (negative control)', async () => {
+    const pending = doneWork.map(f => f.kind === 'workload' && f.quantityRole === 'completed' ? { ...f, amount: 5 } : f);
+    const h = harness([wire(pending), wire([], [decline])]);
+    const first = await h.turn('数学は全10ページで5ページ終わっています');
+    expect(first.question?.code).toBe('missing_effort_estimate');
+    const result = await h.turn('追加はありません');
+    expect(result.question?.key).toBe(first.question?.key);
+    expect(h.state().optionalInvitationClosed).toBe(false);
+  });
+});

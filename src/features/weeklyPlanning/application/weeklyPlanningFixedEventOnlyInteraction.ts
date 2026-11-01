@@ -53,19 +53,20 @@ export function fixedEventOnlyInteractionStatus(params: {
   const reservations = params.compilation.input?.fixedTaskReservations ?? [];
   const nonStudyOnly = active.tasks.length > 0 && active.tasks.every(task => task.category === 'non_study');
   const fixedTasksOnly = nonStudyOnly && active.tasks.every(task => reservations.some(reservation => reservation.taskId === task.id));
+  // The guard above proved there is no movable work, so declining the optional invitation closes it
+  // whatever tasks exist (none, busy-only, or fully completed study work), and it stays closed until
+  // the user says something new.
   const declinedOptionalInvitation = params.declinedAdditionalWork
     && params.previousQuestionSlot === 'stable_v5:missing_schedulable_work';
-  if (nonStudyOnly && declinedOptionalInvitation && !params.requestedEventRegistration) return 'no_additional_work';
+  if (declinedOptionalInvitation && !params.requestedEventRegistration) return 'no_additional_work';
   if (!fixedTasksOnly) {
     const emptyResolved = active.tasks.length === 0 && params.compilation.status === 'empty'
       && params.compilation.issues.length === 0;
+    if (emptyResolved && params.requestedEventRegistration) return 'fixed_event_manual_entry';
+    if (!params.requestedEventRegistration && !params.semanticChanged && params.previousOptionalInvitationClosed) return 'no_additional_work';
     if (!emptyResolved) return null;
-    if (params.requestedEventRegistration) return 'fixed_event_manual_entry';
     const busyOnly = active.availabilityDeclarations.some(fact => fact.kind === 'unavailable' && fact.constraintLevel === 'hard');
-    return (busyOnly && params.declinedAdditionalWork)
-      || declinedOptionalInvitation
-      || (!params.semanticChanged && params.previousOptionalInvitationClosed)
-      ? 'no_additional_work' : null;
+    return busyOnly && params.declinedAdditionalWork ? 'no_additional_work' : null;
   }
   return params.requestedEventRegistration || params.semanticChanged
     || params.previousQuestionSlot === 'stable_v5:missing_schedulable_work'
