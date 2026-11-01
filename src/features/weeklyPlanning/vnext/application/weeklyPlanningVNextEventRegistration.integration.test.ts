@@ -6,6 +6,7 @@ import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../../semantic/w
 import { stableV5MissingSchedulableWorkQuestion, projectWeeklyPlanningFixedEventRegistration } from '../weeklyPlanningVNextV5Boundary';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
+import { buildWeeklyPlanningPlanSourceId } from '../../planning/weeklyPlanningPlanProvenance';
 import { validateWeeklyPreviewApproval } from '../../planning/weeklyPlanningApproval';
 import { fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts } from '../../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { VNextEventRegistrationAct } from '../weeklyPlanningVNextInterpretationContract';
@@ -36,7 +37,7 @@ const wire = (add: VNextAddFact[] = [], conversationActs: VNextEventRegistration
 type Context = { activeFacts: { tasks: { id: string; title: string }[]; temporalConstraints: { id: string }[];
   workloads: { id: string }[] }; presentedQuestion: unknown };
 
-function harness(responses: Array<unknown | ((context: Context) => unknown)>, failAt?: number) {
+function harness(responses: Array<unknown | ((context: Context) => unknown)>, failAt?: number, options: { savedAsPlans?: boolean } = {}) {
   const memory = createMemoryStorageHarness();
   const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: memory.storage });
   const slots = new Map<string, string>();
@@ -50,7 +51,12 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>, fa
     } }, approvalLedger: { read: () => slots.get('ledger') ?? null, write: raw => { slots.set('ledger', raw); } },
     plans: { findExistingPlanId: async id => saved.has(id) ? `plan:${id}` : undefined,
       async saveBlock(block) { if (++saves === failAt) throw new Error('synthetic save failure'); saved.set(block.id, block); return { planId: `plan:${block.id}` }; } },
-    calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }), now: () => `${WEEK}T00:00:00.000Z`,
+    // With savedAsPlans the calendar holds the plans approval saved, each carrying the draft block id it came from.
+    calendar: () => ({ plans: options.savedAsPlans ? [...saved.values()].map(block => ({ id: `plan:${block.id}`, seriesId: `plan:${block.id}`,
+      userId: OWNER, title: block.title, subject: block.subject, type: 'study' as const, date: block.date, startTime: block.startTime, endTime: block.endTime,
+      memo: '', recurrence: null, recurrenceRules: [], excludedDates: [], createdAt: block.createdAt, updatedAt: block.updatedAt, sourceType: 'weekly-planning' as const,
+      sourceId: buildWeeklyPlanningPlanSourceId({ approvalOperationId: 'op-1', sourceDraftBlockId: block.id }) })) as never : [],
+      actuals: [], monthEvents: [], scheduleTemplates: [] }), now: () => `${WEEK}T00:00:00.000Z`,
     createRenderer: () => ({ async render(input) { rendererInputs.push(input);
       return { status: 'rendered', text: '合成の候補説明', rawResponse: '' }; } }),
   };
@@ -265,6 +271,26 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     const both = await permitted.turn('ゼミも登録して。予定を更新して');
     expect(both.draftCandidates?.map(c => c.source).sort()).toEqual(['fixed_event_registration', 'weekly_exam_prep']);
     expect(both.authorizationRequired).toBe(false);
+  });
+
+  // D1 (Japanese review, run 41336864039): after the study plan was approved and saved, the registration reply said
+  // the study work "is not placed yet". The same fact, by identity, in the same turn with and without the save:
+  it.each([
+    { saved: true, expected: undefined },
+    { saved: false, expected: ['数学 60分'] },
+  ])('reports study work as awaiting authorization only when no saved plan covers it (saved=$saved)', async ({ saved, expected }) => {
+    const h = harness([wire(work, [], 'create_plan'),
+      wire(event('club'), [request(null)], 'unknown')], undefined, { savedAsPlans: true });
+    const first = await h.turn('数学は60分。予定を作って');
+    expect(first.draftCandidates?.map(c => c.source)).toEqual(['weekly_exam_prep']);
+    if (saved) expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
+    const second = await h.turn('11月3日16時から17時半までクラブです。登録して');
+    expect(second.draftCandidates?.map(c => c.source)).toEqual(['fixed_event_registration']);
+    const facts = (h.rendererInputs[1] as { communication: { eventRegistration?: { workAwaitingAuthorization?: string[] } } }).communication;
+    expect(facts.eventRegistration?.workAwaitingAuthorization).toEqual(expected);
+    // The permission and the stored state are untouched either way; only the claim and the scope request differ.
+    expect(second.authorizationRequired).toBe(!saved);
+    expect(h.state().draftGenerationIntent).toBe('user_authorized');
   });
 
   it('rejects a bad registration inside the sole transaction without changing state or its revision', () => {

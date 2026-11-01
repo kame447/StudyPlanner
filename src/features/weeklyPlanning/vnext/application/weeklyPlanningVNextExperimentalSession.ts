@@ -53,6 +53,7 @@ import {
   type WeeklyPlanningStableV5DialogueRenderer,
 } from '../weeklyPlanningVNextV5Boundary';
 import { resolveWeeklyPlanningVNextTurnDelta } from './weeklyPlanningVNextAnswerBinding';
+import { workNotCoveredBySavedPlans } from '../../application/weeklyPlanningSavedWorkCoverage';
 import { createVNextOptionalInvitation } from './weeklyPlanningVNextOptionalInvitation';
 import { createWeeklyPlanningVNextRenderInput, VNEXT_RECENT_MESSAGE_LIMIT } from './weeklyPlanningVNextDialogue';
 import {
@@ -242,8 +243,11 @@ function shownPreview(
       optionalQuestion, registrationCommunication: handoff ? fixedEventCommunicationFacts(handoff) : undefined };
   }
   const work = compiled.compilation.input.movableWorkItems;
-  const authorizationRequired = !authorized && work.length > 0;
-  const scheduled = !authorizationRequired && work.length > 0 ? scheduleWeeklyPlanningStableV5Preview({
+  // Work an approved, saved plan already covers is not awaiting anything (shared with Stable V5's routing). Whether
+  // new placement may run is the permission alone, as before.
+  const awaiting = workNotCoveredBySavedPlans(work, calendar.plans);
+  const authorizationRequired = !authorized && awaiting.length > 0;
+  const scheduled = (authorized || work.length === 0) && work.length > 0 ? scheduleWeeklyPlanningStableV5Preview({
     input: compiled.compilation.input,
     graph: compiled.placementGraph,
     plans: calendar.plans,
@@ -257,7 +261,7 @@ function shownPreview(
   const candidates = [...registration.candidates, ...(scheduled?.status === 'ready' ? scheduled.candidates : [])];
   const registrationCommunication = registration.candidates.length > 0 || registration.unregistered.length > 0
     ? weeklyPlanningFixedEventRegistrationFacts(registration.candidates, [...calendar.plans],
-      authorizationRequired ? [...new Set(work.map(item => item.label))] : [], registration.unregistered, candidates.length) : handoff ? fixedEventCommunicationFacts(handoff) : undefined;
+      authorizationRequired ? [...new Set(awaiting.map(item => item.label))] : [], registration.unregistered, candidates.length) : handoff ? fixedEventCommunicationFacts(handoff) : undefined;
   // The existing candidate/display conversion supplies the same approval provenance for both kinds.
   const blocks = createWeeklyPlanningPreviewBlocks(candidates)
     .map(block => createWeeklyPlanningPreviewDisplayBlock(block, scope.ownerId));
