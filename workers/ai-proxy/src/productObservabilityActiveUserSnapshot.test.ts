@@ -287,6 +287,9 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
       published: true,
       completedSource: TODAY_SOURCE,
     });
+    expect(firestore.queriedDates).toHaveLength(30);
+    expect(firestore.queriedDates[0]).toBe('2026-07-30');
+    expect(firestore.queriedDates[29]).toBe('2026-08-28');
     expect(firestore.documents.get(
       'observability_active_user_windows/production:2026-08-28',
     )).toMatchObject({
@@ -294,6 +297,7 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
       last7Days: 2,
       last30Days: 3,
       reportingTimeZone: 'Asia/Tokyo',
+      expireAt: '2027-10-02T12:00:00.000Z',
     });
     expect(firestore.documents.get(
       `${ACTIVE_USER_SNAPSHOT_JOB_COLLECTION}/${ACTIVE_USER_SNAPSHOT_JOB_ID}`,

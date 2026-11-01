@@ -127,18 +127,8 @@ function addDays(localDate: string, offset: number): string {
   return shiftObservabilityDate(localDate, offset);
 }
 
-function datesEndingAt(asOfDate: string, days: number): string[] {
-  return Array.from({ length: days }, (_, index) => addDays(asOfDate, index - days + 1));
-}
-
 function snapshotId(environment: ObservabilityEnvironment, asOfDate: string): string {
   return `${environment}:${asOfDate}`;
-}
-
-function expiryFrom(nowIso: string): string {
-  return new Date(
-    new Date(nowIso).getTime() + READ_MODEL_RETENTION_DAYS * 86_400_000,
-  ).toISOString();
 }
 
 function dirtySourceKey(source: ObservabilityActiveUserDirtySource): string {
@@ -544,7 +534,9 @@ function snapshotFromShards(params: {
     last7Days,
     last30Days,
     updatedAt: params.nowIso,
-    expireAt: expiryFrom(params.nowIso),
+    expireAt: new Date(
+      new Date(params.nowIso).getTime() + READ_MODEL_RETENTION_DAYS * 86_400_000,
+    ).toISOString(),
   };
 }
 
@@ -686,7 +678,11 @@ export class ProductObservabilityActiveUserSnapshotService {
       (_, index) => readShard(values[index + 2] ?? null, job.taskKey as string, index, nowIso),
     );
     const touchedShards = new Set<number>();
-    const scanDates = datesEndingAt(job.targetDate, 30);
+    const targetDate = job.targetDate;
+    const scanDates = Array.from(
+      { length: 30 },
+      (_, index) => addDays(targetDate, index - 30 + 1),
+    );
     let pageReads = 0;
     let scanDateIndex = job.scanDateIndex;
     let cursor = job.cursor;

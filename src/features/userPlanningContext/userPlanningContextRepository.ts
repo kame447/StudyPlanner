@@ -82,12 +82,6 @@ function parseCloudDocument(
   };
 }
 
-function canonicalRecords(
-  records: Iterable<UserPlanningContextRecordV1>,
-): UserPlanningContextRecordV1[] {
-  return retainUserPlanningContextRecordsV1(records);
-}
-
 function snapshotFromRecords(params: {
   ownerId: string;
   records: Iterable<UserPlanningContextRecordV1>;
@@ -96,7 +90,7 @@ function snapshotFromRecords(params: {
   return {
     version: USER_PLANNING_CONTEXT_STORAGE_VERSION,
     ownerId: params.ownerId,
-    records: canonicalRecords(params.records),
+    records: retainUserPlanningContextRecordsV1(params.records),
     updatedAt: params.updatedAt,
   };
 }

@@ -180,22 +180,6 @@ function findWorkItemSlot(params: {
   });
 }
 
-function orderedDates(params: {
-  context: WeeklyPlanningPlacementRuntimeContextV5;
-  allowedDates: string[];
-  preferredDate: string | null;
-  durationMinutes: number;
-}): string[] {
-  return orderPlacementDatesV5({
-    allowedDates: params.allowedDates,
-    allDates: params.context.dates,
-    preferredDate: params.preferredDate,
-    dayLoads: params.context.dayLoads,
-    durationMinutes: params.durationMinutes,
-    totalMovableMinutes: params.context.totalMovableMinutes,
-  });
-}
-
 function findWorkItemFragments(params: {
   context: WeeklyPlanningPlacementRuntimeContextV5;
   item: GenericPlanningWorkItem;
@@ -288,8 +272,13 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
     taskIndex: params.taskOrdinal, sessionIndex: params.taskPosition.index,
     sessionCount: params.taskPosition.count, dates: params.context.dates,
   });
-  const allowedDates = orderedDates({
-    context: params.context, allowedDates: rawAllowedDates, preferredDate, durationMinutes: duration,
+  const allowedDates = orderPlacementDatesV5({
+    allowedDates: rawAllowedDates,
+    allDates: params.context.dates,
+    preferredDate,
+    dayLoads: params.context.dayLoads,
+    durationMinutes: duration,
+    totalMovableMinutes: params.context.totalMovableMinutes,
   });
   const slot = findWorkItemSlot({
     context: params.context, item: params.item, dates: allowedDates,
