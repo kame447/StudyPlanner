@@ -41,3 +41,14 @@ Owner: PurplePasteur（親 Opus 5.5、standalone）。Issue [#926](https://githu
 ## Checkpoint log
 
 - 2026-11-01 11:00 JST: `a5946cc9` push。次は子 3 体と Astra を起動。
+- 2026-11-02: ユーザー指示で体制変更。子は全員 Claude Sonnet 5.5（Sol/Luna/Gemini/Opus 子は使わない）、Astra は全ゲート後の最終監査のみ。旧子（Sol 4 体）の未コミット差分を回収・統合（`d7957e2e`）。
+- 2026-11-02 01:30 JST（最大速度の追加承認後）: 親 HEAD `04360f2c`（ローカル）。Sonnet 子 4 体、load average 約 27 のため増員は保留。
+
+| 子（Sonnet 5.5） | 担当 | 状態 |
+|---|---|---|
+| DeftPauling | VNext の durable turn（Worker job 実行・再読込後の再開・取消・複数チャット） | 実装中（`cacc13c0`＋再開修正） |
+| EagerArrhenius | E2E 移植と全 Playwright の順次実行（ブラウザ実行はこの 1 体のみ） | emulator 9/9（`04360f2c` 統合済み）、main config 実行中 |
+| GustyPasteur | 選択・複数チャット・保存失敗・V5 除外 bundle（統合済み）→ 本番確認計画、後で VNext runtime の遅延読み込み | 本番確認計画を作成中 |
+| BrassLovelace | 開始対象・出力上限・Worker リリース計画（統合済み）→ full suite 負荷時の Jev テスト失敗の原因特定 | 調査中 |
+
+残り：durable の統合、VNext runtime の遅延読み込み（bundle 予算）、全 E2E、Jev テスト失敗の原因、origin/main（`7643adc5`）の取り込み、push 後の CI、有料 VNext 実 API ×3、最終 Astra、merge、Worker→Pages の順で deploy、本番確認。
