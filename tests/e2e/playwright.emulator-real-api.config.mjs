@@ -7,7 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
 // dev with the durable turn job on, and a production build with the durable client on. Only the model differs: the
 // Worker's one allowed provider host is api.openai.com (emulator/worker/emulatorFetch.mjs). No production account,
 // URL or Firebase credential is reachable; the only secret is OPENAI_API_KEY. Run by the owner-only
-// weekly-planning-vnext-worker-real-api workflow, never by a pull request.
+// weekly-planning-real-api-checkpoint workflow (profile vnext-worker), never by a pull request.
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, '../..');
 const VNEXT_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-real-api-state.json');

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // The VNext production path with the REAL model, through the real Worker (#926): UI -> Firebase Auth emulator ->
 // Worker (production code on wrangler dev) -> durable turn job -> api.openai.com, with trace into the Firestore
-// emulator. Run only by the owner-only weekly-planning-vnext-worker-real-api workflow. The model is stochastic,
+// emulator. Run only by the owner-only weekly-planning-real-api-checkpoint workflow (profile vnext-worker). The model is stochastic,
 // so assertions are structural (a reply arrives, no failure notice, the preview total follows a correction, a fixed
 // event is registered, a reload mid-turn returns the reply without a second AI run, saving happens exactly once),
 // never exact wording. Five real turns, under the budget of six.
