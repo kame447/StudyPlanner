@@ -100,6 +100,13 @@ Update the checkpoint after meaningful milestones and before intentionally handi
 - If a test fails, classify the cause before editing: production defect, stale/incorrect contract, harness/environment defect, or infrastructure/transient failure.
 - Never weaken a test, hide an error, or change an assertion solely to make CI green.
 
+### Review finding triage
+
+- Score each review or audit finding as likelihood/realistic reachability (1–10) × severity (1–10).
+- A product below 10 is recorded in an Issue only: no code change and no release block.
+- A product of 10 or more is not automatically a required fix. Decide only after confirming the real reachable path, reproducibility, blast radius, existing defenses, the Stable V5 comparison, and the fix's side effects and cost.
+- Never use the score to hide or skip a failing explicitly required test, an incorrect data save, or a critical safety defect.
+
 ### Admin Logs investigation path
 
 When diagnosing a production planning-conversation failure, first consult
