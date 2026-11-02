@@ -1,5 +1,13 @@
 # Retained study-session snapshot writes
 
+## Current repository status (2026-10-28)
+
+[PR #675](https://github.com/kame447/StudyPlanner/pull/675) is integrated into `main` as `37630e6b55241f442e7d5999055dae5305c872d3`. The integration is present in the inspected main snapshot `a0ac8a83f9bba49d610385e6eb7f483bfaff125b`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification and does not close the broader owning Issue. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: focused-verified local candidate; aggregate/native acceptance and publication pending
 
 ## Scope and checkpoint

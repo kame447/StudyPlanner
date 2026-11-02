@@ -1,5 +1,15 @@
 # In-app announcements
 
+## Current disposition — 2026-10-29
+
+Integrated through [PR #646](https://github.com/kame447/StudyPlanner/pull/646) (`fad9cc208671ec8fa63a6c74e35684512d87fc51`), an ancestor of audited main `a60fc5e8bca2ff745efaf603e939967b3e54e4a9`.
+
+The announcement implementation is integrated. PR #646 records final source-scoped browser and rendered acceptance, while retaining the cancelled attempt and real-device limits. Merge alone is not current production Rules read-back or announcement-delivery verification.
+
+## Preserved implementation and verification checkpoints
+
+Publication and integration statements below describe their checkpoint dates. Original evidence, failures, behavioral constraints and unresolved acceptance limits are preserved; this correction claims no new test, device or deployment verification.
+
 Status: local implementation verified; native CI and permission-gated rollout pending, 2026-10-14 UTC
 
 - Owner: announcements implementation; branch `feat/admin-announcements`, base `90211bdcf39dd9bce66211df129949a5668a0de4`.

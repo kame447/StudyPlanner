@@ -167,6 +167,34 @@ function placementGraph(params: Parameters<typeof graph>[0]) {
 }
 
 describe('Stable V5 hard date bound placement', () => {
+  it.each([false, true])('preserves preferred and load-ranked dates when the preferred day is busy=%s', preferredBusy => {
+    const input = schedulerInput();
+    const dates = Array.from({ length: 7 }, (_, index) => `2026-08-${17 + index}`);
+    const windowsByDate = new Map(dates.map(date => [date, [{ start: 9 * 60, end: 10 * 60 }]]));
+    const context: WeeklyPlanningPlacementRuntimeContextV5 = {
+      input, graph: placementGraph({ constraints: [] }), dates,
+      windowsByDate, hardAvailableByDate: windowsByDate,
+      busy: preferredBusy ? [{ date: dates[1], start: 9 * 60, end: 10 * 60 }] : [],
+      dayLoads: new Map(dates.map((date, index) => [date, index === 0 ? 120 : 0])),
+      breakMinutes: 0, totalMovableMinutes: 360,
+    };
+    const unchanged = structuredClone({ input, graph: context.graph, dates, windowsByDate });
+    const originalBusy = structuredClone(context.busy);
+    const originalLoads = new Map(context.dayLoads);
+    const chosenDate = dates[preferredBusy ? 2 : 1];
+    const result = scheduleWeeklyPlanningWorkItemV5({
+      context, item: input.movableWorkItems[0], taskPosition: { index: 0, count: 1 },
+      taskOrdinal: 1, fixedEnds: new Map(), globalCandidates: [],
+    });
+    expect(result.failedWorkItemId).toBeNull();
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]).toMatchObject({ date: chosenDate, startTime: '09:00', endTime: '10:00' });
+    expect(context.busy).toEqual([...originalBusy, { date: chosenDate, start: 9 * 60, end: 10 * 60 }]);
+    originalLoads.set(chosenDate, 60);
+    expect(context.dayLoads).toEqual(originalLoads);
+    expect({ input, graph: context.graph, dates, windowsByDate }).toEqual(unchanged);
+  });
+
   it.each(['none', 'other-target', 'other-date', 'matching'] as const)(
     'preserves explicit hard availability outside base windows for a date-only preference (clock=%s)', scope => {
       const input = schedulerInput();

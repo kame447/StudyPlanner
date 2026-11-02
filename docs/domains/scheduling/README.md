@@ -1,7 +1,7 @@
 # Scheduling domain
 
 Status: canonical domain entry point
-Updated: 2026-10-24
+Updated: 2026-10-29
 
 このドメインは、StudyPlanner 内の「時間が確定した予定」に関するアプリ全体の責務（app-wide ownership）を扱う。
 
@@ -42,25 +42,25 @@ Merged entries are retained for source-scoped evidence, not as an active impleme
 
 - [Planner projection transition boundary](work/planner-projection-boundary-handoff.md) — merged in PR #816; pure accepted-mutation collection rules are outside React orchestration without changing persistence or read/admission authority.
 
-- [Restore the accepted major event on Undo](work/month-event-undo-latest-handoff.md) — local two-reference correction with real-Local persistence and progress regression coverage; publication/native pending.
+- [Restore the accepted major event on Undo](work/month-event-undo-latest-handoff.md) — merged in PR #787; restores the deletion-admitted event. Source-scoped stale-input tests and browser CI evidence are retained; physical-device acceptance is separate.
 
 - [Calendar recurrence evaluation](work/calendar-recurrence-evaluation-handoff.md) — reuse the selected occurrence rule; exact-content publication verification in progress.
 
 - [Yearly quick entry](work/yearly-quick-entry-handoff.md) — schedule type ordering and annual structured recurrence, including persistence and scoped edits.
 
-- [Compact event label picker](work/schedule-color-label-picker-handoff.md) — replaces the always-visible color chips from merged #663 with a one-line label below the time fields; local implementation and focused checks, publication/native verification pending.
+- [Compact event label picker](work/schedule-color-label-picker-handoff.md) — merged in PR #672; replaces #663 color chips with a compact named-radio picker. Browser CI and remaining image/device acceptance are distinguished in the handoff.
 
-- [Event editor selection and optional fields](work/event-editor-selection-handoff.md) — add wording, selection cue, color chips, and reversible disclosure; focused checks passed, combined/visual verification pending.
+- [Event editor selection and optional fields](work/event-editor-selection-handoff.md) — merged in PR #663; Add wording, selection cues and reversible disclosure remain. Always-visible color chips were subsequently replaced by #672.
 
-- [Recurring general-event edit scope](work/20261014-recurring-edit-scope.md) — restore single/future selection while preserving earlier occurrences; local implementation verified, publication/native gates pending.
-- [Month-event save range validation](work/month-event-save-range-handoff.md) — local correction aligning persistence admission with existing multi-day editor validation; publication and native execution pending.
+- [Recurring general-event edit scope](work/20261014-recurring-edit-scope.md) — merged in PR #659; single/future editing preserves earlier occurrences. Corrected browser-engine/layout acceptance is recorded separately from physical-device checks.
+- [Month-event save range validation](work/month-event-save-range-handoff.md) — merged in PR #655; save admission uses the shared multi-day validator. Chromium acceptance and subsequent #659 mobile WebKit coverage are recorded in the handoff.
 
 - [Day grid native selection](work/day-grid-native-selection-handoff.md) — PR #648; suppress accidental native text selection in the Day grid while preserving editors and schedule gestures.
 - [Day timetable visibility and occurrence cancellation](work/day-timetable-occurrence-controls-handoff.md)
 - [Narrow canonical schedule projection reads](work/20261013-schedule-projection-reads.md) — Issue #542; local targeted-recovery read reduction, with production frequency and deployed index verification separate.
 - [Class detail, attendance, and associated schedules](work/20261013-class-detail-attendance.md) — active local-only feature; independent attendance evidence and an optional lesson reference on existing canonical schedules.
 
-- [Continuous radial flick selection](work/radial-continuous-flick-handoff.md) — local same-finger selection, gesture ownership and capability-limited haptics; native acceptance pending.
+- [Continuous radial flick selection](work/radial-continuous-flick-handoff.md) — merged in PR #785; same-finger flick and capability-limited haptics are integrated. Historical matrix failure and actual iPhone acceptance under #780 remain distinct from merge status.
 
 - [Final explicit-date deletion](work/recurring-last-date-delete-handoff.md) — local fix for a deleted final date reappearing after reload; existing storage/IDs retained, focused verification and old-reader evidence recorded.
 

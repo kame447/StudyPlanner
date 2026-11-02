@@ -127,9 +127,6 @@ export async function runAccountDeletionJob(
       if (page.length < PAGE_SIZE) return count;
     }
   }
-  async function deleteOwned(collection: string): Promise<number> {
-    return firestore.deleteByStringField(collection, 'userId', [uid]);
-  }
   async function deleteUidDocument(collection: string): Promise<number> {
     const document = await firestore.getDocument(collection, uid);
     return document ? deleteDocuments(collection, [uid]) : 0;
@@ -166,7 +163,7 @@ export async function runAccountDeletionJob(
       }
     } },
     { name: 'support_inquiry_limits', run: () => deleteUidDocument('support_inquiry_limits') },
-    ...USER_COLLECTIONS.map((collection) => ({ name: collection, run: () => deleteOwned(collection) })),
+    ...USER_COLLECTIONS.map((collection) => ({ name: collection, run: () => firestore.deleteByStringField(collection, 'userId', [uid]) })),
     { name: 'weekly_planning_approval_operations', async run() {
       let count = 0;
       while (true) {

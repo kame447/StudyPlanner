@@ -1,5 +1,13 @@
 # Bookshelf module delivery recovery
 
+## Current repository status (2026-10-28)
+
+[PR #729](https://github.com/kame447/StudyPlanner/pull/729) is integrated into `main` as `e6a18d0dc12422c50ad65d15ece4f298bdcaf581`. The integration is present in the inspected main snapshot `a0ac8a83f9bba49d610385e6eb7f483bfaff125b`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification and does not close the broader owning Issue. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: active, local implementation and independent source review complete; publication pending
 Owner: runtime lane; related Issue #542
 Branch: `fix/bookshelf-load-recovery`

@@ -156,10 +156,6 @@ function catalogClient(
     : null;
 }
 
-function catalogDocumentId(candidate: MaterialMetadataCandidate): string {
-  return candidate.catalogEntryId.replace(/[^A-Za-z0-9_-]/g, '_');
-}
-
 function asCatalogCandidate(value: Record<string, unknown> | null): MaterialMetadataCandidate | null {
   if (!value || !isMaterialMetadataCandidate(value)) return null;
   return {
@@ -456,11 +452,6 @@ async function enrichCoverUrls(
   }
 }
 
-function cacheableCandidate(candidate: MaterialMetadataCandidate): MaterialMetadataCandidate {
-  const { coverImageUrl: _coverImageUrl, ...rest } = candidate;
-  return rest;
-}
-
 async function cacheCandidates(
   client: FirestoreServiceAccountClient | null,
   candidates: MaterialMetadataCandidate[],
@@ -468,7 +459,7 @@ async function cacheCandidates(
   if (!client || candidates.length === 0) return;
   const cachedAt = new Date().toISOString();
   const writes = candidates.map(async (sourceCandidate) => {
-    const candidate = cacheableCandidate(sourceCandidate);
+    const { coverImageUrl: _coverImageUrl, ...candidate } = sourceCandidate;
     const value: CatalogRecord = {
       schemaVersion: 2,
       ...candidate,
@@ -476,7 +467,11 @@ async function cacheCandidates(
       sourceProvider: 'ndl-search',
       cachedAt,
     };
-    await client.setDocument(CATALOG_COLLECTION, catalogDocumentId(candidate), { ...value });
+    await client.setDocument(
+      CATALOG_COLLECTION,
+      candidate.catalogEntryId.replace(/[^A-Za-z0-9_-]/g, '_'),
+      { ...value },
+    );
   });
   const results = await Promise.allSettled(writes);
   results.forEach((result) => {
