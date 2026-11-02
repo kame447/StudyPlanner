@@ -7,6 +7,7 @@
 // The D5 smoke cannot gate VNext: it reads V5 storage and Jev schema names.
 import { expect, test } from '@playwright/test';
 import { fillSecret } from './support/fill-secret.mjs';
+import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStorage } from './support/vnext-chat-storage.mjs';
 import { classifyFirestoreWrite } from './support/d5-production-smoke-observation.mjs';
 
 const requireSecret = name => {
@@ -63,23 +64,6 @@ const openAiPlanning = async page => {
   await expect(page.locator('.ai-planning-composer textarea')).toBeVisible();
 };
 
-// Counts and keys only; never message bodies, ids or tokens leave the page.
-const readVNextStorage = page => page.evaluate(() => {
-  const keys = Object.keys(localStorage);
-  const ui = keys.filter(key => key.startsWith('studyplanner.weeklyPlanning.vnext.') && key.endsWith('.ui'));
-  const states = ui.map(key => { try { return JSON.parse(localStorage.getItem(key)).payload.state; } catch { return null; } });
-  const index = keys.find(key => key.startsWith('studyplanner.aiPlanning.chats.v1.'));
-  let chats = null;
-  try { chats = index ? JSON.parse(localStorage.getItem(index)).chats.length : null; } catch { /* unreadable */ }
-  return {
-    vnextUiKeys: ui.length, vnextCoreKeys: keys.filter(key => key.startsWith('studyplanner.weeklyPlanning.vnext.') && key.endsWith('.core')).length,
-    stableV5Keys: keys.filter(key => key.includes('.weeklyPlanning.stableV5.')).length, chats,
-    previewSources: states.flatMap(state => state?.previewCandidates?.map(candidate => candidate.source) ?? []),
-    draftBlocks: states.reduce((sum, state) => sum + (state?.draftBlocks?.length ?? 0), 0),
-  };
-});
-
-
 const tag = `E2E-VNEXT-${process.env.GITHUB_RUN_ID?.trim() || Date.now()}`;
 
 // Observes provider schemas and Firestore writes for one test; counts and classifications only.
@@ -126,11 +110,11 @@ test.describe('VNext production core', () => {
     const seen = observe(page);
     await signIn(page);
     await openAiPlanning(page);
-    const before = await readVNextStorage(page);
     const text = `英語の勉強法について相談したいです。計画はまだ作らず、アドバイスだけください。(${tag})`;
+    const before = await readVNextChatStorage(page, text);
     await sendTurn(page, text);
-    const after = await readVNextStorage(page);
-    expect(after.vnextUiKeys).toBeGreaterThan(before.vnextUiKeys);
+    const after = await readVNextChatStorage(page, text);
+    expectTurnPersisted(before, after);
     expect(after.stableV5Keys).toBe(before.stableV5Keys);
     // Consultation never creates a preview, a draft block or a write.
     expect(after.previewSources).toEqual(before.previewSources);
@@ -144,11 +128,13 @@ test.describe('VNext production core', () => {
     await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
     await openAiPlanning(page);
     await expect(userBubble(page, text)).toHaveCount(1);
+    // The reload restores exactly what the turn persisted.
+    expect((await readVNextChatStorage(page, text)).messages).toBe(after.messages);
     // A second chat is independent; selecting the first chat restores its messages.
     await page.getByLabel('チャット一覧を開く').click();
     await page.getByRole('button', { name: '新しいチャット' }).click();
     await expect(page.locator('.ai-planning-message-row')).toHaveCount(0);
-    await expect.poll(async () => (await readVNextStorage(page)).chats).toBeGreaterThanOrEqual(2);
+    await expect.poll(async () => (await readVNextChatStorage(page)).chats).toBeGreaterThanOrEqual(2);
     await page.getByLabel('チャット一覧を開く').click();
     await page.locator('.ai-chat-list').getByText('英語の勉強法').first().click();
     await expect(userBubble(page, text)).toHaveCount(1);
@@ -160,12 +146,12 @@ test.describe('VNext production core', () => {
     const seen = observe(page);
     await signIn(page);
     await openAiPlanning(page);
-    const before = await readVNextStorage(page);
     const { month, day } = isolatedFutureDate();
-    await sendTurn(page, `${month}月${day}日の10:30から12:00まで部活があります。その予定を登録したいです。`);
-    const after = await readVNextStorage(page);
-    expect(after.vnextUiKeys).toBeGreaterThan(before.vnextUiKeys);
-    expect(after.vnextCoreKeys).toBeGreaterThan(0);
+    const text = `${month}月${day}日の10:30から12:00まで部活があります。その予定を登録したいです。`;
+    const before = await readVNextChatStorage(page, text);
+    await sendTurn(page, text);
+    const after = await readVNextChatStorage(page, text);
+    expectTurnPersisted(before, after);
     expect(after.stableV5Keys).toBe(before.stableV5Keys);
     expect(after.previewSources).toContain('fixed_event_registration');
     expect(after.draftBlocks).toBe(0);
@@ -198,14 +184,13 @@ test.describe('VNext production core', () => {
       const previewButton = page.locator('.ai-planning-preview-button').first();
       await expect(previewButton, 'a plan preview must exist after the correction').toBeVisible({ timeout: 30_000 });
       await previewButton.click();
-      const dialog = page.locator('[role="dialog"]').filter({ hasText: 'この内容で仮予定にする' }).first();
+      const dialog = previewDialog(page);
       await expect(dialog).toBeVisible();
       // The correction must be reflected in the preview itself: blocks for the title total 60 minutes.
       const previewBlocks = dialog.locator('[data-ai-preview-action-block]');
       const previewMinutes = await shownMinutes(previewBlocks, title, /^(.*) (\d{2}:\d{2})-(\d{2}:\d{2})$/u, 'data-ai-preview-action-block');
       expect(previewMinutes, 'preview blocks for the title must total the corrected 60 minutes').toBe(60);
-      await dialog.getByRole('button', { name: 'この内容で仮予定にする' }).click();
-      await dialog.getByRole('button', { name: 'この内容で保存' }).click();
+      await promoteThenSave(dialog);
       saved = true;
       await expect(dialog).toBeHidden({ timeout: 60_000 });
       await openScheduleDay(page, target);

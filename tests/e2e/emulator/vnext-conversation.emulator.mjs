@@ -1,4 +1,5 @@
 import { expect, test } from '../support/fixed-clock.mjs';
+import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStorage } from '../support/vnext-chat-storage.mjs';
 import { emulatorUserId, notSavedYet, placement, savedAtLeastOnce, savedExactlyOnce, savedFor, unchangedSince } from '../support/schedule-event-ledger.mjs';
 
 // Runs on the shared fixed clock (Asia/Tokyo, E2E_FIXED_NOW): the preview needs capacity left in the week, so a
@@ -109,6 +110,7 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
 
   // Turn 1: facts alone. The user's text reaches the VNext interpreter through the Worker; it reads no
   // request to create a plan, so, as in Stable V5, the facts are kept but no preview is made (#926 A).
+  const turn1Before = await readVNextChatStorage(page, 'ゼミ資料を60分');
   await send(page, 'ゼミ資料を60分');
   const reading = await nextCall(request);
   expect(reading.schema).toBe('weekly_planning_vnext_native_v1');
@@ -126,6 +128,11 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   await answer(request, unauthorized, unauthorizedReply);
   await expect(page.locator('.ai-planning-conversation')).toContainText(unauthorizedReply.text);
   await expect(page.locator('.ai-planning-plan-card')).toHaveCount(0);
+  // A consultation-style turn (no plan made) still persists its messages and the VNext checkpoint.
+  await expect.poll(async () => (await readVNextChatStorage(page, 'ゼミ資料を60分')).userTextPersisted).toBe(true);
+  const turn1After = await readVNextChatStorage(page, 'ゼミ資料を60分');
+  expectTurnPersisted(turn1Before, turn1After);
+  expect(turn1After.stableV5Keys).toBe(turn1Before.stableV5Keys);
 
   // Turn 2: an explicit request to create the plan; the accepted facts now preview without restating them.
   await send(page, 'この条件で予定を作って');
@@ -143,13 +150,12 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   const planCard = page.locator('.ai-planning-plan-card');
   await expect(planCard).toBeVisible();
   await page.getByRole('button', { name: '計画プレビューを確認' }).click();
-  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  const preview = previewDialog(page);
   await expect(preview).toBeVisible();
   await expect(preview.locator('.ai-planning-draft-block')).toHaveCount(1);
   // Shown, not yet approved: nothing of it is saved.
   holds(notSavedYet(await events(), study));
-  await preview.getByRole('button', { name: 'この内容で仮予定にする' }).click();
-  await preview.getByRole('button', { name: 'この内容で保存' }).click();
+  await promoteThenSave(preview);
   await expect(preview).toBeHidden();
 
   // Saved in Firestore by the existing plan repository (schedule_events), and traced through the Worker.
@@ -158,9 +164,12 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   await expect.poll(async () => (await firestoreDocuments(request, 'weekly_planning_trace_sessions')).length).toBeGreaterThan(0);
 
   // Reload: the VNext conversation resumes from its own checkpoint, and the plan was saved exactly once.
+  const messagesBeforeReload = (await readVNextChatStorage(page)).messages;
   await page.reload();
   await openPlanning(page);
   await expect(page.locator('.ai-planning-conversation')).toContainText('ゼミ資料を60分');
+  // The reload restores exactly what the turns persisted.
+  expect((await readVNextChatStorage(page, 'ゼミ資料を60分')).messages).toBe(messagesBeforeReload);
   holds(savedExactlyOnce(await events(), study));
   holds(unchangedSince(savedStudy, await events(), study));
 
