@@ -1,7 +1,7 @@
 # Client Runtime
 
 Status: canonical domain index
-Updated: 2026-10-24
+Updated: 2026-10-28
 
 This domain owns client-first execution, local/runtime capability boundaries, synchronization authority and the conditions under which work may move from server-mediated execution toward the client.
 
@@ -95,7 +95,7 @@ The requirements document is the specification; the Issue is the work-state owne
 
 Other active client-runtime work:
 
-- [Actual first-save permissions](work/actual-create-permission-handoff.md): correct the missing-document existence query while retaining owner-only Rules; local Emulator reproduction and verification, publication pending.
+- [Actual first-save permissions](work/actual-create-permission-handoff.md): merged in PR #712; correct the missing-document existence query while retaining owner-only Rules. Historical verification and the separate physical-iPhone production acceptance boundary remain in the handoff.
 
 - [Study-record editor date validation](work/actual-editor-date-validation-handoff.md): block blank/invalid dates before saving normal and standalone study records; local persistence proof and native-browser acceptance are tracked separately.
 

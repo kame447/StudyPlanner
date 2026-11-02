@@ -1,5 +1,13 @@
 # Existing linked-Actual write read
 
+## Current repository status (2026-10-28)
+
+[PR #786](https://github.com/kame447/StudyPlanner/pull/786) is integrated into `main` as `4f1a4f7899038864acfff450a7d3ebd2c4cbb5f4`. The integration is present in the inspected main snapshot `a0ac8a83f9bba49d610385e6eb7f483bfaff125b`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification and does not close the broader owning Issue. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: active, locally verified and independently source-reviewed; publication pending
 Issue: #542 (read-load umbrella); no new Issue or PR
 Branch: `perf/actual-existing-write-read`

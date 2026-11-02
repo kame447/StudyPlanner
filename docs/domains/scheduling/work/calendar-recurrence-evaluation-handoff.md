@@ -1,5 +1,13 @@
 # Calendar recurrence evaluation
 
+## Current repository status (2026-10-28)
+
+[PR #699](https://github.com/kame447/StudyPlanner/pull/699) is integrated into `main` as `32ba7ce6ffc6455d3c04903bf40d9d9af2a68c14`. The integration is present in the inspected main snapshot `a0ac8a83f9bba49d610385e6eb7f483bfaff125b`.
+
+The checkpoints below retain their original source, verification and authorization limits; their pending publication/merge statements are historical, not the current queue. This status correction claims no new test, device or deployment verification and does not close the broader owning Issue. Paths are retained; archive relocation and invariant transfer are outside this change.
+
+## Preserved implementation and verification checkpoints
+
 Status: local implementation and focused verification complete; combined integration and publication pending.
 Updated: 2026-10-15 UTC.
 
