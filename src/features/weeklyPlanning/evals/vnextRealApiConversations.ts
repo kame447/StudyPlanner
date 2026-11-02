@@ -95,6 +95,22 @@ export interface RealApiTurnOracle {
   fixedEventRegistration?: RealApiFixedEventRegistrationOracle;
   /** Same typed interaction outcome is asserted by the V5 and VNext runners. */
   optionalInvitation?: RealApiOptionalInvitationOracle;
+  /**
+   * A reply that must not become the answer to the asked estimate in a forbidden way (the live "D5 negatives", #926).
+   * Judges state and question only: the facts are the oracle's workloads, the asked task never gets a forbidden effort,
+   * the asked question stays (shown, or kept deferred) unless the reply was genuinely accepted as an answer, nothing is
+   * saved, and a part for another work lands on that work only. A correct acceptance is not penalised.
+   */
+  answerGuard?: RealApiAnswerGuardOracle;
+}
+
+export interface RealApiAnswerGuardOracle {
+  /** The task whose estimate the open question asks. */
+  askedTask: string;
+  /** Efforts this reply must not leave active on the asked task. `precision: 'exact'` forbids only an exact one. */
+  forbiddenEfforts: readonly { kind: RealApiEffortKind; minutes: number; precision?: 'exact' }[];
+  /** A fact the reply states about another task: it must exist there and never on the asked task. */
+  requiredTemporal?: { task: string; kind: RealApiTemporalOracle['kind']; dateExpression: string };
 }
 
 export interface RealApiConversationTurn {
@@ -134,6 +150,51 @@ const q = (code: string, workloads: readonly RealApiWorkloadOracle[], efforts: r
 const ready = (minutes: number, workloads: readonly RealApiWorkloadOracle[], efforts: readonly RealApiEffortOracle[] = [], temporal: readonly RealApiTemporalOracle[] = [], extra: Partial<RealApiTurnOracle> = {}): RealApiTurnOracle => ({
   inVNextScope: true, workloads, efforts, temporal, questionCode: null, projectedMinutes: minutes, ...extra,
 });
+
+const D5_CLOCK = { currentDate: '2026-11-02', weekStartDate: '2026-11-02', planningEndDate: '2026-11-08' } as const;
+const D5_SETUP_TEXT = '今週、数学20問と英語15ページを進めたい。英語15ページは全部で45分。';
+const D5_MATH = workload('math', 'target', 20, 'problem', '問');
+// The model may read the English pages as a target or as what remains; both are the same stated work.
+const d5Workloads = (english: RealApiWorkRole) => [D5_MATH, workload('english', english, 15, 'page', 'ページ')];
+const d5SetupOracle = (): RealApiTurnOracle => ({
+  ...q('missing_effort_estimate', d5Workloads('target')),
+  workloadAlternatives: [d5Workloads('remaining'), d5Workloads('declared')],
+  questionForWork: D5_MATH, projectedMinutes: 45, expectedTaskCount: 2, checkTemporal: false,
+});
+
+/**
+ * The Stable V5 "D5 live negative" replies (tests/e2e/ai-planning-jev-first-authority.spec.mjs) as product invariants
+ * both engines are observed on, with no live bridge: after 数学20問 asks for its minutes, a reply that is not a plain
+ * per-unit answer for 数学 must not become one, the question stays, and nothing is saved.
+ */
+function d5NegativeConversations(): RealApiConversation[] {
+  const guarded = (id: string, userText: string, guard: RealApiAnswerGuardOracle, description: string): RealApiConversation => ({
+    id, source: '#926 D5 live negatives as VNext product invariants (spec "D5 live negative 1280")', description, clock: D5_CLOCK,
+    turns: [
+      { userText: D5_SETUP_TEXT, oracle: d5SetupOracle() },
+      { userText, oracle: { ...d5SetupOracle(), answerGuard: guard, allowQuestionDeferral: true, preservePreviousTypedState: true } },
+    ],
+  });
+  const noRate = (precision?: 'exact'): RealApiAnswerGuardOracle => ({ askedTask: 'math',
+    forbiddenEfforts: [{ kind: 'duration_per_unit', minutes: 15, ...(precision ? { precision } : {}) }] });
+  return [
+    guarded('d5-negative-pages-only', '15ページ', noRate(), '単位だけの返答は数学の1問あたり15分にならない。'),
+    guarded('d5-negative-english-minutes', '英語は15分', noRate(), '英語に向けた分数は数学の1問あたりにならない。'),
+    guarded('d5-negative-total-minutes', '全部で15分', noRate(), '総時間の返答は1問あたり15分にならない（総時間として答えと受け取るのは可）。'),
+    guarded('d5-negative-approximate-rate', '15分くらい', noRate('exact'), '「くらい」は正確な1問あたり15分にならない（おおよその見積もりとして受け取るのは可）。'),
+    guarded('d5-negative-compound', '15分。あと英語の締切を金曜にして', { askedTask: 'math', forbiddenEfforts: [], requiredTemporal: { task: 'english', kind: 'deadline', dateExpression: '2026-11-06' } },
+      '複合の返答は、数学の答えは受け取るか確認のまま保ち、英語の締切は英語にだけ付ける。'),
+    {
+      id: 'd5-positive-per-unit-rate', source: '#926 D5 live negatives as VNext product invariants: positive control', clock: D5_CLOCK,
+      description: '同じ質問への明確な1問あたりの返答は数学にだけ付き、英語の45分は変わらない。',
+      turns: [
+        { userText: D5_SETUP_TEXT, oracle: d5SetupOracle() },
+        { userText: '1問あたり15分です', oracle: { ...ready(345, d5Workloads('target'), [rate('math', 15, 'problem', '問', 'target')], [], {
+          workloadAlternatives: [d5Workloads('remaining'), d5Workloads('declared')], expectedTaskCount: 2, checkTemporal: false }) } },
+      ],
+    },
+  ];
+}
 
 export const vnextRealApiConversations: readonly RealApiConversation[] = [
   {
@@ -428,6 +489,7 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
       workloads: [], efforts: [], temporal: [], questionCode: null, projectedMinutes: null,
     } }],
   },
+  ...d5NegativeConversations(),
 ];
 
 export const vnextRealApiInScopeConversations = vnextRealApiConversations.filter((conversation) =>

@@ -111,6 +111,7 @@ interface ObservedEffort {
   unitLabel: string | null;
   forRole: RealApiWorkRole | 'task';
   bindingKind?: string | null;
+  precision?: string | null;
 }
 
 interface ObservedTemporal {
@@ -326,6 +327,7 @@ function observedFacts(graph: WeeklyPlanningFactGraphV5): ObservedFacts {
       unitCode: fact.unitCode, unitLabel: extension.unitLabel ?? null,
       forRole,
       bindingKind: binding?.kind ?? null,
+      precision: (fact as typeof fact & { precision?: string }).precision ?? null,
     };
   });
   const temporal = graph.temporalConstraints.filter((fact) => active.has(fact.id)).map((fact) => ({
@@ -467,6 +469,41 @@ function isExpectedQuestionDeferred(
     && deferredQuestionCodes.includes(oracle.questionCode);
 }
 
+/**
+ * The product invariant of a reply that must not become the asked answer (see RealApiAnswerGuardOracle). State and question
+ * only, never wording: a forbidden effort on the asked task, a dropped question without an answer, or a part for another
+ * work attached to the asked one all differ; a genuine acceptance (an effort other than the forbidden ones) does not.
+ */
+function compareAnswerGuard(observed: ObservedFacts, question: string | null, guard: NonNullable<RealApiTurnOracle['answerGuard']>,
+  pairs: Array<[RealApiWorkloadOracle, ObservedWorkload | null]>, deferredQuestionCodes: readonly string[] = []): string[] {
+  const asked = pairs.find(([expected]) => expected.task === guard.askedTask)?.[1];
+  if (!asked) return [`asked work ${guard.askedTask} missing`];
+  const differences: string[] = [];
+  const onAsked = observed.efforts.filter((fact) => fact.taskId === asked.taskId);
+  for (const forbidden of guard.forbiddenEfforts) {
+    if (onAsked.some((fact) => fact.kind === forbidden.kind && fact.minutes === forbidden.minutes
+      && (forbidden.precision === undefined || fact.precision === forbidden.precision)
+      && (forbidden.kind !== 'duration_per_unit' || effortUnitMatchesWork(fact, asked, guard.askedTask)))) {
+      differences.push(`forbidden effort accepted for ${guard.askedTask}: ${forbidden.kind}/${forbidden.minutes}${forbidden.precision ? `/${forbidden.precision}` : ''}`);
+    }
+  }
+  const answered = observed.efforts.some((fact) => effortIsBoundToWork(fact, asked, observed, undefined, guard.askedTask));
+  const kept = question === 'missing_effort_estimate' || (question === null && deferredQuestionCodes.includes('missing_effort_estimate'));
+  if (question !== null && question !== 'missing_effort_estimate') differences.push(`question changed to ${question}`);
+  if (!kept && question === null && !answered) differences.push('question dropped without an answer');
+  if (guard.requiredTemporal) {
+    const owner = pairs.find(([expected]) => expected.task === guard.requiredTemporal!.task)?.[1];
+    const { kind, dateExpression } = guard.requiredTemporal;
+    if (!owner || !observed.temporal.some((fact) => fact.taskId === owner.taskId && fact.kind === kind && fact.dateExpression === dateExpression)) {
+      differences.push(`temporal missing on ${guard.requiredTemporal.task}: ${kind}/${dateExpression}`);
+    }
+    if (observed.temporal.some((fact) => fact.taskId === asked.taskId && fact.kind === kind)) {
+      differences.push(`${kind} attached to the asked work ${guard.askedTask}`);
+    }
+  }
+  return differences;
+}
+
 function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question: string | null, workMinutes: number | null,
   oracle: RealApiTurnOracle, projectedWorkloads: readonly ObservedWorkload[] = [],
   workEstimateBases: readonly (string | null)[] = [], observationContext: OracleObservationContext = {}): string[] {
@@ -490,6 +527,7 @@ function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question
     const right = workloads.pairs[rightIndex]?.[1];
     if (!left || !right || left.taskId !== right.taskId) differences.push(`work owner identity differs at ${leftIndex}/${rightIndex}`);
   }
+  if (oracle.answerGuard) return [...differences, ...compareAnswerGuard(observed, question, oracle.answerGuard, workloads.pairs, observationContext.deferredQuestionCodes)];
   const deferredExpectedQuestion = isExpectedQuestionDeferred(oracle, question, observationContext.deferredQuestionCodes);
   if (question !== oracle.questionCode && !deferredExpectedQuestion) {
     differences.push(`question expected=${oracle.questionCode ?? 'none'} observed=${question ?? 'none'}`);
@@ -822,7 +860,7 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
       finalCandidateCount, saveWritesBeforeApproval: 0,
     }));
     const expectedClarification = fixtureTurn.oracle.questionCode !== null;
-    const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification && currentQuestion === null;
+    const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification && currentQuestion === null && !fixtureTurn.oracle.answerGuard;
     const wrongRejection = fixtureTurn.oracle.inVNextScope && !expectedClarification && currentQuestion !== null;
     turns.push({
       turn: index + 1, userText: fixtureTurn.userText, inVNextScope: fixtureTurn.oracle.inVNextScope,
@@ -1057,10 +1095,11 @@ async function runVNextConversation(
         fixtureTurn.oracle.fixedEventRegistration, interpretation, finalCandidates, saveWritesBeforeApproval, observed.temporal,
       ));
       differences.push(...compareBusyIntervalOracle(fixtureTurn.oracle.fixedEventRegistration, busyConstraints));
+      if (fixtureTurn.oracle.answerGuard && saveWritesBeforeApproval !== 0) differences.push(`save writes before approval expected=0 observed=${saveWritesBeforeApproval}`);
       const expectedClarification = fixtureTurn.oracle.questionCode !== null;
       const deferredExpectedQuestion = isExpectedQuestionDeferred(fixtureTurn.oracle, question, deferredQuestionCodes);
       const wrongAcceptance = fixtureTurn.oracle.inVNextScope && expectedClarification
-        && question === null && !deferredExpectedQuestion;
+        && question === null && !deferredExpectedQuestion && !fixtureTurn.oracle.answerGuard;
       const wrongRejection = fixtureTurn.oracle.inVNextScope && !expectedClarification && question !== null;
       const signature = question === null ? null : JSON.stringify({ question, workloads: facts.workloads });
       if (fixtureTurn.oracle.inVNextScope && question !== null) clarificationCount += 1;
@@ -1556,7 +1595,7 @@ describe('VNext real API conversation fixture contract (offline)', () => {
   });
 
   it('contains only synthetic turns and typed per-turn oracles', () => {
-    expect(vnextRealApiConversations).toHaveLength(22);
+    expect(vnextRealApiConversations).toHaveLength(28);
     expect(new Set(vnextRealApiConversations.map(({ id }) => id)).size).toBe(vnextRealApiConversations.length);
     for (const conversation of vnextRealApiConversations) {
       expect(conversation.turns.length, conversation.id).toBeGreaterThan(0);
@@ -2065,4 +2104,92 @@ runRealApi('Issue #926 V5 / VNext native real-provider comparison', () => {
       });
     }
   }, 300_000);
+});
+
+// The Stable V5 "D5 live negative" replies as product invariants (#926). The paid run observes the real models; these prove the
+// oracle itself: correct readings pass (including a genuine acceptance), and each wrong observation fails with its reason.
+describe('D5 negative conversations: oracle controls (offline)', () => {
+  const EMPTY: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
+  const metrics = { calls: 1, repairs: 0, latencyMs: 1 };
+  const setup: VNextTurnDelta = { ...EMPTY, add: [
+    { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+    { kind: 'workload', localId: 'math-w', taskRef: { localId: 'math' }, componentRef: null, quantityRole: 'target', amount: 20,
+      unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+    { kind: 'task', localId: 'english', category: 'study', title: '英語' },
+    { kind: 'workload', localId: 'english-w', taskRef: { localId: 'english' }, componentRef: null, quantityRole: 'target', amount: 15,
+      unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+    { kind: 'effort_estimate', localId: 'english-e', taskRef: { localId: 'english' }, targetRef: { localId: 'english-w' },
+      effortKind: 'total_duration', minutes: 45, unitCode: null, unitLabel: null, precision: 'exact' },
+  ] };
+  type Reading = (input: WeeklyPlanningVNextInterpretationInput) => Pick<Extract<Awaited<ReturnType<WeeklyPlanningVNextExperimentalPorts['interpret']>>, { status: 'interpreted' }>, 'delta' | 'answer'>;
+  const taskId = (input: WeeklyPlanningVNextInterpretationInput, title: string) => input.state.graph.tasks.find((task) => task.title === title)!.id;
+  const abstain: Reading = () => ({ delta: EMPTY, answer: null });
+  const deadlineOn = (title: string): Reading => (input) => ({ answer: null, delta: { ...EMPTY, add: [{ kind: 'temporal_constraint', localId: 'deadline',
+    taskRef: { factId: taskId(input, title) }, targetRef: { factId: taskId(input, title) }, constraintKind: 'deadline', constraintLevel: 'hard',
+    dateExpression: '2026-11-06', namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' }] } });
+  const rate = (minutes: number): Reading => () => ({ delta: EMPTY, answer: { kind: 'estimate_minutes', minutes, per: 'unit' } });
+  const approximateRate: Reading = (input) => ({ answer: null, delta: { ...EMPTY, add: [{ kind: 'effort_estimate', localId: 'approx', taskRef: { factId: taskId(input, '数学') },
+    targetRef: { factId: input.state.graph.workloads.find((work) => work.taskId === taskId(input, '数学'))!.id }, effortKind: 'duration_per_unit',
+    minutes: 15, unitCode: 'problem', unitLabel: '問', precision: 'approximate' }] } });
+
+  async function run(id: string, reading: Reading) {
+    const conversation = vnextRealApiConversations.find((candidate) => candidate.id === id)!;
+    let call = 0;
+    const interpret: WeeklyPlanningVNextExperimentalPorts['interpret'] = async (input) => {
+      call += 1;
+      const next = call === 1 ? { delta: setup, answer: null } : reading(input);
+      return { status: 'interpreted', planningIntent: 'discuss', conversationActs: [], metrics, ...next };
+    };
+    const client: OpenAiCompatibleClient = { async createChatCompletion() { throw new Error('offline proof must not call a provider'); } };
+    const createRenderer: WeeklyPlanningVNextExperimentalPorts['createRenderer'] = () => ({ async render() { return { status: 'rendered', text: '合成の応答', rawResponse: '' }; } });
+    return (await runVNextConversation(conversation, { client, interpret, createRenderer })).turns;
+  }
+
+  it('the setup turn asks the 数学 estimate with the stated facts (the same oracle for every D5 conversation)', async () => {
+    const [setupTurn] = await run('d5-negative-pages-only', abstain);
+    expect(setupTurn.oracleDifferences).toEqual([]);
+    expect(setupTurn.questionCode).toBe('missing_effort_estimate');
+  });
+
+  it.each(['d5-negative-pages-only', 'd5-negative-english-minutes', 'd5-negative-total-minutes', 'd5-negative-approximate-rate'])(
+    '%s: a reply the reading does not accept keeps the question and passes; accepting it as an exact 1問あたり15分 fails', async (id) => {
+      const kept = (await run(id, abstain))[1];
+      expect(kept.oracleDifferences).toEqual([]);
+      expect(kept).toMatchObject({ status: 'pass', questionCode: 'missing_effort_estimate', saveWritesBeforeApproval: 0 });
+      expect((await run(id, rate(15)))[1].oracleDifferences).toContain('forbidden effort accepted for math: duration_per_unit/15' + (id === 'd5-negative-approximate-rate' ? '/exact' : ''));
+    });
+
+  it('a correct acceptance is not penalised: 全部で15分 as a total, and 15分くらい as an approximate rate', async () => {
+    const total = await run('d5-negative-total-minutes', () => ({ delta: EMPTY, answer: { kind: 'estimate_minutes', minutes: 15, per: 'whole_work' } }));
+    expect(total[1].oracleDifferences).toEqual([]);
+    const approximate = await run('d5-negative-approximate-rate', approximateRate);
+    expect(approximate[1].oracleDifferences).toEqual([]);
+  });
+
+  it('a state that shows no question and has no answer for 数学 fails (the question is never dropped silently)', () => {
+    const asked: ObservedWorkload = { factId: 'w1', taskId: 't1', role: 'target', amount: 20, unitCode: 'problem', unitLabel: '問', perOccurrence: false, periodExpression: null };
+    const english: ObservedWorkload = { ...asked, factId: 'w2', taskId: 't2', amount: 15, unitCode: 'page', unitLabel: 'ページ' };
+    const oracle = vnextRealApiConversations.find(({ id }) => id === 'd5-negative-english-minutes')!.turns[1].oracle;
+    const facts: ObservedFacts = { taskIds: ['t1', 't2'], workloads: [asked, english], efforts: [], temporal: [] };
+    expect(compareTypedOracle(facts, 'missing_effort_estimate', null, oracle)).toEqual([]);
+    expect(compareTypedOracle(facts, null, null, oracle)).toEqual(['question dropped without an answer']);
+    expect(compareTypedOracle(facts, 'missing_schedulable_work', null, oracle)).toEqual(['question changed to missing_schedulable_work']);
+    expect(compareTypedOracle(facts, null, null, oracle, [], [], { deferredQuestionCodes: ['missing_effort_estimate'] })).toEqual([]);
+  });
+
+  it('the compound reply: deadline on 英語 passes (rate kept or question kept); the deadline on 数学 or none fails', async () => {
+    const id = 'd5-negative-compound';
+    expect((await run(id, (input) => ({ ...deadlineOn('英語')(input), answer: { kind: 'estimate_minutes', minutes: 15, per: 'unit' } })))[1].oracleDifferences).toEqual([]);
+    expect((await run(id, deadlineOn('英語')))[1].oracleDifferences).toEqual([]);
+    expect((await run(id, deadlineOn('数学')))[1].oracleDifferences).toEqual(expect.arrayContaining([
+      'temporal missing on english: deadline/2026-11-06', 'deadline attached to the asked work math']));
+    expect((await run(id, abstain))[1].oracleDifferences).toContain('temporal missing on english: deadline/2026-11-06');
+  });
+
+  it('positive control: a plain 1問あたり15分 lands on 数学 only and passes; abstaining leaves the expected rate missing and fails', async () => {
+    const id = 'd5-positive-per-unit-rate';
+    const accepted = (await run(id, rate(15)))[1];
+    expect(accepted.oracleDifferences).toEqual([]);
+    expect((await run(id, abstain))[1].oracleDifferences.length).toBeGreaterThan(0);
+  });
 });
