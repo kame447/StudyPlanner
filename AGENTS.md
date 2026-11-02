@@ -378,6 +378,18 @@ AI must:
 - Before adding complexity for speculative, highly unlikely concurrency or security-boundary scenarios, explain the concrete failure, its estimated likelihood and supporting evidence (or explicitly say it is unknown), and the expected code and maintenance cost. Obtain the user’s approval before adding that scope; “theoretically safer” is not permission to expand it silently.
 - Validate external data once at its entry point, then pass validated, typed values internally instead of repeating the same checks at every layer. A new trust boundary still validates its input; this does not remove required authorization, state-dependent invariants, or existing security protections.
 
+### Evidence-based review triage (Laplance project rule)
+
+For this repository, score demonstrated defects independently for occurrence frequency (`F`) and severity (`S`), each from 1 to 10; calculate `P = F × S`. The project threshold is `10` (not the generic user-level default of 15 and not the earlier project proposal of 5). Do not alter this threshold without user approval.
+
+1. Establish the credible execution path in currently supported behavior, trigger conditions, and observable user impact. Support findings with reproduction, tests, traces, or exact code-flow evidence when possible. Separate confirmed facts from assumptions; if frequency is unknown, label it unknown rather than inventing a score. Unsupported speculation or unreachable hypothetical cases warrant neither code changes nor an Issue.
+2. Rate `F` using occurrence in real supported use (1 = exceptional, 5 = occasional, 10 = routine) and `S` by impact (1 = negligible inconvenience, 5 = major task disruption, 10 = critical damage). State `F`, `S`, `P`, the reachable path, evidence, impact, and disposition in the review record; avoid unexplained or inflated scores.
+3. For a demonstrated distinct defect with `P < 10`, do not change code or block a PR/release solely for this finding. Create or link one deduplicated backlog Issue; record why it is non-blocking. Do not add contrived edge-case tests to manufacture a blocker.
+4. `P >= 10` means the demonstrated finding is eligible for corrective action, not automatically a release blocker or authorization to expand scope. Fix valid in-scope defects at their root cause; keep unrelated findings in the existing Issue workflow and request approval before expanding the implementation.
+5. Regardless of score, confirmed security/privacy exposure, user-data loss or corruption, violation of explicit current requirements or public contracts, or a failing valid mandatory regression/CI gate remains blocking. Cite concrete evidence for the exception; do not inflate frequency or severity, ignore an invariant, or weaken a valid test to evade review. First classify stale test contracts and infrastructure failures appropriately.
+6. Before changing code, weigh impact against fix complexity, regression risk, and long-term maintenance. Prefer one minimal, coherent root-cause change over one-off patches, duplicated validation, unnecessary abstractions, speculative fallbacks, and unrequested states. Tests must cover realistic boundaries without imposing implausible expectations.
+7. The implementation owner (normally Opus) owns scope and final disposition. Astra must independently apply this evidence-and-score rule at final audit. End the review/fix cycle once substantiated blockers and mandatory failures are resolved; do not initiate repeated rounds of increasingly unlikely scenarios or unrelated refactors.
+
 ## Test audit policy
 
 When a test fails during refactoring or feature work, classify the cause before changing assertions:
