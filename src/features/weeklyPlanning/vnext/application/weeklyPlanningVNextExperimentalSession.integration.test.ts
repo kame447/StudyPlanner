@@ -573,4 +573,63 @@ describe('VNext experimental session end to end (offline)', () => {
     expect(broken.inputs).toHaveLength(0);
     expect(broken.slots.get('vnext')).toBe('{"version":"other"}');
   });
+
+  // The stable_v5 project's "D5 live negative 1280" tests (ai-planning-jev-first-authority.spec.mjs) need the live Jev/Luna bridge and
+  // exercise only the Stable V5 comparison build (D5 numeric closed choice). VNext has no D5 domain: the model reads the answer and the
+  // binder names the asked work from the question. These pin, offline through the real session, the invariants the live negatives assert
+  // that code owns: the whole reply and the presented question reach the interpreter; a reply the reading does not accept as the answer
+  // changes nothing and the same question stays; an accepted rate lands only on the asked work; a compound reply keeps both parts.
+  describe('D5 live-negative substitute: 数学20問・英語15ページ(全部で45分), then a reply that must not become 数学 per-unit 15', () => {
+    const replies = ['15ページ', '英語は15分', '全部で15分', '15分。あと英語の締切を金曜にして', '15分くらい'];
+    const setup = discuss({ add: [
+      { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+      { kind: 'workload', localId: 'math-w', taskRef: { localId: 'math' }, componentRef: null, quantityRole: 'scope_total', amount: 20, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+      { kind: 'task', localId: 'english', category: 'study', title: '英語' },
+      { kind: 'workload', localId: 'english-w', taskRef: { localId: 'english' }, componentRef: null, quantityRole: 'scope_total', amount: 15, unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+      { kind: 'effort_estimate', localId: 'english-e', taskRef: { localId: 'english' }, targetRef: { localId: 'english-w' }, effortKind: 'total_duration', minutes: 45, unitCode: null, unitLabel: null, precision: 'exact' },
+    ] });
+    const D5_SETUP = '8月20日から26日で数学20問と英語15ページを進めたい。英語15ページは全部で45分。';
+    const state = (h: ReturnType<typeof harness>) => JSON.parse(h.slots.get('vnext')!).vnext.state;
+    const active = (h: ReturnType<typeof harness>) => { const g = state(h).graph; const live = new Set(g.factLifecycles.filter((f: { status: string }) => f.status === 'active').map((f: { factId: string }) => f.factId));
+      return { efforts: g.effortEstimates.filter((f: { id: string }) => live.has(f.id)) as Array<{ taskId: string; kind: string; minutes: number }>,
+        tasks: g.tasks as Array<{ id: string; title: string }>, deadlines: g.temporalConstraints.filter((f: { id: string; kind: string }) => live.has(f.id) && f.kind === 'deadline') as Array<{ taskId: string }> }; };
+
+    it.each(replies)('a reply the reading does not accept as the answer (%s) changes nothing: same question, whole reply and presented question given to the interpreter, nothing saved', async (reply) => {
+      const h = harness([setup, interpreted({}), interpreted({})]);
+      const first = await turn(h.ports, 't1', D5_SETUP);
+      expect(first.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { unitLabel: '問' } });
+      const before = state(h);
+      const next = await turn(h.ports, 't2', reply);
+      expect(h.inputs[1].userText).toBe(reply);
+      expect(h.inputs[1].presentedQuestion).not.toBeNull();
+      expect(next.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { unitLabel: '問' } });
+      expect(active(h).efforts.filter(e => e.kind === 'duration_per_unit')).toEqual([]);
+      expect(state(h).graph.effortEstimates).toEqual(before.graph.effortEstimates);
+      expect(h.saveCalls()).toBe(0);
+    });
+
+    it('an accepted per-unit answer lands only on the asked work (数学), never on 英語, whichever words carried it', async () => {
+      const h = harness([setup, interpreted({}, { kind: 'estimate_minutes', minutes: 15, per: 'unit' })]);
+      await turn(h.ports, 't1', D5_SETUP);
+      expect(await turn(h.ports, 't2', '15分')).toMatchObject({ outcome: 'applied', question: null });
+      const { efforts, tasks } = active(h);
+      const math = tasks.find(t => t.title === '数学')!.id; const english = tasks.find(t => t.title === '英語')!.id;
+      expect(efforts.filter(e => e.taskId === math)).toEqual([expect.objectContaining({ kind: 'duration_per_unit', minutes: 15 })]);
+      expect(efforts.filter(e => e.taskId === english)).toEqual([expect.objectContaining({ kind: 'total_duration', minutes: 45 })]);
+    });
+
+    it('the compound reply keeps both parts: the rate on 数学 and the deadline on 英語 only', async () => {
+      const deadline: VNextAddFact = { kind: 'temporal_constraint', localId: 'deadline', taskRef: { localId: 'english' }, targetRef: { localId: 'english' },
+        constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-11-06', namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' };
+      const h = harness([setup, (input) => interpreted({ add: [{ ...deadline, taskRef: { factId: input.state.graph.tasks.find(t => t.title === '英語')!.id },
+        targetRef: { factId: input.state.graph.tasks.find(t => t.title === '英語')!.id } } as VNextAddFact] }, { kind: 'estimate_minutes', minutes: 15, per: 'unit' })]);
+      await turn(h.ports, 't1', D5_SETUP);
+      expect(await turn(h.ports, 't2', '15分。あと英語の締切を金曜にして')).toMatchObject({ outcome: 'applied' });
+      const { efforts, tasks, deadlines } = active(h);
+      const math = tasks.find(t => t.title === '数学')!.id; const english = tasks.find(t => t.title === '英語')!.id;
+      expect(efforts.filter(e => e.taskId === math)).toEqual([expect.objectContaining({ kind: 'duration_per_unit', minutes: 15 })]);
+      expect(deadlines).toEqual([expect.objectContaining({ taskId: english })]);
+      expect(h.saveCalls()).toBe(0);
+    });
+  });
 });
