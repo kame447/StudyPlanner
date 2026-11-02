@@ -89,6 +89,29 @@ function service(
 }
 
 describe('ProductObservabilityProfileRegistrationBackfillService', () => {
+  it('starts a missing checkpoint with empty counters and completes an empty scan', async () => {
+    const firestore = new MemoryBackfillFirestore();
+    const backfill = service(firestore);
+
+    expect(await backfill.checkpoint()).toBeNull();
+    const checkpoint = await backfill.runBatch(10);
+
+    expect(checkpoint).toEqual({
+      schemaVersion: 1,
+      cursor: null,
+      processedProfiles: 0,
+      normalizedProfiles: 0,
+      malformedProfiles: 0,
+      completed: true,
+      updatedAt: '2026-08-28T12:00:00.000Z',
+    });
+    expect(firestore.queryCallCount).toBe(1);
+    expect(firestore.profileWrites).toEqual([]);
+    expect(firestore.documents.get(
+      `${PROFILE_REGISTRATION_BACKFILL_STATE_COLLECTION}/${PROFILE_REGISTRATION_BACKFILL_STATE_ID}`,
+    )).toEqual(checkpoint);
+  });
+
   it('normalizes legacy timestamps without overwriting already indexed profiles', async () => {
     const firestore = new MemoryBackfillFirestore();
     firestore.addProfile('a', {

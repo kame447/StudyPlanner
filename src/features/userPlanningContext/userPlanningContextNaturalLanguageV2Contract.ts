@@ -159,29 +159,25 @@ export function parseUserPlanningContextNaturalLanguageResultV2(
   };
 }
 
-function existingRecordPayload(record: UserPlanningContextRecordV1 | null | undefined) {
-  if (!record) return null;
-  return {
-    id: record.id,
-    kind: record.kind,
-    label: record.label,
-    value: record.value,
-    dateExpression: record.dateExpression,
-    displayText: record.sourceText,
-  };
-}
-
 export function createUserPlanningContextNaturalLanguageMessagesV2(params: {
   text: string;
   existingRecord?: UserPlanningContextRecordV1 | null;
 }) {
+  const record = params.existingRecord;
   return [
     { role: 'system' as const, content: SYSTEM_PROMPT },
     {
       role: 'user' as const,
       content: JSON.stringify({
         text: params.text,
-        existingRecord: existingRecordPayload(params.existingRecord),
+        existingRecord: record ? {
+          id: record.id,
+          kind: record.kind,
+          label: record.label,
+          value: record.value,
+          dateExpression: record.dateExpression,
+          displayText: record.sourceText,
+        } : null,
       }),
     },
   ];

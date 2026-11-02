@@ -209,6 +209,13 @@ describe.each(['search', 'details'] as const)('material metadata %s catalog poli
       ? { results: [{ ...catalogCandidate, coverImageUrl }], cacheHit: false }
       : { candidate: { ...catalogCandidate, edition: '改訂版', pageCount: 381, coverImageUrl } });
     expect(writes).toHaveLength(endpoint === 'details' ? 2 : 1);
+    const writePaths = vi.mocked(fetch).mock.calls
+      .filter(([, init]) => init?.method === 'PATCH')
+      .map(([input]) => new URL(String(input)).pathname);
+    expect(writePaths).toHaveLength(writes.length);
+    for (const path of writePaths) {
+      expect(path).toBe('/v1/projects/test-project/databases/(default)/documents/material_metadata_catalog/isbn13_9784023315686');
+    }
     for (const write of writes) {
       expect(write.fields).toMatchObject({
         schemaVersion: { integerValue: '2' },

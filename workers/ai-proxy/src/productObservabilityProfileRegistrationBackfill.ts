@@ -43,23 +43,21 @@ interface ProfileRegistrationBackfillFirestore {
 export interface ProductObservabilityProfileRegistrationBackfillEnv
   extends FirestoreServiceAccountEnv {}
 
-function emptyCheckpoint(nowIso: string): ProfileRegistrationBackfillCheckpoint {
-  return {
-    schemaVersion: BACKFILL_SCHEMA_VERSION,
-    cursor: null,
-    processedProfiles: 0,
-    normalizedProfiles: 0,
-    malformedProfiles: 0,
-    completed: false,
-    updatedAt: nowIso,
-  };
-}
-
 function readCheckpoint(
   value: Record<string, unknown> | null,
   nowIso: string,
 ): ProfileRegistrationBackfillCheckpoint {
-  if (!value) return emptyCheckpoint(nowIso);
+  if (!value) {
+    return {
+      schemaVersion: BACKFILL_SCHEMA_VERSION,
+      cursor: null,
+      processedProfiles: 0,
+      normalizedProfiles: 0,
+      malformedProfiles: 0,
+      completed: false,
+      updatedAt: nowIso,
+    };
+  }
   let cursor: FirestoreOrderedCursor | null = null;
   if (value.cursor !== null && value.cursor !== undefined) {
     if (!value.cursor || typeof value.cursor !== 'object') {
