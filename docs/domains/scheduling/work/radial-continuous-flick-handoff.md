@@ -1,5 +1,15 @@
 # Continuous radial action selection
 
+## Current disposition — 2026-10-29
+
+Status: integrated through [PR #785](https://github.com/kame447/StudyPlanner/pull/785) (`5cbe1084c06d01c96efef8d63461124a0716b30e`), an ancestor of audited main `9da5faf3166283fa389a7287e8c28b9e7184e4be`.
+
+Same-finger flick selection was integrated; it is no longer a local-only candidate. The final PR head records [Chromium success](https://github.com/kame447/StudyPlanner/pull/785#issuecomment-6254077600), but its [UI Regression Matrix](https://github.com/kame447/StudyPlanner/pull/785#issuecomment-6254157518) retains a mobile shard/aggregate failure. Integration is not a claim of complete browser acceptance. Physical iPhone gesture acceptance remains tracked in [Issue #780](https://github.com/kame447/StudyPlanner/issues/780); capability-limited vibration is not an iPhone haptics fix. Later source refactors do not turn these historical checks into current-head verification.
+
+## Original implementation and verification checkpoints
+
+The original records below are preserved. Publication/integration statements describe their checkpoint dates; their source-scoped evidence, failure records, behavioral constraints and unresolved acceptance limits are not waived by integration.
+
 Status: local implementation; publication and native acceptance pending.
 Base: `522004730f57f726c95b25c412cdaba672128bc3`.
 Branch: `fix/radial-continuous-flick` (local only).

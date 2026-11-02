@@ -1,5 +1,15 @@
 # Event editor selection and optional fields
 
+## Current disposition — 2026-10-29
+
+Status: integrated through [PR #663](https://github.com/kame447/StudyPlanner/pull/663) (`1fe7b9029fae3e634f20f02612b797323baa320b`), an ancestor of audited main `9da5faf3166283fa389a7287e8c28b9e7184e4be`.
+
+Add wording, selection cues and reversible optional-field disclosure were integrated. The always-visible color-chip presentation recorded below was subsequently replaced by the [compact label picker](schedule-color-label-picker-handoff.md) in PR #672. PR #663 records browser-engine and rendered acceptance; this is not physical-device gesture evidence.
+
+## Original implementation and verification checkpoints
+
+The original records below are preserved. Publication/integration statements describe their checkpoint dates; their source-scoped evidence, failure records, behavioral constraints and unresolved acceptance limits are not waived by integration.
+
 Status: local implementation; integration and visual verification pending.
 
 - Branch: `dot/event-editor-selection-20261014`.

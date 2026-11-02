@@ -1,5 +1,15 @@
 # Month-event save range validation
 
+## Current disposition — 2026-10-29
+
+Status: integrated through [PR #655](https://github.com/kame447/StudyPlanner/pull/655) (`e306e1a92a2b745720e2dc2a8d18178a8d98ae38`), an ancestor of audited main `9da5faf3166283fa389a7287e8c28b9e7184e4be`.
+
+The shared range validator was integrated through PR #655, which closes Issue #654. That PR records Chromium overnight create/edit/reload acceptance; subsequent PR #659 added mobile WebKit selection and acceptance for the same range cases. Physical iPhone and authenticated production UI behavior are not established by those browser checks.
+
+## Original implementation and verification checkpoints
+
+The original records below are preserved. Publication/integration statements describe their checkpoint dates; their source-scoped evidence, failure records, behavioral constraints and unresolved acceptance limits are not waived by integration.
+
 Status: active local investigation; no published Issue or PR
 Branch: `fix/month-event-save-range`
 Base/initial HEAD: `1b828e77254351c2c799ff6e0b605e9fc25daacf`
