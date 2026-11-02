@@ -27,6 +27,10 @@ const runtimeGatewayStubPlugin = {
     const normalizedImporter = importer
       ? path.normalize(stripViteQuery(importer))
       : '';
+    if (source === './features/weeklyPlanning/application/useWeeklyPlanningConversationApplication'
+      && normalizedImporter.endsWith(path.normalize('src/App.tsx'))) {
+      return '\0weekly-application-observer';
+    }
     if (source === './LaplanceAppRoot' && normalizedImporter.endsWith(path.normalize('src/components/ApplicationRouteRoot.tsx'))) {
       return path.resolve(harnessDir, 'admin-entry-root.jsx');
     }
@@ -63,14 +67,32 @@ const runtimeGatewayStubPlugin = {
     ) {
       return runtimeGatewayStub;
     }
+    if (source === './weeklyPlanningVNextRuntimeGateway'
+      && normalizedImporter.endsWith(path.normalize('src/features/weeklyPlanning/vnext/application/useWeeklyPlanningVNextApplication.ts'))) {
+      return runtimeGatewayStub;
+    }
     return null;
   },
+  load(id) {
+    if (id !== '\0weekly-application-observer') return null;
+    // Observe the real facade instead of rewriting either core's implementation.
+    return `import { useWeeklyPlanningConversationApplication as useProduction } from ${JSON.stringify(path.join(repositoryRoot, 'src/features/weeklyPlanning/application/useWeeklyPlanningConversationApplication.ts'))};
+      export function useWeeklyPlanningConversationApplication(...args) {
+        const application = useProduction(...args);
+        globalThis.__weeklyPlanningApplication = application;
+        return application;
+      }`;
+  },
 };
+
+/** Each harness dev server owns its dependency cache; see `cacheDir` below. */
+export const harnessCacheDir = port => path.join(repositoryRoot, 'tests/e2e/node_modules/.vite-harness', String(port));
 
 export default defineConfig({
   root: harnessDir,
   plugins: [runtimeGatewayStubPlugin, react()],
   define: {
+    'import.meta.env.VITE_WEEKLY_PLANNING_CORE': JSON.stringify('vnext'),
     'import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED': JSON.stringify('false'),
     // This synthetic harness must not inherit live Firebase/AI credentials.
     'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify(''),
@@ -78,6 +100,17 @@ export default defineConfig({
     'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(''),
     'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(''),
   },
+  // A cold dev server answers the first page before its dependency scan (about 5 s) has finished. Whatever the
+  // browser imports that the first optimization lacks is discovered mid-load, Vite re-optimizes, and the old hashed
+  // chunks answer 504 'Outdated Optimize Dep': the first page of a run stays blank (admin-entry-navigation:27 on
+  // CI). Listing every dependency the harness pages import makes the first optimization complete, with no waiting.
+  optimizeDeps: {
+    include: ['react-dom/client', 'firebase/app', 'firebase/auth', 'firebase/firestore', 'lucide-react', 'suncalc'],
+  },
+  // Playwright starts several harness dev servers at once (4174 default, 4175 durable, 4177 stable-v5). They all
+  // resolve to the same default cache directory, so one server's optimization replaces the dependency files another
+  // server's page has just been told to load (504 'Outdated Optimize Dep', blank first page). One cache per port.
+  cacheDir: harnessCacheDir(4174),
   server: {
     host: '127.0.0.1',
     port: 4174,

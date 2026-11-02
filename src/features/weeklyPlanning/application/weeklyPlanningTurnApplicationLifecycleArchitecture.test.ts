@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const applicationSource = readFileSync(
-  new URL('./weeklyPlanningTurnApplication.ts', import.meta.url),
+  new URL('./weeklyPlanningTurnApplicationCore.ts', import.meta.url),
   'utf8',
 );
 const runtimeGatewaySource = readFileSync(

@@ -1,3 +1,6 @@
+import { renderWeeklyPlanningStableV5AssistantMessageCore, type WeeklyPlanningTurnDialoguePorts } from '../dialogue/weeklyPlanningStableV5TurnDialogueCore';
+import type { WeeklyPlanningStableV5DialogueRenderInput } from '../dialogue/weeklyPlanningStableV5DialogueContracts';
+import { buildWeeklyPlanningPlanSourceId } from '../planning/weeklyPlanningPlanProvenance';
 import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import { boundWeeklyPlanningDialogueRendererTraceForTransport } from '../trace/weeklyPlanningDialogueRendererTrace';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
@@ -332,6 +335,7 @@ function turnInput(params: {
   traceRequestId: string;
   previousState?: PlanningIntakeState;
   messages?: ExecuteWeeklyPlanningStableV5RuntimeTurnInput['messages'];
+  plans?: ExecuteWeeklyPlanningStableV5RuntimeTurnInput['plans'];
 }): ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   return {
     previousState: params.previousState,
@@ -339,7 +343,7 @@ function turnInput(params: {
     userText: params.userText,
     selectedDate: '2026-08-17',
     userId: 'owner-human-scale',
-    plans: [],
+    plans: params.plans ?? [],
     scheduleTemplates: [],
     conversationId: params.conversationId,
     traceRequestId: params.traceRequestId,
@@ -1002,6 +1006,7 @@ describe('Stable V5 human-scale conversation integration', () => {
     conversationId: string; userText: string; document: WeeklyPlanningSemanticDocumentV5;
     act: 'request_event_registration' | 'decline_additional_work' | null;
     acts?: Array<{ kind: string; targetPublicId: string | null }>;
+    plans?: ExecuteWeeklyPlanningStableV5RuntimeTurnInput['plans'];
   }) {
     const raw = { ...params.document, conversationActs: params.acts
       ?? (params.act ? [{ kind: params.act, targetPublicId: null }] : []) };
@@ -1033,7 +1038,7 @@ describe('Stable V5 human-scale conversation integration', () => {
       return normalizer.normalize(input);
     });
     const result = await conversation.run(turnInput({ conversationId: params.conversationId,
-      userText: params.userText, traceRequestId: `fixed-handoff-${index}` }));
+      userText: params.userText, traceRequestId: `fixed-handoff-${index}`, plans: params.plans }));
     const reading = await normalizeMock.mock.results[index].value;
     expect(reading.status).toBe('accepted');
     expect(reading.document).not.toBeNull();
@@ -1101,6 +1106,27 @@ describe('Stable V5 human-scale conversation integration', () => {
       expect(next.result.stableV5Graph!.temporalConstraints).toEqual(firstGraph.temporalConstraints);
       expect(next.result.stableV5Graph!.availabilityDeclarations).toEqual(firstGraph.availabilityDeclarations);
     }
+  });
+
+  // N2: what V5's renderer is told on a turn with no new facts after a registration preview (run, not read).
+  // VNext parity: weeklyPlanningVNextEventRegistration.integration "a turn with no new facts ... follows V5".
+  it('V5 tells the renderer a status (no preview, no promotion label) on a no-new-facts turn after a registration preview', async () => {
+    const conversationId = 'fixed-handoff-render-facts';
+    const userText = '8月17日から23日の予定です。8月17日の10:30から12:00は部活なので、その予定を入れてください。';
+    const renderInputs: WeeklyPlanningStableV5DialogueRenderInput[] = [];
+    const ports = { createRenderer: () => ({ render: async (input: WeeklyPlanningStableV5DialogueRenderInput) => {
+      renderInputs.push(input); return { status: 'rendered' as const, text: '説明', rawResponse: '' }; } }),
+      getSession: getWeeklyPlanningStableV5RuntimeSession } as WeeklyPlanningTurnDialoguePorts;
+    const first = await runFixedHandoffReading({ conversationId, userText,
+      document: fixedHandoffDocument(userText, 'fixed_task'), act: 'request_event_registration' });
+    await renderWeeklyPlanningStableV5AssistantMessageCore({ input: turnInput({ conversationId, userText, traceRequestId: 'render-1' }), result: first.result }, ports);
+    const second = await runFixedHandoffReading({ conversationId, userText: '夜に集中が続かないときはどうしたらいいですか？', document: noNewEventFacts(), act: null });
+    await renderWeeklyPlanningStableV5AssistantMessageCore({ input: turnInput({ conversationId, userText: '夜に集中が続かないときはどうしたらいいですか？',
+      traceRequestId: 'render-2', previousState: first.result.state }), result: second.result }, ports);
+    expect(renderInputs[0]).toMatchObject({ actionKind: 'preview_ready', previewCount: 1,
+      communication: { goal: 'present_preview', statusReason: 'fixed_event_registration_preview' } });
+    expect(renderInputs[1]).toMatchObject({ actionKind: 'status', previewCount: 0, previewPromotionControlLabel: null,
+      communication: { goal: 'acknowledge', statusReason: 'no_additional_work' } });
   });
 
   it('scopes registration acts to named tasks or current-turn contributions while older commitments stay busy', async () => {
@@ -1375,6 +1401,36 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(next.result.preserveExistingPreview).toBe(true);
     expect(next.result.state.draftGenerationIntent).toBe('not_requested');
     expect(next.result.state.shouldSavePlan).toBe(false);
+  });
+
+  // D1 (Japanese review, run 41336864039): after a study plan was approved and saved, a registration turn said the
+  // study work "is not placed yet". V5's routing carried the same claim; saved plans now cover it by identity.
+  async function registerAfterStudyPreview(conversationId: string, savePlans: boolean) {
+    const studyText = '8月17日から23日の予定です。数学を20分したいです。';
+    const study = await runFixedHandoffReading({ conversationId, userText: studyText,
+      document: planningDocument({ title: '数学', amount: 20, unitCode: 'minute', unitLabel: '分', sourceText: studyText }), act: null });
+    const placed = study.result.draftCandidates.filter(candidate => candidate.source === 'weekly_exam_prep');
+    expect(placed.length).toBeGreaterThan(0);
+    // The plans approval saved from that preview (identity: the draft block id each plan was saved from).
+    const saved = placed.map((candidate, index) => ({ id: `saved-${index}`, seriesId: `saved-${index}`, userId: 'owner-human-scale',
+      title: candidate.title, subject: '', type: 'study', date: candidate.date, startTime: candidate.startTime, endTime: candidate.endTime,
+      memo: '', recurrence: null, recurrenceRules: [], excludedDates: [], createdAt: '2026-08-17T00:00:00.000Z', updatedAt: '2026-08-17T00:00:00.000Z',
+      sourceType: 'weekly-planning', sourceId: buildWeeklyPlanningPlanSourceId({ approvalOperationId: 'op-1', sourceDraftBlockId: candidate.stableKey }) }) as never);
+    const registerText = '8月17日から23日の予定です。8月17日の10:30から12:00の部活を登録してください。';
+    const document = fixedHandoffDocument(registerText, 'fixed_task'); document.planningIntent = 'discuss';
+    return runFixedHandoffReading({ conversationId, userText: registerText, document, act: 'request_event_registration', plans: savePlans ? saved : [] });
+  }
+
+  it('does not call study work "awaiting authorization" once an approved plan covers it', async () => {
+    const turn = await registerAfterStudyPreview('fixed-registration-after-saved-study', true);
+    expect(turn.result.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration', title: '部活' })]);
+    expect(turn.result.communicationFacts?.eventRegistration?.workAwaitingAuthorization).toBeUndefined();
+  });
+
+  it('still reports study work as awaiting authorization when its preview was never saved (control)', async () => {
+    const turn = await registerAfterStudyPreview('fixed-registration-after-unsaved-study', false);
+    expect(turn.result.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration', title: '部活' })]);
+    expect(turn.result.communicationFacts?.eventRegistration?.workAwaitingAuthorization).toEqual([expect.stringContaining('数学')]);
   });
 
   it('keeps every registration beside a capacity-limited provisional study preview and persists the actual composition', async () => {

@@ -223,18 +223,21 @@ export function saveAiPlanningChatSnapshot(
   if (!checkpoint) return false;
   try {
     window.localStorage.setItem(snapshotKey(userId, chatId), checkpoint.raw);
-    try {
-      window.localStorage.setItem(
-        searchTextKey(userId, chatId),
-        deriveSearchText(snapshot.planningState.messages),
-      );
-    } catch {
-      // Search cache is optional; the validated snapshot remains authoritative.
-    }
+    saveAiPlanningChatSearchText(userId, chatId, snapshot.planningState.messages);
     return true;
   } catch {
     return false;
   }
+}
+
+/** Read-only compatibility port: VNext migration keeps the original V5 chat bytes intact. */
+export function readAiPlanningChatSnapshotRaw(userId: string, chatId: string, storage: Pick<Storage, 'getItem'>): string | null {
+  return storage.getItem(snapshotKey(userId, chatId));
+}
+
+export function saveAiPlanningChatSearchText(userId: string, chatId: string, messages: readonly WeeklyPlanningMessage[]): void {
+  try { window.localStorage.setItem(searchTextKey(userId, chatId), deriveSearchText(messages)); }
+  catch { /* The search cache is optional; the snapshot remains authoritative. */ }
 }
 
 export function loadAiPlanningChatSnapshot(

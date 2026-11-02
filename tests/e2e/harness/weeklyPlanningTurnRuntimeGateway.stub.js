@@ -3,6 +3,9 @@ import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
   commitWeeklyPlanningStableV5RuntimeGraph,
 } from '../../../src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
+import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from '../../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextTransaction';
+import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from '../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
+import { createWeeklyPlanningPreviewBlocks, createWeeklyPlanningPreviewDisplayBlock } from '../../../src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
 
 const pendingResolvers = [];
 
@@ -63,8 +66,7 @@ window.__realWeeklyRuntime = {
   },
 };
 
-export const weeklyPlanningTurnRuntimeGateway = {
-  async execute(params) {
+async function execute(params, vnext) {
     record('real-runtime-execute', {
       userText: params.userText,
       requestId: params.pending.requestId,
@@ -93,13 +95,18 @@ export const weeklyPlanningTurnRuntimeGateway = {
       sourceTurns: [...previousState.sourceTurns, params.userText],
     };
 
-    const runtimeSession = bindWeeklyPlanningStableV5RuntimeSessionScope({
+    const runtimeSession = vnext ? null : bindWeeklyPlanningStableV5RuntimeSessionScope({
       ownerId: params.userId,
       weekStartDate: params.snapshot.weekStartDate,
       conversationId: params.pending.conversationId,
     });
-    const graphRevision = runtimeSession.graph.revision + 1;
-    const stagedGraph = {
+    // The gateway's live session exposes the raw checkpoint slot only; read it as production does.
+    const rawCheckpoint = vnext?.session.checkpoint.read();
+    const accepted = rawCheckpoint ? parseWeeklyPlanningVNextSessionCheckpoint({ raw: rawCheckpoint,
+      ownerId: params.userId, weekStartDate: params.snapshot.weekStartDate }) : null;
+    const previousCore = accepted?.vnext.state ?? createEmptyWeeklyPlanningVNextState();
+    const graphRevision = (vnext ? previousCore.graph : runtimeSession.graph).revision + 1;
+    const stagedGraph = runtimeSession && {
       ...runtimeSession.graph,
       revision: graphRevision,
       appliedTurnKeys: [
@@ -107,7 +114,7 @@ export const weeklyPlanningTurnRuntimeGateway = {
         `${params.pending.conversationId}:${params.pending.requestId}`,
       ],
     };
-    commitWeeklyPlanningStableV5RuntimeGraph({
+    if (runtimeSession) commitWeeklyPlanningStableV5RuntimeGraph({
       ownerId: params.userId,
       conversationId: params.pending.conversationId,
       graph: stagedGraph,
@@ -119,6 +126,39 @@ export const weeklyPlanningTurnRuntimeGateway = {
           graphRevision,
         })]
       : [];
+
+    if (vnext) {
+      // The existing UI fixture substitutes execution, not language or scheduling.
+      // Keep exactly its authored preview and give the real VNext application a
+      // valid, staged native checkpoint so approval/reload/cancellation stay real.
+      const applied = applyWeeklyPlanningVNextTurn(previousCore, { add: [
+        { kind: 'task', localId: 'fixture-task', category: 'study', title: '数学のワーク' },
+      ], patch: [], remove: [], relate: [], defer: [] }, {
+        expectedRevision: previousCore.graph.revision,
+        conversationId: params.pending.conversationId, turnId: params.pending.requestId,
+        turnKey: `${params.pending.conversationId}:${params.pending.requestId}`, sourceText: params.userText,
+        acceptedDate: params.snapshot.weekStartDate, weekStartsOn: 'monday',
+        planningHorizon: { startDate: params.snapshot.weekStartDate, endDate: params.snapshot.weekStartDate },
+        defaultPlanningHorizon: { startDate: params.snapshot.weekStartDate, endDate: params.snapshot.weekStartDate },
+      });
+      if (applied.status !== 'applied') throw new Error('Invalid native weekly UI fixture');
+      const taskId = applied.state.graph.tasks.at(-1).id;
+      for (const candidate of draftCandidates) {
+        candidate.stableV5Metadata.taskId = taskId;
+        candidate.stableV5Metadata.sourceFactRefs = [taskId];
+      }
+      const blocks = createWeeklyPlanningPreviewBlocks(draftCandidates)
+        .map(block => createWeeklyPlanningPreviewDisplayBlock(block, params.userId));
+      const preview = blocks.length ? { previewId: blocks[0].behaviorMetadata.previewMetadata.previewId,
+        graphRevision, blocks } : null;
+      const raw = serializeWeeklyPlanningVNextSessionCheckpoint({ ownerId: params.userId,
+        weekStartDate: params.snapshot.weekStartDate, conversationId: params.pending.conversationId,
+        savedAt: params.pending.startedAt,
+        vnext: { state: { ...applied.state, draftGenerationIntent: 'user_authorized' }, presentedQuestion: null,
+          preview, messages: [] } });
+      if (!raw) throw new Error('Native weekly UI fixture exceeded checkpoint budget');
+      vnext.stages.set(params.pending.requestId, { before: vnext.session.checkpoint.read(), after: raw });
+    }
 
     record('real-runtime-complete', {
       userText: params.userText,
@@ -132,5 +172,35 @@ export const weeklyPlanningTurnRuntimeGateway = {
       message: `テスト応答: ${params.userText}`,
       draftCandidates,
     };
-  },
+}
+
+// Durable receipt reading is production code (browser storage only); the harness aliases the module, so
+// it is re-exported from the real gateway rather than faked.
+export { readWeeklyPlanningVNextDurableReceipt } from '../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway';
+
+export const weeklyPlanningTurnRuntimeGateway = {
+  execute: params => execute(params),
 };
+
+// Same execution seam as the historical fixture; production owns the controller,
+// UI persistence, approval and repository calls. Provider-driven specs unalias it.
+export function createWeeklyPlanningVNextRuntimeGateway({ session }) {
+  const stages = new Map();
+  return {
+    runtimeGateway: { execute: params => execute(params, { session, stages }) },
+    stagingLifecycle: {
+      prepare({ pending }) {
+        const staged = stages.get(pending.requestId);
+        if (!staged) return undefined;
+        if (session.checkpoint.read() !== staged.before) throw new Error('UI fixture checkpoint changed before commit');
+        session.checkpoint.write(staged.after);
+        stages.delete(pending.requestId);
+        return { complete() {}, rollback() {
+          if (session.checkpoint.read() !== staged.after) throw new Error('UI fixture checkpoint changed before rollback');
+          if (staged.before === null) session.checkpoint.remove(); else session.checkpoint.write(staged.before);
+        } };
+      },
+      discard(pending) { stages.delete(pending.requestId); },
+    },
+  };
+}

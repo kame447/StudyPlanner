@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AiPlanningView } from '../../../src/components/AiPlanningView';
-import { useWeeklyPlanningApplication } from '../../../src/features/weeklyPlanning/application/useWeeklyPlanningApplication';
+import { useWeeklyPlanningConversationApplication as useWeeklyPlanningApplication } from '../../../src/features/weeklyPlanning/application/useWeeklyPlanningConversationApplication';
 import '../../../src/styles.css';
 
 window.__realWeeklyEvents = [];

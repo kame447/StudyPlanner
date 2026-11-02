@@ -7,10 +7,15 @@ import { expect, test } from '@playwright/test';
 // the app asks, so production code writes every document itself. The tour's completion lives only in
 // this browser's storage, so the live specs start with that flag and, as against production, signed out.
 // As in production, the live account is a trace reader and the dedicated trace account is not (#947).
-const accounts = [
-  { email: process.env.STUDYPLANNER_LIVE_EMAIL, password: process.env.STUDYPLANNER_LIVE_PASSWORD, traceReader: true },
-  { email: process.env.STUDYPLANNER_TRACE_E2E_EMAIL, password: process.env.STUDYPLANNER_TRACE_E2E_PASSWORD, traceReader: false },
-];
+// A project that names its own account (the VNext experiment, #926) registers only that one.
+const projectAccount = () => test.info().project.metadata.email;
+const accounts = () => (projectAccount()
+  ? [{ email: projectAccount(), password: process.env.STUDYPLANNER_LIVE_PASSWORD, traceReader: false }]
+  : [
+    { email: process.env.STUDYPLANNER_LIVE_EMAIL, password: process.env.STUDYPLANNER_LIVE_PASSWORD, traceReader: true },
+    { email: process.env.STUDYPLANNER_TRACE_E2E_EMAIL, password: process.env.STUDYPLANNER_TRACE_E2E_PASSWORD, traceReader: false },
+  ]);
+const statePath = () => test.info().project.metadata.statePath ?? process.env.STUDYPLANNER_E2E_EMULATOR_STATE;
 const authEmulator = `http://${process.env.STUDYPLANNER_E2E_AUTH_EMULATOR_HOST}`;
 const firestoreEmulator = `http://${process.env.STUDYPLANNER_E2E_FIRESTORE_EMULATOR_HOST}`;
 
@@ -78,10 +83,11 @@ async function grantTraceReader(request, { email, password }) {
 }
 
 test('register and prepare the emulator accounts through the real screens', async ({ browser, request }, testInfo) => {
-  await rm(process.env.STUDYPLANNER_E2E_TRACE_SESSION_FILE, { force: true });
+  // The trace session file belongs to the default accounts' trace setup, not to a project's own account.
+  if (!projectAccount()) await rm(process.env.STUDYPLANNER_E2E_TRACE_SESSION_FILE, { force: true });
   const { baseURL, timezoneId, viewport } = testInfo.project.use;
   const tourFlags = new Map();
-  for (const account of accounts) {
+  for (const account of accounts()) {
     // One fresh context per account, so neither sign-in sees the other's session.
     const context = await browser.newContext({ baseURL, timezoneId, viewport });
     try {
@@ -96,7 +102,7 @@ test('register and prepare the emulator accounts through the real screens', asyn
     }
     if (account.traceReader) await grantTraceReader(request, account);
   }
-  await writeFile(process.env.STUDYPLANNER_E2E_EMULATOR_STATE, JSON.stringify({
+  await writeFile(statePath(), JSON.stringify({
     cookies: [],
     origins: [...tourFlags].map(([origin, localStorage]) => ({ origin, localStorage })),
   }));

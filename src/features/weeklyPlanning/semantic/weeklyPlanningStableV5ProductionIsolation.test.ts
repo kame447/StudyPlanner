@@ -89,6 +89,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'trace/weeklyPlanningTraceOutbox.ts',
   'trace/weeklyPlanningTraceRemoteRepository.ts',
   'trace/weeklyPlanningTurnDiagnosticV2.ts',
+  // #926 VNext production: the single seam to reused V5 pure responsibilities and read-only migration.
+  'vnext/weeklyPlanningVNextV5Boundary.ts',
 ]);
 
 const STATIC_IMPORT_EXPRESSION = /(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g;

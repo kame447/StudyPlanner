@@ -1,4 +1,5 @@
 import { expect, test } from './support/fixed-clock.mjs';
+import { installWeeklyConversationSeeder } from './support/weekly-conversation-seed.mjs';
 
 // Issue #696 S3: edits to the proposed plan are explained in place. Opening
 // the preview, paging and switching overview/day stay still; moving a block
@@ -6,6 +7,7 @@ import { expect, test } from './support/fixed-clock.mjs';
 // only that day's count. Nothing claims progress the plan did not make.
 
 async function seed(page, motion) {
+  await installWeeklyConversationSeeder(page);
   await page.addInitScript(({ motion }) => {
     if (localStorage.getItem('preview-motion-seeded')) return;
     const now = new Date().toISOString();
@@ -23,10 +25,7 @@ async function seed(page, motion) {
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
     for (const key of ['studyplanner.plans', 'studyplanner.actuals', 'studyplanner.todos.v1', 'studyplanner.studyMaterials.v1']) localStorage.setItem(key, '[]');
-    localStorage.setItem(`studyplanner.weeklyPlanning.${user.id}.${weekStartDate}`,
-      JSON.stringify({ version: 3, ownerId: user.id, payload: { version: 2, state: planningState } }));
-    localStorage.setItem(`studyplanner.weeklyPlanning.activeSession.${user.id}`,
-      JSON.stringify({ version: 1, ownerId: user.id, weekStartDate, conversationId: null }));
+    window.__seedWeeklyConversation({ ownerId: user.id, weekStartDate, state: planningState });
     if (motion) localStorage.setItem('study-planner-motion', motion);
     localStorage.setItem('preview-motion-seeded', 'true');
   }, { motion });

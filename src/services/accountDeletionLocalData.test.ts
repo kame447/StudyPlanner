@@ -11,6 +11,8 @@ it('clears this account across shared, uid-scoped, legacy, draft and trace store
   const local = storage(), session = storage();
   for (const uid of ['A', 'B']) {
     for (const key of [`studyplanner.weeklyPlanning.stableV5.${uid}.2026-10-26`, `studyplanner.aiPlanning.chats.v1.${uid}`,
+      `studyplanner.weeklyPlanning.vnext.${uid}.2026-10-26.ai-chat-1.core`, `studyplanner.weeklyPlanning.vnext.${uid}.2026-10-26.ai-chat-1.ui`,
+      `studyplanner.durableWeeklyTurn.v1:${uid}`, `studyplanner.durableWeeklyTurn.vnext.v1:${uid}`,
       `studyplanner.activeSession.v1.${uid}`, `studyplanner.activeSession.v1.${uid}.dispatch.timer`, `studyplanner.userPlanningContext.${uid}`,
       `studyplanner.weeklyPlanning.trace.stableV5.${uid}::chat`, `study-planner-day-timetable:${uid}`]) local.setItem(key, '{}');
   }
@@ -29,6 +31,10 @@ it('clears this account across shared, uid-scoped, legacy, draft and trace store
   expect(JSON.parse(local.getItem('studyplanner-weekly-approval-ledger-v1')!).operations).toEqual([{ userId: 'B' }]);
   expect(local.getItem('studyplanner.weeklyPlanning.stableV5.A.2026-10-26')).toBeNull();
   expect(local.getItem('studyplanner.weeklyPlanning.stableV5.B.2026-10-26')).toBe('{}');
+  // VNext's per-chat checkpoints and its own durable receipt are account data too.
+  for (const key of ['studyplanner.weeklyPlanning.vnext.A.2026-10-26.ai-chat-1.core', 'studyplanner.weeklyPlanning.vnext.A.2026-10-26.ai-chat-1.ui',
+    'studyplanner.durableWeeklyTurn.v1:A', 'studyplanner.durableWeeklyTurn.vnext.v1:A']) expect(local.getItem(key), key).toBeNull();
+  for (const key of ['studyplanner.weeklyPlanning.vnext.B.2026-10-26.ai-chat-1.core', 'studyplanner.durableWeeklyTurn.vnext.v1:B']) expect(local.getItem(key), key).toBe('{}');
   expect(local.getItem('studyplanner.activeSession.v1.A.dispatch.timer')).toBeNull();
   expect(local.getItem('studyplanner.activeSession.v1.B.dispatch.timer')).toBe('{}');
   expect(local.getItem('studyplanner.session')).toBeNull();

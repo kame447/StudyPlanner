@@ -1,6 +1,8 @@
 import { loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
-import { durableWeeklyPlanningEnabled, readDurableWeeklyTurnReceipt, clearDurableWeeklyTurnReceipt, cancelDurableWeeklyTurn } from './weeklyPlanningDurableTurnClient';
+import { durableWeeklyPlanningEnabled, readDurableWeeklyTurnReceipt, cancelDurableWeeklyTurn } from './weeklyPlanningDurableTurnClient';
+import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from './weeklyPlanningDurableRecovery';
 import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
+import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn, type WeeklyPlanningTurnPreparationResult, type WeeklyPlanningApplicationSubmissionResult } from './weeklyPlanningTurnPreparation';
 import { isPlannerDataReadyForOwner } from '../../../domain/plannerDataReadAuthority';
 import { loadAiPlanningChatSnapshot, readAiPlanningChatIndex } from '../chat/aiPlanningChatStore';
 import { sameAiPlanningModuleRecoveryBinding, type AiPlanningModuleRecoveryBinding } from '../chat/aiPlanningModuleRecovery';
@@ -25,7 +27,6 @@ import type {
   WeeklyPlanningMessage,
 } from '../types';
 import { useWeeklyPlanningState } from '../useWeeklyPlanningState';
-import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutor';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningMachineBoundEffortAnswerV5 } from '../semantic/weeklyPlanningMachineBoundAnswerV5';
 import {
@@ -81,15 +82,12 @@ export interface UseWeeklyPlanningApplicationInput {
   completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
 }
 
-export type WeeklyPlanningTurnPreparationResult =
-  | { ready: true }
-  | { ready: false; reason: 'planner-data-changed' | 'request-changed' };
-
-export interface WeeklyPlanningApplicationSubmissionResult extends WeeklyPlanningTurnSubmissionResult {
-  rejectionReason?: 'planner-data-changed';
-}
+export type { WeeklyPlanningTurnPreparationResult, WeeklyPlanningApplicationSubmissionResult } from './weeklyPlanningTurnPreparation';
 
 export interface WeeklyPlanningApplication {
+  /** The isolated local experiment has one conversation per owner/week. */
+  conversationNavigation?: 'single';
+  registeredTargetsAvailable?: boolean;
   chat: AiPlanningChatSession;
   state: PlanningState;
   pendingDraftBlocks: WeeklyPlanDraftBlock[];
@@ -261,21 +259,16 @@ export function useWeeklyPlanningApplication({
   }
   const plannerDataReady = isBoundPlannerDataCurrent();
 
-  async function prepareTurn(): Promise<WeeklyPlanningTurnPreparationResult> {
-    if (!isBoundPlannerDataCurrent()) return { ready: false, reason: 'planner-data-changed' };
-    const binding = getModuleRecoveryBinding();
-    if (!binding || committedRequestInput.current !== requestInput) {
-      return { ready: false, reason: 'request-changed' };
-    }
-    const stateAtStart = getPlanningState();
-    const indexAtStart = chat.index;
-    await loadWeeklyPlanningRuntimeModule();
-    if (!isBoundPlannerDataCurrent()) return { ready: false, reason: 'planner-data-changed' };
-    return stateAtStart === getPlanningState() && indexAtStart === chat.index
-      && committedRequestInput.current === requestInput
-      && sameAiPlanningModuleRecoveryBinding(binding, getModuleRecoveryBinding())
-      ? { ready: true } : { ready: false, reason: 'request-changed' };
-  }
+  // The preparation sequence is shared with the VNext hook; only these accessors are this core's.
+  const preparationPorts = {
+    isPlannerDataCurrent: isBoundPlannerDataCurrent,
+    binding: getModuleRecoveryBinding,
+    isRequestCurrent: () => committedRequestInput.current === requestInput,
+    stateIdentity: getPlanningState,
+    indexIdentity: () => chat.index,
+    preflight: loadWeeklyPlanningRuntimeModule,
+  };
+  const prepareTurn = () => prepareWeeklyPlanningTurn(preparationPorts);
 
   function checkpointForModuleReload(): { binding: AiPlanningModuleRecoveryBinding; isCurrent(): boolean } | null {
     const binding = getModuleRecoveryBinding();
@@ -317,14 +310,9 @@ export function useWeeklyPlanningApplication({
     const preparation = await prepareTurn();
     // Recheck the same bound lease at admission, including the continuation after
     // preflight resolves. Do not substitute the latest render's readiness here.
-    if (!isBoundPlannerDataCurrent() || (!preparation.ready && preparation.reason === 'planner-data-changed')) {
-      return { accepted: false, draftCandidates: [], rejectionReason: 'planner-data-changed' };
-    }
-    if (!preparation.ready || committedRequestInput.current !== requestInput
-      || stateAtStart !== getPlanningState() || indexAtStart !== chat.index
-      || !sameAiPlanningModuleRecoveryBinding(bindingAtStart, getModuleRecoveryBinding())) {
-      return { accepted: false, draftCandidates: [] };
-    }
+    const admission = admitPreparedWeeklyPlanningTurn({ preparation, ports: preparationPorts,
+      start: { state: stateAtStart, index: indexAtStart, binding: bindingAtStart } });
+    if (!admission.admitted) return admission.result;
     // Save the same selected conversation before accepting remote work, including its first turn.
     if (durableWeeklyPlanningEnabled() && chat.checkpoint().status !== 'saved') {
       return { accepted: false, draftCandidates: [] };
@@ -494,46 +482,23 @@ export function useWeeklyPlanningApplication({
   useEffect(() => {
     if (!durableWeeklyPlanningEnabled() || !userId || chat.requiresInitialization || !isPlanningStateReady()) return;
     const session = controllerSessionRef.current;
-    const receipt = readDurableWeeklyTurnReceipt(userId);
-    if (!session || !receipt || receipt.pending.conversationId !== session.conversationId) return;
+    const stored = readDurableWeeklyTurnReceipt(userId);
+    // A VNext receipt belongs to its own core and is never resumed here.
+    const receipt = stored && !('core' in stored.payload) ? stored : null;
     const current = getPlanningState();
-    if (current.pendingTurn || current.pendingApproval || recoveringDurableRequest.current === receipt.pending.requestId) return;
-    if (receipt.cancelRequested) {
-      recoveringDurableRequest.current = receipt.pending.requestId;
-      void cancelDurableWeeklyTurn(userId, receipt.pending.requestId).finally(() => {
-        if (recoveringDurableRequest.current === receipt.pending.requestId) recoveringDurableRequest.current = null;
-      });
-      return;
-    }
-    if (current.revision > receipt.pending.baseRevision) {
-      // A persisted newer state owns the conversation. Never apply the old reply twice.
-      const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: userId, weekStartDate: current.weekStartDate });
-      if (saved?.conversationId === receipt.pending.conversationId
-        && saved.planningState.revision >= receipt.pending.baseRevision + 2
-        && chat.checkpoint().status === 'saved') {
-        clearDurableWeeklyTurnReceipt(userId, receipt.pending.requestId);
-      }
-      return;
-    }
-    if (current.revision !== receipt.pending.baseRevision || current.weekStartDate !== receipt.pending.weekStartDate
-      || JSON.stringify(current.intakeState) !== JSON.stringify(receipt.snapshot.intakeState)
-      || !isPlannerDataReadyForOwner(plannerDataAvailability, userId)) return;
-    recoveringDurableRequest.current = receipt.pending.requestId;
-    const original = receipt.payload.input;
-    void submitWeeklyPlanningApplicationTurn({
-      session, userId, ownerId, userText: original.userText, supplementalContext: original.supplementalContext,
-      selectedStarterTarget: original.selectedStarterTarget,
-      ...(original.machineBoundAnswer ? { machineBoundAnswer: original.machineBoundAnswer } : {}),
-      selectedDate: original.selectedDate,
-      plans: original.plans, monthEvents: original.monthEvents, actuals: original.actuals,
-      studyMaterials: original.studyMaterials, scheduleTemplates: original.scheduleTemplates,
-      timetableTermId: original.timetableTermId, timetableTerm: original.timetableTerm, timetableTerms: original.timetableTerms,
-      plannerDataAvailability, weekStartsOn: original.requestContext.weekStartsOn,
-      timeZone: original.requestContext.timeZone, resumePending: receipt.pending,
-      getState: getPlanningState, dispatch: dispatchAndPersist,
-      isApplicationCurrent: () => applicationActiveRef.current && chatPortsRef.current.ownerId === ownerId,
-    }).catch(() => undefined).finally(() => {
-      if (recoveringDurableRequest.current === receipt.pending.requestId) recoveringDurableRequest.current = null;
+    recoverDurableWeeklyTurn({
+      ownerId: userId, conversationId: session?.conversationId, state: current, recovering: recoveringDurableRequest,
+      receipt, plannerDataReady: isPlannerDataReadyForOwner(plannerDataAvailability, userId),
+      persistedRevision: () => {
+        const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: userId, weekStartDate: current.weekStartDate });
+        return saved?.conversationId === receipt?.pending.conversationId ? saved?.planningState.revision : undefined;
+      },
+      chatSaved: () => chat.checkpoint().status === 'saved',
+      resubmit: stable => submitWeeklyPlanningApplicationTurn({
+        ...durableReceiptTurnParams(stable), session: session!, userId, ownerId, plannerDataAvailability,
+        getState: getPlanningState, dispatch: dispatchAndPersist,
+        isApplicationCurrent: () => applicationActiveRef.current && chatPortsRef.current.ownerId === ownerId,
+      }),
     });
   }, [chat, chatRevision, userId, ownerId, planningState, isPlanningStateReady, plannerDataAvailability,
     getPlanningState, dispatchAndPersist]);

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
+import { VNEXT_SCHEMA, vnextReadingFromFacts, unaliasedRuntimeGatewayStubBody } from './support/weekly-planning-provider.mjs';
 
 // Issue #870: fixed time occupies its exact interval; movable work is an amount
 // placed in free time, split only as a fallback and never when one sitting is stated.
@@ -46,7 +47,9 @@ const compoundText = '明日13〜17時にゼミがあるので予定に入れて
 const scenarios = {
   // A hard window as the provider may send it; it must stay hard and the 60 minutes may use both 30-minute gaps.
   window: { text: windowText, reading: () => document(windowText, [{ ...study('math', '数学', 60, windowText),
-    temporalConstraints: [clock('math-window', 'math', 'preferred_window', 'hard', '13:00', '17:00', windowText)] }],
+    // VNext represents a mandatory window as its two hard bounds.
+    temporalConstraints: [clock('math-from', 'math', 'earliest_start', 'hard', '13:00', null, windowText),
+      clock('math-until', 'math', 'latest_end', 'hard', null, '17:00', windowText)] }],
   { availabilityDeclarations: [busy('13:40', '16:20', windowText)] }) },
   // The same work stated as one sitting must not be split into the gaps.
   sitting: { text: sittingText, reading: () => document(sittingText, [{ ...study('math', '数学', 60, sittingText),
@@ -77,12 +80,11 @@ async function boot(page, calls, reading) {
   await page.route('**/*', route => new URL(route.request().url()).origin === ORIGIN ? route.continue() : route.abort());
   await page.route('**/weeklyPlanningTurnRuntimeGateway.stub.js*', route => route.fulfill({
     contentType: 'application/javascript',
-    body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};`,
+    body: unaliasedRuntimeGatewayStubBody(root),
   }));
   const seams = [
     ['lib/aiConfig.ts', 'function getCloudflareAiProxyUrl() {', `return ${JSON.stringify(PROXY)};`],
     ['lib/firebaseClient.ts', 'function getFirebaseAuth() {', 'return { currentUser: { uid: "planner-recovery-owner", getIdToken: async () => "synthetic-local-session" } };'],
-    ['features/weeklyPlanning/useWeeklyPlanningState.ts', 'const getPlanningState = useCallback(() => planningStateRef.current, []);', 'globalThis.__temporalReadState = getPlanningState;'],
     ['features/weeklyPlanning/trace/weeklyPlanningStableV5DebugTrace.ts', 'function recordWeeklyPlanningStableV5DebugTrace(params) {', '(globalThis.__temporalTrace ??= []).push(structuredClone(params));'],
   ];
   for (const [file, marker, added] of seams) await page.route(`**/src/${file}*`, async route => {
@@ -99,7 +101,7 @@ async function boot(page, calls, reading) {
       return route.fulfill({ status: response.status, body: await response.text(), headers: { 'Content-Type': 'application/json', 'X-StudyPlanner-AI-Provider': provider } });
     }
     let content;
-    if (schema === 'weekly_planning_semantic_document_v5') content = reading;
+    if (schema === VNEXT_SCHEMA) content = vnextReadingFromFacts(reading);
     else if (schema === 'weekly_planning_stable_v5_dialogue_response') content = rendererReply(request);
     else if (schema === 'weekly_planning_recovery_verdict') {
       const prompt = JSON.parse(request.messages.at(-1).content);
@@ -124,13 +126,15 @@ async function submit(page, scenario) {
   await page.locator('.ai-planning-composer textarea').fill(scenario.text);
   await page.getByRole('button', { name: '送信', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
-    const state = globalThis.__temporalReadState?.();
+    const state = globalThis.__weeklyPlanningApplication?.state;
     return Boolean(state && !state.pendingTurn && state.messages.at(-1)?.role === 'assistant');
   }), { timeout: LIVE ? 240_000 : 60_000 }).toBe(true);
-  const { state, trace } = await page.evaluate(() => ({ state: globalThis.__temporalReadState(), trace: globalThis.__temporalTrace ?? [] }));
+  const { state, trace } = await page.evaluate(() => ({ state: globalThis.__weeklyPlanningApplication.state, trace: globalThis.__temporalTrace ?? [] }));
   expect(errors).toEqual([]);
   // Initial interpretation, plus at most the single permitted repair when live.
-  expect(calls.filter(schema => schema === 'weekly_planning_semantic_document_v5').length).toBeLessThanOrEqual(LIVE ? 2 : 1);
+  const semanticCalls = calls.filter(schema => schema === VNEXT_SCHEMA);
+  expect(semanticCalls.length).toBeGreaterThan(0);
+  expect(semanticCalls.length).toBeLessThanOrEqual(LIVE ? 2 : 1);
   // A preview never saves.
   expect(await readSaved(page)).toEqual([]);
   if (LIVE) {

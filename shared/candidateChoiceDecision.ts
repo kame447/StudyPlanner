@@ -1,3 +1,4 @@
+import { D5_TOP1_ANSWER_POLICY_VERSION } from './d5AnswerPolicy';
 /** Provider-neutral wire contract. Application owns leaves, binding and all mutation authority. */
 export type ChoiceValue = null | boolean | number | string | readonly ChoiceValue[] | ChoiceTuple;
 export interface ChoiceTuple { readonly [key: string]: ChoiceValue }
@@ -41,7 +42,9 @@ export interface CandidateChoiceDecisionContext {
   readonly request: CandidateChoiceWireRequest;
 }
 export const CANDIDATE_CHOICE_CATALOG_VERSION = 'complete-candidate-choice-2026-10-13-v2';
-export const CANDIDATE_CHOICE_QUESTION_CODES = ['missing_effort_estimate', 'ambiguous_effort_estimate', 'quantity_role_unresolved', 'missing_time_bounds', 'invalid_time_interval', 'named_time_period_unresolved', 'reply_reference_target', 'missing_availability_date_scope'] as const;
+export const CANDIDATE_CHOICE_QUESTION_CODES = ['missing_effort_estimate', 'ambiguous_effort_estimate', 'quantity_role_unresolved', 'missing_time_bounds', 'invalid_time_interval', 'named_time_period_unresolved', 'reply_reference_target', 'missing_availability_date_scope',
+  // #926 VNext closed-set option questions (experimental, unwired); they use the generic non-reference catalog.
+  'remaining_inconsistent', 'same_or_distinct_work'] as const;
 export interface CandidateChoiceEvaluation {
   readonly status: 'evaluated';
   readonly catalogVersion: typeof CANDIDATE_CHOICE_CATALOG_VERSION;
@@ -133,4 +136,30 @@ export function isCandidateChoiceEvaluation(v: unknown, r: CandidateChoiceWireRe
     if (p.optionId === v.optionId) selected = p.probability;
   }
   return Math.abs(sum - 1) <= 1e-6 && selected >= 0 && selected === maximum;
+}
+
+/** The selection a validated evaluation yields. Browser and durable transports share one gate mapping. */
+export function projectCandidateChoiceSelection(
+  request: CandidateChoiceWireRequest,
+  evaluation: CandidateChoiceEvaluation,
+  policy: { readonly maximumConditionChange: number; readonly maximumIndependentMeaning: number },
+) {
+  return {
+    nodeId: evaluation.nodeId, requestId: evaluation.requestId, selectionEpoch: evaluation.selectionEpoch,
+    candidateSetHash: evaluation.candidateSetHash, optionId: evaluation.optionId, probabilities: evaluation.probabilities,
+    semanticSufficiency: (request.context.question.code === 'missing_effort_estimate'
+      && request.context.scope.domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION
+      // The common gate still enforces the complete distribution, unique top-1 and none rejection.
+      // Auxiliary heads are diagnostic for v2.
+      ? request.menu.options.some(option => option.kind === 'leaf' && option.id === evaluation.optionId)
+      : evaluation.conditionChange <= policy.maximumConditionChange && evaluation.independentMeaning <= policy.maximumIndependentMeaning)
+      ? 'only_candidate_meaning' as const : 'extra_or_uncertain_meaning' as const,
+  };
+}
+
+/** The calibrated semantic gate a closed choice must pass; every transport applies the same one. */
+export interface CandidateSemanticGatePolicy {
+  readonly calibrationEvidenceId: string;
+  readonly maximumConditionChange: number;
+  readonly maximumIndependentMeaning: number;
 }

@@ -50,7 +50,8 @@ test('real checkpoint failure asks before entry, preserves cancelled drafts and 
   await page.evaluate(() => {
     const write = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) {
-      if (this === localStorage && key.includes('.chat.v1.')) throw new Error('Synthetic checkpoint write failure');
+      // The active core's per-chat snapshot: VNext in production, V5 in the comparison build.
+      if (this === localStorage && (key.includes('.chat.v1.') || key.includes('.weeklyPlanning.vnext.'))) throw new Error('Synthetic checkpoint write failure');
       return write.call(this, key, value);
     };
   });

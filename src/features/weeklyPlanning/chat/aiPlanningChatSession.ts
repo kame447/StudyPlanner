@@ -2,21 +2,34 @@ import {
   createAiPlanningChat, deriveAiPlanningChatTitle, readAiPlanningChatIndex,
   loadAiPlanningChatSnapshot, removeAiPlanningChatFromIndex,
   removeAiPlanningChatSnapshot, saveAiPlanningChatIndex, saveAiPlanningChatSnapshot,
-  setActiveAiPlanningChat, updateAiPlanningChatRecord, type AiPlanningChatIndex,
+  setActiveAiPlanningChat, updateAiPlanningChatRecord, type AiPlanningChatIndex, type AiPlanningChatRecord,
 } from './aiPlanningChatStore';
+import type { WeeklyPlanningMessage } from '../types';
 
 type Snapshot = NonNullable<ReturnType<typeof loadAiPlanningChatSnapshot>>;
 export type AiPlanningChatResult = { readonly status: 'saved' } | { readonly status: 'blocked'; readonly reason:
   'owner-changed' | 'busy' | 'index-unavailable' | 'initialization-unavailable' | 'snapshot-unavailable' | 'snapshot-write-failed' | 'index-write-failed' | 'target-unavailable' };
-interface ChatSessionPorts {
+interface ChatSnapshot {
+  ownerId: string;
+  weekStartDate: string;
+  savedAt: string;
+  planningState: { messages: readonly WeeklyPlanningMessage[] };
+}
+interface ChatSessionPorts<StoredSnapshot extends ChatSnapshot> {
   isCurrent(): boolean;
   isBusy(): boolean;
   isApplicationStateReady?(): boolean;
   initializeApplicationState?(): boolean;
-  exportSnapshot(includeEmpty: boolean): Snapshot | null;
-  prepareImport(snapshot: Snapshot): (() => void) | null;
-  prepareNew(): (() => void) | null;
+  exportSnapshot(includeEmpty: boolean): StoredSnapshot | null;
+  prepareImport(snapshot: StoredSnapshot): (() => void) | null;
+  prepareNew(chat: AiPlanningChatRecord): (() => void) | null;
   changed(): void;
+}
+
+interface ChatSnapshotStore<StoredSnapshot> {
+  load(ownerId: string, chat: AiPlanningChatRecord): StoredSnapshot | null;
+  save(ownerId: string, chatId: string, snapshot: StoredSnapshot): boolean;
+  remove(ownerId: string, chatId: string): void;
 }
 
 function immutableIndex(value: AiPlanningChatIndex): AiPlanningChatIndex {
@@ -26,7 +39,9 @@ function immutableIndex(value: AiPlanningChatIndex): AiPlanningChatIndex {
 }
 
 /** Owner/application-lifetime index; the application remains the only unsaved conversation authority. */
-export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionPorts) {
+export function createAiPlanningChatSessionWithStore<StoredSnapshot extends ChatSnapshot>(
+  ownerId: string, ports: ChatSessionPorts<StoredSnapshot>, store: ChatSnapshotStore<StoredSnapshot>,
+) {
   let index: AiPlanningChatIndex | undefined;
   let hadStoredIndex = false;
   let phase: 'uninitialized' | 'ready' | 'index-unavailable' | 'snapshot-unavailable' | 'state-unavailable' = 'uninitialized';
@@ -73,7 +88,7 @@ export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionP
     phase = 'ready';
     const snapshot = ports.exportSnapshot(true);
     if (!snapshot || snapshot.ownerId !== ownerId) return fail('snapshot-unavailable');
-    if (!saveAiPlanningChatSnapshot(ownerId, current.activeChatId, snapshot)) return fail('snapshot-write-failed');
+    if (!store.save(ownerId, current.activeChatId, snapshot)) return fail('snapshot-write-failed');
     const next = updateAiPlanningChatRecord(current, current.activeChatId, {
       title: deriveAiPlanningChatTitle(snapshot.planningState.messages),
       updatedAt: snapshot.savedAt, weekStartDate: snapshot.weekStartDate,
@@ -90,7 +105,7 @@ export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionP
       phase = 'state-unavailable'; return fail('initialization-unavailable');
     }
     const active = current.chats.find((chat) => chat.id === current.activeChatId)!;
-    const snapshot = loadAiPlanningChatSnapshot(ownerId, active);
+    const snapshot = store.load(ownerId, active);
     if (snapshot) {
       const commit = ports.prepareImport(snapshot);
       if (!commit) { phase = 'snapshot-unavailable'; return fail('initialization-unavailable'); }
@@ -105,8 +120,8 @@ export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionP
   function destination(chatId: string, next: AiPlanningChatIndex) {
     const chat = next.chats.find((candidate) => candidate.id === chatId);
     if (!chat) return null;
-    if (chat.weekStartDate === null) return ports.prepareNew();
-    const snapshot = loadAiPlanningChatSnapshot(ownerId, chat);
+    if (chat.weekStartDate === null) return ports.prepareNew(chat);
+    const snapshot = store.load(ownerId, chat);
     return snapshot ? ports.prepareImport(snapshot) : null;
   }
   function navigate(kind: 'select' | 'create' | 'delete', chatId?: string): AiPlanningChatResult {
@@ -133,15 +148,15 @@ export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionP
         : setActiveAiPlanningChat(latest, chatId!);
     if (!saveAiPlanningChatIndex(ownerId, next)) return fail('index-write-failed');
     commit();
-    if (kind === 'delete') removeAiPlanningChatSnapshot(ownerId, chatId!);
+    if (kind === 'delete') store.remove(ownerId, chatId!);
     return publish(next);
   }
   function startWithoutRestoring(): AiPlanningChatResult {
     const blocked = guard(); if (blocked) return blocked;
     if (phase !== 'snapshot-unavailable' || !index) return fail('target-unavailable');
-    const commit = ports.prepareNew();
-    if (!commit) return fail('target-unavailable');
     const next = createAiPlanningChat(index).index;
+    const commit = ports.prepareNew(next.chats[0]);
+    if (!commit) return fail('target-unavailable');
     if (!saveAiPlanningChatIndex(ownerId, next)) return fail('index-write-failed');
     phase = 'ready'; commit(); return publish(next);
   }
@@ -157,5 +172,10 @@ export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionP
     create: () => navigate('create'),
     remove: (chatId: string) => navigate('delete', chatId),
   };
+}
+export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionPorts<Snapshot>) {
+  return createAiPlanningChatSessionWithStore(ownerId, ports, {
+    load: loadAiPlanningChatSnapshot, save: saveAiPlanningChatSnapshot, remove: removeAiPlanningChatSnapshot,
+  });
 }
 export type AiPlanningChatSession = ReturnType<typeof createAiPlanningChatSession>;

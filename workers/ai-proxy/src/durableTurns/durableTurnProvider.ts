@@ -1,5 +1,8 @@
 import { AiProviderError, projectAiProviderFailure } from '../../../../shared/aiProviderFailure';
-import { isCandidateChoiceDecisionContext, isCandidateChoiceEvaluation } from '../../../../shared/candidateChoiceDecision';
+import { isCandidateChoiceDecisionContext, isCandidateChoiceEvaluation, projectCandidateChoiceSelection,
+  type CandidateChoiceEvaluation, type CandidateChoiceWireRequest, type CandidateSemanticGatePolicy } from '../../../../shared/candidateChoiceDecision';
+
+import type { WeeklyPlanningVNextOptionChoicePort } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextOptionChoice';
 import type { ReplyReferenceChoiceCalibrationV5, ReplyReferenceChoicePortV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningReplyReferenceChoiceV5';
 import type { OpenAiCompatibleClient } from '../../../../src/services/ai/openAiCompatibleClientTypes';
 import { executeAuthenticatedChatRequest, type AiProxyWorkerEnv } from '../worker';
@@ -69,9 +72,61 @@ export function createDurableTurnProvider(
 }
 
 
+/** One journaled Jev candidate-choice dispatch, shared by every core's closed-choice port. A replay invokes
+ * the identical beforeDispatch gate even when the journal has a cached response. The result never writes graph state.
+ */
+async function dispatchDurableCandidateChoice(
+  env: AiProxyWorkerEnv,
+  ownerId: string,
+  dispatch: Parameters<DurableTurnExecute>[1],
+  request: CandidateChoiceWireRequest,
+  beforeDispatch: () => void,
+  sourceIp: string,
+  deadlineAt: number,
+  label: string,
+  /** A closed choice is optional help: when set, a refused or failed Worker call is journaled as 'unavailable' instead of
+   * stopping the whole turn, so the caller can fall back to its full reading. */
+  optional = false,
+): Promise<CandidateChoiceEvaluation> {
+  const context = { purpose: 'candidate_choice' as const, request };
+  if (!isCandidateChoiceDecisionContext(context)) throw new Error(`Invalid durable ${label} candidate context.`);
+  const body = JSON.stringify({
+    purpose: 'weekly_planning_semantic_normalizer',
+    messages: [{ role: 'user', content: request.wholeUtterance }],
+    decisionContext: context,
+  });
+  // Immutable owner and captured candidate bytes; the durable journal owns resend/receipt.
+  beforeDispatch();
+  const raw = await dispatch(body, async () => {
+    const proxyRequest = new Request('https://durable-turn.internal/chat/completions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': sourceIp }, body,
+      signal: AbortSignal.timeout(Math.max(1, Math.min(90_000, deadlineAt - Date.now()))),
+    });
+    const authContext = { identity: { kind: 'authenticated' as const, firebaseUid: ownerId } };
+    const startedAtMs = Date.now();
+    const response = await executeAuthenticatedChatRequest(
+      proxyRequest, env, { uid: ownerId }, undefined, undefined, authContext);
+    const observerEnv = env as unknown as AiProxyRequestObserverEnv;
+    if (isAiRequestObservabilityConfigured(observerEnv)) {
+      await observeAiProxyRequest({ request: proxyRequest, response: response.clone(),
+        context: authContext, env: observerEnv, startedAtMs,
+        occurredAt: new Date(startedAtMs).toISOString(),
+        decisionExecutionMode: jevExecutionMode(response), lunaBaselineFailure: lunaBaselineFailure(response),
+      }).catch(() => undefined);
+    }
+    if (!response.ok) {
+      if (optional) return JSON.stringify({ status: 'unavailable', reason: `http_${response.status}` });
+      throw new Error(`Durable Jev ${label} choice unavailable.`);
+    }
+    return response.text();
+  });
+  const parsed: unknown = JSON.parse(raw);
+  if (!isCandidateChoiceEvaluation(parsed, request)) throw new Error(`Invalid durable Jev ${label} choice result.`);
+  return parsed;
+}
+
 /**
- * Reuses the durable dispatch journal for Jev reference choices. A replay must
- * invoke the identical beforeDispatch gate even when the journal has a cached response.
+ * Reuses the durable dispatch journal for Jev reference choices.
  * The choice never writes graph state; Luna remains the value/meaning authority.
  */
 export function createDurableReplyReferenceChoicePort(
@@ -84,41 +139,7 @@ export function createDurableReplyReferenceChoicePort(
 ): ReplyReferenceChoicePortV5 {
   return {
     async choose(request, beforeDispatch) {
-      const context = { purpose: 'candidate_choice' as const, request };
-      if (!isCandidateChoiceDecisionContext(context)) {
-        throw new Error('Invalid durable reference candidate context.');
-      }
-      const body = JSON.stringify({
-        purpose: 'weekly_planning_semantic_normalizer',
-        messages: [{ role: 'user', content: request.wholeUtterance }],
-        decisionContext: context,
-      });
-      // Immutable owner and captured candidate bytes; the durable journal owns resend/receipt.
-      beforeDispatch();
-      const raw = await dispatch(body, async () => {
-        const proxyRequest = new Request('https://durable-turn.internal/chat/completions', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': sourceIp }, body,
-          signal: AbortSignal.timeout(Math.max(1, Math.min(90_000, deadlineAt - Date.now()))),
-        });
-        const authContext = { identity: { kind: 'authenticated' as const, firebaseUid: ownerId } };
-        const startedAtMs = Date.now();
-        const response = await executeAuthenticatedChatRequest(
-          proxyRequest, env, { uid: ownerId }, undefined, undefined, authContext);
-        const observerEnv = env as unknown as AiProxyRequestObserverEnv;
-        if (isAiRequestObservabilityConfigured(observerEnv)) {
-          await observeAiProxyRequest({ request: proxyRequest, response: response.clone(),
-            context: authContext, env: observerEnv, startedAtMs,
-            occurredAt: new Date(startedAtMs).toISOString(),
-            decisionExecutionMode: jevExecutionMode(response), lunaBaselineFailure: lunaBaselineFailure(response),
-          }).catch(() => undefined);
-        }
-        if (!response.ok) throw new Error('Durable Jev reference choice unavailable.');
-        return response.text();
-      });
-      const parsed: unknown = JSON.parse(raw);
-      if (!isCandidateChoiceEvaluation(parsed, context.request)) {
-        throw new Error('Invalid durable Jev reference choice result.');
-      }
+      const parsed = await dispatchDurableCandidateChoice(env, ownerId, dispatch, request, beforeDispatch, sourceIp, deadlineAt, 'reference');
       return {
         nodeId: parsed.nodeId, requestId: parsed.requestId,
         selectionEpoch: parsed.selectionEpoch, candidateSetHash: parsed.candidateSetHash,
@@ -129,4 +150,20 @@ export function createDurableReplyReferenceChoicePort(
       };
     },
   };
+}
+
+/** VNext's closed-choice port over the same journaled dispatch; the gate mapping is the browser client's own. */
+export function createDurableVNextOptionChoicePort(
+  env: AiProxyWorkerEnv,
+  ownerId: string,
+  dispatch: Parameters<DurableTurnExecute>[1],
+  calibration: { policy: WeeklyPlanningVNextOptionChoicePort['policy']; semanticPolicy: CandidateSemanticGatePolicy },
+  sourceIp = 'unknown',
+  deadlineAt = Date.now() + 14 * 60_000,
+): WeeklyPlanningVNextOptionChoicePort {
+  return { policy: calibration.policy, async choose(request, beforeDispatch, observe) {
+    const evaluation = await dispatchDurableCandidateChoice(env, ownerId, dispatch, request, beforeDispatch, sourceIp, deadlineAt, 'VNext option', true);
+    observe?.(structuredClone(evaluation), { ...calibration.semanticPolicy });
+    return projectCandidateChoiceSelection(request, evaluation, calibration.semanticPolicy);
+  } };
 }

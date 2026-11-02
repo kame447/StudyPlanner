@@ -10,6 +10,7 @@ import {
 } from './weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { evaluateWeeklyPlanningInsufficientCapacityProposalV5 } from './weeklyPlanningStableV5CapacityProposal';
+import { workNotCoveredBySavedPlans } from './weeklyPlanningSavedWorkCoverage';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
 import type {
@@ -187,7 +188,7 @@ function routeBeforePreview(params: {
   });
   if ((registrationCandidates.length > 0 || unregistered.length > 0) && (!schedulerInput?.movableWorkItems.length || !authorized)) {
     const workAwaitingAuthorization = !authorized
-      ? [...new Set(schedulerInput?.movableWorkItems.map(item => item.label) ?? [])] : [];
+      ? [...new Set(workNotCoveredBySavedPlans(schedulerInput?.movableWorkItems ?? [], input.plans).map(item => item.label))] : [];
     const output = {
       ...projectStableV5CompatibilityOutput({
         previousState: input.previousState, userText: input.userText,

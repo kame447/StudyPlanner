@@ -328,3 +328,8 @@ export function serializeWeeklyPlanningStableV5CheckpointWithMessageCount(params
     planningState: candidateState,
   }));
 }
+
+/** The browser slot of a Stable V5 checkpoint; pure so read-only readers need no storage module. */
+export function weeklyPlanningStableV5StorageKey(ownerId: string, weekStartDate: string): string {
+  return `studyplanner.weeklyPlanning.stableV5.${ownerId}.${weekStartDate}`;
+}

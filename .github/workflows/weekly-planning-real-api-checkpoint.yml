@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       profile:
-        description: 'checkpoint = focused stochastic checks; merge-gate = full repeated audit'
+        description: 'checkpoint = focused stochastic checks; merge-gate = full repeated audit; vnext = #926 native VNext provider and V5/VNext comparison; vnext-worker = #926 real model through the real Worker on the emulator stack (paid, owner-only, one run)'
         required: true
         default: checkpoint
         type: choice
@@ -15,6 +15,8 @@ on:
           - checkpoint
           - merge-gate
           - smoke
+          - vnext
+          - vnext-worker
       repetitions:
         description: 'Run 1-10 independent repetitions in parallel'
         required: true
@@ -60,7 +62,7 @@ jobs:
             fi
           fi
           case "$profile" in
-            checkpoint|merge-gate|smoke) ;;
+            checkpoint|merge-gate|smoke|vnext|vnext-worker) ;;
             *) echo "unsupported profile: $profile" >&2; exit 1 ;;
           esac
           case "$repetitions" in
@@ -77,13 +79,13 @@ jobs:
 
   real-api:
     needs: prepare
-    if: ${{ needs.prepare.outputs.should_run == 'true' }}
+    if: ${{ needs.prepare.outputs.should_run == 'true' && needs.prepare.outputs.profile != 'vnext-worker' }}
     strategy:
       fail-fast: false
       matrix:
         iteration: ${{ fromJSON(needs.prepare.outputs.iterations) }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ needs.prepare.outputs.profile == 'vnext' && 120 || 30 }}
     env:
       TZ: Asia/Tokyo
       REAL_API_PROFILE: ${{ needs.prepare.outputs.profile }}
@@ -197,6 +199,21 @@ jobs:
             src/features/weeklyPlanning/evals/weeklyPlanningIssue156AllQuestionCodes.observation.test.ts \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
+      # #926: the experimental VNext provider (unwired) and the same synthetic
+      # conversations through Stable V5 and VNext. No user records are used.
+      - name: Run VNext native real API comparison
+        if: ${{ env.REAL_API_PROFILE == 'vnext' }}
+        shell: bash
+        env:
+          VITE_AI_MAX_PROCESS_REQUESTS: '600'
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProvider.realApi.observation.test.ts \
+            src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalSession.realApi.observation.test.ts \
+            src/features/weeklyPlanning/evals/vnextRealApiComparison.observation.test.ts \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+
       - name: Upload observations
         if: always()
         uses: actions/upload-artifact@v7
@@ -204,4 +221,66 @@ jobs:
           name: weekly-planning-real-api-${{ matrix.iteration }}
           path: artifacts/weekly-planning-real-api/
           if-no-files-found: warn
+          retention-days: 30
+
+  # #926: the real model through the real Worker. The other profiles call the provider directly
+  # (VITE_CLOUDFLARE_AI_PROXY_URL is empty), so they never exercise the Worker's auth, durable turn job or output
+  # clamp. This one does: the production Worker code on wrangler dev with the durable job on, a build with the
+  # durable client on, the Firebase Auth and Firestore emulators (no auth bypass, no production account), and
+  # api.openai.com as the only allowed provider host. Five conversation turns; repetitions do not apply. It lives
+  # here, not in a new workflow file, because GitHub dispatches only workflow files that exist on the default branch.
+  vnext-worker:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.profile == 'vnext-worker' && github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Install the locked Firebase CLI
+        run: npm ci --prefix tools/firebase-tools --ignore-scripts
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+
+      - name: Install Chromium
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Verify API credential
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY"
+
+      - name: Run the VNext conversation with the real model through the Worker
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.emulator-real-api.config.mjs
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: weekly-planning-vnext-worker-real-api-${{ github.run_id }}
+          path: |
+            artifacts/playwright-emulator-real-api-results/
+            artifacts/playwright-emulator-real-api-results.json
+          if-no-files-found: ignore
           retention-days: 30

@@ -70,8 +70,9 @@ export interface WeeklyPlanningTurnOutcomeLifecycle {
 }
 
 export function createWeeklyPlanningTurnOutcomeLifecycle(
-  services: WeeklyPlanningTurnOutcomeLifecycleServices = defaultServices,
+  overrides: Partial<WeeklyPlanningTurnOutcomeLifecycleServices> = {},
 ): WeeklyPlanningTurnOutcomeLifecycle {
+  const services = { ...defaultServices, ...overrides };
   return {
     started(params) {
       services.recordStartedOutcome({ pending: params.pending });

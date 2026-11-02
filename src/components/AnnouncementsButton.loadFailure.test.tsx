@@ -11,7 +11,7 @@ const fixture = vi.hoisted(() => ({ snapshot: {} as PlannerAppSnapshot }));
 vi.mock('./AnnouncementsPage', async () => { throw new Error('simulated announcement module failure'); });
 vi.mock('../hooks/usePlannerAppState', () => ({ usePlannerAppState: () => fixture.snapshot }));
 vi.mock('../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository', () => ({ isWeeklyPlanningTraceFeatureEnabled: () => false }));
-vi.mock('../features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }) }));
+vi.mock('../features/weeklyPlanning/application/useWeeklyPlanningConversationApplication', () => ({ useWeeklyPlanningConversationApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }) }));
 vi.mock('./StudyStreakContext', () => ({ StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children, useSharedStudyStreak: () => null }));
 vi.mock('../lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('../hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));

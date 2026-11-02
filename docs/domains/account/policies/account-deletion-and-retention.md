@@ -99,14 +99,14 @@ Owner: Issue #917
 | `studyplanner.users`, `studyplanner.local.passwords`, `studyplanner.session` | ローカル認証のuser / password行・セッションUID | 対象user IDの行・一致するsession。Firebaseのパスワード保存先ではない |
 | `studyplanner.classAttendance.v1:{uid}:*`, `studyplanner.studyRestDays.v1:{uid}` | URL符号化UID、出欠・お休み | UID一致キー |
 | `studyplanner.activeSession.v1.{uid}` | URL符号化UID、タイマーと予定のコピー | UID一致キー |
-| `studyplanner.weeklyPlanning.{uid}.*`, `.activeSession.{uid}`, `.stableV5.{uid}.*` | UID、会話・Fact Graph・計画途中の状態 | UID一致キー |
+| `studyplanner.weeklyPlanning.{uid}.*`, `.activeSession.{uid}`, `.stableV5.{uid}.*`, `.vnext.{uid}.*` | UID、会話・Fact Graph・計画途中の状態（`.vnext.` はVNextのチャット別チェックポイント） | UID一致キー |
 | `studyplanner.weeklyPlanningUnreadable.v1.{uid}.*` | URL符号化UID、読めない旧snapshotの保管 | UID一致キー。通常データと別に残さない |
 | `studyplanner.aiPlanning.chats.v1.{uid}`, `.chat.v1.{uid}.*`, `.chatSearch.v1.{uid}.*` | UID、会話一覧・本文・検索テキスト | UID一致キー |
 | `studyplanner-weekly-approval-ledger-v1` / `studyplanner-weekly-approval-ledger-v2.{uid}` | 旧共有台帳のowner / URL符号化UID | 対象要素 / UID一致キー |
 | `studyplanner-weekly-personalization-v1:{uid}`, `studyplanner.userPlanningContext.{uid}` | 前者URL符号化UID、個別最適化・記憶 | UID一致キー |
 | `studyplanner-weekly-planning-trace-sessions-v1`, `studyplanner-weekly-planning-trace-entries-v1`, `studyplanner.weeklyPlanning.trace.outbox.v1` | 共有配列内の利用者・送信待ち本文 | 対象利用者の要素 |
 | `studyplanner.weeklyPlanning.trace.stableV5.{uid}::*`, `.serverHandle.v1.{uid}::*` | URL符号化UID、trace cursor / server handle | UID一致キー |
-| `studyplanner.durableWeeklyTurn.v1:{uid}` | URL符号化UID、処理復帰情報 | UID一致キー。通常は24時間で読取拒否 |
+| `studyplanner.durableWeeklyTurn.v1:{uid}`, `studyplanner.durableWeeklyTurn.vnext.v1:{uid}` | URL符号化UID、処理復帰情報（後者はVNext専用で、旧版は読まない） | UID一致キー。通常は24時間で読取拒否 |
 | 旧 `studyplanner.startup-schedule.v1:*` | 廃止済みの予定表示コピー。現行コードは書き込まない | [起動時の廃止処理](../../../../src/lib/retiredStartupPreviewCache.ts)で除去する。保存領域の操作失敗時は消去済みと扱わない |
 | `studyplanner:material-detail:v1:{uid}:*`, `study-planner-month-timetable:{uid}`, `study-planner-{view}-timetable:{uid}`, `study-planner-study-progress:{uid}` | 教材詳細は生UID、その他URL符号化UID、個人表示設定 | UID一致キー |
 | sessionStorage `laplance.inquiry-receipt.v1` | `userId`、受付IDと添付記述子。本文・画像本体はメモリのみ | 対象利用者なら消去 |

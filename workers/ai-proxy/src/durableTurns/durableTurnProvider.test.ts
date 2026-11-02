@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDurableTurnProvider, createDurableReplyReferenceChoicePort } from './durableTurnProvider';
+import { createDurableTurnProvider, createDurableReplyReferenceChoicePort, createDurableVNextOptionChoicePort } from './durableTurnProvider';
+import { VNEXT_OPTION_CHOICE_POLICY, VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeInterpreter';
 import { choiceRequest, choiceEvaluation } from '../../../../shared/candidateChoiceFixtures.testUtils';
 import type { AiProxyWorkerEnv } from '../worker';
 
@@ -86,5 +87,42 @@ describe('durable Jev reference choice journaling', () => {
     const bad = createDurableReplyReferenceChoicePort({} as AiProxyWorkerEnv, 'owner',
       async () => JSON.stringify({ ...choiceEvaluation(r), candidateSetHash: 'sha256:tampered' }), policy);
     await expect(bad.choose(r, () => {})).rejects.toThrow('Invalid durable Jev reference choice result');
+  });
+});
+
+describe('durable VNext closed-choice port (Jev) in the Worker', () => {
+  const calibration = { policy: VNEXT_OPTION_CHOICE_POLICY, semanticPolicy: VNEXT_OPTION_CHOICE_SEMANTIC_POLICY };
+  const request = () => choiceRequest();
+
+  it('runs the frozen dev calibration, not a tuned or implicit one', () => {
+    expect(VNEXT_OPTION_CHOICE_POLICY).toMatchObject({ id: 'vnext-frozen-dev', calibrationEvidenceId: 'vnext-dev-frozen-a25c9899' });
+    expect(VNEXT_OPTION_CHOICE_SEMANTIC_POLICY).toEqual({ calibrationEvidenceId: 'vnext-dev-frozen-a25c9899', maximumConditionChange: 0.36, maximumIndependentMeaning: 0.69 });
+  });
+
+  it('journals the choice: the beforeDispatch gate runs even for a cached replay, and the gate result is the shared mapping', async () => {
+    const r = request(); const before = vi.fn(); const observed = vi.fn();
+    const dispatch = vi.fn(async (_body: string, _send: () => Promise<string>) => JSON.stringify(choiceEvaluation(r)));
+    const port = createDurableVNextOptionChoicePort({} as AiProxyWorkerEnv, 'owner', dispatch, calibration);
+    const selected = await port.choose(r, before, observed);
+    expect(before).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(dispatch.mock.calls[0][0]).decisionContext.request).toEqual(r);
+    expect(selected).toMatchObject({ nodeId: r.menu.nodeId, optionId: 'leaf:0', semanticSufficiency: 'only_candidate_meaning' });
+    expect(observed).toHaveBeenCalledWith(expect.objectContaining({ optionId: 'leaf:0' }), calibration.semanticPolicy);
+  });
+
+  it('treats extra meaning as insufficient and rejects a tampered or unavailable answer (negative controls)', async () => {
+    const r = request();
+    const extra = createDurableVNextOptionChoicePort({} as AiProxyWorkerEnv, 'owner',
+      async () => JSON.stringify({ ...choiceEvaluation(r), independentMeaning: 0.9 }), calibration);
+    expect(await extra.choose(r, () => {})).toMatchObject({ semanticSufficiency: 'extra_or_uncertain_meaning' });
+    const tampered = createDurableVNextOptionChoicePort({} as AiProxyWorkerEnv, 'owner',
+      async () => JSON.stringify({ ...choiceEvaluation(r), candidateSetHash: 'sha256:tampered' }), calibration);
+    await expect(tampered.choose(r, () => {})).rejects.toThrow('Invalid durable Jev VNext option choice result');
+    const env = { OPENAI_API_KEY: 'k', AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: false, retryAfterSeconds: 5 }) }) } } as unknown as AiProxyWorkerEnv;
+    vi.stubGlobal('fetch', vi.fn());
+    const quota = createDurableVNextOptionChoicePort(env, 'owner', async (_body, send) => send(), calibration);
+    await expect(quota.choose(r, () => {})).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

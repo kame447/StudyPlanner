@@ -45,7 +45,8 @@ export function loadWeeklyPlanningApprovalOperations(
     }
     return owned;
   } catch {
-    window.localStorage.removeItem(userKey);
+    // Only storage itself can throw here (parseWeeklyApprovalLedger returns null for bad bytes), and a
+    // failed read says nothing about the stored ledger: it is kept, never deleted, and a read never crashes.
     return [];
   }
 }

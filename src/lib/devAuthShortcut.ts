@@ -8,7 +8,7 @@ function isPrivateLanHost(hostname: string): boolean {
   );
 }
 
-function isLocalDevelopmentHost(hostname: string): boolean {
+export function isLocalDevelopmentHost(hostname: string): boolean {
   const normalizedHost = hostname.trim().toLowerCase();
 
   if (!normalizedHost) {

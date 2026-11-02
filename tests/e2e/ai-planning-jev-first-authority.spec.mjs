@@ -5,8 +5,8 @@ import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 // Tier A+B: real client/semantic/runtime/application/UI and the existing local
 // repository. Only final Worker responses are stipulated; no real provider or Worker ingress executes.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const URL = 'http://127.0.0.1:4174/full-planner-recovery.html';
-const PROXY = 'http://127.0.0.1:4174/mock-jev-proxy/chat/completions';
+const URL = 'http://127.0.0.1:4177/full-planner-recovery.html';
+const PROXY = 'http://127.0.0.1:4177/mock-jev-proxy/chat/completions';
 const SETUP = '8月20日から26日で数学20問を1問2分。まず条件だけ確認してください。';
 const CORRECTION = '期間を8月21日から27日に訂正してください。まだ保存しないで。';
 const REGENERATE = '訂正した条件で計画案を再生成してください。';
@@ -149,7 +149,7 @@ async function boot(page, mode) {
   await page.addInitScript(() => sessionStorage.setItem('studyplanner.ai.runtime.v1', JSON.stringify({ provider: 'openai', apiKey: '' })));
   await page.route('**/*', async route => {
     const url = new globalThis.URL(route.request().url());
-    if (url.origin !== 'http://127.0.0.1:4174') {
+    if (url.origin !== 'http://127.0.0.1:4177') {
       audit.blockedExternal.push(url.origin); return route.abort();
     }
     return route.continue();
@@ -158,7 +158,7 @@ async function boot(page, mode) {
   await page.route('**/weeklyPlanningTurnRuntimeGateway.stub.js*', async route => {
     audit.replacedModules.push('gateway');
     return route.fulfill({ contentType: 'application/javascript',
-      body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};` });
+      body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};\nexport { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway.ts`)};` });
   });
   for (const [file, marker, injected] of [
     ['aiConfig.ts', 'function getCloudflareAiProxyUrl() {', `return ${JSON.stringify(PROXY)};`],
@@ -172,7 +172,7 @@ async function boot(page, mode) {
     });
   }
   if (mode.startsWith('d5')) {
-    await page.route('**/src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts*', async route => {
+    await page.route('**/src/features/weeklyPlanning/application/weeklyPlanningTurnApplicationCore.ts*', async route => {
       const response = await route.fetch(); const code = await response.text();
       const marker = 'candidateDomains: weeklyPlanningRegisteredCandidateDomains,';
       expect(code.split(marker)).toHaveLength(2);

@@ -227,7 +227,7 @@ function fallbackPlanningHorizon(params: {
   return { startDate: params.selectedDate, endDate };
 }
 
-function frozenGroundingRange(params: {
+export function frozenGroundingRange(params: {
   windowId: string;
   groundingRecords?: readonly WeeklyPlanningGroundingRecord[];
 }): { startDate: string; endDate: string } | null {

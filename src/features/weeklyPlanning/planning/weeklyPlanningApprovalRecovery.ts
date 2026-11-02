@@ -1,5 +1,5 @@
 import type { WeeklyPlanDraftBlock, WeeklyPlanningApprovalRecovery } from '../types';
-import { createWeeklyDraftApprovalOperation, deriveApprovalOperationStatus, isWeeklyDraftApprovalOperation } from './weeklyPlanningApproval';
+import { createWeeklyDraftApprovalOperation, deriveApprovalOperationStatus, isWeeklyDraftApprovalOperation } from './weeklyPlanningApprovalCore';
 
 /** A local recovery receipt is evidence of the original batch, never permission to save. */
 export function isWeeklyPlanningApprovalRecovery(

@@ -14,7 +14,7 @@ vi.mock('./TimetableView', async () => { throw new Error('simulated Timetable mo
 vi.mock('./ReportView', async () => { throw new Error('simulated Report module failure'); });
 vi.mock('../hooks/usePlannerAppState', () => ({ usePlannerAppState: () => { const [viewMode, setViewMode] = useState(fixture.snapshot.viewMode); return { ...fixture.snapshot, viewMode, setViewMode, openDay: () => setViewMode('day') }; } }));
 vi.mock('../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository', () => ({ isWeeklyPlanningTraceFeatureEnabled: () => false }));
-vi.mock('../features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }) }));
+vi.mock('../features/weeklyPlanning/application/useWeeklyPlanningConversationApplication', () => ({ useWeeklyPlanningConversationApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }) }));
 vi.mock('./StudyStreakContext', () => ({ StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children, useSharedStudyStreak: () => null }));
 vi.mock('../lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('../hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));

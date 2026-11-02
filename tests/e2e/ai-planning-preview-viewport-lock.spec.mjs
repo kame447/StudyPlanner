@@ -1,6 +1,8 @@
 import { expect, test } from './support/fixed-clock.mjs';
+import { installWeeklyConversationSeeder } from './support/weekly-conversation-seed.mjs';
 
 async function seedScrollableAiPreview(page) {
+  await installWeeklyConversationSeeder(page);
   await page.addInitScript(() => {
     const now = new Date().toISOString();
     const today = new Date();
@@ -79,23 +81,7 @@ async function seedScrollableAiPreview(page) {
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
-    localStorage.setItem(
-      `studyplanner.weeklyPlanning.${user.id}.${weekStartDate}`,
-      JSON.stringify({
-        version: 3,
-        ownerId: user.id,
-        payload: { version: 2, state: planningState },
-      }),
-    );
-    localStorage.setItem(
-      `studyplanner.weeklyPlanning.activeSession.${user.id}`,
-      JSON.stringify({
-        version: 1,
-        ownerId: user.id,
-        weekStartDate,
-        conversationId: null,
-      }),
-    );
+    window.__seedWeeklyConversation({ ownerId: user.id, weekStartDate, state: planningState });
   });
 }
 

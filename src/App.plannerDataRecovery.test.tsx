@@ -25,7 +25,7 @@ const fixture = vi.hoisted(() => ({
 }));
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: fixture.schedulePreload }));
 vi.mock('./hooks/usePlannerAppState', () => ({ usePlannerAppState: vi.fn(() => fixture.state) }));
-vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: fixture.application }));
+vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningConversationApplication', () => ({ useWeeklyPlanningConversationApplication: fixture.application }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
 vi.mock('./components/PrimaryAppHeader', () => ({ PrimaryAppHeader: forwardRef(() => <header />) }));
 vi.mock('./components/HomeScheduleView', () => ({ HomeScheduleView: () => { useEffect(() => { fixture.homeSurfaceMount(); }, []); return <div className="home-dashboard home-dashboard-default" />; } }));

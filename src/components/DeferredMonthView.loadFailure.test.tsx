@@ -10,7 +10,7 @@ import { MemoryStorage } from '../repositories/localPersistenceConcurrency.testU
 vi.mock('./MonthView', async () => { throw new Error('simulated chunk delivery failure'); });
 vi.mock('../repositories', () => ({ plannerRepository: {} }));
 vi.mock('./StudyStreakContext', () => ({ StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children, useSharedStudyStreak: () => null }));
-vi.mock('../features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }) }));
+vi.mock('../features/weeklyPlanning/application/useWeeklyPlanningConversationApplication', () => ({ useWeeklyPlanningConversationApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }) }));
 vi.mock('../lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('../hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
 vi.mock('./PrimaryAppHeader', () => ({ PrimaryAppHeader: forwardRef(() => <header />) }));

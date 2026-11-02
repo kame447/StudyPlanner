@@ -40,7 +40,7 @@ import {
 import { QuickAddMenu } from './components/QuickAddMenu';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
 import { ScheduleToolbar } from './components/ScheduleToolbar';
-import { useWeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
+import { useWeeklyPlanningConversationApplication as useWeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningConversationApplication';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useMonthTimetablePreference } from './hooks/useMonthTimetablePreference';
 import { useTimetableDisplayPreference } from './hooks/useTimetableDisplayPreference';

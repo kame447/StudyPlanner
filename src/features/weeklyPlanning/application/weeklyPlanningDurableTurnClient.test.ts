@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { executeDurableWeeklyTurn, cancelDurableWeeklyTurn, readDurableWeeklyTurnReceipt, saveDurableWeeklyTurnReceipt, type DurableTurnClientPorts } from './weeklyPlanningDurableTurnClient';
+import { executeDurableWeeklyTurn, cancelDurableWeeklyTurn, readDurableWeeklyTurnReceipt, saveDurableWeeklyTurnReceipt, durableReceiptKey, type DurableTurnClientPorts } from './weeklyPlanningDurableTurnClient';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { durableReceipt } from './weeklyPlanningDurableTurn.testUtils';
 vi.mock('../../../lib/firebaseClient', () => ({ getFirebaseAuth: () => ({ currentUser: {
@@ -84,6 +84,29 @@ describe('durable browser turn transport', () => {
       await expect(executeDurableWeeklyTurn(h.receipt, { ports: h.ports })).rejects.toThrow('形式');
       expect(h.fetch).toHaveBeenCalledTimes(1); expect(h.ports.wait).not.toHaveBeenCalled();
     }
+  });
+
+  it('keeps a VNext receipt under its own key that the Stable V5 reader never sees, and cancels it there', async () => {
+    const h = harness(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(h.identity.startedAt);
+    const memory = createMemoryStorageHarness();
+    const restore = installWeeklyPlanningTestStorage(memory.storage);
+    try {
+      const vnext = { ...h.receipt, payload: { ...h.receipt.payload, core: 'vnext' as const } };
+      saveDurableWeeklyTurnReceipt(vnext);
+      expect(memory.storage.getItem(durableReceiptKey(h.receipt.ownerId))).toBeNull();
+      expect(memory.storage.getItem(durableReceiptKey(h.receipt.ownerId, 'vnext'))).not.toBeNull();
+      // A build that only knows the Stable V5 key (an older release) reads nothing and so resumes nothing.
+      expect(readDurableWeeklyTurnReceipt(h.receipt.ownerId)).toBeNull();
+      expect(readDurableWeeklyTurnReceipt(h.receipt.ownerId, 'vnext')?.pending.requestId).toBe(h.receipt.pending.requestId);
+      // The Stable V5 path stays on the unchanged key.
+      saveDurableWeeklyTurnReceipt({ ...h.receipt, ownerId: h.receipt.ownerId });
+      expect(memory.storage.getItem(durableReceiptKey(h.receipt.ownerId))).not.toBeNull();
+      expect(durableReceiptKey('alice')).toBe('studyplanner.durableWeeklyTurn.v1:alice');
+      h.fetch.mockResolvedValueOnce(h.response('failed', { failure: 'cancelled' }));
+      expect(await cancelDurableWeeklyTurn(h.receipt.ownerId, h.receipt.pending.requestId, h.ports, 'vnext')).toBe(true);
+      expect(readDurableWeeklyTurnReceipt(h.receipt.ownerId, 'vnext')).toBeNull();
+      expect(readDurableWeeklyTurnReceipt(h.receipt.ownerId)).not.toBeNull();
+    } finally { restore(); vi.useRealTimers(); }
   });
 
   it('retains an unacknowledged explicit cancellation and never resumes it as work', async () => {

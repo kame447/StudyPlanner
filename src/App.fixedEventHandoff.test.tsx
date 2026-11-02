@@ -12,9 +12,8 @@ import { PrimaryBottomNav } from './components/PrimaryBottomNav';
 import { QuickAddMenu } from './components/QuickAddMenu';
 import { createPlannerBackedWeeklyPlanningApprovalPlanRepository } from './features/weeklyPlanning/application/weeklyPlanningApprovalLocalRepository';
 import type { WeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
-import { loadWeeklyPlanningRuntimeModule } from './features/weeklyPlanning/application/weeklyPlanningRuntimeModule';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
-import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, type WeeklyPlanningSemanticDocumentV5 } from './features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5';
+import { createWeeklyPlanningVNextLocalSession } from './features/weeklyPlanning/vnext/application/weeklyPlanningVNextLocalSession';
 import { usePlannerDataState, type UsePlannerDataStateResult } from './hooks/usePlannerDataState';
 import { createLocalPlannerRepository } from './repositories/createLocalPlannerRepository';
 import { createLocalFixture, MemoryStorage, microtasks } from './repositories/localPersistenceConcurrency.testUtils';
@@ -34,7 +33,8 @@ vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));
 vi.mock('./lib/aiConfig', () => ({
-  getCloudflareAiProxyUrl: () => '',
+  // VNext requires the authenticated Worker proxy URL; the provider boundary below is the real contract.
+  getCloudflareAiProxyUrl: () => 'https://example.invalid/ai-proxy',
   getAiConfig: () => ({ provider: 'openai', baseUrl: 'https://example.invalid/v1', model: 'test-model', apiKey: 'test-key' }),
   getAiConfigValidationMessage: () => undefined,
 }));
@@ -53,18 +53,15 @@ vi.mock('./components/AppSettingsDialog', () => ({ AppSettingsDialog: () => null
 
 const DATE = '2026-08-17';
 const USER_TEXT = '8月17日から23日の予定です。8月17日の10:30から12:00の部活を登録したいです。';
-const document: WeeklyPlanningSemanticDocumentV5 = {
-  schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, planningIntent: 'create_plan',
-  planningWindow: { localId: 'window', kind: 'absolute', value: '2026-08-17/2026-08-23',
-    start: DATE, end: '2026-08-23', sourceText: '8月17日から23日' },
-  tasks: [{ localId: 'club', category: 'non_study', title: '部活', study: null,
-    workloads: [], effortEstimates: [], recurrence: [], sourceText: USER_TEXT,
-    temporalConstraints: [{ localId: 'club-time', targetLocalId: 'club', kind: 'fixed_interval',
-      constraintLevel: 'hard', dateExpression: DATE, namedTimePeriod: null,
-      startTime: '10:30', endTime: '12:00', precision: 'exact', sourceText: USER_TEXT }] }],
-  relations: [], availabilityDeclarations: [], constraintSourceRequests: [], uncertainties: [], corrections: [], decisions: [],
-  conversationActs: [{ kind: 'request_event_registration', targetPublicId: null }],
-};
+// VNext provider wire shape: one native reading with typed delta facts and the additive registration act.
+const reading = { planningIntent: 'create_plan', answer: null,
+  conversationActs: [{ kind: 'request_event_registration', targetRef: null }],
+  delta: { add: [
+    { kind: 'task', localId: 'club', category: 'non_study', title: '部活' },
+    { kind: 'temporal_constraint', localId: 'club-time', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
+      constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: DATE, namedTimePeriod: null,
+      startTime: '10:30', endTime: '12:00', precision: 'exact' },
+  ], patch: [], remove: [], relate: [], defer: [] } };
 let state: UsePlannerDataStateResult;
 let renderer: ReactTestRenderer | undefined;
 const saveWeeklyApprovedPlan = vi.fn<PlannerAppSnapshot['saveWeeklyApprovedPlan']>();
@@ -106,7 +103,7 @@ beforeEach(async () => {
   completeWeeklyApprovalOperation.mockReset().mockImplementation(operation => approval.completeOperation(operation));
   showNotice.mockReset();
   boundary.provider.mockReset().mockImplementation(async request => {
-    if (request.responseFormat?.json_schema.name === 'weekly_planning_semantic_document_v5') return JSON.stringify(document);
+    if (request.responseFormat?.json_schema.name === 'weekly_planning_vnext_native_v1') return JSON.stringify(reading);
     if (request.responseFormat?.json_schema.name === 'weekly_planning_stable_v5_dialogue_response') {
       const body = JSON.parse(request.messages[request.messages.length - 1].content);
       return JSON.stringify({ actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
@@ -115,8 +112,6 @@ beforeEach(async () => {
     }
     throw new Error(`Unexpected provider schema: ${request.responseFormat?.json_schema.name}`);
   });
-  // Real module loading is setup; no turn, renderer, or persistence is mocked.
-  await loadWeeklyPlanningRuntimeModule();
 });
 afterEach(() => {
   act(() => renderer?.unmount()); renderer = undefined;
@@ -156,8 +151,8 @@ it.each([390, 1280])('previews fixed events and saves once only after explicit a
     expect(application().state.intakeState?.shouldSavePlan).toBe(false);
   }); });
   expect(boundary.provider.mock.calls.map(([request]) => request.responseFormat?.json_schema.name))
-    .toEqual(['weekly_planning_semantic_document_v5', 'weekly_planning_stable_v5_dialogue_response']);
-  await expect(boundary.provider.mock.results[0].value).resolves.toBe(JSON.stringify(document));
+    .toEqual(['weekly_planning_vnext_native_v1', 'weekly_planning_stable_v5_dialogue_response']);
+  await expect(boundary.provider.mock.results[0].value).resolves.toBe(JSON.stringify(reading));
   const semanticRequest = boundary.provider.mock.calls[0][0];
   expect(semanticRequest.messages[semanticRequest.messages.length - 1].content).toContain(USER_TEXT);
   const rendererRequest = boundary.provider.mock.calls[1][0];
@@ -170,7 +165,8 @@ it.each([390, 1280])('previews fixed events and saves once only after explicit a
   expect(application().state.previewCandidates).toEqual([expect.objectContaining({ title: '部活', date: DATE, startTime: '10:30', endTime: '12:00', source: 'fixed_event_registration' })]);
   expect(application().pendingDraftBlocks).toEqual([]);
   expect(application().approvalAvailability).toMatchObject({ kind: 'blocked', reason: 'no_draft_blocks' });
-  expect(application().exportConversationSnapshot()!.graph.temporalConstraints).toHaveLength(1);
+  expect(createWeeklyPlanningVNextLocalSession({ ownerId: 'owner-handoff', weekStartDate: application().state.weekStartDate, storage: window.localStorage,
+    chatId: application().chat.index.activeChatId }).readCheckpoint()!.vnext.state.graph.temporalConstraints).toHaveLength(1);
   expect(renderer!.root.findAllByType(QuickAddMenu)).toHaveLength(0);
   expect(renderer!.root.findByType(PrimaryBottomNav).props.active).toBe('ai-planning');
   assertNoWrites();

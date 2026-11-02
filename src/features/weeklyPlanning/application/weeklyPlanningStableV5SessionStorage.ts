@@ -11,6 +11,7 @@ import {
   parseWeeklyPlanningStableV5PersistedSession,
   prepareWeeklyPlanningStableV5Checkpoint,
   serializeWeeklyPlanningStableV5CheckpointWithMessageCount,
+  weeklyPlanningStableV5StorageKey,
 } from './weeklyPlanningStableV5SessionCodec';
 
 export {
@@ -20,9 +21,7 @@ export type {
   WeeklyPlanningStableV5PersistedSession,
 } from './weeklyPlanningStableV5SessionCodec';
 
-function storageKey(ownerId: string, weekStartDate: string): string {
-  return `studyplanner.weeklyPlanning.stableV5.${ownerId}.${weekStartDate}`;
-}
+const storageKey = weeklyPlanningStableV5StorageKey;
 
 export function getWeeklyPlanningStableV5StorageSnapshot(ownerId: string, weekStartDate: string): WeeklyPlanningStorageSnapshot {
   return {

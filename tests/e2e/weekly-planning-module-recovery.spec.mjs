@@ -1,6 +1,7 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
-const RUNTIME = /\/assets\/weeklyPlanningStableV5InstrumentedRuntimeExecutor-[\w-]+\.js(?:\?.*)?$/;
+// The lazily loaded runtime chunk of the build under test: VNext (default) or the Stable V5 comparison build.
+const RUNTIME = /\/assets\/(?:weeklyPlanningVNextRuntimeModule|weeklyPlanningStableV5InstrumentedRuntimeExecutor)-[\w-]+\.js(?:\?.*)?$/;
 const CAPSULE_KEY = 'studyplanner.aiPlanning.moduleRecovery.v1';
 const IMAGE = { name: 'recovery.png', mimeType: 'image/png', buffer: Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64') };

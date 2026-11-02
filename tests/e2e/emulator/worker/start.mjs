@@ -15,6 +15,11 @@ const TRACE_EPOCH_MS = 30 * 24 * 60 * 60 * 1000;
 const productionVars = JSON.parse(readFileSync(path.join(repoRoot, 'workers/ai-proxy/wrangler.jsonc'), 'utf8')).vars;
 const jevRouting = Object.fromEntries(Object.entries(productionVars).filter(([name]) => name.startsWith('JEV_')));
 
+// The explicit real-API workflow (#926) swaps only the model: the key comes from this run's environment and
+// the durable job is on, as in production. Without it nothing here reads a real credential.
+const realApi = process.env.STUDYPLANNER_E2E_REAL_API === '1';
+if (realApi && !process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required for the real-API target.');
+
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const vars = {
   ...jevRouting,
@@ -23,8 +28,8 @@ const vars = {
   FIREBASE_WEB_API_KEY: 'demo-api-key',
   FIREBASE_SERVICE_ACCOUNT_EMAIL: 'e2e-emulator@demo-studyplanner.iam.gserviceaccount.com',
   FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
-  OPENAI_API_KEY: 'synthetic-provider-key',
-  OPENAI_BASE_URL: 'http://127.0.0.1:18790/v1',
+  OPENAI_API_KEY: realApi ? process.env.OPENAI_API_KEY : 'synthetic-provider-key',
+  ...(realApi ? {} : { OPENAI_BASE_URL: 'http://127.0.0.1:18790/v1' }),
   OPENROUTER_API_KEY: 'synthetic-provider-key',
   ALLOWED_ORIGIN: 'http://127.0.0.1:4176',
   ALLOWED_CHAT_MODELS: 'gpt-6-luna,gpt-5.6-luna',
@@ -34,12 +39,12 @@ const vars = {
   }),
   WEEKLY_PLANNING_TRACE_WORKER_REVISION: 'e2e-emulator',
   SEMANTIC_CENSUS_MODE: 'off',
-  DURABLE_WEEKLY_TURNS: 'disabled',
+  DURABLE_WEEKLY_TURNS: realApi ? 'enabled' : 'disabled',
 };
 
 const child = spawn(process.execPath, [
   path.join(repoRoot, 'node_modules/wrangler/bin/wrangler.js'), 'dev',
-  '--config', path.join(workerDir, 'wrangler.jsonc'),
+  '--config', path.join(workerDir, realApi ? 'wrangler.real-api.jsonc' : 'wrangler.jsonc'),
   '--ip', '127.0.0.1', '--port', '18787', '--local',
   '--persist-to', path.join(repoRoot, 'artifacts/emulator-wrangler-state'),
   ...Object.entries(vars).flatMap(([name, value]) => ['--var', `${name}:${value}`]),
