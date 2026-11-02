@@ -79,6 +79,9 @@ describe('a time stated for an already counted work is an estimate, not a second
     const text = await requestText([wire(SETUP, [], 'discuss')], SETUP_TEXT);
     expect(text).toContain('A time stated for a work that already has a stated quantity (in this turn or in the active facts) is a statement about expected effort');
     expect(text).toContain('never an additional minute workload');
+    expect(text).toContain('Patch an existing estimate only when the user restates or corrects that same estimate (a total for a total, a rate for a rate)');
+    expect(text).toContain('a newly stated estimate of a different kind (for example a total for work that already has a per-unit rate) is added, and the existing estimate stays');
+    expect(text).not.toContain('a patch of its existing estimate when the user restates it');
     expect(text).toContain('the only quantity stated for a work is time (for example, reading aloud for 45 minutes), it is a workload');
     expect(text).toContain('total_duration for total time about one quantified work or owner');
     expect(text).not.toContain('英語は15分');
@@ -98,6 +101,20 @@ describe('a time stated for an already counted work is an estimate, not a second
     expect(graph.workloads).toHaveLength(2); expect(graph.effortEstimates).toHaveLength(1);
     expect(graph.effortEstimates[0]).toMatchObject({ kind: 'total_duration', minutes: 45 });
     expect(result.question).toMatchObject({ code: 'missing_effort_estimate' }); expect(h.saves()).toBe(0);
+  });
+
+  it('control: a total newly stated for work that has a stated rate is added, the rate stays, and the inconsistency is asked', async () => {
+    const rate = { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'sheets' }, targetRef: { localId: 'sheets-w' }, effortKind: 'duration_per_unit',
+      minutes: 5, unitCode: 'custom', unitLabel: '枚', precision: 'exact' } as unknown as VNextAddFact;
+    const h = harness([wire([task('sheets', '数学プリント'), workload('sheets-w', 'sheets', 8, 'custom', '枚'), rate], [], 'discuss'),
+      (context: { activeFacts: { tasks: Fact[]; workloads: Fact[] } }) => wire([{ kind: 'effort_estimate', localId: 'sheets-total',
+        taskRef: { factId: context.activeFacts.tasks[0].id }, targetRef: { factId: context.activeFacts.workloads[0].id }, effortKind: 'total_duration',
+        minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' } as unknown as VNextAddFact], [], 'discuss')]);
+    await h.turn('数学プリントは残り8枚で、1枚5分です。');
+    const second = await h.turn('この残り8枚の全体には60分かかります。');
+    const graph = createWeeklyPlanningActiveSchedulerGraphViewV5(h.state().graph);
+    expect(graph.effortEstimates.map(estimate => `${estimate.kind}:${estimate.minutes}`).sort()).toEqual(['duration_per_unit:5', 'total_duration:60']);
+    expect(second.question).toMatchObject({ code: 'effort_inconsistent' }); expect(h.saves()).toBe(0);
   });
 
   it('control: restating the total patches the estimate, keeps both workloads, and still asks the math estimate', async () => {
