@@ -9,7 +9,9 @@ import { expect } from '@playwright/test';
 //   <prefix>.core the accepted-fact checkpoint, written by every accepted turn, consultation included.
 // Only counts and booleans leave the page: never message bodies, ids or tokens.
 export const readVNextChatStorage = (page, userText = null) => page.evaluate(text => {
-  const keys = Object.keys(localStorage);
+  // Chats of the signed-out screen live under the owner 'anonymous' next to the signed-in owner's; their order in
+  // localStorage is not stable, so only the signed-in owner's keys are read.
+  const keys = Object.keys(localStorage).filter(key => !key.includes('.anonymous'));
   const vnext = suffix => keys.filter(key => key.startsWith('studyplanner.weeklyPlanning.vnext.') && key.endsWith(suffix));
   const readJson = key => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
   const indexKey = keys.find(key => key.startsWith('studyplanner.aiPlanning.chats.v1.'));
@@ -33,24 +35,26 @@ export const readVNextChatStorage = (page, userText = null) => page.evaluate(tex
   };
 }, userText);
 
-// A turn adds the user's message and the assistant's reply to the active chat, persists its text, and writes the checkpoint.
+// A turn adds exactly the user's message and the assistant's reply to the active chat, persists its text, and writes the checkpoint.
 export function expectTurnPersisted(before, after) {
-  expect(after.messages, 'the turn adds its user and assistant messages to the active chat').toBeGreaterThanOrEqual(before.messages + 2);
+  expect(after.messages, 'a turn adds exactly one user message and one reply to the active chat').toBe(before.messages + 2);
   expect(after.userTextPersisted, 'the user text is among the persisted messages').toBe(true);
   expect(after.vnextCoreKeys, 'an accepted turn writes the VNext checkpoint').toBeGreaterThan(0);
 }
 
 export const previewDialog = page => page.getByRole('dialog', { name: '計画プレビュー' });
 
-// The preview is shown first; promoting it to a provisional plan is a separate step that changes the same dialog
-// into the save step. Both are asserted so a missing transition fails at the step that broke, not at a later click.
+// The preview dialog (AiPlanningPreviewDialog.tsx) always renders both actions. Before promotion the save button is
+// disabled and the promote button reads 'この内容で仮予定にする'; promotion enables save and relabels the promote button
+// ('仮予定にしました', disabled). Both states are asserted so a missing transition fails at the step that broke.
 export async function promoteThenSave(dialog) {
   const promote = dialog.getByRole('button', { name: 'この内容で仮予定にする' });
   const save = dialog.getByRole('button', { name: 'この内容で保存' });
-  await expect(promote).toBeVisible();
-  await expect(save).toHaveCount(0);
+  await expect(promote).toBeEnabled();
+  await expect(save).toBeDisabled();
   await promote.click();
-  await expect(save).toBeVisible();
   await expect(promote).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: '仮予定にしました' })).toBeDisabled();
+  await expect(save).toBeEnabled();
   await save.click();
 }
