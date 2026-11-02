@@ -34,9 +34,9 @@ Only the accepted receipt owner can upload, and each slot accepts the exact orig
 
 Text acceptance and image transfer are separate states. Interrupted transfers retry only the same fixed slots. Reload asks for the original images again; partial reselection is retained and reordered into original slots. The admin inbox fetches bytes only on explicit open, uses revocable Blob URLs, and drops image viewers on page loading/error, close, unmount or admin-access loss. Requests/responses disable caching. The feature adds no time-based object retention; private objects are deleted with the account by the account deletion job (#917).
 
-Active photo execution and exact receipts: [private inquiry photos](work/20261013-private-inquiry-photos.md).
+Merged photo implementation and source-scoped receipts; production activation remains separately gated: [private inquiry photos](work/20261013-private-inquiry-photos.md).
 
-Active execution and exact receipts: [in-app inquiry work record](work/20261013-in-app-inquiries.md).
+Merged inquiry implementation and source-scoped receipts: [in-app inquiry work record](work/20261013-in-app-inquiries.md).
 
 
 ## Announcements
@@ -49,7 +49,7 @@ The published and administrative repositories read 26 records to display 25, usi
 
 Rollout is approval-gated: merge of `firestore.rules` automatically triggers production WIF deployment, so the Rules diff must be reviewed and authorized before merge. Deploy and verify Rules before exposing the feature. Local component/service tests and emulator authorization are separate from native browser/production delivery proof. The existing admin browser job includes the announcement list/detail, theme/viewport, error, owner-switch and publish-preview regressions.
 
-Active implementation and exact verification receipts: [announcements work record](work/20261014-admin-announcements.md).
+Merged announcement implementation and source-scoped verification receipts; rollout verification remains separate: [announcements work record](work/20261014-admin-announcements.md).
 
 The Home bell shares one owner-bound in-memory first page and its in-flight request with the reader. Mounting the authenticated bell checks at most 26 published records, one owner summary and 25 individual receipts; opening the list reuses that result for five minutes. A visible foreground event can refresh after five minutes, without an interval or an open-page refresh. Failed checks cannot clear known unread evidence. Individual and bulk read marks update the bell only after server acknowledgement. A fully read first page with a continuation remains internally unknown, since the receipt query limit does not limit the number of saved receipts; this badge does not promise immediate discovery of every old unread item. Explicit pagination contributes the remaining evidence, and a successful bulk watermark covers older unloaded publications. Account changes discard the cache and fence late results.
 

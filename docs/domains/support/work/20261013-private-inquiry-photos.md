@@ -1,5 +1,15 @@
 # Private inquiry photos
 
+## Current disposition — 2026-10-29
+
+Integrated through [PR #636](https://github.com/kame447/StudyPlanner/pull/636) (`d1acd1c27d7687d82dbe64578428422b7d0655f4`), an ancestor of audited main `a60fc5e8bca2ff745efaf603e939967b3e54e4a9`.
+
+The photo implementation is integrated; this does not establish production photo activation. The audited repository configuration declares no private INQUIRY_ATTACHMENTS R2 binding, while the capability requires it. Live resource/configuration state was not inspected. Separately gated R2 provisioning, binding, access and billing, and real-R2/production-auth/device acceptance remain outside this status correction.
+
+## Preserved implementation and verification checkpoints
+
+Publication and integration statements below describe their checkpoint dates. Original evidence, failures, behavioral constraints and unresolved acceptance limits are preserved; this correction claims no new test, device or deployment verification.
+
 Status: draft PR #636, approved Rules release integration in progress; R2 activation remains separately unapproved
 
 ## Ownership

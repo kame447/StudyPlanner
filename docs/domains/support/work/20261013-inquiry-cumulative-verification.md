@@ -1,5 +1,15 @@
 # Inquiry navigation cumulative verification
 
+## Current disposition — 2026-10-29
+
+Integrated through [PR #621](https://github.com/kame447/StudyPlanner/pull/621) (`7668a090a522d05bda6759a5289302bf234e8202`), an ancestor of audited main `a60fc5e8bca2ff745efaf603e939967b3e54e4a9`.
+
+This is the historical combined verification snapshot for the [inquiry navigation repair](20261013-inquiry-return-navigation.md), not another active release unit. The independent profile/theme/admin identities and cancelled partial run below remain source-scoped evidence.
+
+## Preserved implementation and verification checkpoints
+
+Publication and integration statements below describe their checkpoint dates. Original evidence, failures, behavioral constraints and unresolved acceptance limits are preserved; this correction claims no new test, device or deployment verification.
+
 Status: exact local integration verified; native browser gates and inquiry publication approval pending
 Base: `840e7aeb6dd962fdc51de43cc3ab54818b82b427`
 Original inquiry branch/commit retained unchanged: `fix/inquiry-return-navigation` / `d6320450d0a00f10ba8ecee53f53eea9a3b3eedd`

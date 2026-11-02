@@ -1,5 +1,15 @@
 # In-app inquiries
 
+## Current disposition — 2026-10-29
+
+Integrated through [PR #612](https://github.com/kame447/StudyPlanner/pull/612) (`840e7aeb6dd962fdc51de43cc3ab54818b82b427`), an ancestor of audited main `a60fc5e8bca2ff745efaf603e939967b3e54e4a9`.
+
+The inquiry implementation and CI repair are integrated. PR #612 records final source-scoped browser, Rules and Pages evidence; production inquiry submission and physical authenticated-device use were not performed.
+
+## Preserved implementation and verification checkpoints
+
+Publication and integration statements below describe their checkpoint dates. Original evidence, failures, behavioral constraints and unresolved acceptance limits are preserved; this correction claims no new test, device or deployment verification.
+
 Status: PR published; narrow CI repair locally verified and awaiting publication
 Branch: `feat/in-app-inquiries`
 Initial base: `e44f4b4154608a4ebd41399b8f41d6f6dce7431c`

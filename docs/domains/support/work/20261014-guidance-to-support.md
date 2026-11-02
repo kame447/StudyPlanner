@@ -1,5 +1,15 @@
 # Move ordinary guidance into support
 
+## Current disposition — 2026-10-29
+
+Integrated through [PR #656](https://github.com/kame447/StudyPlanner/pull/656) (`57c28d1a2118a3e7730b6fb22c981a92279c7921`), an ancestor of audited main `a60fc5e8bca2ff745efaf603e939967b3e54e4a9`.
+
+The FAQ migration is integrated, as is the retired-measurement FAQ follow-up [PR #680](https://github.com/kame447/StudyPlanner/pull/680) (`acfecdcd6ee00dc9e0a12f2d9b1d48fc84978b38`). The separate timetable PDF affordance mismatch recorded below is not claimed fixed: the audited UI still advertises/accepts PDF. Preserve source-scoped native failures, capacity failures and device/geometry uncertainty; these merges do not close the broader UI umbrella #483.
+
+## Preserved implementation and verification checkpoints
+
+Publication and integration statements below describe their checkpoint dates. Original evidence, failures, behavioral constraints and unresolved acceptance limits are preserved; this correction claims no new test, device or deployment verification.
+
 Status: active, local implementation only
 
 ## Ownership and acceptance
