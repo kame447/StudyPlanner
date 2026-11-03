@@ -45,6 +45,7 @@ const DURABLE = {
 };
 const DURABLE_APP = `http://127.0.0.1:${DURABLE.STUDYPLANNER_E2E_APP_PORT}`;
 const DURABLE_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-vnext-production-state.json');
+const ACTUAL_CHAT_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-actual-chat-state.json');
 
 export default defineConfig({
   testDir: configDir,
@@ -130,6 +131,20 @@ export default defineConfig({
       dependencies: ['emulator-vnext-production-setup'],
       metadata: { email: 'e2e-vnext-production@example.test' },
       use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: DURABLE_STATE },
+    },
+    // The examinee's study-record conversation (#973): the durable target, scripted readings, its own account.
+    {
+      name: 'emulator-actual-chat-setup',
+      testMatch: 'emulator/account.setup.mjs',
+      metadata: { email: 'e2e-actual-chat@example.test', statePath: ACTUAL_CHAT_STATE },
+      use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP },
+    },
+    {
+      name: 'chromium-emulator-actual-chat',
+      testMatch: 'emulator/vnext-actual-record.emulator.mjs',
+      dependencies: ['emulator-actual-chat-setup'],
+      metadata: { email: 'e2e-actual-chat@example.test' },
+      use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: ACTUAL_CHAT_STATE },
     },
   ],
   webServer: [
