@@ -8,6 +8,7 @@ import {
   OTHER_MATERIAL_LABEL,
   UNSET_MATERIAL_LABEL,
 } from './reportAnalytics';
+import { ALL_MATERIALS_FILTER, buildLearningReportModel } from './learningReport';
 import type { Actual, Plan, StudyMaterial, StudySubject } from '../types/domain';
 
 const baseTimestamp = '2026-05-01T00:00:00.000Z';
@@ -177,6 +178,7 @@ describe('buildReportSummary material totals', () => {
 
     expect(summary.materialTotals).toHaveLength(1);
     expect(summary.materialTotals[0].label).toBe(UNSET_MATERIAL_LABEL);
+    expect(summary.materialTotals[0].color).toBe('#8d9aa6');
     expect(summary.materialUnsetCount).toBe(1);
   });
 
@@ -475,5 +477,45 @@ describe('report summary metrics', () => {
 
     expect(summary.actuals.map((entry) => entry.id)).toEqual(['actual-new']);
     expect(summary.actualMinutes).toBe(120);
+  });
+});
+
+
+describe('material breakdown color allocation', () => {
+  it('preserves tied input order, subject variants and global fallback colors in both reports', () => {
+    const entries = ['Math', 'Unregistered', 'Math', 'Math', 'Math', 'Math', 'Math', 'Math'];
+    const reportMaterials = entries.map((name, index) => material({
+      id: `material-${index}`,
+      name: `Workbook ${index}`,
+      subjectId: name === 'Math' ? 'subject-math' : 'missing-subject',
+      subjectName: name,
+    }));
+    const reportActuals = reportMaterials.map((entry, index) => actual({
+      id: `actual-${index}`,
+      materialId: entry.id,
+      materialName: entry.name,
+      subject: entries[index],
+    }));
+    const input = { plans: [], actuals: reportActuals, subjects, materials: reportMaterials };
+    const originalInput = JSON.stringify(input);
+    const summary = buildReportSummary({ ...input, startDate: '2026-05-04', endDate: '2026-05-04' });
+    const learning = buildLearningReportModel({ ...input, scope: 'day', anchorDate: '2026-05-04', materialFilter: ALL_MATERIALS_FILTER });
+    const expectedColors = [
+      'color-mix(in srgb, #2f6fc2 76%, white)',
+      '#d9824f',
+      'color-mix(in srgb, #2f6fc2 72%, black)',
+      'color-mix(in srgb, #2f6fc2 58%, white)',
+      'color-mix(in srgb, #2f6fc2 62%, black)',
+      'color-mix(in srgb, #2f6fc2 88%, white)',
+      'color-mix(in srgb, #2f6fc2 46%, black)',
+      'color-mix(in srgb, #2f6fc2 76%, white)',
+    ];
+    for (const breakdown of [summary.materialTotals, learning.breakdown]) {
+      expect(breakdown.map(entry => entry.key)).toEqual(reportMaterials.map(entry => `material:${entry.id}`));
+      expect(breakdown.map(entry => entry.color)).toEqual(expectedColors);
+      expect(breakdown.map(entry => entry.minutes)).toEqual(entries.map(() => 60));
+      expect(breakdown.map(entry => entry.ratio)).toEqual(entries.map(() => 1 / entries.length));
+    }
+    expect(JSON.stringify(input)).toBe(originalInput);
   });
 });

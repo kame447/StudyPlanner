@@ -194,6 +194,33 @@ export function getMaterialColor(
   return MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
 }
 
+interface MaterialBreakdownTotal extends MaterialEntrySeed {
+  minutes: number;
+  ratio: number;
+}
+
+export function applyMaterialColors(
+  entries: MaterialBreakdownTotal[],
+  subjectColorMap: Map<string, string>,
+): (MaterialBreakdownTotal & { color: string })[] {
+  const subjectVariantCounts = new Map<string, number>();
+
+  return entries.map((entry, index) => {
+    const subjectKey = entry.subject || UNSET_SUBJECT_LABEL;
+    const subjectVariantIndex = subjectVariantCounts.get(subjectKey) ?? 0;
+    subjectVariantCounts.set(subjectKey, subjectVariantIndex + 1);
+
+    return {
+      ...entry,
+      color: getMaterialColor(
+        entry,
+        subjectColorMap.has(entry.subject) ? subjectVariantIndex : index,
+        subjectColorMap,
+      ),
+    };
+  });
+}
+
 export function getMaterialChartEntries(
   entries: ReportTotalEntry[],
   limit = 6,
@@ -270,7 +297,6 @@ export function buildReportSummary({
     string,
     { label: string; subject: string; minutes: number }
   >();
-  const materialVariantCountsBySubject = new Map<string, number>();
 
   rangePlans.forEach((plan) => {
     const subject = plan.subject.trim() || UNSET_SUBJECT_LABEL;
@@ -314,30 +340,18 @@ export function buildReportSummary({
       color: subjectColorMap.get(label) ?? DEFAULT_SUBJECT_COLOR,
     }))
     .sort((left, right) => right.minutes - left.minutes);
-  const materialTotals = [...materialMinutes.entries()]
-    .map(([key, entry]) => ({
-      key,
-      label: entry.label,
-      subject: entry.subject,
-      minutes: entry.minutes,
-      ratio: actualMinutes === 0 ? 0 : entry.minutes / actualMinutes,
-    }))
-    .sort((left, right) => right.minutes - left.minutes)
-    .map((entry, index) => {
-      const subjectKey = entry.subject || UNSET_SUBJECT_LABEL;
-      const subjectVariantIndex =
-        materialVariantCountsBySubject.get(subjectKey) ?? 0;
-      materialVariantCountsBySubject.set(subjectKey, subjectVariantIndex + 1);
-
-      return {
-        ...entry,
-        color: getMaterialColor(
-          entry,
-          subjectColorMap.has(entry.subject) ? subjectVariantIndex : index,
-          subjectColorMap,
-        ),
-      };
-    });
+  const materialTotals = applyMaterialColors(
+    [...materialMinutes.entries()]
+      .map(([key, entry]) => ({
+        key,
+        label: entry.label,
+        subject: entry.subject,
+        minutes: entry.minutes,
+        ratio: actualMinutes === 0 ? 0 : entry.minutes / actualMinutes,
+      }))
+      .sort((left, right) => right.minutes - left.minutes),
+    subjectColorMap,
+  );
   const unrecordedPlans = rangePlans.filter(
     (plan) =>
       !actualByOccurrenceKey.has(buildPlanOccurrenceKey(plan.id, plan.date)),
