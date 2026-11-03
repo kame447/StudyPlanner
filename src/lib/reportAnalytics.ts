@@ -5,7 +5,6 @@ import {
   getMonthWeeks,
   getWeekdayLabel,
   startOfMonth,
-  startOfWeek,
 } from './date';
 import {
   buildPlanOccurrenceKey,
@@ -21,8 +20,6 @@ import {
   sumStudyRecordMinutes,
 } from './studyRecords';
 import type { Actual, Plan, StudyMaterial, StudySubject } from '../types/domain';
-
-export type ReportScope = 'day' | 'week' | 'month' | 'year';
 
 export interface ReportRange {
   startDate: string;
@@ -106,48 +103,6 @@ export const MATERIAL_CHART_COLORS = [
 
 export function endOfMonth(date: string): string {
   return addDays(addMonths(startOfMonth(date), 1), -1);
-}
-
-export function getYearStart(date: string): string {
-  return `${date.slice(0, 4)}-01-01`;
-}
-
-export function getYearEnd(date: string): string {
-  return `${date.slice(0, 4)}-12-31`;
-}
-
-export function getReportScopeRange(
-  scope: ReportScope,
-  selectedDate: string,
-): ReportRange {
-  if (scope === 'day') {
-    return { startDate: selectedDate, endDate: selectedDate };
-  }
-
-  if (scope === 'week') {
-    const startDate = startOfWeek(selectedDate);
-    return { startDate, endDate: addDays(startDate, 6) };
-  }
-
-  if (scope === 'month') {
-    return {
-      startDate: startOfMonth(selectedDate),
-      endDate: endOfMonth(selectedDate),
-    };
-  }
-
-  return {
-    startDate: getYearStart(selectedDate),
-    endDate: getYearEnd(selectedDate),
-  };
-}
-
-export function isDateInRange(
-  date: string,
-  startDate: string,
-  endDate: string,
-): boolean {
-  return date.localeCompare(startDate) >= 0 && date.localeCompare(endDate) <= 0;
 }
 
 export function buildSubjectColorMap(
@@ -270,25 +225,6 @@ export function getMaterialChartEntries(
       color: OTHER_MATERIAL_COLOR,
     },
   ];
-}
-
-export function getMaterialChartColor(
-  entry: ReportTotalEntry,
-  index: number,
-): string {
-  if (entry.color) {
-    return entry.color;
-  }
-
-  if (entry.key === '__unset__') {
-    return DEFAULT_SUBJECT_COLOR;
-  }
-
-  if (entry.key === '__other_materials__') {
-    return OTHER_MATERIAL_COLOR;
-  }
-
-  return MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
 }
 
 export function buildReportSummary({
@@ -566,50 +502,4 @@ export function buildYearMonthComparisons({
       actualMinutes: summary.actualMinutes,
     };
   });
-}
-
-export function getComparisonTickStep(minutes: number): number {
-  if (minutes <= 360) {
-    return 60;
-  }
-
-  if (minutes <= 600) {
-    return 120;
-  }
-
-  if (minutes <= 1800) {
-    return 300;
-  }
-
-  if (minutes <= 3600) {
-    return 600;
-  }
-
-  if (minutes <= 7200) {
-    return 1200;
-  }
-
-  return 3000;
-}
-
-export function getComparisonChartMax(minutes: number): number {
-  const stepMinutes = getComparisonTickStep(minutes);
-  let maxMinutes = Math.ceil(minutes / stepMinutes) * stepMinutes;
-
-  if (maxMinutes < minutes * 1.08) {
-    maxMinutes += stepMinutes;
-  }
-
-  return Math.max(60, maxMinutes);
-}
-
-export function getComparisonTicks(maxMinutes: number): number[] {
-  const stepMinutes = getComparisonTickStep(maxMinutes);
-  const ticks: number[] = [];
-
-  for (let minutes = maxMinutes; minutes >= 0; minutes -= stepMinutes) {
-    ticks.push(minutes);
-  }
-
-  return ticks[ticks.length - 1] === 0 ? ticks : [...ticks, 0];
 }
