@@ -131,10 +131,20 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
     return application.chat.checkpoint();
   }
 
-  function openPreviewFromLegacySurface(event: ReactMouseEvent<HTMLDivElement>) {
+  function handleLegacySurfaceClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
     if (!presentationActive.current) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
+    if (target.closest('.ai-planning-chat-menu-button') || target.closest('.ai-planning-preview-button')) {
+      // The overlay changes this route's fade duration to zero. Complete its
+      // current entry first, so a quick close cannot restore an unfinished fade.
+      const view = shellRef.current?.querySelector<HTMLElement>('.ai-planning-view');
+      for (const animation of view?.getAnimations?.() ?? []) {
+        if ('animationName' in animation && animation.animationName === 'ui-surface-fade' && animation.playState === 'running') {
+          animation.finish();
+        }
+      }
+    }
     const trigger = target.closest('.ai-planning-preview-button');
     if (!trigger) return;
 
@@ -255,7 +265,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
       ref={shellRef}
       hidden={!active}
       className={`ai-planning-view-shell-v2 ${showingPreview ? 'is-preview-open' : ''}`}
-      onClickCapture={openPreviewFromLegacySurface}
+      onClickCapture={handleLegacySurfaceClickCapture}
     >
       <AiPlanningViewLegacy
         {...props}
