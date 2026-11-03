@@ -248,6 +248,7 @@ test.describe('examinee week of study records by conversation (durable emulator 
     const dayButton = (index, date) => page.getByRole('button', { name: `${Number(date.slice(0, 4))}年 ${Number(date.slice(5, 7))}月${Number(date.slice(8))}日 ${WEEKDAYS[index]}`, exact: true });
     await dayButton(0, week[0]).click();
     await page.getByRole('tab', { name: '週', exact: true }).click();
+    await expect(page.locator('.schedule-week-day-column'), 'the week view renders its seven days').toHaveCount(7);
     const columnLabels = await page.locator('.schedule-week-day-column').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')));
     expect(columnLabels.map(label => label.split('（')[0]), 'the shown week is the recorded week').toEqual(
       week.map(date => `${Number(date.slice(0, 4))}年${Number(date.slice(5, 7))}月${Number(date.slice(8))}日`));
