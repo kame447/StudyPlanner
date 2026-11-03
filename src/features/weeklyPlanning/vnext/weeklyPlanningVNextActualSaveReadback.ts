@@ -1,14 +1,10 @@
-import type { DurationActual } from '../../../types/domain';
+import { ActualSaveReadbackUnknownError, type ActualSaveServerReadback, type ConfirmedActual } from '../../../domain/actualSaveReadback';
 import { vnextActualRecordId, type VNextActualRecord } from './weeklyPlanningVNextStudyRecords';
 
-export type ActualSaveIntentRecord = Pick<VNextActualRecord, 'id' | 'occurrenceDate' | 'subject' | 'minutes'>;
-export type ConfirmedActual = Pick<DurationActual, 'id' | 'userId' | 'occurrenceDate' | 'subject' | 'actualDurationMinutes'>;
+export { ActualSaveReadbackUnknownError } from '../../../domain/actualSaveReadback';
+export type { ActualSaveServerReadback, ConfirmedActual } from '../../../domain/actualSaveReadback';
 
-export interface ActualSaveServerReadback {
-  fromCache: boolean;
-  hasPendingWrites: boolean;
-  records: readonly ConfirmedActual[];
-}
+export type ActualSaveIntentRecord = Pick<VNextActualRecord, 'id' | 'occurrenceDate' | 'subject' | 'minutes'>;
 
 export interface ActualSaveReadbackClassification {
   status: 'saved' | 'not_saved' | 'partial';
@@ -66,6 +62,6 @@ export async function readAndClassifyActualSave(params: {
 }): Promise<ActualSaveReadbackClassification> {
   assertOwnedIntent(params.ownerId, params.attempted);
   const readback = await params.readConfirmed(params.ownerId, params.attempted.map(record => record.id));
-  if (readback.fromCache || readback.hasPendingWrites) throw new Error('Actual save result is still unconfirmed.');
+  if (readback.fromCache || readback.hasPendingWrites) throw new ActualSaveReadbackUnknownError('unconfirmed_snapshot');
   return classifyActualSaveReadback(params.ownerId, params.attempted, readback.records);
 }
