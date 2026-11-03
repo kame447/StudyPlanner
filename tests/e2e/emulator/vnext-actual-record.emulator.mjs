@@ -37,6 +37,9 @@ const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
 const rowText = ({ date, subject, minutes }) => formatActualRecordRow({ occurrenceDate: date, subject, minutes });
 // Before the click the chat only organises records for confirmation: it must not say they were recorded or saved (fix-01 A).
 const PENDING_PREFIX = '確認用に整理しました（まだ保存していません）：';
+// Reply to records that are already saved (fix-03 contract): the same rows, stated as saved.
+const ALREADY_SAVED_PREFIX = 'その内容はすでに保存されています：';
+const alreadySavedReply = rows => `${ALREADY_SAVED_PREFIX}${rows.map(rowText).join('、')}。`;
 const pendingReply = (rows, minutes) => `${PENDING_PREFIX}${rows.map(rowText).join('、')}。ここまでの合計は${formatActualRecordsTotal(minutes)}です。`;
 
 const CONFIRM = {
@@ -456,10 +459,10 @@ test.describe('examinee week of study records by conversation (durable emulator 
     expect(await recordStates(page), 'the saved mark and the record ids survive the reload').toEqual(afterSave);
     await actualTurn(page, request, week, '月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学120分、日曜は化学90分でした。', 'actual_week');
     await testInfo.attach('record-states-after-resend.txt', { body: (await recordStates(page)).join('\n') + `\nchat count: ${(await readChatCount(page))}`, contentType: 'text/plain' });
-    // Not asserted: after a reload the conversation id is new and its checkpoint empty, so the chat words the resend as a fresh
-    // list ("まだ保存していません") although the records are already saved. What the student can act on (no card, same documents)
-    // is asserted below; the wording is recorded for the report.
-    testInfo.annotations.push({ type: 'reply-after-reload-resend', description: (await lastReply(page).innerText()).slice(0, 60) });
+    // The resent records equal the saved ones (same id, same minutes), so the chat must say they are already saved, built from the
+    // owner's row format, and must not call them unsaved (fix-03; the wording is the owner's, adjusted with I2 when it lands).
+    await expect(lastReply(page)).toContainText(alreadySavedReply(scenarioRows(week)));
+    expect(await lastReply(page).innerText(), 'saved records are never called unsaved').not.toContain('まだ保存していません');
     await expect(page.locator('.ai-planning-actual-card'), 'a repeated statement creates nothing new to confirm').toHaveCount(0);
     const second = await actualDocuments(request, userId);
     expect(second.map(({ docId, date, subject, minutes }) => ({ docId, date, subject, minutes })), 'same documents, same ids, same count')
