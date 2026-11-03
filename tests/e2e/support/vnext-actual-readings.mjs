@@ -5,12 +5,12 @@
 //
 // Provider shape (I2, GustyPasteur's confirmed message): `studyRecords: [{ dateExpression: 'YYYY-MM-DD', subject, minutes }]` is a
 // root field beside planningIntent / conversationActs / delta / answer (never inside delta.add, never mixed with plan facts).
-// A plan turn has `studyRecords: []`; a rest day is not emitted. A correction is another entry for the same (date, subject):
+// A plan turn has `studyRecords: []`; a rest day is not a record: its date goes in the root `studyRestDays` (fix-04). A correction is another entry for the same (date, subject):
 // the application replaces it. An ambiguous statement emits no record and `studyRecordQuestion: { reason, label }` (one per turn).
 // Source: evidence/I2-provider-shape.md.
 const EMPTY = { add: [], patch: [], remove: [], relate: [], defer: [] };
-const reading = (planningIntent, delta = {}, conversationActs = [], studyRecords = [], studyRecordQuestion = null) => ({
-  planningIntent, conversationActs, answer: null, delta: { ...EMPTY, ...delta }, studyRecords, studyRecordQuestion });
+const reading = (planningIntent, delta = {}, conversationActs = [], studyRecords = [], studyRecordQuestion = null, studyRestDays = []) => ({
+  planningIntent, conversationActs, answer: null, delta: { ...EMPTY, ...delta }, studyRecords, studyRecordQuestion, studyRestDays });
 
 export const WEEK_RECORDS = [
   { day: 0, subject: '数学', minutes: 60 },   // Mon
@@ -23,7 +23,7 @@ export const WEEK_RECORDS = [
 ];
 // Turns whose reply is the application's fixed text (a recording turn, a question): no renderer call follows the reading
 // (evidence/I2-provider-shape.md section 2). Every other kind goes on to the renderer like any plan turn.
-export const RECORD_ONLY_KINDS = ['actual_week', 'actual_mon', 'actual_tue_wed', 'actual_fri_sun', 'actual_tue_fix', 'actual_vague_math', 'actual_vague_weekend'];
+export const RECORD_ONLY_KINDS = ['actual_thu_rest', 'actual_week', 'actual_mon', 'actual_tue_wed', 'actual_fri_sun', 'actual_tue_fix', 'actual_vague_math', 'actual_vague_weekend'];
 export const WEEK_TOTAL_MINUTES = 395;
 export const WEEK_TOTAL_AFTER_TUESDAY_FIX = 400;
 
@@ -49,7 +49,8 @@ export function scriptedActualReading(kind, { week }) {
     case 'actual_week': return on([0, 1, 2, 4, 5, 6]);
     case 'actual_mon': return on([0]);
     case 'actual_tue_wed': return on([1, 2]);
-    case 'actual_thu_rest': return reading('discuss');
+    // A rest day is a statement of its own (fix-04): its absolute date in studyRestDays, no record, no minutes.
+    case 'actual_thu_rest': return reading('discuss', {}, [], [], null, [week[3]]);
     case 'actual_fri_sun': return on([4, 5, 6]);
     case 'actual_tue_fix': return reading('discuss', {}, [], [record(week[1], { subject: '英語', minutes: 50 })]);
     case 'actual_vague_math': return reading('discuss', {}, [], [], { reason: 'missing_minutes', label: '数学' });

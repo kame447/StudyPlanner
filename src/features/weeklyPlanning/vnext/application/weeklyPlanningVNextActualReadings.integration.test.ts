@@ -12,7 +12,7 @@ import { createMemoryStorageHarness } from '../../testUtils/weeklyPlanningApplic
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
-import { sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import { formatRestDaysReply, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
 
 const OWNER = 'synthetic-actual-e2e-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03';
 const RECORDED_WEEK = ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01'];
@@ -66,7 +66,7 @@ describe('scripted readings of the study-record E2E', () => {
     expect(key(last!.actualRecords)).toEqual(['2026-10-26 数学 60', '2026-10-27 英語 50', '2026-10-28 現代文 30',
       '2026-10-30 英語 50', '2026-10-31 数学 120', '2026-11-01 化学 90']);
     expect(sumActualRecordMinutes(last!.actualRecords!)).toBe(400);
-    // Cumulative [readings, renderer calls] after each turn: the rest-day turn is the only one that reaches the renderer, if any.
+    // Cumulative [readings, renderer calls] after each turn: every records turn and the rest-day turn are the application's own text.
     const perTurn = calls.map(([readings, renders], index) => [readings - (calls[index - 1]?.[0] ?? 0), renders - (calls[index - 1]?.[1] ?? 0)]);
     expect(perTurn.map(([readings]) => readings)).toEqual([1, 1, 1, 1, 1]);
     kinds.forEach((kind, index) => {
@@ -75,11 +75,12 @@ describe('scripted readings of the study-record E2E', () => {
     });
   });
 
-  it('N1 actual_thu_rest alone: no record; the spec answers one reading and one renderer call', async () => {
+  it('N1 actual_thu_rest alone: no record, only the owner\'s rest sentence; one reading and no renderer call', async () => {
     const h = harness(['actual_thu_rest']);
     const result = await h.turn('木曜は休みでした。勉強していません。');
     expect(key(result.actualRecords)).toEqual([]);
-    expect([h.readings(), h.renders()]).toEqual([1, 1]);
+    expect(result.reply).toBe(formatRestDaysReply(['2026-10-29']));
+    expect([h.readings(), h.renders()]).toEqual([1, 0]);
   });
 
   it('N2 plan sentence: a plan reading; no study record, one reading and one renderer call', async () => {

@@ -8,10 +8,11 @@ import { RECORD_ONLY_KINDS, scriptedActualReading, WEEK_RECORDS, WEEK_TOTAL_AFTE
 import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
 import { expectDurableVNext, observeDurableTurns } from '../support/vnext-durable-observation.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
+import { VNEXT_STUDY_RECORD_SAVE_GUIDE } from '../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextStudyRecords.ts';
 import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 // The wording and arithmetic of the records belong to ONE owner (fix-01 B): expected texts are built from its functions, never from a
 // second format kept in this spec.
-import { formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // #973 I4: the examinee's week of study records by CONVERSATION, on the durable emulator stack (production build with durable
 // turns, production Worker, Auth + Firestore emulators, synthetic provider answering from scripted readings; no model call).
@@ -351,6 +352,11 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await actualTurn(page, request, week, '先週の勉強を記録したいです。月曜は数学を60分やりました。', 'actual_mon');
     await actualTurn(page, request, week, '火曜は英語を45分、水曜は現代文を30分です。', 'actual_tue_wed');
     await actualTurn(page, request, week, '木曜は休みでした。', 'actual_thu_rest');
+    // A rest day is taken plainly (fix-04): the owner's rest sentence, then the total of what is waiting and the save guidance; no question,
+    // no invitation to plan, nothing recorded for Thursday.
+    const waitingBeforeThursday = sumActualRecordMinutes(scenarioRows(week).filter(row => row.index <= 2));
+    await expect(lastReply(page)).toHaveText(`${formatRestDaysReply([week[3]])}ここまでの合計は${formatActualRecordsTotal(waitingBeforeThursday)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+    expect(await lastReply(page).innerText(), 'a rest day is not asked about').not.toMatch(/[？?]/u);
     await actualTurn(page, request, week, '金曜は英語を50分、土曜は数学を120分、日曜は化学を90分です。', 'actual_fri_sun');
     await expectDurableVNext(durable, { turns: 4 });
     expect(await actualDocuments(request, userId)).toEqual([]);
@@ -384,6 +390,9 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await seedNeighbours(request, week);
     await openPlannerOnPreviousWeek(page);
     await actualTurn(page, request, week, '木曜は休みでした。勉強していません。', 'actual_thu_rest');
+    // Nothing is waiting, so the reply is only the owner's rest sentence (fix-04): no total, no save guidance, no question, no invitation to plan.
+    await expect(lastReply(page)).toHaveText(formatRestDaysReply([week[3]]));
+    expect(await lastReply(page).innerText(), 'a rest day is not asked about').not.toMatch(/[？?]/u);
     await expect(page.locator('.ai-planning-actual-card'), 'a rest day alone offers nothing to confirm').toHaveCount(0);
     expect(await actualDocuments(request, userId)).toEqual([]);
     expect(firestore.violations()).toEqual([]);
