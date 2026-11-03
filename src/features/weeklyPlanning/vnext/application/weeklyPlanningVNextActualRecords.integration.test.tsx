@@ -196,4 +196,43 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(sent).toHaveLength(6);
     expect(sent.every(record => !('replacesMinutes' in record))).toBe(true);
   });
+  // Another week's conversation (a reload opens today's week) sends the same statement: same ids, so never a second document.
+  it('the same statement from another conversation yields the same ids: saved minutes are a no-op, changed minutes an announced replacement', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const first = await mount(inputWith(save));
+    const originalIds = first.current!.pendingActualRecords!.map(record => record.id);
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const resend: WeeklyPlanningVNextLocalApplicationServices = { ...services(), interpret: () => async () => ({ status: 'interpreted' as const,
+      planningIntent: 'discuss' as const, answer: null, conversationActs: [], studyRecords: WEEK_RECORDS, studyRecordQuestion: null,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }) };
+    const otherWeek = (actuals: DurationActual[]) => ({ ...inputWith(save), selectedDate: '2026-11-09', actuals });
+    const mountOther = async (actuals: DurationActual[]) => {
+      const ref = createRef<WeeklyPlanningApplication>();
+      await act(async () => { renderer = create(<Harness ref={ref} input={otherWeek(actuals)} services={resend} />); });
+      await act(async () => { await ref.current!.submitTurn('月曜は数学60分、火曜は英語45分、…でした。'); });
+      return ref;
+    };
+    const rowsOf = (records: typeof WEEK_RECORDS) => records.map(record => `${record.dateExpression}|${record.subject}|${record.minutes}`);
+    const saved = (minutesByIndex: (index: number) => number) => originalIds.map((id, index) =>
+      savedDoc(id, WEEK_RECORDS[index].subject, WEEK_RECORDS[index].dateExpression, minutesByIndex(index)));
+    expect(rowsOf(WEEK_RECORDS)).toHaveLength(6);
+
+    // Nothing saved yet: a different conversation proposes the very same ids (not new documents).
+    const fresh = await mountOther([]);
+    expect(fresh.current!.pendingActualRecords!.map(record => record.id)).toEqual(originalIds);
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    // Everything already saved with the same minutes: nothing to confirm and nothing to save.
+    const same = await mountOther(saved(index => WEEK_RECORDS[index].minutes));
+    expect(same.current!.pendingActualRecords).toEqual([]);
+    await act(async () => { await same.current!.approveActualRecords!(); });
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    // One saved value differs: that row says it replaces the saved minutes; no write before the click.
+    const changed = await mountOther(saved(index => (index === 1 ? 30 : WEEK_RECORDS[index].minutes)));
+    expect(changed.current!.pendingActualRecords!.map(formatActualRecordRow).filter(row => row.includes('置き換えます')))
+      .toEqual(['火 10/27 英語 45分 ※保存済みの30分を置き換えます']);
+    expect(changed.current!.pendingActualRecords).toHaveLength(1);
+    expect(save).not.toHaveBeenCalled();
+  });
 });
