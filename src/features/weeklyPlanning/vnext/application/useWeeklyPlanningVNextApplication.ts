@@ -20,6 +20,7 @@ import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../applic
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
 import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn } from '../../application/weeklyPlanningTurnPreparation';
+import { markWeeklyPlanningVNextActualRecordsSaved } from './weeklyPlanningVNextExperimentalSession';
 import { selectPendingActualRecords, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
@@ -243,10 +244,14 @@ export function useWeeklyPlanningVNextApplication(
     });
   }, [chat, runtime, revision, runtime.state, runtime.session.conversationId, input.userId, input.plannerDataAvailability]);
   const pendingDraftBlocks = runtime.state.draftBlocks.filter(block => block.status === 'draft');
-  // The session's `actualRecords` come from the conversation layer (I2); until it is integrated the state has none.
-  const pendingActualRecords = selectPendingActualRecords(
-    (runtime.state as { actualRecords?: WeeklyPlanningActualRecord[] }).actualRecords,
-  ).filter(record => !savedActualIds.has(record.id));
+  // The study records live in the conversation's checkpoint (I2), next to the facts they were read apart from. An
+  // unreadable checkpoint offers none here; the chat's own retry state already reports that condition.
+  const pendingActualRecords = useMemo(() => {
+    let stored: WeeklyPlanningActualRecord[] | undefined;
+    try { stored = runtime.local.readCheckpoint()?.vnext.actualRecords; } catch { stored = undefined; }
+    return selectPendingActualRecords(stored).filter(record => !savedActualIds.has(record.id));
+    // `revision` changes after every committed turn and every mark.
+  }, [runtime, runtime.state, revision, savedActualIds]);
   const approveActualRecords = async () => {
     const records = pendingActualRecords;
     // Nothing to save, an owner that is not signed in, or a save already running: never write (no owner mismatch writes).
@@ -257,8 +262,14 @@ export function useWeeklyPlanningVNextApplication(
       await input.saveWeeklyActualRecords(ownerId, records);
       const ids = records.map(record => record.id);
       setSavedActualIds(previous => new Set([...previous, ...ids]));
-      // Persisted mark so a reload does not offer the same records again (state action agreed with I2).
-      dispatch({ type: 'mark_actual_records_saved', ids } as unknown as WeeklyPlanningAction);
+      // The persisted mark (I2) keeps a reload from offering the same records again. The saved batch is already
+      // committed, so a mark that cannot be written is not reported as a failed save: the in-memory set above hides
+      // the records for this session and their deterministic ids make any later re-save an overwrite, not a duplicate.
+      markWeeklyPlanningVNextActualRecordsSaved(
+        { ownerId, weekStartDate: week, conversationId: runtime.session.conversationId },
+        { checkpoint: runtime.local.checkpoint, legacyV5Checkpoint: runtime.local.legacyV5Checkpoint, now: services.now },
+        ids,
+      );
       chat.checkpoint();
     } finally {
       actualRecordsInFlight.current = false;
