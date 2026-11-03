@@ -65,9 +65,18 @@ export function actualRecords(documents) {
   }));
 }
 
-/** This account's actuals that were not there before the scenario began. */
-export const addedBy = (documents, userId, knownIds) =>
-  actualRecords(documents).filter((record) => record.userId === userId && !knownIds.has(record.id));
+/**
+ * The ids of a conversation's study records are owner x date x subject (fix-02): the same day and subject is the same document in
+ * every chat, so scenarios cannot be told apart by "new ids". A scenario starts by clearing the account's study records.
+ */
+export const studyRecordIdPrefix = (userId) => `wp-actual-${userId}-`;
+
+/** This account's study-record documents (ids made from a conversation's records), nothing else the account may hold. */
+export const studyRecordsOf = (documents, userId) =>
+  actualRecords(documents).filter((record) => record.userId === userId && record.id?.startsWith(studyRecordIdPrefix(userId)));
+
+/** Reply when everything stated is already saved (the owner's wording, fix-03): that sentence alone, no total, no save guidance. */
+export const savedReply = (records) => `その内容はすでに保存されています：${records.map(rowText).join('、')}。`;
 
 const normal = (value) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, '');
 

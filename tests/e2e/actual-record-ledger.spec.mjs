@@ -1,21 +1,21 @@
 import { expect, test } from '@playwright/test';
 import {
-  CORRECTED_TUESDAY, REST_DAY, WEEK, WEEK_TOTAL, actualRecords, addedBy, noClockTimes, noneSaved, nothingOn, pendingReply,
-  questionMarksIn, rowText, savedExactly, savedWordsIn, sumMinutes, totalText,
+  CORRECTED_TUESDAY, REST_DAY, WEEK, WEEK_TOTAL, actualRecords, noClockTimes, noneSaved, nothingOn, pendingReply,
+  questionMarksIn, rowText, savedExactly, savedReply, savedWordsIn, studyRecordsOf, sumMinutes, totalText,
 } from './support/actual-record-ledger.mjs';
 
 // Controls for the oracle of the real-model examinee gate (#973 R1): it must accept the right saved week and fail on each
 // defect it exists to catch. The documents are shaped like the Firestore REST documents of `actuals` that the confirmation's
 // save writes (userId, occurrenceDate, actualDurationMinutes, subject, ...; no clock time, no plan link).
 const OWNER = 'exam-owner';
-const doc = (record, { owner = OWNER, extra = {}, id = `wp-actual-c1-${record.date}-${record.subject}` } = {}) => ({
+const doc = (record, { owner = OWNER, extra = {}, id = `wp-actual-${owner}-${record.date}-${record.subject}` } = {}) => ({
   name: `projects/p/databases/(default)/documents/actuals/${id}`,
   fields: { id: { stringValue: id }, userId: { stringValue: owner }, planId: { nullValue: null }, occurrenceDate: { stringValue: record.date },
     actualDurationMinutes: { integerValue: String(record.minutes) }, title: { stringValue: record.subject }, subject: { stringValue: record.subject },
     isAlignedToPlan: { booleanValue: false }, note: { stringValue: '' }, updatedAt: { stringValue: '2026-11-03T01:00:00.000Z' }, ...extra },
 });
 const week = () => WEEK.map((record) => doc(record));
-const saved = (documents, known = new Set()) => addedBy(documents, OWNER, known);
+const saved = (documents) => studyRecordsOf(documents, OWNER);
 
 test('the oracle accepts the right saved week and fails each defect it exists to catch', () => {
   expect(sumMinutes(WEEK)).toBe(WEEK_TOTAL);
@@ -39,9 +39,10 @@ test('the oracle accepts the right saved week and fails each defect it exists to
   expect(noClockTimes(saved([withTime]))).toHaveLength(1);
   expect(noClockTimes(saved([doc(WEEK[0], { extra: { planId: { stringValue: 'plan-1' } } })]))).toHaveLength(1);
 
-  // Only this account's new documents count: another user's, and the ones that existed before, are not the scenario's.
-  expect(saved([...week(), doc(WEEK[1], { owner: 'someone-else', id: 'other' })])).toHaveLength(6);
-  expect(saved(week(), new Set(actualRecords(week()).map((record) => record.id)))).toEqual([]);
+  // Only this account's study-record documents count: another user's, and any other actual of the account, are not the scenario's.
+  expect(saved([...week(), doc(WEEK[1], { owner: 'someone-else' })])).toHaveLength(6);
+  expect(saved([...week(), doc(WEEK[1], { id: 'timed-or-plain-actual' })])).toHaveLength(6);
+  expect(actualRecords(week())[0].id).toBe('wp-actual-exam-owner-2026-10-26-数学');
 });
 
 test('the reply checks: pending wording is exact, "saved" words are found, questions are counted', () => {
@@ -59,4 +60,10 @@ test('the reply checks: pending wording is exact, "saved" words are found, quest
   expect(questionMarksIn('数学は何分くらい勉強しましたか？')).toBe(1);
   expect(questionMarksIn('何分でしたか？いつですか？')).toBe(2);
   expect(questionMarksIn(reply)).toBe(0);
+  // After a save and a reload the same sentence is answered as saved, with that one sentence and never as "not saved yet".
+  const alreadySaved = savedReply(WEEK);
+  expect(alreadySaved).toBe('その内容はすでに保存されています：月 10/26 数学 60分（1時間）、火 10/27 英語 45分、水 10/28 現代文 30分、'
+    + '金 10/30 英語 50分、土 10/31 数学 120分（2時間）、日 11/1 化学 90分（1時間30分）。');
+  expect(alreadySaved).not.toContain('まだ保存していません');
+  expect(savedWordsIn(alreadySaved)).toEqual([]);
 });

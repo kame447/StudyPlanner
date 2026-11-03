@@ -2,8 +2,8 @@ import { expect, test as base } from '@playwright/test';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import {
   CORRECTED_TOTAL, CORRECTED_TUESDAY, EXAM_NOW, REST_DAY, WEEK, WEEK_TOTAL,
-  actualRecords, addedBy, byDate, noClockTimes, noneSaved, nothingOn, pendingReply, questionMarksIn, rowText, savedExactly,
-  savedWordsIn, sumMinutes, totalText,
+  byDate, noClockTimes, noneSaved, nothingOn, pendingReply, questionMarksIn, rowText, savedExactly, savedReply,
+  savedWordsIn, studyRecordIdPrefix, studyRecordsOf, sumMinutes, totalText,
 } from '../support/actual-record-ledger.mjs';
 
 // The examinee's "last week" study record with the REAL model, through the real Worker (#973 R1). Run only by the
@@ -12,7 +12,8 @@ import {
 // The browser clock is Tuesday 2026-11-03 10:00 JST so "last week" is 2026-10-26..11-01. Every expected value comes from
 // the fixed scenario (support/actual-record-ledger.mjs), never from a model output; a model failure stays a failure
 // (no retry, no skip, no loosened expectation). Evidence per turn: the reply the user saw and what the confirmation lists.
-// Contract under test: the reply lists records for confirmation without saying anything is saved; actuals are written only
+// Ids are owner x date x subject (fix-02), so each scenario clears this account's study records first. N3 sends the same week again after a
+// reload: the answer is the owner's "already saved" sentence (fix-03). Contract under test: the reply lists records for confirmation without saying anything is saved; actuals are written only
 // by the click on 「この内容で実績を保存」 (all or nothing, one document per date and subject, no clock time).
 const FIRESTORE = 'http://127.0.0.1:8180/v1/projects/demo-studyplanner/databases/(default)/documents';
 const VNEXT = '/?weeklyPlanningCore=vnext';
@@ -54,7 +55,20 @@ async function firestoreDocuments(request, collection) {
   return (await response.json()).documents ?? [];
 }
 
-/** One scenario: a fresh browser context (a fresh conversation), this account's actuals before it, and the turn helpers. */
+/**
+ * Study-record ids are owner x date x subject, so every scenario of this account writes the same documents for the same days:
+ * each scenario starts from none. The emulator's REST owner token removes this synthetic account's study records only
+ * (ids made from conversations), before the page loads its actuals.
+ */
+async function clearStudyRecords(request, userId) {
+  for (const record of studyRecordsOf(await firestoreDocuments(request, 'actuals'), userId)) {
+    const response = await request.delete(`${FIRESTORE}/actuals/${encodeURIComponent(record.id)}`, { headers: { Authorization: 'Bearer owner' } });
+    expect(response.ok(), `clearing ${record.id}`).toBe(true);
+  }
+  expect(studyRecordsOf(await firestoreDocuments(request, 'actuals'), userId).map((record) => record.id)).toEqual([]);
+}
+
+/** One scenario: a fresh browser context (a fresh conversation), an account with no study records, and the turn helpers. */
 async function begin(page, request) {
   const posts = [];
   const failedResponses = [];
@@ -63,13 +77,13 @@ async function begin(page, request) {
     if (response.url().includes(TURN_ENDPOINT) && response.status() >= 400) failedResponses.push(`${response.request().method()} ${response.status()}`);
   });
   const userId = await emulatorUserId(request, { email: email(), password: password() });
-  const known = new Set(actualRecords(await firestoreDocuments(request, 'actuals')).map((record) => record.id));
+  await clearStudyRecords(request, userId);
   await signIn(page);
   await openPlanning(page);
   const composer = page.locator('.ai-planning-composer textarea');
   const conversation = page.locator('.ai-planning-conversation');
   const evidence = [];
-  const added = async () => addedBy(await firestoreDocuments(request, 'actuals'), userId, known);
+  const added = async () => studyRecordsOf(await firestoreDocuments(request, 'actuals'), userId);
 
   /** Sends one utterance, waits for the real model's reply, and records exactly what the user saw. */
   async function say(label, utterance) {
@@ -90,7 +104,7 @@ async function begin(page, request) {
     expect(savedWordsIn(reply), `${label}: the reply claims a save that has not happened`).toEqual([]);
     return entry;
   }
-  return { posts, failedResponses, userId, known, added, say, evidence, conversation };
+  return { posts, failedResponses, userId, added, say, evidence, conversation };
 }
 
 /** What the confirmation lists (opened from the card, closed again), and its code-made total text. */
@@ -186,6 +200,32 @@ test('N2 a plan sentence adds no actual: the one stated record stays the only on
   await confirmAndSave(page);
   // Only the confirmed record exists; no actual was made from the plan sentence (a plan preview, if shown, is not judged here).
   await finish(s, request, page, [WEEK[0]]);
+});
+
+test('N3 saved, reloaded, the same week sent again: answered as already saved, nothing to confirm, the same six documents', async ({ page, request }) => {
+  const s = await begin(page, request);
+  const long = '先週の勉強を記録したいです。月曜は数学を60分、火曜は英語を45分、水曜は現代文を30分、木曜は休みでした。'
+    + '金曜は英語を50分、土曜は数学を120分、日曜は化学を90分やりました。';
+  const first = await s.say('n3-1-long', long);
+  expect(first.reply).toBe(pendingReply(WEEK, WEEK));
+  await confirmAndSave(page);
+  const savedOnce = await s.added();
+  holds(savedExactly(savedOnce, WEEK));
+  const snapshot = savedOnce.map(({ id, date, subject, minutes }) => ({ id, date, subject, minutes }));
+  // A reload starts a new conversation (an empty checkpoint) while the six documents stay saved.
+  await page.reload();
+  await openPlanning(page);
+  const again = await s.say('n3-2-resend-after-reload', long);
+  // The product owns the wording; the scenario fixes what it must say: that sentence alone, never "not saved yet".
+  expect(again.reply).toBe(savedReply(WEEK));
+  expect(again.reply).not.toContain('まだ保存していません');
+  await expect(page.locator('.ai-planning-actual-card')).toHaveCount(0);
+  const after = await s.added();
+  expect(after.map(({ id, date, subject, minutes }) => ({ id, date, subject, minutes }))).toEqual(snapshot);
+  holds(noClockTimes(after));
+  holds(nothingOn(after, REST_DAY));
+  expect(s.failedResponses).toEqual([]);
+  await test.info().attach('scenario-evidence.json', { contentType: 'application/json', body: JSON.stringify({ turnPosts: s.posts.length, turns: s.evidence, saved: after }, null, 2) });
 });
 
 test('N4 vague input records nothing and asks exactly one question; a total over days is never split', async ({ page, request }) => {
