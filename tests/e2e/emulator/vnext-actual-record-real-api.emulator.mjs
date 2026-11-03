@@ -132,8 +132,18 @@ const expectListed = (entry, records) => {
   expect(entry.listed.total).toBe(`合計 ${totalText(sumMinutes(wanted))}`);
 };
 
+/**
+ * The confirmation card disappears as soon as the save starts (the planner applies the records optimistically), before the batch is
+ * committed (run 41630825315: the last read came 2 ms before the commit). So the save is judged by waiting for the condition itself:
+ * poll until the account's study records are exactly the expected ones (the default expect timeout, not an extended one).
+ */
+async function savedSettled(scenario, expected) {
+  await expect.poll(async () => savedExactly(await scenario.added(), expected), { message: 'the confirmed records reach Firestore' }).toEqual([]);
+  return scenario.added();
+}
+
 async function finish(scenario, request, page, expected) {
-  const saved = await scenario.added();
+  const saved = await savedSettled(scenario, expected);
   holds(savedExactly(saved, expected));
   holds(noClockTimes(saved));
   holds(nothingOn(saved, REST_DAY));
@@ -206,7 +216,8 @@ test('N3 saved, reloaded, the same week sent again: answered as already saved, n
   const first = await s.say('n3-1-long', long);
   expect(first.reply).toBe(pendingReply(WEEK, WEEK));
   await confirmAndSave(page);
-  const savedOnce = await s.added();
+  // Wait for the commit before reloading: a reload while the batch is in flight could drop it.
+  const savedOnce = await savedSettled(s, WEEK);
   holds(savedExactly(savedOnce, WEEK));
   const snapshot = savedOnce.map(({ id, date, subject, minutes }) => ({ id, date, subject, minutes }));
   // A reload starts a new conversation (an empty checkpoint) while the six documents stay saved.
