@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { answer, nextCall, rendererReply, RENDERER_SCHEMA, VNEXT_READING_SCHEMA } from '../support/synthetic-provider-client.mjs';
 import { requestContextOf, scriptedReading } from '../support/vnext-scripted-readings.mjs';
-import { scriptedActualReading, WEEK_RECORDS, WEEK_TOTAL_AFTER_TUESDAY_FIX, WEEK_TOTAL_MINUTES } from '../support/vnext-actual-readings.mjs';
+import { RECORD_ONLY_KINDS, scriptedActualReading, WEEK_RECORDS, WEEK_TOTAL_AFTER_TUESDAY_FIX, WEEK_TOTAL_MINUTES } from '../support/vnext-actual-readings.mjs';
 import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
 import { expectDurableVNext, observeDurableTurns } from '../support/vnext-durable-observation.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
@@ -22,9 +22,9 @@ import { openAiPlanning } from '../support/vnext-production-flows.mjs';
 // The recorded week is the previous week of the (real) browser clock: on 2026-11-03 it is 2026-10-26 .. 2026-11-01. The durable
 // Worker refuses a turn whose browser start time is not near its own, so the clock is never moved (see vnext-production-flows.mjs).
 //
-// PROVISIONAL (until I2 and I3 are integrated, to be aligned then; everything else below is final):
-//   - CONFIRM: the total, save button and failure display of the confirmation UI (the card, the dialog and the rows are as I3 stated:
-//     `.ai-planning-actual-card` + button 「実績を確認」, dialog aria-label 「実績の確認」, rows `.ai-planning-actual-records-list li`).
+// Shapes come from I2 (evidence/I2-provider-shape.md) and I3 (evidence/I3-confirm-ui-shape.md), stated before their integration;
+// the first run on the integrated branch is the check. Open points: whether the reply of a rest-day-only turn goes through the renderer
+// (assumed: yes, it makes no record), and the reload behaviour of the confirmation (I3: not shown again once saved).
 const FIRESTORE = 'http://127.0.0.1:8180/v1/projects/demo-studyplanner/databases/(default)/documents';
 const RULES_ENDPOINT = 'http://127.0.0.1:8180/emulator/v1/projects/demo-studyplanner:securityRules';
 const OWNER = { Authorization: 'Bearer owner' };
@@ -39,7 +39,8 @@ const CONFIRM = {
   open: page => page.locator('.ai-planning-actual-card').getByRole('button', { name: '実績を確認' }),
   dialog: page => page.getByRole('dialog', { name: '実績の確認' }),
   section: dialog => dialog,
-  save: dialog => dialog.getByRole('button', { name: 'この内容で実績を保存' }),
+  save: dialog => dialog.locator('button.ai-planning-actual-records-save'),
+  total: dialog => dialog.locator('[aria-label="実績の合計"]'),
   row: ({ date, subject, minutes }, index) => `${WEEKDAYS[index]} ${Number(date.slice(5, 7))}/${Number(date.slice(8))} ${subject} ${durationLabel(minutes)}`,
 };
 
@@ -85,11 +86,12 @@ async function openPlannerOnPreviousWeek(page) {
 }
 
 /** One turn: answers this turn's provider calls (reading, then renderer) from the request the Worker sent, sends, waits. */
-async function sendTurn(page, request, text, reading) {
+async function sendTurn(page, request, text, reading, { renderer = true } = {}) {
   const run = (async () => {
     const read = await nextCall(request);
     expect(read.schema).toBe(VNEXT_READING_SCHEMA);
     await answer(request, read, reading(requestContextOf(read.body.messages)));
+    if (!renderer) return; // the reply is the application's own fixed text
     const render = await nextCall(request);
     expect(render.schema).toBe(RENDERER_SCHEMA);
     await answer(request, render, rendererReply(render));
@@ -102,7 +104,8 @@ async function sendTurn(page, request, text, reading) {
   await expect(composer(page)).toBeEnabled({ timeout: 60_000 });
   await run;
 }
-const actualTurn = (page, request, week, text, kind) => sendTurn(page, request, text, () => scriptedActualReading(kind, { week }));
+const actualTurn = (page, request, week, text, kind) => sendTurn(page, request, text, () => scriptedActualReading(kind, { week }), { renderer: !RECORD_ONLY_KINDS.includes(kind) });
+const lastReply = page => assistantBubbles(page).last();
 
 const text = field => field?.stringValue ?? null;
 const integer = field => (field?.integerValue === undefined ? null : Number(field.integerValue));
@@ -185,7 +188,8 @@ test.describe('examinee week of study records by conversation (durable emulator 
     const section = CONFIRM.section(dialog);
     await expect(section).toBeVisible();
     for (const [index, row] of rows.entries()) await expect(section.getByText(CONFIRM.row(row, row.index ?? index), { exact: true })).toBeVisible();
-    await expect(section.getByText(totalLabel(minutes), { exact: true })).toBeVisible();
+    await expect(CONFIRM.total(dialog)).toHaveText(`合計 ${totalLabel(minutes)}`);
+    await expect(dialog, 'no clock time is shown for a record that has none').not.toContainText(/\b\d{1,2}:\d{2}\b/u);
     await expect(section.locator('.ai-planning-actual-records-list li'), 'one line per recorded day, none for the rest day').toHaveCount(rows.length);
   }
 
@@ -250,6 +254,7 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await actualTurn(page, request, week,
       '先週の勉強をまとめて記録したいです。月曜は数学を60分、火曜は英語を45分、水曜は現代文を30分、木曜は休みでした。金曜は英語を50分、土曜は数学を120分、日曜は化学を90分やりました。', 'actual_week');
     await expectDurableVNext(durable, { turns: 1 });
+    await expect(lastReply(page), 'the application states the records and the sum (code, not the model)').toContainText(`ここまでの合計は${WEEK_TOTAL_MINUTES}分（${hours(WEEK_TOTAL_MINUTES)}）`);
     expect(await actualDocuments(request, userId), 'nothing is saved by the conversation itself').toEqual([]);
     expect(firestore.writes().filter(write => write.classification === 'forbidden'), 'no protected write before the confirmation click').toEqual([]);
 
@@ -290,6 +295,8 @@ test.describe('examinee week of study records by conversation (durable emulator 
     // Before the correction the confirmation shows 395; the correction replaces Tuesday (it is not added to 45).
     await actualTurn(page, request, week, 'あ、火曜は50分でした。', 'actual_tue_fix');
     await expectDurableVNext(durable, { turns: 5 });
+    await expect(lastReply(page), 'the corrected Tuesday replaces 45, the sum is recomputed').toContainText(
+      `記録しました：火 ${Number(week[1].slice(5, 7))}/${Number(week[1].slice(8))} 英語 50分。ここまでの合計は${WEEK_TOTAL_AFTER_TUESDAY_FIX}分（${hours(WEEK_TOTAL_AFTER_TUESDAY_FIX)}）`);
     expect(await actualDocuments(request, userId), 'a correction saves nothing').toEqual([]);
 
     const dialog = await openConfirmation(page);
@@ -337,7 +344,26 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await expectNeighboursUnchanged(request);
   });
 
-  test('N3: a second click and a reopened confirmation after reload leave the saved records exactly as they were', async ({ page, request }) => {
+  test('N4: vague statements ("数学ちょっと", "土日で化学3時間") record nothing and get exactly one question', async ({ page, request }) => {
+    const firestore = attachWriteLedger(page);
+    await signIn(page);
+    const week = await previousWeekOf(page);
+    await seedNeighbours(request, week);
+    await openPlannerOnPreviousWeek(page);
+    await actualTurn(page, request, week, '先週、数学ちょっとやりました。', 'actual_vague_math');
+    await expect(lastReply(page)).toContainText('数学は何分くらい勉強しましたか？');
+    expect((await lastReply(page).innerText()).match(/？/gu), 'one question, not several').toHaveLength(1);
+    await expect(page.locator('.ai-planning-actual-card'), 'nothing was understood, so nothing to confirm').toHaveCount(0);
+    await actualTurn(page, request, week, '土日で化学を3時間やりました。', 'actual_vague_weekend');
+    await expect(lastReply(page)).toContainText('土日の化学は、日ごとに何分ずつでしたか？');
+    expect((await lastReply(page).innerText()).match(/？/gu), 'one question, not several').toHaveLength(1);
+    await expect(page.locator('.ai-planning-actual-card'), 'no equal split is assumed: nothing to confirm').toHaveCount(0);
+    expect(await actualDocuments(request, userId)).toEqual([]);
+    expect(firestore.writes().filter(write => write.classification === 'forbidden')).toEqual([]);
+    await expectNeighboursUnchanged(request);
+  });
+
+  test('N3: a second click, a reload and the same statement again leave the saved records exactly as they were', async ({ page, request }) => {
     const firestore = attachWriteLedger(page);
     await signIn(page);
     const week = await previousWeekOf(page);
@@ -353,15 +379,15 @@ test.describe('examinee week of study records by conversation (durable emulator 
     const first = await actualDocuments(request, userId);
     expectSavedWeek(first, week, scenarioRows(week));
 
-    // After a reload the conversation is restored; if the confirmation can be opened again, saving again changes nothing.
+    // After a reload the conversation is restored and the saved records are not offered again (I3: status 'saved' persists in the
+    // session). Re-sending the same statement changes nothing either: the application answers that it is already recorded.
     await page.reload();
     await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
     await openAiPlanning(page);
-    if (await CONFIRM.open(page).count()) {
-      await CONFIRM.open(page).click();
-      const again = CONFIRM.dialog(page);
-      if (await CONFIRM.save(again).isEnabled()) await firestore.during('save-actuals', async () => { await CONFIRM.save(again).click(); await expect(again).toBeHidden({ timeout: 60_000 }); });
-    }
+    await expect(page.locator('.ai-planning-actual-card'), 'saved records are not offered for confirmation again').toHaveCount(0);
+    await actualTurn(page, request, week, '月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学120分、日曜は化学90分でした。', 'actual_week');
+    await expect(lastReply(page)).toContainText('その内容はすでに記録しています');
+    await expect(page.locator('.ai-planning-actual-card'), 'a repeated statement creates nothing new to confirm').toHaveCount(0);
     const second = await actualDocuments(request, userId);
     expect(second.map(({ docId, date, subject, minutes }) => ({ docId, date, subject, minutes })), 'same documents, same ids, same count')
       .toEqual(first.map(({ docId, date, subject, minutes }) => ({ docId, date, subject, minutes })));
@@ -385,7 +411,8 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await putRules(denyActualWrites);
     try {
       await firestore.during('save-actuals', async () => { await CONFIRM.save(dialog).click(); });
-      await expect(page.getByRole('alert').filter({ hasText: /保存できませんでした|失敗/u }).first(), 'the failure is shown, not swallowed').toBeVisible({ timeout: 30_000 });
+      await expect(dialog.getByRole('alert'), 'the failure is shown, not swallowed').toBeVisible({ timeout: 30_000 });
+      await expect(CONFIRM.save(dialog), 'the same button offers the retry').toHaveText('実績の保存を再試行');
       expect(await actualDocuments(request, userId), 'all or nothing: a rejected batch saves no record').toEqual([]);
       await expect(dialog, 'the confirmation stays open for a retry').toBeVisible();
     } finally {
