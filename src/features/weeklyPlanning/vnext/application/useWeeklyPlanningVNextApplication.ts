@@ -20,6 +20,7 @@ import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../applic
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
 import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn } from '../../application/weeklyPlanningTurnPreparation';
+import { selectPendingActualRecords, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -62,6 +63,10 @@ export function useWeeklyPlanningVNextApplication(
   const services = useMemo(() => providedServices ?? localServices(), [providedServices]);
   const [revision, redraw] = useState(0);
   const recoveringDurableRequest = useRef<string | null>(null);
+  // A confirmation click is the only save authority for study records; the in-flight flag makes a second
+  // click or a resent request a no-op while the first batch is still running (#973).
+  const actualRecordsInFlight = useRef(false);
+  const [savedActualIds, setSavedActualIds] = useState<ReadonlySet<string>>(() => new Set());
   const runtime = useMemo(() => {
     const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: week, storage: services.storage });
     let loaded: ReturnType<typeof local.load>;
@@ -238,6 +243,28 @@ export function useWeeklyPlanningVNextApplication(
     });
   }, [chat, runtime, revision, runtime.state, runtime.session.conversationId, input.userId, input.plannerDataAvailability]);
   const pendingDraftBlocks = runtime.state.draftBlocks.filter(block => block.status === 'draft');
+  // The session's `actualRecords` come from the conversation layer (I2); until it is integrated the state has none.
+  const pendingActualRecords = selectPendingActualRecords(
+    (runtime.state as { actualRecords?: WeeklyPlanningActualRecord[] }).actualRecords,
+  ).filter(record => !savedActualIds.has(record.id));
+  const approveActualRecords = async () => {
+    const records = pendingActualRecords;
+    // Nothing to save, an owner that is not signed in, or a save already running: never write (no owner mismatch writes).
+    if (records.length === 0 || actualRecordsInFlight.current || !input.userId || !input.saveWeeklyActualRecords || !current()) return;
+    actualRecordsInFlight.current = true;
+    redraw(value => value + 1);
+    try {
+      await input.saveWeeklyActualRecords(ownerId, records);
+      const ids = records.map(record => record.id);
+      setSavedActualIds(previous => new Set([...previous, ...ids]));
+      // Persisted mark so a reload does not offer the same records again (state action agreed with I2).
+      dispatch({ type: 'mark_actual_records_saved', ids } as unknown as WeeklyPlanningAction);
+      chat.checkpoint();
+    } finally {
+      actualRecordsInFlight.current = false;
+      redraw(value => value + 1);
+    }
+  };
   // The preparation sequence is shared with the V5 hook; only these accessors are this core's.
   const preparationPorts = {
     isPlannerDataCurrent: () => Boolean(input.userId && isPlannerDataReadyForOwner(input.plannerDataAvailability, input.userId)
@@ -297,6 +324,8 @@ export function useWeeklyPlanningVNextApplication(
     removePreviewCandidate: candidateId => { dispatch({ type: 'remove_preview_candidate', candidateId }); },
     removeDraftBlock: blockId => { dispatch({ type: 'remove_draft_block', blockId }); },
     clearDraftBlocks: () => { dispatch({ type: 'clear_draft_blocks' }); },
+    pendingActualRecords,
+    approveActualRecords,
     approveDraftBlocks: () => approveWeeklyPlanningDraftBlocks({ ...input, userId: ownerId,
       featureSessionId: runtime.session.conversationId, plans: input.plans, getState, dispatch,
       resolveRuntime: runtime.local.resolveRuntime, approvalOperations: runtime.operations,

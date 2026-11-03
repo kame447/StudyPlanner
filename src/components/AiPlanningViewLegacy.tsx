@@ -1028,6 +1028,24 @@ export function AiPlanningView({
             </div>
           ) : null}
 
+          {(application.pendingActualRecords?.length ?? 0) > 0 ? (
+            <div className="ai-planning-plan-card ai-planning-actual-card">
+              <div className="ai-planning-plan-card-head">
+                <div>
+                  <span>実績</span>
+                  <strong>{application.pendingActualRecords?.length}件の勉強記録</strong>
+                </div>
+                <b>{application.pendingActualRecords?.length}件</b>
+              </div>
+              {/* Opens the confirmation; only the button inside it saves. */}
+              <button className="ai-planning-preview-button ai-planning-actual-open" type="button">
+                <BookOpen size={18} aria-hidden="true" />
+                実績を確認
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </div>
+          ) : null}
+
           {state.approvalRecovery ? (
             <p className="ai-planning-error" role="status">
               保存の確認が途中です。計画プレビューから保存を再試行してください。確認が終わるまで、この会話の予定は変更できません。
