@@ -27,6 +27,7 @@ const repository = vi.hoisted(() => ({
   restorePlanWithDependents: vi.fn(),
   applyTimetableMutation: vi.fn(),
   upsertActualWithMaterialProgress: vi.fn<(mutation: { actual: Actual; materials: readonly StudyMaterial[] }) => Promise<Actual>>(),
+  saveDurationActualsBatch: vi.fn(),
 }));
 
 vi.mock('../repositories', () => ({ plannerRepository: repository }));
@@ -91,6 +92,7 @@ function resetRepositoryMocks() {
   repository.restorePlanWithDependents.mockResolvedValue(undefined);
   repository.applyTimetableMutation.mockResolvedValue(undefined);
   repository.upsertActualWithMaterialProgress.mockImplementation(async ({ actual }) => actual);
+  repository.saveDurationActualsBatch.mockResolvedValue([]);
 }
 
 describe('usePlannerDataState planner-data read authority', () => {
@@ -672,6 +674,28 @@ describe('usePlannerDataState overlapping Todo mutations', () => {
 
 describe('planner user-facing error boundary', () => {
   beforeEach(() => { vi.clearAllMocks(); latestState = null; resetRepositoryMocks(); });
+
+  it('reports a permission-denied weekly actual save as unsaved for a permission reason', async () => {
+    const renderer = create(<Harness userId="owner-a" />);
+    try {
+      await act(async () => { await readState().loadPlannerData('owner-a'); });
+      const denial = Object.assign(new Error('private backend detail'), { code: 'permission-denied' });
+      repository.saveDurationActualsBatch.mockRejectedValueOnce(denial);
+      let caught: unknown;
+      await act(async () => {
+        caught = await readState().saveDurationActualsBatch([
+          { id: 'record-1', occurrenceDate: '2026-10-30', subject: '数学', minutes: 30 },
+        ]).catch(error => error);
+      });
+      expect(repository.saveDurationActualsBatch).toHaveBeenCalledTimes(1);
+      expect(readState().actuals).toEqual([]);
+      expect(caught).toBeInstanceOf(UserFacingError);
+      expect((caught as Error).message).toContain('権限');
+      expect((caught as Error).message).toContain('保存されていません');
+      expect(showNotice).toHaveBeenLastCalledWith((caught as Error).message, 'error');
+      expect((caught as Error).message).not.toContain('private backend detail');
+    } finally { renderer.unmount(); }
+  });
 
   it.each([
     Object.assign(new Error('FirebaseError: synthetic-secret https://internal.invalid'), { code: 'permission-denied', customData: { token: 'synthetic-secret' } }),

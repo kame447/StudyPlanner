@@ -297,6 +297,29 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     expect(store.getState().pendingTurn).toBeUndefined();
   });
 
+  it.each([
+    ['owner mismatch', '会話の所有者が変わりました。', '所有者'],
+    ['authentication or permission denial', '再ログインして会話を開き直してください。', '再ログイン'],
+  ])('keeps a safe unsaved consultation in conversation history after %s', async (_case, failureText, reason) => {
+    const { store, params } = baseParams();
+    const execute = vi.fn(async () => { throw new Error(failureText); });
+    const services = createServices({ runtimeGateway: { execute } });
+
+    await expect(submitWeeklyPlanningApplicationTurn(params, services)).rejects.toThrow(failureText);
+
+    const state = store.getState();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(state.pendingTurn).toBeUndefined();
+    expect(state.draftBlocks).toEqual([]);
+    expect(state.previewCandidates).toEqual([]);
+    expect(state.messages[0]).toMatchObject({ role: 'user', content: params.userText });
+    const lastingReply = state.messages[state.messages.length - 1];
+    expect(lastingReply?.role).toBe('assistant');
+    expect(lastingReply?.content).toContain(reason);
+    expect(lastingReply?.content).toContain('保存されていません');
+    expect(lastingReply?.content).toContain('相談');
+  });
+
   it.each(['cancel', 'owner_change', 'revision_change'])('passes a live recovery guard that closes after %s', async (change) => {
     const { params, store } = baseParams();
     const services = createServices();

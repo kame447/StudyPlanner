@@ -67,6 +67,21 @@ describe('durable browser turn transport', () => {
     const h = harness(); await expect(executeDurableWeeklyTurn(h.receipt, { ports: h.ports, isCurrent: () => false })).rejects.toThrow();
     expect(h.fetch).not.toHaveBeenCalled();
   });
+  it('does not send a turn when the owner token cannot be obtained', async () => {
+    const h = harness();
+    h.ports.token = vi.fn(async () => { throw new Error('会話の所有者が変わりました。'); });
+    await expect(executeDurableWeeklyTurn(h.receipt, { ports: h.ports })).rejects.toThrow('会話の所有者が変わりました。');
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it.each([401, 403])('ends a %i authentication or permission response without another request', async (status) => {
+    const h = harness();
+    h.fetch.mockResolvedValueOnce(new Response(null, { status }));
+    h.ports.wait = vi.fn(async () => { throw new Error('unexpected retry'); });
+    await expect(executeDurableWeeklyTurn(h.receipt, { ports: h.ports })).rejects.toThrow('再ログインして会話を開き直してください。');
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    expect(h.fetch.mock.calls[0][1]?.method).toBe('POST');
+    expect(h.ports.wait).not.toHaveBeenCalled();
+  });
   it('ends on rejected acceptance, unknown state or malformed completion without polling', async () => {
     for (const response of [Response.json({}, { status: 409 }), Response.json({}, { status: 429 }),
       Response.json({}, { status: 422 }), harness().response('unknown'), harness().response('completed', { result: null })]) {
