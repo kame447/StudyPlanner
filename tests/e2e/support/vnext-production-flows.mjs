@@ -2,7 +2,7 @@ import { expect } from '@playwright/test';
 import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStorage } from './vnext-chat-storage.mjs';
 import { expectDurableVNext, observeDurableTurns } from './vnext-durable-observation.mjs';
 import { openScheduleDay, removeSavedPlansByTitle, sweepLeftoverPlans } from './schedule-plan-cleanup.mjs';
-import { classifyFirestoreWrite } from './d5-production-smoke-observation.mjs';
+import { attachWriteLedger, protectedWritesIn } from './vnext-firestore-writes.mjs';
 import { addDays, chooseTargetDay, isoDay, keyForWeek, onlyWeek, weeksOf } from './vnext-planner-week.mjs';
 
 // The VNext production flows (Issue #926), defined once and run by BOTH the production smoke (real model, live account,
@@ -29,18 +29,10 @@ export const openAiPlanning = async page => {
   await expect(composer(page)).toBeVisible();
 };
 
-// Counts and classifications of Firestore writes made by the page; nothing else is recorded.
-function observeFirestore(page) {
-  const seen = { forbidden: [], unclassified: 0 };
-  page.on('request', request => {
-    const url = new URL(request.url());
-    if (url.hostname !== 'firestore.googleapis.com') return;
-    const write = classifyFirestoreWrite({ url: request.url(), method: request.method(), postData: request.postData() });
-    if (write?.classification === 'forbidden') seen.forbidden.push(write);
-    if (write?.classification === 'unclassified') seen.unclassified++;
-  });
-  return seen;
-}
+// Firestore writes of the page, by phase (production and emulator hosts alike). Phases that must not write are the default;
+// the sweep, the approved save and the cleanup are the only authorized ones (flow 3).
+const observeFirestore = attachWriteLedger;
+const expectNoUnauthorizedWrites = ledger => expect(ledger.violations()).toEqual([]);
 
 // One turn: start the optional scripted answers, send, wait for a new assistant bubble and a usable composer.
 async function sendTurn(page, text, scripted) {
@@ -101,7 +93,7 @@ async function expectTurnInTargetWeek(page, target, { previewRequired }) {
  * the next one) and returns the target. Used by every flow that names a date, so a date outside the planner's week can
  * never be asked for. With `sweepLeftovers` the day view is visited first and earlier failed runs' plans are removed.
  */
-export async function goToTargetPlannerWeek(page, { sweepLeftovers = false, plannerWeek = null } = {}) {
+export async function goToTargetPlannerWeek(page, { sweepLeftovers = false, plannerWeek = null, ledger = null } = {}) {
   // The planner's week is read only where it is unambiguous (before any week change) unless the caller names it.
   const week = plannerWeek ?? await plannerWeekStart(page);
   const nowMs = await page.evaluate(() => Date.now());
@@ -113,7 +105,8 @@ export async function goToTargetPlannerWeek(page, { sweepLeftovers = false, plan
     const today = new Date(Date.UTC(jstToday.getUTCFullYear(), jstToday.getUTCMonth(), jstToday.getUTCDate()));
     const dates = [];
     for (let day = today; day.getTime() <= target.date.getTime(); day = addDays(day, 1)) dates.push(day);
-    const removed = await sweepLeftoverPlans(page, { titlePrefix: LEFTOVER_TITLE_PREFIX, dates });
+    const sweep = () => sweepLeftoverPlans(page, { titlePrefix: LEFTOVER_TITLE_PREFIX, dates });
+    const removed = ledger ? await ledger.during('sweep', sweep) : await sweep();
     if (removed > 0) console.warn(`Removed ${removed} leftover ${LEFTOVER_TITLE_PREFIX} plan title(s) from an earlier failed run.`);
     visitedDayView = true;
   } else if (target.switchWeek) {
@@ -195,7 +188,7 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
       expect(after.previewSources).toEqual(before.previewSources);
       expect(after.draftBlocks).toBe(0);
       await expectDurableVNext(durable, { turns: 1 });
-      expect(firestore.forbidden).toEqual([]);
+      expectNoUnauthorizedWrites(firestore);
 
       // Flow 4: reload keeps the conversation and makes no new durable call.
       const calls = await durable.observedCalls();
@@ -216,7 +209,7 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
       await expect(userBubble(page, text)).toHaveCount(1);
       expect(await durable.observedCalls(), 'reload and chat switching make no provider call').toBe(calls);
       expect(durable.seen.durablePosts, 'reload and chat switching submit no durable turn').toBe(posts);
-      expect(firestore.forbidden).toEqual([]);
+      expectNoUnauthorizedWrites(firestore);
     });
 
     test('flow 2: fixed-event registration previews only and saves nothing', async ({ page, request }) => {
@@ -237,7 +230,7 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
       await expect(page.locator('.ai-planning-plan-card'), 'the registration preview is offered in the chat').toBeVisible();
       expect(after.draftBlocks).toBe(0);
       await expectDurableVNext(durable, { turns: 1 });
-      expect(firestore.forbidden).toEqual([]);
+      expectNoUnauthorizedWrites(firestore);
     });
 
     const planFlow = (name, { week = false } = {}) => test(name, async ({ page, request }) => {
@@ -260,7 +253,7 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
           await selectDayOfPreviousWeek(page, plannerWeek);
         }
         // Earlier failed runs' plans are removed first, then the planner is put on the target day's week.
-        target = await goToTargetPlannerWeek(page, { sweepLeftovers: true, plannerWeek });
+        target = await goToTargetPlannerWeek(page, { sweepLeftovers: true, plannerWeek, ledger: firestore });
         if (week) expect(target.switchWeek, 'this case must take the week-switching branch').toBe(true);
         await sendTurn(page, `${target.text}の夜に「${title}」を合計90分したいです。30分ずつに分けても構いません。計画案を作ってください。`,
           scripted(request, { kind: 'plan', title, date: target.iso }));
@@ -278,8 +271,12 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
           /^(.*) (\d{2}:\d{2})-(\d{2}:\d{2})$/u, 'data-ai-preview-action-block');
         expect(previewMinutes, 'preview blocks for the title must total the corrected 60 minutes').toBe(60);
         attemptedSave = true; // the save click may write even when a later wait fails: cleanup must then still run
-        await promoteThenSave(dialog);
-        await expect(dialog).toBeHidden({ timeout: 60_000 });
+        // The approved save is the one authorized write of the flow; the observer must see it (a blind observer proves nothing).
+        await firestore.during('save', async () => {
+          await promoteThenSave(dialog);
+          await expect(dialog).toBeHidden({ timeout: 60_000 });
+        });
+        expect(protectedWritesIn(firestore.inPhase('save')), 'the approved save writes to a protected collection, seen by the observer').not.toEqual([]);
         await openScheduleDay(page, target.date);
         await expect.poll(() => visibleEntries(page, title).count(), { timeout: 30_000 }).toBeGreaterThan(0);
         savedBlocks = await countSavedBlocks(page, title);
@@ -287,14 +284,14 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
           /^(.*?) \/ (\d{2}:\d{2})-(\d{2}:\d{2})(?: \/ .*)?$/u);
         expect(savedMinutes, 'saved entries for the title must total the corrected 60 minutes').toBe(60);
         await expectDurableVNext(durable, { turns: 2 });
-        expect(firestore.forbidden).toEqual([]);
+        expectNoUnauthorizedWrites(firestore);
       } catch (error) {
         primaryError = error;
       } finally {
         if (attemptedSave) {
           try {
             // Exactly the blocks observed saved are removed and none remain; when the save never became visible nothing may be found.
-            const removed = await removeSavedPlansByTitle(page, { title, date: target.date, allowNone: savedBlocks === null });
+            const removed = await firestore.during('cleanup', () => removeSavedPlansByTitle(page, { title, date: target.date, allowNone: savedBlocks === null }));
             expect(removed, 'cleanup removes exactly the saved blocks').toBe(savedBlocks ?? removed);
           } catch (error) { cleanupError = error; }
         }
