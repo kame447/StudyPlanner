@@ -32,6 +32,7 @@ Object.assign(process.env, {
 });
 
 const VNEXT_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-vnext-state.json');
+const ACTUAL_WEEK_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-actual-week-state.json');
 
 // The durable-turn target (#926): the production durable job on, the model still the synthetic provider. It is
 // a second Worker and a second production build beside the default pair, on their own ports, so every project
@@ -102,6 +103,20 @@ export default defineConfig({
       dependencies: ['emulator-vnext-setup'],
       metadata: { email: 'e2e-vnext@example.test' },
       use: { ...devices['Desktop Chrome'], storageState: VNEXT_STATE },
+    },
+    // The examinee's week of study records through the existing record UI (no model, no Worker call), own account.
+    {
+      name: 'emulator-actual-week-setup',
+      testMatch: 'emulator/account.setup.mjs',
+      metadata: { email: 'e2e-actual-week@example.test', statePath: ACTUAL_WEEK_STATE },
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'chromium-emulator-actual-week',
+      testMatch: 'emulator/actual-week.emulator.mjs',
+      dependencies: ['emulator-actual-week-setup'],
+      metadata: { email: 'e2e-actual-week@example.test' },
+      use: { ...devices['Desktop Chrome'], storageState: ACTUAL_WEEK_STATE },
     },
     {
       name: 'emulator-vnext-production-setup',
