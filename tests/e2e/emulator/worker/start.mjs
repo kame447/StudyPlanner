@@ -18,6 +18,13 @@ const jevRouting = Object.fromEntries(Object.entries(productionVars).filter(([na
 // The explicit real-API workflow (#926) swaps only the model: the key comes from this run's environment and
 // the durable job is on, as in production. Without it nothing here reads a real credential.
 const realApi = process.env.STUDYPLANNER_E2E_REAL_API === '1';
+// The durable-turn target (#926): the production durable job is on and the model stays the synthetic provider.
+// It is a second Worker beside the default one, so it has its own port, allowed origin, persisted state and
+// inspector port; the default Worker (durable job off) is untouched.
+const durableTurns = realApi || process.env.STUDYPLANNER_E2E_DURABLE === '1';
+const separateTarget = process.env.STUDYPLANNER_E2E_DURABLE === '1' && !realApi;
+const port = process.env.STUDYPLANNER_E2E_WORKER_PORT ?? '18787';
+const appPort = process.env.STUDYPLANNER_E2E_APP_PORT ?? '4176';
 if (realApi && !process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required for the real-API target.');
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -31,7 +38,7 @@ const vars = {
   OPENAI_API_KEY: realApi ? process.env.OPENAI_API_KEY : 'synthetic-provider-key',
   ...(realApi ? {} : { OPENAI_BASE_URL: 'http://127.0.0.1:18790/v1' }),
   OPENROUTER_API_KEY: 'synthetic-provider-key',
-  ALLOWED_ORIGIN: 'http://127.0.0.1:4176',
+  ALLOWED_ORIGIN: `http://127.0.0.1:${appPort}`,
   ALLOWED_CHAT_MODELS: 'gpt-6-luna,gpt-5.6-luna',
   OBSERVABILITY_IDENTITY_SECRET: randomBytes(32).toString('hex'),
   WEEKLY_PLANNING_TRACE_HMAC_SECRETS: JSON.stringify({
@@ -39,14 +46,15 @@ const vars = {
   }),
   WEEKLY_PLANNING_TRACE_WORKER_REVISION: 'e2e-emulator',
   SEMANTIC_CENSUS_MODE: 'off',
-  DURABLE_WEEKLY_TURNS: realApi ? 'enabled' : 'disabled',
+  DURABLE_WEEKLY_TURNS: durableTurns ? 'enabled' : 'disabled',
 };
 
 const child = spawn(process.execPath, [
   path.join(repoRoot, 'node_modules/wrangler/bin/wrangler.js'), 'dev',
   '--config', path.join(workerDir, realApi ? 'wrangler.real-api.jsonc' : 'wrangler.jsonc'),
-  '--ip', '127.0.0.1', '--port', '18787', '--local',
-  '--persist-to', path.join(repoRoot, 'artifacts/emulator-wrangler-state'),
+  '--ip', '127.0.0.1', '--port', port, '--local',
+  '--persist-to', path.join(repoRoot, separateTarget ? 'artifacts/emulator-wrangler-state-durable' : 'artifacts/emulator-wrangler-state'),
+  ...(separateTarget ? ['--inspector-port', process.env.STUDYPLANNER_E2E_INSPECTOR_PORT ?? '9330'] : []),
   ...Object.entries(vars).flatMap(([name, value]) => ['--var', `${name}:${value}`]),
 ], { cwd: repoRoot, stdio: 'inherit' });
 
