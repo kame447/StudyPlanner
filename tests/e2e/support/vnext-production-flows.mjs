@@ -3,6 +3,7 @@ import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStora
 import { expectDurableVNext, observeDurableTurns } from './vnext-durable-observation.mjs';
 import { openScheduleDay, removeSavedPlansByTitle, sweepLeftoverPlans } from './schedule-plan-cleanup.mjs';
 import { classifyFirestoreWrite } from './d5-production-smoke-observation.mjs';
+import { addDays, chooseTargetDay, isoDay, keyForWeek, onlyWeek, weeksOf } from './vnext-planner-week.mjs';
 
 // The VNext production flows (Issue #926), defined once and run by BOTH the production smoke (real model, live account,
 // weekly-planning-vnext-production.live.mjs) and the CI emulator (durable Worker + synthetic provider,
@@ -17,9 +18,6 @@ import { classifyFirestoreWrite } from './d5-production-smoke-observation.mjs';
 // started before the user sends, and awaited after the turn completes.
 export const LEFTOVER_TITLE_PREFIX = 'E2E-E2E-VNEXT-';
 
-const pad = value => String(value).padStart(2, '0');
-const isoDay = date => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
-const addDays = (date, days) => new Date(date.getTime() + days * 86_400_000);
 const dayText = date => `${date.getUTCMonth() + 1}月${date.getUTCDate()}日`;
 
 const composer = page => page.locator('.ai-planning-composer textarea');
@@ -57,29 +55,45 @@ async function sendTurn(page, text, scripted) {
   await run;
 }
 
-// The planner's current week start, from the active chat's VNext checkpoint (a date only).
-const plannerWeekStart = page => page.evaluate(() => {
-  const indexKey = Object.keys(localStorage).find(key => key.startsWith('studyplanner.aiPlanning.chats.v1.') && !key.endsWith('.anonymous'));
-  if (!indexKey) return null;
-  let active;
-  try { active = JSON.parse(localStorage.getItem(indexKey)).activeChatId; } catch { return null; }
-  const key = Object.keys(localStorage).find(name => name.startsWith('studyplanner.weeklyPlanning.vnext.')
-    && !name.includes('.anonymous.') && name.endsWith(`.${active}.ui`));
-  try { return key ? JSON.parse(localStorage.getItem(key)).payload.state.weekStartDate : null; } catch { return null; }
+// Key NAMES only (never values) plus the active chat id; the week readers below parse the names with the pure helpers.
+const readKeys = page => page.evaluate(() => {
+  const names = Object.keys(localStorage);
+  const indexKey = names.find(key => key.startsWith('studyplanner.aiPlanning.chats.v1.') && !key.endsWith('.anonymous'));
+  let active = null;
+  try { active = indexKey ? JSON.parse(localStorage.getItem(indexKey)).activeChatId : null; } catch { /* unreadable */ }
+  return { names, active };
 });
 
-// Tomorrow (in Asia/Tokyo, by the BROWSER's clock: fixed in the emulator) when it stays inside the planner's week;
-// otherwise the third day of the next week, with the planner switched to that week first.
-function chooseTargetDay(weekStart, browserNowMs) {
-  expect(weekStart, 'the planner week must be readable from the checkpoint').toMatch(/^\d{4}-\d{2}-\d{2}$/u);
-  const start = new Date(`${weekStart}T00:00:00Z`);
-  const tomorrow = new Date(browserNowMs + 9 * 3600_000 + 86_400_000);
-  const tomorrowDay = new Date(Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate()));
-  if (tomorrowDay.getTime() >= start.getTime() && tomorrowDay.getTime() <= addDays(start, 6).getTime()) {
-    return { date: tomorrowDay, switchWeek: false, weekStart };
-  }
-  const nextStart = addDays(start, 7);
-  return { date: addDays(nextStart, 2), switchWeek: true, weekStart: isoDay(nextStart) };
+// The planner's week from the active chat's `.ui` keys. The product keeps one per (week, chat), so this is only valid while
+// the chat has exactly one (before any week change): with several it throws instead of picking one by order.
+async function plannerWeekStart(page) {
+  const { names, active } = await readKeys(page);
+  return active ? onlyWeek(weeksOf(names, active, 'ui'), '.ui') : null;
+}
+
+// Weeks in which the active chat has an accepted turn (its `.core` keys).
+async function coreWeeks(page) {
+  const { names, active } = await readKeys(page);
+  return active ? weeksOf(names, active, 'core') : [];
+}
+
+// Preview candidate dates stored in the active chat's `.ui` of an explicitly named week (dates only).
+async function previewDates(page, week) {
+  const { names, active } = await readKeys(page);
+  const key = keyForWeek(names, active, week, 'ui');
+  return page.evaluate(name => {
+    try { return (JSON.parse(localStorage.getItem(name)).payload.state.previewCandidates ?? []).map(candidate => candidate.date); }
+    catch { return []; }
+  }, key);
+}
+
+// After a turn in the target week: the only accepted-turn week is the target's, and the preview is inside that week.
+async function expectTurnInTargetWeek(page, target, { previewRequired }) {
+  expect(await coreWeeks(page), 'the first accepted turn belongs to the target week and to no other').toEqual([target.weekStart]);
+  const dates = await previewDates(page, target.weekStart);
+  if (previewRequired) expect(dates.length, 'the turn produced a preview').toBeGreaterThan(0);
+  const weekEnd = isoDay(addDays(new Date(`${target.weekStart}T00:00:00Z`), 6));
+  expect(dates.filter(date => date < target.weekStart || date > weekEnd), 'every preview block lies in the target week').toEqual([]);
 }
 
 /**
@@ -87,8 +101,9 @@ function chooseTargetDay(weekStart, browserNowMs) {
  * the next one) and returns the target. Used by every flow that names a date, so a date outside the planner's week can
  * never be asked for. With `sweepLeftovers` the day view is visited first and earlier failed runs' plans are removed.
  */
-export async function goToTargetPlannerWeek(page, { sweepLeftovers = false } = {}) {
-  const week = await plannerWeekStart(page);
+export async function goToTargetPlannerWeek(page, { sweepLeftovers = false, plannerWeek = null } = {}) {
+  // The planner's week is read only where it is unambiguous (before any week change) unless the caller names it.
+  const week = plannerWeek ?? await plannerWeekStart(page);
   const nowMs = await page.evaluate(() => Date.now());
   const target = chooseTargetDay(week, nowMs);
   let visitedDayView = false;
@@ -105,10 +120,9 @@ export async function goToTargetPlannerWeek(page, { sweepLeftovers = false } = {
     await openScheduleDay(page, target.date);
     visitedDayView = true;
   }
-  if (visitedDayView) {
-    await openAiPlanning(page);
-    await expect.poll(() => plannerWeekStart(page), { timeout: 30_000 }).toBe(target.weekStart);
-  }
+  // The planner follows the selected day's week (the day view ends on the target day); the first turn's week is checked
+  // after it (expectTurnInTargetWeek), because a fresh week has no `.ui` of its own to read before a turn.
+  if (visitedDayView) await openAiPlanning(page);
   return { ...target, iso: isoDay(target.date), text: dayText(target.date) };
 }
 
@@ -130,12 +144,25 @@ async function shownMinutes(locator, title, pattern, idAttribute) {
 
 // Selects the day seven days before today in the schedule's day view: the AI planner works on the selected date's week,
 // and the week of today - 7 always ends before tomorrow.
-async function selectDayOfPreviousWeek(page) {
+async function selectDayOfPreviousWeek(page, expectedPlannerWeek) {
+  const nowMs = await page.evaluate(() => Date.now());
+  const jst = new Date(nowMs + 9 * 3600_000 - 7 * 86_400_000);
+  const day = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()));
   await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
   await page.getByRole('tab', { name: '日', exact: true }).click();
   const previous = page.getByRole('button', { name: '前の期間へ' });
   for (let step = 0; step < 7; step++) await previous.click();
+  // Observed, not assumed: the day view shows that day, and the planner has moved to its week (its own `.ui` exists).
+  await expect(page.getByText(dayText(day)).first()).toBeVisible();
+  await expect.poll(async () => {
+    const { names, active } = await readKeys(page);
+    return active ? weeksOf(names, active, 'ui').includes(expectedPlannerWeek) : false;
+  }, { message: 'the planner moved to the previous week', timeout: 30_000 }).toBe(true);
 }
+
+// Saved plan blocks of this title on the open schedule day (titles render as '<title> <n>分', DayTimeline.tsx).
+const countSavedBlocks = (page, title) => page.locator('.timeline-plan-block:not(.timeline-draft-block)').evaluateAll(
+  (nodes, name) => nodes.filter(node => (node.getAttribute('title') ?? '').startsWith(`${name} `)).length, title);
 
 // Only visible nodes: the hidden AI view still holds the same title in its messages.
 const visibleEntries = (page, title) => page.getByText(title).locator('visible=true');
@@ -202,6 +229,7 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
       const text = `${target.text}の10:30から12:00まで部活があります。その予定を登録したいです。`;
       const before = await readVNextChatStorage(page, text);
       await sendTurn(page, text, scripted(request, { kind: 'registration', title: '部活', date: target.iso }));
+      await expectTurnInTargetWeek(page, target, { previewRequired: true });
       const after = await readVNextChatStorage(page, text);
       expectTurnPersisted(before, after);
       expect(after.stableV5Keys).toBe(before.stableV5Keys);
@@ -217,20 +245,29 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
       const durable = observeDurableTurns(page);
       const title = `E2E-${tag}-読書`;
       let attemptedSave = false;
+      let savedBlocks = null; // observed on the schedule day view once the plan is saved
       let target = null;
       let primaryError = null;
       let cleanupError = null;
       try {
         await signIn(page);
-        if (week) await selectDayOfPreviousWeek(page);
         await openAiPlanning(page);
+        // The planner's own week, read while it has a single `.ui` (before any week change).
+        let plannerWeek = null;
+        if (week) {
+          const current = await plannerWeekStart(page);
+          plannerWeek = isoDay(addDays(new Date(`${current}T00:00:00Z`), -7));
+          await selectDayOfPreviousWeek(page, plannerWeek);
+        }
         // Earlier failed runs' plans are removed first, then the planner is put on the target day's week.
-        target = await goToTargetPlannerWeek(page, { sweepLeftovers: true });
+        target = await goToTargetPlannerWeek(page, { sweepLeftovers: true, plannerWeek });
         if (week) expect(target.switchWeek, 'this case must take the week-switching branch').toBe(true);
         await sendTurn(page, `${target.text}の夜に「${title}」を合計90分したいです。30分ずつに分けても構いません。計画案を作ってください。`,
           scripted(request, { kind: 'plan', title, date: target.iso }));
+        await expectTurnInTargetWeek(page, target, { previewRequired: false });
         await sendTurn(page, `訂正です。「${title}」は合計60分にしてください。`,
           scripted(request, { kind: 'correction', title, date: target.iso }));
+        await expectTurnInTargetWeek(page, target, { previewRequired: true });
         const previewButton = page.locator('.ai-planning-preview-button').first();
         await expect(previewButton, 'a plan preview must exist after the correction').toBeVisible({ timeout: 30_000 });
         await previewButton.click();
@@ -245,6 +282,7 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
         await expect(dialog).toBeHidden({ timeout: 60_000 });
         await openScheduleDay(page, target.date);
         await expect.poll(() => visibleEntries(page, title).count(), { timeout: 30_000 }).toBeGreaterThan(0);
+        savedBlocks = await countSavedBlocks(page, title);
         const savedMinutes = await shownMinutes(page.locator(`[title*="${title}"]`).locator('visible=true'), title,
           /^(.*?) \/ (\d{2}:\d{2})-(\d{2}:\d{2})(?: \/ .*)?$/u);
         expect(savedMinutes, 'saved entries for the title must total the corrected 60 minutes').toBe(60);
@@ -254,8 +292,11 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
         primaryError = error;
       } finally {
         if (attemptedSave) {
-          try { await removeSavedPlansByTitle(page, { title, date: target.date }); }
-          catch (error) { cleanupError = error; }
+          try {
+            // Exactly the blocks observed saved are removed and none remain; when the save never became visible nothing may be found.
+            const removed = await removeSavedPlansByTitle(page, { title, date: target.date, allowNone: savedBlocks === null });
+            expect(removed, 'cleanup removes exactly the saved blocks').toBe(savedBlocks ?? removed);
+          } catch (error) { cleanupError = error; }
         }
       }
       if (primaryError && cleanupError) throw new AggregateError([primaryError, cleanupError], 'VNext plan flow and its cleanup both failed.');
