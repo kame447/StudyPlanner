@@ -41,6 +41,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   const { application, userId, plans, active = true } = props;
   const { state, pendingDraftBlocks, approvalAvailability } = application;
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [entrySuppressed, setEntrySuppressed] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const shellRef = useRef<HTMLDivElement | null>(null);
   const cancellationEpoch = useRef(0);
@@ -70,7 +71,12 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval || application.chat.requiresInitialization);
   const showingPreview = active && isPreviewOpen && allPreviewBlocks.length > 0;
 
-  useLayoutEffect(() => { if (!active) setIsPreviewOpen(false); }, [active]);
+  useLayoutEffect(() => {
+    if (!active) {
+      setIsPreviewOpen(false);
+      setEntrySuppressed(false);
+    }
+  }, [active]);
 
   useLayoutEffect(() => {
     if (!showingPreview) return;
@@ -144,6 +150,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
           animation.finish();
         }
       }
+      setEntrySuppressed(true);
     }
     const trigger = target.closest('.ai-planning-preview-button');
     if (!trigger) return;
@@ -264,7 +271,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
     <div
       ref={shellRef}
       hidden={!active}
-      className={`ai-planning-view-shell-v2 ${showingPreview ? 'is-preview-open' : ''}`}
+      className={`ai-planning-view-shell-v2 ${[showingPreview && 'is-preview-open', entrySuppressed && 'is-entry-suppressed'].filter(Boolean).join(' ')}`}
       onClickCapture={handleLegacySurfaceClickCapture}
     >
       <AiPlanningViewLegacy
