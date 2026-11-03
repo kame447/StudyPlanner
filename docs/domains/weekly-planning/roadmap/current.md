@@ -1,14 +1,17 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-11-03
+Updated: 2026-11-04
 
-Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
+Current production conversation contract: [../architecture/vnext-conversation-core.md](../architecture/vnext-conversation-core.md)
+Stable V5 comparison and reused pure-responsibility reference: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
 Human grounding policy: [../policies/human-grounding.md](../policies/human-grounding.md)
 Adaptive memory policy: [../policies/adaptive-memory.md](../policies/adaptive-memory.md)
 Test philosophy: [../quality/test-philosophy.md](../quality/test-philosophy.md)
 Active work: [../work/README.md](../work/README.md)
+
+Issue [#926](https://github.com/kame447/StudyPlanner/issues/926) is completed: VNext was adopted as the production conversation core by [PR #928](https://github.com/kame447/StudyPlanner/pull/928), while Stable V5 remains for local comparison and pure logic reused through the VNext boundary. The older completed-baseline paragraphs below describe historical development milestones, not an instruction to route production conversations to V5. [Issue #973](https://github.com/kame447/StudyPlanner/issues/973) is still open for the examinee study-record conversation and E2E.
 
 ## Completed baseline
 
