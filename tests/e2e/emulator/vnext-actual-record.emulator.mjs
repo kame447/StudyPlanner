@@ -12,7 +12,7 @@ import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../
 import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 // The wording and arithmetic of the records belong to ONE owner (fix-01 B): expected texts are built from its functions, never from a
 // second format kept in this spec.
-import { formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { ACTUAL_SAVE_RETRY_SAVED_REPLY, formatActualSaveReadbackReply, formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // #973 I4: the examinee's week of study records by CONVERSATION, on the durable emulator stack (production build with durable
 // turns, production Worker, Auth + Firestore emulators, synthetic provider answering from scripted readings; no model call).
@@ -500,6 +500,62 @@ test.describe('examinee week of study records by conversation (durable emulator 
     const second = await actualDocuments(request, userId);
     expect(second.map(({ docId }) => docId).sort(), 'same documents (same ids), none added').toEqual(first.map(({ docId }) => docId).sort());
     expect(total(second)).toBe(WEEK_TOTAL_MINUTES);
+  });
+
+  test('A2: lost save acknowledgement → server not_saved → explicit retry saves the same six records once', async ({ page, request }) => {
+    await signIn(page);
+    const week = await previousWeekOf(page);
+    await seedNeighbours(request, week);
+    await openPlannerOnPreviousWeek(page);
+    const rows = scenarioRows(week);
+    await actualTurn(page, request, week,
+      '月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学120分、日曜は化学90分でした。', 'actual_week');
+    await expectPendingReply(page, rows, WEEK_TOTAL_MINUTES);
+    const originalIds = (await recordStates(page)).map(state => state.split(' ')[1]);
+    expect(originalIds).toHaveLength(6);
+    expect(new Set(originalIds).size).toBe(6);
+    expect(await actualDocuments(request, userId), 'the conversation does not save').toEqual([]);
+    const dialog = await openConfirmation(page);
+    await expectConfirmationRows(dialog, rows, WEEK_TOTAL_MINUTES);
+
+    const firestoreRoute = /127\.0\.0\.1:8180/;
+    await page.route(firestoreRoute, route => route.abort('connectionreset'));
+    try {
+      await CONFIRM.save(dialog).click();
+      await expect(CONFIRM.save(dialog)).toHaveText('保存中...');
+      await expect(dialog).toContainText('保存中（まだ確定していません）');
+      expect(await actualDocuments(request, userId), 'the blocked first batch never reached the server').toEqual([]);
+    } finally {
+      await page.unroute(firestoreRoute);
+    }
+
+    await page.reload();
+    await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
+    expect(await actualDocuments(request, userId), 'the first attempt is still absent after reload').toEqual([]);
+    await openPlannerOnPreviousWeek(page);
+    await expect(lastReply(page)).toHaveText(formatActualSaveReadbackReply(rows.map((row, index) => ({
+      id: originalIds[index], occurrenceDate: row.date, subject: row.subject, minutes: row.minutes,
+    })), [], []));
+    expect(await actualDocuments(request, userId), 'readback itself writes nothing').toEqual([]);
+
+    const firestore = attachWriteLedger(page);
+    const retryDialog = await openConfirmation(page);
+    await expectConfirmationRows(retryDialog, rows, WEEK_TOTAL_MINUTES);
+    expect(await actualDocuments(request, userId), 'opening the retry confirmation writes nothing').toEqual([]);
+    await clickSave(firestore, retryDialog, 6, request);
+    const saved = expectSavedWeek(await actualDocuments(request, userId), week, rows);
+    expect(saved).toHaveLength(6);
+    expect(total(saved)).toBe(WEEK_TOTAL_MINUTES);
+    expect(saved.map(record => record.docId).sort(), 'retry kept the original deterministic ids').toEqual([...originalIds].sort());
+    await expect(lastReply(page)).toHaveText(ACTUAL_SAVE_RETRY_SAVED_REPLY);
+
+    await page.reload();
+    await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
+    await openPlannerOnPreviousWeek(page);
+    const afterReload = await actualDocuments(request, userId);
+    expect(afterReload.map(({ docId, date, subject, minutes }) => ({ docId, date, subject, minutes })))
+      .toEqual(saved.map(({ docId, date, subject, minutes }) => ({ docId, date, subject, minutes })));
+    await expectNeighboursUnchanged(request);
   });
 
   test('unconfirmed save: blocked Firestore write leaves six records saving, and a resend cannot claim they were saved', async ({ page, request }) => {
