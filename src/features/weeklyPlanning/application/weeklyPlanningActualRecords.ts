@@ -85,3 +85,11 @@ export function formatActualRecordRow(record: PendingWeeklyPlanningActualRecord)
   const row = `${weekday} ${month}/${day} ${record.subject} ${formatActualRecordMinutes(record.minutes)}`;
   return record.replacesMinutes === undefined ? row : `${row} ※保存済みの${record.replacesMinutes}分を置き換えます`;
 }
+
+/** What the chat says about a restated record that is already saved with the same minutes (never "not saved yet"). */
+export const ALREADY_SAVED_ACTUAL_RECORDS_PREFIX = 'その内容はすでに保存されています：';
+
+/** 「その内容はすでに保存されています：月 10/26 数学 60分（1時間）、…。」 */
+export function formatAlreadySavedActualRecordsReply(records: readonly PendingWeeklyPlanningActualRecord[]): string {
+  return `${ALREADY_SAVED_ACTUAL_RECORDS_PREFIX}${records.map(formatActualRecordRow).join('、')}。`;
+}

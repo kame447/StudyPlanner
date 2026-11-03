@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatActualRecordRow,
+  formatAlreadySavedActualRecordsReply,
   resolvePendingActualRecordsAgainstSaved,
   toActualRecordsToSave,
   formatActualRecordsTotal,
@@ -66,5 +67,10 @@ describe('weekly actual record confirmation wording', () => {
     expect(formatActualRecordRow(resolved[0])).toBe('火 10/27 英語 45分 ※保存済みの30分を置き換えます');
     expect(formatActualRecordRow(resolved[1])).toBe('水 10/28 現代文 30分');
     expect(Object.keys(toActualRecordsToSave(resolved)[0]).sort()).toEqual(['id', 'minutes', 'occurrenceDate', 'subject']);
+  });
+  it('words an already-saved restatement as saved, never as waiting for confirmation', () => {
+    const text = formatAlreadySavedActualRecordsReply(selectPendingActualRecords(week).slice(0, 2));
+    expect(text).toBe('その内容はすでに保存されています：月 10/26 数学 60分（1時間）、火 10/27 英語 45分。');
+    expect(text).not.toContain('まだ保存していません');
   });
 });
