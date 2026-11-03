@@ -143,7 +143,7 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   holds(unchangedSince(savedStudy, await events(), study));
 
   // A failed provider call: current-contract-v5 "Bounded structured-failure recovery" allows no new dispatch after a
-  // provider failure, so the turn ends with VNext's fixed notice, applies nothing and saves nothing, and the provider
+  // provider failure, so the turn ends with a technical notice, applies nothing and saves nothing, and the provider
   // receives no further request (no recovery renderer call).
   await send(page, '英語の音読も30分');
   const failed = await nextCall(request);
@@ -152,7 +152,8 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
   const requestsAtFailure = await providerRequests(); // includes the failed reading itself
   await answer(request, failed, null, 500);
   await expect(page.locator('.ai-planning-conversation'))
-    .toContainText('うまく反映できませんでした。もう一度、言い方を変えて教えてください。');
+    .toContainText('AIへの接続でエラーが起きました。今回の内容は計画に反映していません。');
+  await expect(page.locator('.ai-planning-conversation')).not.toContainText('言い方を変えて');
   await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
   expect(JSON.stringify(await firestoreDocuments(request, 'schedule_events'))).not.toContain('英語の音読');
   holds(unchangedSince(savedStudy, await events(), study));
