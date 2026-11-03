@@ -38,7 +38,7 @@ const {
   const VNEXT_RELATE_REFERENCE_REQUIREMENT = 'relate a/b reference workload facts: an existing workload uses its supplied F alias in factId; a workload added in this delta uses its localId. For derived work use the F alias of its total workload fact (definingFactId). W aliases and workLineageId are not valid relation references; never put a W alias in localId.';
   const VNEXT_DEFER_ALLOCATION_REQUIREMENT = 'allocation none for an ordinary deferral. provisional_timebox only for a missing_effort_estimate or missing_schedulable_work question, when the user explicitly says the effort is unknown or must not become an estimate and explicitly asks to proceed by provisionally placing the work anyway. It is scheduler permission only: never an amount, estimate, completion or new fact, so add no workload or effort_estimate for it. A stated or approximate time is an estimate answer, not provisional_timebox.';
   const VNEXT_ESTIMATE_ANSWER_REQUIREMENT = 'A whole-work or per-unit estimate about the work in a presented missing_effort_estimate question answers that question regardless of its displayed wording, including a question phrased as total time. Use answer for that work, not a new workload or effort_estimate fact. Choose per whole_work or unit from what the user states; the question\'s wording does not require conversion to a total. This answer rule takes precedence over the time-only workload rule. whole_work = minutes for all of the asked work; unit = minutes for one unit in the unitCode/unitLabel shown in presentedQuestion.forWork. Return the stated minutes without multiplying or computing a total. The application binds that answer to the asked work and its quantity basis. Time already spent on completed work or time for another task is not an answer to this work question; represent it as an ordinary delta fact. State the asked work\'s estimate once in answer; do not repeat it in delta. An option answer already carries that option\'s change; do not restate it in delta. For an option answer, per is null.';
-  const VNEXT_STUDY_RECORD_REQUIREMENT = 'studyRecords: only what the user says they actually studied (past or today), one entry per day and subject. dateExpression is the absolute date YYYY-MM-DD resolved from the clock, never future; subject as the user said it; minutes exactly as stated (hours converted), never estimated, split or computed. A rest day is no entry. A plan or intention is never a record (it belongs in delta). Restating a day and subject with other minutes is a correction: emit that same date and subject again. No clock times. If a part is unclear (vague minutes, a total over several days, no date, no subject), leave it out and set studyRecordQuestion to that one thing: reason missing_minutes, missing_date, missing_subject or split_needed, label in the user\'s words; clear entries are still emitted. When pendingStudyRecordQuestion is supplied and the user answers it, emit the completed entry.';
+  const VNEXT_STUDY_RECORD_REQUIREMENT = 'studyRecords: only what the user says they actually studied (past or today), one entry per day and subject. dateExpression is the absolute date YYYY-MM-DD resolved from the clock, never future; subject as the user said it; minutes exactly as stated (hours converted), never estimated, split or computed. A rest day (a day the user did not study) is never an entry: put its absolute date in studyRestDays. A plan or intention is never a record (it belongs in delta). Restating a day and subject with other minutes is a correction: emit that same date and subject again. No clock times. If a part is unclear (vague minutes, a total over several days, no date, no subject), leave it out and set studyRecordQuestion to that one thing: reason missing_minutes, missing_date, missing_subject or split_needed, label in the user\'s words; clear entries are still emitted. When pendingStudyRecordQuestion is supplied and the user answers it, emit the completed entry.';
   const text: Schema = { type: 'string' }, number: Schema = { type: 'number' };
   const object = (properties: Record<string, Schema>): Schema => ({ type: 'object', properties,
     required: Object.keys(properties), additionalProperties: false });
@@ -107,6 +107,7 @@ const {
       allocation: { ...enumeration(['none', 'provisional_timebox']), description: VNEXT_DEFER_ALLOCATION_REQUIREMENT } })),
   }),
     studyRecords: { ...array(object({ dateExpression: text, subject: text, minutes: number })), description: VNEXT_STUDY_RECORD_REQUIREMENT },
+    studyRestDays: { ...array(text), description: 'Absolute dates YYYY-MM-DD the user says were rest days or days without study (not in the future); no subject and no minutes. Empty when none.' },
     studyRecordQuestion: { ...nullable(object({ reason: enumeration(VNEXT_STUDY_RECORD_QUESTION_REASONS), label: nullable(text) })), description: 'The one unclear part of a study record (see studyRecords), or null.' },
     answer: { anyOf: [object({ kind: enumeration(['option', 'estimate_minutes']), optionId: nullable(text), minutes: nullable(number),
     per: { ...nullable(enumeration(['whole_work', 'unit'])), description: VNEXT_ESTIMATE_ANSWER_REQUIREMENT } }),
@@ -139,6 +140,7 @@ export interface VNextProviderReading {
   /** Always set by the decoder; optional so readings built by plan-only callers stay valid. */
   studyRecords?: VNextStudyRecordReading[];
   studyRecordQuestion?: VNextStudyRecordQuestion | null;
+  studyRestDays?: string[];
   answer: WeeklyPlanningVNextInterpretedAnswer | null;
 }
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -206,10 +208,10 @@ export function decodeVNextProviderOutput(value: unknown):
   | { status: 'rejected'; errors: VNextTurnError[] } {
   // The model must state both study-record fields (strict schema); a reading recorded before they existed has
   // none, which means no records and no record question, so absence decodes as that rather than as an error.
-  const complete = record(value) ? { studyRecords: [], studyRecordQuestion: null, ...value } : value;
+  const complete = record(value) ? { studyRecords: [], studyRecordQuestion: null, studyRestDays: [], ...value } : value;
   const errors = validate(root, complete, '', null);
   if (errors.length) return { status: 'rejected', errors };
-  const wire = structuredClone(complete) as { planningIntent: VNextPlanningIntent; conversationActs: VNextEventRegistrationAct[]; delta: VNextTurnDelta; studyRecords: VNextStudyRecordReading[]; studyRecordQuestion: VNextStudyRecordQuestion | null; answer: Record<string, unknown> | null };
+  const wire = structuredClone(complete) as { planningIntent: VNextPlanningIntent; conversationActs: VNextEventRegistrationAct[]; delta: VNextTurnDelta; studyRecords: VNextStudyRecordReading[]; studyRecordQuestion: VNextStudyRecordQuestion | null; studyRestDays: string[]; answer: Record<string, unknown> | null };
   let answer: WeeklyPlanningVNextInterpretedAnswer | null = null;
   if (wire.answer) {
     if (wire.answer.kind === 'proposal_decision' && typeof wire.answer.proposalId === 'string'
@@ -225,5 +227,5 @@ export function decodeVNextProviderOutput(value: unknown):
     } else return { status: 'rejected', errors: [{ code: 'invalid_value', path: 'answer', localId: null, factId: null }] };
   }
   return { status: 'decoded', reading: { planningIntent: wire.planningIntent, conversationActs: wire.conversationActs, delta: wire.delta,
-    studyRecords: wire.studyRecords, studyRecordQuestion: wire.studyRecordQuestion, answer } };
+    studyRecords: wire.studyRecords, studyRecordQuestion: wire.studyRecordQuestion, studyRestDays: wire.studyRestDays, answer } };
 }

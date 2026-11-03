@@ -24,7 +24,7 @@ const record = (value: unknown): value is RecordValue => value !== null && typeo
 
 function hasContributions(value: unknown): boolean {
   return record(value) && ((Array.isArray(value.conversationActs) && value.conversationActs.length > 0)
-    || (Array.isArray(value.studyRecords) && value.studyRecords.length > 0) || (value.studyRecordQuestion !== null && value.studyRecordQuestion !== undefined)
+    || (Array.isArray(value.studyRecords) && value.studyRecords.length > 0) || (Array.isArray(value.studyRestDays) && value.studyRestDays.length > 0) || (value.studyRecordQuestion !== null && value.studyRecordQuestion !== undefined)
     || (value.answer !== null && value.answer !== undefined)
     || (record(value.delta) && Object.values(value.delta).some(items => Array.isArray(items) && items.length > 0)));
 }
@@ -84,9 +84,9 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
       projection: input.projection, graph: input.state.graph, interpreted: reading });
     if (resolved.status === 'conflict') return resolved.errors;
   }
-  if (reading.studyRecords?.length) {
+  if (reading.studyRecords?.length || reading.studyRestDays?.length) {
     // The same pure rule the session applies, so a reading the session would reject is repaired here.
-    const records = applyVNextStudyRecords({ records: [], readings: reading.studyRecords, acceptedDate: input.clock.currentDate, ownerId: 'native-provider-dry-run' });
+    const records = applyVNextStudyRecords({ records: [], readings: reading.studyRecords ?? [], restDays: reading.studyRestDays, acceptedDate: input.clock.currentDate, ownerId: 'native-provider-dry-run' });
     if (records.status === 'rejected') return records.errors;
   }
   const result = !Object.values(reading.delta).some(items => items.length) ? { status: 'noop' as const, state: input.state } : applyWeeklyPlanningVNextTurn(input.state, reading.delta, {

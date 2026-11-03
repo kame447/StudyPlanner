@@ -93,3 +93,14 @@ export const ALREADY_SAVED_ACTUAL_RECORDS_PREFIX = 'その内容はすでに保�
 export function formatAlreadySavedActualRecordsReply(records: readonly PendingWeeklyPlanningActualRecord[]): string {
   return `${ALREADY_SAVED_ACTUAL_RECORDS_PREFIX}${records.map(formatActualRecordRow).join('、')}。`;
 }
+
+/** 「10/29（木）」 */
+export function formatActualRecordDay(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  return `${month}/${day}（${WEEKDAY[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]}）`;
+}
+
+/** The chat takes a rest day plainly: no advice, no suggestion, no question (#973 fix-04). 「10/29（木）はお休みですね。」 */
+export function formatRestDaysReply(dates: readonly string[]): string {
+  return `${[...dates].sort().map(formatActualRecordDay).join('、')}はお休みですね。`;
+}

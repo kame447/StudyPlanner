@@ -9,7 +9,7 @@ import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weekly
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { markWeeklyPlanningVNextActualRecordsSaved, submitWeeklyPlanningVNextExperimentalTurn,
   type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
-import { formatActualRecordMinutes, formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, selectPendingActualRecords, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import { formatRestDaysReply, formatActualRecordMinutes, formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, selectPendingActualRecords, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
 import { savedStudyRecordMinutes, vnextActualRecordId, VNEXT_STUDY_RECORD_PENDING_PREFIX, VNEXT_STUDY_RECORD_REMOVED, VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
 import type { VNextAddFact } from '../weeklyPlanningVNextTypes';
 
@@ -17,8 +17,8 @@ const OWNER = 'synthetic-actual-owner'; const WEEK = '2026-11-02'; const TODAY =
 const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartDate: WEEK, conversationId: 'actual-conversation',
   notBeforeTime: '09:00', clock: { currentDate: TODAY, weekStartsOn: 'monday', timeZone: 'Asia/Tokyo', planningStartDate: WEEK, planningEndDate: '2026-11-08' } };
 const EMPTY = { add: [], patch: [], remove: [], relate: [], defer: [] };
-const reading = (studyRecords: unknown[] = [], studyRecordQuestion: unknown = null, delta: Record<string, unknown> = {}) =>
-  ({ planningIntent: 'discuss', conversationActs: [], delta: { ...EMPTY, ...delta }, studyRecords, studyRecordQuestion, answer: null });
+const reading = (studyRecords: unknown[] = [], studyRecordQuestion: unknown = null, delta: Record<string, unknown> = {}, studyRestDays: string[] = []) =>
+  ({ planningIntent: 'discuss', conversationActs: [], delta: { ...EMPTY, ...delta }, studyRecords, studyRecordQuestion, studyRestDays, answer: null });
 const rec = (dateExpression: string, subject: string, minutes: number) => ({ dateExpression, subject, minutes });
 const MON = rec('2026-10-26', '数学', 60), TUE = rec('2026-10-27', '英語', 45), WED = rec('2026-10-28', '現代文', 30),
   FRI = rec('2026-10-30', '英語', 50), SAT = rec('2026-10-31', '数学', 120), SUN = rec('2026-11-01', '化学', 90);
@@ -29,6 +29,7 @@ function harness(responses: unknown[], conversationId = scope.conversationId, ow
   const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: WEEK, storage: memory.storage });
   const contexts: Array<Record<string, unknown>> = [];
   const saves: unknown[] = [];
+  let renders = 0;
   const ports: WeeklyPlanningVNextExperimentalPorts = { checkpoint: local.checkpoint, legacyV5Checkpoint: { read: () => null },
     interpret: createWeeklyPlanningVNextProviderInterpreter(), client: { async createChatCompletion(input) {
       if (!responses.length) throw new Error('synthetic script exhausted');
@@ -36,12 +37,12 @@ function harness(responses: unknown[], conversationId = scope.conversationId, ow
     } }, approvalLedger: { read: () => null, write: () => undefined },
     plans: { findExistingPlanId: async () => undefined, async saveBlock(block) { saves.push(block); return { planId: `plan:${block.id}` }; } },
     calendar: () => ({ plans: [], actuals: savedActuals as never[], monthEvents: [], scheduleTemplates: [] }), now: () => `${TODAY}T00:00:00.000Z`,
-    createRenderer: () => ({ async render() { return { status: 'rendered', text: '合成の返信', rawResponse: '' }; } }) };
+    createRenderer: () => ({ async render() { renders++; return { status: 'rendered', text: '合成の返信', rawResponse: '' }; } }) };
   let sequence = 0;
   const turn = (userText: string) => submitWeeklyPlanningVNextExperimentalTurn({ scope: chatScope, ports, userText, turnId: `turn-${++sequence}`,
     shownRevision: local.readCheckpoint()?.vnext.presentedQuestion?.graphRevision ?? null });
   const stored = () => local.readCheckpoint()!.vnext;
-  return { turn, stored, ports, local, contexts, saves };
+  return { turn, stored, ports, local, contexts, saves, renders: () => renders };
 }
 const key = (records: { occurrenceDate: string; subject: string; minutes: number }[]) =>
   records.map(record => `${record.occurrenceDate} ${record.subject} ${record.minutes}`);
@@ -202,6 +203,55 @@ describe('VNext study records (#973 I2)', () => {
     expect(savedStudyRecordMinutes([mine, savedDoc(TUE, 'someone-else'), { id: 'plain-actual', userId: OWNER, actualDurationMinutes: 30 },
       { id: vnextActualRecordId(OWNER, '2026-10-28', '現代文'), userId: OWNER }, { ...savedDoc(WED), userId: 'someone-else' }], OWNER))
       .toEqual(new Map([[mine.id, 60]]));
+  });
+
+  // fix-04: a rest day is taken plainly (no advice, no suggestion, no question) and never falls into the planning invitation.
+  const THU = '2026-10-29';
+  it('fix-04: a rest day alone is answered with one flat sentence, no renderer, no question, and the list is as it was', async () => {
+    const h = harness([reading([MON, TUE, WED]), reading([], null, {}, [THU])]);
+    await h.turn('月曜は数学60分、火曜は英語45分、水曜は現代文30分。');
+    const rendersBefore = h.renders();
+    const rest = await h.turn('木曜は休みでした。');
+    expect(h.renders()).toBe(rendersBefore);
+    expect(key(rest.actualRecords!)).toEqual(['2026-10-26 数学 60', '2026-10-27 英語 45', '2026-10-28 現代文 30']);
+    expect(rest.reply).toBe(`${formatRestDaysReply([THU])}ここまでの合計は${formatActualRecordsTotal(135)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+    expect(formatRestDaysReply([THU])).toBe('10/29（木）はお休みですね。');
+    expect(rest.reply).not.toMatch(/[？?]/u);
+    expect(rest.question).toBeNull();
+    expect(rest.preview).toBeNull();
+    expect(h.saves).toEqual([]);
+  });
+
+  it('fix-04: with nothing waiting the reply is only that sentence; the checkpoint keeps no records', async () => {
+    const h = harness([reading([], null, {}, [THU])]);
+    const rest = await h.turn('木曜は休みでした。');
+    expect(rest.reply).toBe('10/29（木）はお休みですね。');
+    expect(rest.actualRecords).toEqual([]);
+    expect(h.renders()).toBe(0);
+    expect(h.stored().actualRecords).toBeUndefined();
+  });
+
+  it('fix-04: a rest day takes that day\'s unsaved records off the list; a saved record is never touched', async () => {
+    const h = harness([reading([MON, TUE, WED]), reading([], null, {}, ['2026-10-27', '2026-10-28'])], 'conversation-rest', OWNER, [savedDoc(TUE)]);
+    const first = await h.turn('月曜は数学60分、火曜は英語45分、水曜は現代文30分。');
+    expect(first.actualRecords!.map(record => `${record.occurrenceDate}:${record.status}`)).toEqual(['2026-10-26:pending', '2026-10-27:saved', '2026-10-28:pending']);
+    const rest = await h.turn('火曜と水曜は休みでした。');
+    expect(rest.actualRecords!.map(record => `${record.occurrenceDate}:${record.status}`)).toEqual(['2026-10-26:pending', '2026-10-27:saved']);
+    expect(rest.reply.startsWith(formatRestDaysReply(['2026-10-27', '2026-10-28']))).toBe(true);
+  });
+
+  it('fix-04: a rest day stated together with records only takes effect (the reply is the records reply)', async () => {
+    const h = harness([reading([MON], null, {}, [THU])]);
+    const result = await h.turn('月曜は数学60分、木曜は休みでした。');
+    expect(result.reply).toBe(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${formatActualRecordRow(result.actualRecords![0])}。ここまでの合計は${formatActualRecordsTotal(60)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+  });
+
+  it('fix-04: a future rest day is not something that happened: rejected, repaired once, nothing changes', async () => {
+    const future = reading([], null, {}, ['2026-11-10']);
+    const h = harness([future, future]);
+    const result = await h.turn('来週の月曜は休みです。');
+    expect(result.outcome).toBe('interpretation_failed');
+    expect(h.stored().actualRecords).toBeUndefined();
   });
 
   it('display formats come from their single owner (60分（1時間）, 6時間35分（395分）)', () => {

@@ -67,6 +67,18 @@ export function pendingReply(changed, all) {
     + 'ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。';
 }
 
+/** 「10/29（木）」 */
+export function dayText(date) {
+  const [year, month, day] = date.split('-').map(Number);
+  return `${month}/${day}（${WEEKDAY[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]}）`;
+}
+
+/** Reply to a rest day stated alone (fix-04): one flat sentence, then the total and the save guidance when records are waiting. No advice, no suggestion, no question. */
+export function restDayReply(restDate, waiting) {
+  return `${dayText(restDate)}はお休みですね。${waiting.length
+    ? `ここまでの合計は${totalText(sumMinutes(waiting))}です。ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。` : ''}`;
+}
+
 export const savedWordsIn = (reply) => SAVED_WORDS.filter((word) => reply.includes(word));
 export const questionMarksIn = (reply) => (reply.match(/[？?]/gu) ?? []).length;
 

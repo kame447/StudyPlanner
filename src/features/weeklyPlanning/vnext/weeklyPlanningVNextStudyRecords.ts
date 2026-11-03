@@ -5,7 +5,7 @@
 // confirmation UI's explicit action (DESIGN-DECISION 4).
 import type { VNextTurnError } from './weeklyPlanningVNextTypes';
 // The display format has one owner (fix-01 B); this file only phrases the conversation around it.
-import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
+import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, formatRestDaysReply, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
 
 /** One stated record as the model reads it: absolute date, subject as the user said it, stated minutes. */
 export interface VNextStudyRecordReading {
@@ -59,7 +59,9 @@ export type VNextStudyRecordResult =
       /** Stated this turn and equal to what is already saved (same id, same minutes): kept as 'saved', never offered again. */
       alreadySaved: VNextActualRecord[];
       /** Stated this turn and not saved as stated (new, or other minutes than the saved ones): awaiting confirmation. */
-      changed: VNextActualRecord[] }
+      changed: VNextActualRecord[];
+      /** Days the user said were rest days (valid, unique, ascending). */
+      restDays: string[] }
   | { status: 'rejected'; errors: VNextTurnError[] };
 
 /**
@@ -93,6 +95,8 @@ export function applyVNextStudyRecords(params: {
   ownerId: string;
   /** Minutes already saved, by record id (see savedStudyRecordMinutes); absent means none known. */
   saved?: ReadonlyMap<string, number>;
+  /** Absolute dates the user says they did not study. A rest day makes no record and takes the day's unsaved records off the list (saved ones stay). */
+  restDays?: readonly string[];
 }): VNextStudyRecordResult {
   const errors: VNextTurnError[] = [];
   const invalid = (index: number, field: string) =>
@@ -117,13 +121,19 @@ export function applyVNextStudyRecords(params: {
     if (existing && existing.minutes === reading.minutes && existing.status === status) return;
     next.set(id, { id, occurrenceDate: reading.dateExpression, subject, minutes: reading.minutes, status });
   });
+  const rest = [...new Set(params.restDays ?? [])].sort();
+  rest.forEach((day, index) => {
+    if (!validDate(day) || day > params.acceptedDate) errors.push({ code: 'invalid_value', path: `studyRestDays[${index}]`, localId: null, factId: null });
+  });
   if (errors.length) return { status: 'rejected', errors };
+  // The user's own statement for the day wins: an unsaved record on a rest day is dropped, a saved one is never touched here.
+  for (const [id, record] of next) if (rest.includes(record.occurrenceDate) && record.status !== 'saved') { next.delete(id); stated.delete(id); }
   const records = sortRecords([...next.values()]);
   const before = new Map(params.records.map(record => [record.id, record]));
   const statedRecords = records.filter(record => stated.has(record.id));
   return { status: JSON.stringify(records) === JSON.stringify(sortRecords([...params.records])) ? 'noop' : 'applied', records,
     alreadySaved: statedRecords.filter(record => record.status === 'saved'),
-    changed: statedRecords.filter(record => record.status === 'pending' && before.get(record.id)?.minutes !== record.minutes) };
+    changed: statedRecords.filter(record => record.status === 'pending' && before.get(record.id)?.minutes !== record.minutes), restDays: rest };
 }
 
 /** Marks exactly the named records saved; values, dates and subjects never change. */
@@ -159,11 +169,16 @@ export function vnextStudyRecordReply(params: {
   removedCount: number;
   all: readonly VNextActualRecord[];
   question: VNextStudyRecordQuestion | null;
+  /** Rest days stated this turn. Said (plainly) only when the turn states nothing else; otherwise they only take effect. */
+  restDays?: readonly string[];
 }): string {
   const saved = params.alreadySaved ?? [];
   const lines: string[] = [];
+  const restOnly = (params.restDays?.length ?? 0) > 0 && !saved.length && !params.changed.length && !params.question;
+  if (restOnly) lines.push(formatRestDaysReply(params.restDays!));
   if (saved.length) lines.push(formatAlreadySavedActualRecordsReply(saved));
   if (params.changed.length) lines.push(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${params.changed.map(formatActualRecordRow).join('、')}。`);
+  else if (restOnly) { /* said above */ }
   else if (params.removedCount) lines.push(VNEXT_STUDY_RECORD_REMOVED);
   else if (!params.question && !saved.length) lines.push(VNEXT_STUDY_RECORD_UNCHANGED);
   const waiting = params.all.filter(record => record.status !== 'saved');

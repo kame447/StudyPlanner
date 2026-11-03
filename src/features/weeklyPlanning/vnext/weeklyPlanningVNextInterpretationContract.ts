@@ -113,6 +113,8 @@ export type WeeklyPlanningVNextInterpretation =
       /** What the user says they actually studied, apart from plan facts (#973); never saved by the interpreter. */
       studyRecords?: VNextStudyRecordReading[];
       studyRecordQuestion?: VNextStudyRecordQuestion | null;
+      /** Days the user says they did not study (absolute dates); never a record and never a plan fact. */
+      studyRestDays?: string[];
       answer: WeeklyPlanningVNextInterpretedAnswer | null;
       metrics: WeeklyPlanningVNextInterpretationMetrics;
     }

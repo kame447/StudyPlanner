@@ -2,7 +2,7 @@ import { expect, test as base } from '@playwright/test';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import {
   examWeekOf, todayInJapan,
-  byDate, noClockTimes, noneSaved, nothingOn, pendingReply, questionMarksIn, rowText, savedExactly, savedReply,
+  byDate, noClockTimes, noneSaved, nothingOn, pendingReply, questionMarksIn, restDayReply, rowText, savedExactly, savedReply,
   savedWordsIn, studyRecordIdPrefix, studyRecordsOf, sumMinutes, totalText,
 } from '../support/actual-record-ledger.mjs';
 
@@ -179,6 +179,9 @@ test('S2 short turns, then a Tuesday correction: one Tuesday document of 50 minu
   // A rest day adds nothing; the list is as it was.
   const rest = await s.say('s2-3-thu-rest', '木曜は休みでした。');
   expectListed(rest, [mon, tue, wed]);
+  // A rest day is taken plainly (fix-04): that one sentence and the waiting total, no question, no advice, no invitation to plan.
+  expect(rest.reply).toBe(restDayReply(REST_DAY, [mon, tue, wed]));
+  expect(questionMarksIn(rest.reply), rest.reply).toBe(0);
   expectListed(await s.say('s2-4-fri-sun', '金曜は英語を50分、土曜は数学を120分、日曜は化学を90分でした。'), WEEK);
   holds(noneSaved(await s.added()));
   const corrected = [mon, CORRECTED_TUESDAY, wed, fri, sat, sun];

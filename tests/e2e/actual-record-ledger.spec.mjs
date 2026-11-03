@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import {
   examWeekOf, todayInJapan, CORRECTED_TUESDAY, REST_DAY, WEEK, WEEK_TOTAL, actualRecords, noClockTimes, noneSaved, nothingOn, pendingReply,
-  questionMarksIn, rowText, savedExactly, savedReply, savedWordsIn, studyRecordsOf, sumMinutes, totalText,
+  questionMarksIn, restDayReply, rowText, savedExactly, savedReply, savedWordsIn, studyRecordsOf, sumMinutes, totalText,
 } from './support/actual-record-ledger.mjs';
 
 // Controls for the oracle of the real-model examinee gate (#973 R1): it must accept the right saved week and fail on each
@@ -60,6 +60,11 @@ test('the reply checks: pending wording is exact, "saved" words are found, quest
   expect(questionMarksIn('数学は何分くらい勉強しましたか？')).toBe(1);
   expect(questionMarksIn('何分でしたか？いつですか？')).toBe(2);
   expect(questionMarksIn(reply)).toBe(0);
+  // A rest day stated alone: one flat sentence (+ total and guidance only while records wait), never a question.
+  expect(restDayReply('2026-10-29', [])).toBe('10/29（木）はお休みですね。');
+  expect(restDayReply('2026-10-29', WEEK.slice(0, 3))).toBe('10/29（木）はお休みですね。ここまでの合計は2時間15分（135分）です。'
+    + 'ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。');
+  expect(questionMarksIn(restDayReply('2026-10-29', WEEK.slice(0, 3)))).toBe(0);
   // After a save and a reload the same sentence is answered as saved, with that one sentence and never as "not saved yet".
   const alreadySaved = savedReply(WEEK);
   expect(alreadySaved).toBe('その内容はすでに保存されています：月 10/26 数学 60分（1時間）、火 10/27 英語 45分、水 10/28 現代文 30分、'

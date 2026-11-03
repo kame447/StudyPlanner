@@ -139,7 +139,7 @@ describe('VNext native provider', () => {
 
   it.each([null, 'daily', 'weekly', '2026-11-02/2026-11-08'])('preserves a stated workload period %s without lexical normalization', periodExpression => {
     const wire = output([task(), { ...workload(), perOccurrence: periodExpression === 'daily' || periodExpression === 'weekly', periodExpression }]);
-    expect(decodeVNextProviderOutput(wire)).toEqual({ status: 'decoded', reading: { ...wire, studyRecords: [], studyRecordQuestion: null } });
+    expect(decodeVNextProviderOutput(wire)).toEqual({ status: 'decoded', reading: { ...wire, studyRecords: [], studyRecordQuestion: null, studyRestDays: [] } });
   });
 
   it.each([

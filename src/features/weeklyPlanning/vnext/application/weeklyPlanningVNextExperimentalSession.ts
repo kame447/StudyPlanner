@@ -427,7 +427,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   if (interpretation.status === 'interpreted') {
     const readings = interpretation.studyRecords ?? [];
     const question = interpretation.studyRecordQuestion ?? null;
-    const applied = applyVNextStudyRecords({ records: priorRecords, readings, acceptedDate: scope.clock.currentDate, ownerId: scope.ownerId,
+    const restDays = interpretation.studyRestDays ?? [];
+    const applied = applyVNextStudyRecords({ records: priorRecords, readings, restDays, acceptedDate: scope.clock.currentDate, ownerId: scope.ownerId,
       saved: savedStudyRecordMinutes(calendar.actuals, scope.ownerId) });
     if (applied.status === 'rejected') {
       return { outcome: 'rejected', graphRevision: read.checkpoint.state.graph.revision, readiness: before.readiness, question: presentedQuestion,
@@ -436,12 +437,12 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     }
     nextRecords = applied.records;
     nextRecordQuestion = question ?? undefined;
-    const recordOnly = (readings.length > 0 || question !== null) && isEmpty(interpretation.delta)
+    const recordOnly = (readings.length > 0 || question !== null || restDays.length > 0) && isEmpty(interpretation.delta)
       && !interpretation.conversationActs?.length && interpretation.answer === null;
     if (recordOnly) {
       const { changed, alreadySaved } = applied;
       const removedCount = priorRecords.filter(record => !nextRecords.some(next => next.id === record.id)).length;
-      const reply = vnextStudyRecordReply({ alreadySaved, changed, removedCount, all: nextRecords, question });
+      const reply = vnextStudyRecordReply({ alreadySaved, changed, removedCount, all: nextRecords, question, restDays: applied.restDays });
       const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
         ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
         vnext: { ...withoutStudyRecords(read.checkpoint), ...studyRecordFields(nextRecords, nextRecordQuestion),
