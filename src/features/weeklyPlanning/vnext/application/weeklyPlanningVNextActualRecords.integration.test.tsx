@@ -209,6 +209,24 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(save).toHaveBeenCalledOnce();
   });
 
+  it('remembers an unanswered save across reload and explains that its result still needs checking', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => new Promise<void>(() => undefined));
+    const first = await mount(inputWith(save));
+    const ids = first.current!.pendingActualRecords!.map(record => record.id);
+    act(() => { void first.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledOnce();
+    expect(storedStatuses(first)).toEqual(Array(6).fill('pending'));
+
+    // Reload while the SDK save promise has neither resolved nor rejected. No saved documents are loaded.
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    const reloaded = await mount(inputWith(save));
+    expect(reloaded.current!.pendingActualRecords!.map(record => record.id)).toEqual(ids);
+    expect(save).toHaveBeenCalledOnce();
+    const lastingReplies = reloaded.current!.state.messages.filter(message => message.role === 'assistant').map(message => message.content);
+    expect(lastingReplies.some(reply => reply.includes('保存結果を確認できていません'))).toBe(true);
+  });
+
   it('keeps the same pending batch when an in-flight save rejects after optimistic rows appeared', async () => {
     await seedRecords(storage.storage);
     let rejectSave!: (error: Error) => void;
