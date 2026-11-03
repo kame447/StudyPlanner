@@ -16,7 +16,10 @@ export interface WeeklyPlanningActualRecord {
   status?: 'pending' | 'saved';
 }
 
-export type PendingWeeklyPlanningActualRecord = Pick<WeeklyPlanningActualRecord, 'id' | 'occurrenceDate' | 'subject' | 'minutes'>;
+export interface PendingWeeklyPlanningActualRecord extends Pick<WeeklyPlanningActualRecord, 'id' | 'occurrenceDate' | 'subject' | 'minutes'> {
+  /** Minutes already saved under this record's id with a different value: saving replaces them, and the user is told. */
+  replacesMinutes?: number;
+}
 
 const WEEKDAY = ['日', '月', '火', '水', '木', '金', '土'] as const;
 
@@ -31,6 +34,27 @@ export function selectPendingActualRecords(records: readonly WeeklyPlanningActua
     .filter(record => record.status !== 'saved' && isSavableActualRecord(record))
     .map(({ id, occurrenceDate, subject, minutes }) => ({ id, occurrenceDate, subject, minutes }))
     .sort((a, b) => a.occurrenceDate.localeCompare(b.occurrenceDate) || a.subject.localeCompare(b.subject, 'ja'));
+}
+
+/**
+ * Sets the pending records against what is already saved (by document id). Same minutes: already saved, nothing to
+ * confirm. Different minutes: kept, marked as a replacement so the confirmation says so instead of overwriting silently.
+ */
+export function resolvePendingActualRecordsAgainstSaved(
+  pending: readonly PendingWeeklyPlanningActualRecord[],
+  savedMinutesById: ReadonlyMap<string, number>,
+): PendingWeeklyPlanningActualRecord[] {
+  return pending.flatMap(record => {
+    const saved = savedMinutesById.get(record.id);
+    if (saved === undefined) return [{ id: record.id, occurrenceDate: record.occurrenceDate, subject: record.subject, minutes: record.minutes }];
+    if (saved === record.minutes) return [];
+    return [{ id: record.id, occurrenceDate: record.occurrenceDate, subject: record.subject, minutes: record.minutes, replacesMinutes: saved }];
+  });
+}
+
+/** The fields the save port receives: never the display-only replacement note. */
+export function toActualRecordsToSave(records: readonly PendingWeeklyPlanningActualRecord[]): PendingWeeklyPlanningActualRecord[] {
+  return records.map(({ id, occurrenceDate, subject, minutes }) => ({ id, occurrenceDate, subject, minutes }));
 }
 
 function hoursAndMinutes(minutes: number): string {
@@ -58,5 +82,6 @@ export function sumActualRecordMinutes(records: readonly PendingWeeklyPlanningAc
 export function formatActualRecordRow(record: PendingWeeklyPlanningActualRecord): string {
   const [year, month, day] = record.occurrenceDate.split('-').map(Number);
   const weekday = WEEKDAY[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
-  return `${weekday} ${month}/${day} ${record.subject} ${formatActualRecordMinutes(record.minutes)}`;
+  const row = `${weekday} ${month}/${day} ${record.subject} ${formatActualRecordMinutes(record.minutes)}`;
+  return record.replacesMinutes === undefined ? row : `${row} ※保存済みの${record.replacesMinutes}分を置き換えます`;
 }

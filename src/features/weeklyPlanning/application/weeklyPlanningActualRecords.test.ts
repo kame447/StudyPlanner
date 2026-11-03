@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatActualRecordRow,
+  resolvePendingActualRecordsAgainstSaved,
+  toActualRecordsToSave,
   formatActualRecordsTotal,
   selectPendingActualRecords,
   sumActualRecordMinutes,
@@ -56,5 +58,13 @@ describe('weekly actual record confirmation wording', () => {
 
   it('carries no time of day anywhere in what it hands onward', () => {
     expect(JSON.stringify(selectPendingActualRecords(week))).not.toMatch(/Time|\d{2}:\d{2}/);
+  });
+  it('against what is saved: new stays, same minutes drops, different minutes becomes an announced replacement', () => {
+    const pending = selectPendingActualRecords(week);
+    const resolved = resolvePendingActualRecordsAgainstSaved(pending, new Map([['a-1026-math', 60], ['a-1027-eng', 30]]));
+    expect(resolved.map(record => record.id)).toEqual(['a-1027-eng', 'a-1028-jp', 'a-1030-eng', 'a-1031-math', 'a-1101-chem']);
+    expect(formatActualRecordRow(resolved[0])).toBe('火 10/27 英語 45分 ※保存済みの30分を置き換えます');
+    expect(formatActualRecordRow(resolved[1])).toBe('水 10/28 現代文 30分');
+    expect(Object.keys(toActualRecordsToSave(resolved)[0]).sort()).toEqual(['id', 'minutes', 'occurrenceDate', 'subject']);
   });
 });

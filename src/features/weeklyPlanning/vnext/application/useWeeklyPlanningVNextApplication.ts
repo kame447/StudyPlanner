@@ -20,8 +20,7 @@ import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../applic
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
 import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn } from '../../application/weeklyPlanningTurnPreparation';
-import { markWeeklyPlanningVNextActualRecordsSaved } from './weeklyPlanningVNextExperimentalSession';
-import { selectPendingActualRecords, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
+import { resolvePendingActualRecordsAgainstSaved, selectPendingActualRecords, toActualRecordsToSave, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -249,9 +248,12 @@ export function useWeeklyPlanningVNextApplication(
   const pendingActualRecords = useMemo(() => {
     let stored: WeeklyPlanningActualRecord[] | undefined;
     try { stored = runtime.local.readCheckpoint()?.vnext.actualRecords; } catch { stored = undefined; }
-    return selectPendingActualRecords(stored).filter(record => !savedActualIds.has(record.id));
+    // Already-saved documents (the planner's loaded actuals, by id) decide whether a record is a new save, a no-op or a replacement.
+    const savedMinutes = new Map<string, number>();
+    for (const actual of input.actuals ?? []) if ('actualDurationMinutes' in actual && actual.actualDurationMinutes) savedMinutes.set(actual.id, actual.actualDurationMinutes);
+    return resolvePendingActualRecordsAgainstSaved(selectPendingActualRecords(stored).filter(record => !savedActualIds.has(record.id)), savedMinutes);
     // `revision` changes after every committed turn and every mark.
-  }, [runtime, runtime.state, revision, savedActualIds]);
+  }, [runtime, runtime.state, revision, savedActualIds, input.actuals]);
   const approveActualRecords = async () => {
     const records = pendingActualRecords;
     // Nothing to save, an owner that is not signed in, or a save already running: never write (no owner mismatch writes).
@@ -259,17 +261,22 @@ export function useWeeklyPlanningVNextApplication(
     actualRecordsInFlight.current = true;
     redraw(value => value + 1);
     try {
-      await input.saveWeeklyActualRecords(ownerId, records);
+      await input.saveWeeklyActualRecords(ownerId, toActualRecordsToSave(records));
       const ids = records.map(record => record.id);
       setSavedActualIds(previous => new Set([...previous, ...ids]));
       // The persisted mark (I2) keeps a reload from offering the same records again. The saved batch is already
       // committed, so a mark that cannot be written is not reported as a failed save: the in-memory set above hides
       // the records for this session and their deterministic ids make any later re-save an overwrite, not a duplicate.
-      markWeeklyPlanningVNextActualRecordsSaved(
-        { ownerId, weekStartDate: week, conversationId: runtime.session.conversationId },
-        { checkpoint: runtime.local.checkpoint, legacyV5Checkpoint: runtime.local.legacyV5Checkpoint, now: services.now },
-        ids,
-      );
+      // Loaded lazily: the session code is not part of the entry chunk. A mark that cannot be written (module load or storage)
+      // is not a failed save, so it never reaches the user as one.
+      try {
+        const { markWeeklyPlanningVNextActualRecordsSaved } = await loadWeeklyPlanningVNextRuntimeModule();
+        markWeeklyPlanningVNextActualRecordsSaved(
+          { ownerId, weekStartDate: week, conversationId: runtime.session.conversationId },
+          { checkpoint: runtime.local.checkpoint, legacyV5Checkpoint: runtime.local.legacyV5Checkpoint, now: services.now },
+          ids,
+        );
+      } catch { /* the in-memory set above hides the records for this session */ }
       chat.checkpoint();
     } finally {
       actualRecordsInFlight.current = false;

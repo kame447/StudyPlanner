@@ -7,6 +7,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../../testUtils/weeklyPlanningApplicationTestHarness';
 import { createReadyPlannerDataAvailability } from '../../testUtils/plannerDataAvailabilityTest';
+import type { DurationActual } from '../../../../types/domain';
 import type { WeeklyPlanningApplication, UseWeeklyPlanningApplicationInput } from '../../application/useWeeklyPlanningApplication';
 import { useWeeklyPlanningVNextApplication, type WeeklyPlanningVNextLocalApplicationServices } from './useWeeklyPlanningVNextApplication';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../../application/weeklyPlanningStableV5RuntimeSession';
@@ -137,5 +138,62 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     const noPort = await mount(inputWith(undefined));
     await act(async () => { await noPort.current!.approveActualRecords!(); });
     expect(storedStatuses(noPort)).toEqual(Array(6).fill('pending'));
+  });
+  // The same statement sent again after the records were saved and the page reloaded.
+  it('a reload and the same statement again keep the saved records saved (same ids, nothing new to confirm)', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const resend: WeeklyPlanningVNextLocalApplicationServices = { ...services(), interpret: () => async () => ({ status: 'interpreted' as const,
+      planningIntent: 'discuss' as const, answer: null, conversationActs: [], studyRecords: WEEK_RECORDS, studyRecordQuestion: null,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }) };
+    const first = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<Harness ref={first} input={inputWith(save)} services={resend} />); });
+    const before = first.current!.pendingActualRecords!.map(record => record.id);
+    await act(async () => { await first.current!.approveActualRecords!(); });
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const second = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<Harness ref={second} input={inputWith(save)} services={resend} />); });
+    await act(async () => { await second.current!.submitTurn('月曜は数学60分、火曜は英語45分、…でした。'); });
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: second.current!.chat.index.activeChatId });
+    const stored = local.readCheckpoint()!;
+    expect(second.current!.pendingActualRecords).toEqual([]);
+    expect(stored.vnext.actualRecords!.map(record => record.id)).toEqual(before);
+    expect(stored.vnext.actualRecords!.map(record => record.status)).toEqual(Array(6).fill('saved'));
+    expect(second.current!.state.messages[second.current!.state.messages.length - 1]?.content).toContain('その内容はすでに確認リストにあります。');
+  });
+  // What is already saved decides, by document id, whether a record is new, a no-op or a replacement (#973 fix-02).
+  const savedDoc = (id: string, subject: string, occurrenceDate: string, minutes: number): DurationActual => ({
+    id, userId: OWNER, planId: null, occurrenceDate, subject, title: subject, note: '', updatedAt: NOW, actualDurationMinutes: minutes });
+
+  it('does not offer a record again when the same minutes are already saved under its id', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const probe = await mount(inputWith(save));
+    const pending = probe.current!.pendingActualRecords!;
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const input = { ...inputWith(save), actuals: pending.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
+    const ref = await mount(input);
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('shows a different saved value as a replacement, saves nothing before the click, and sends no note to the save port', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const probe = await mount(inputWith(save));
+    const pending = probe.current!.pendingActualRecords!;
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const tuesday = pending.find(record => record.occurrenceDate === '2026-10-27')!;
+    const ref = await mount({ ...inputWith(save), actuals: [savedDoc(tuesday.id, tuesday.subject, tuesday.occurrenceDate, 30)] });
+    const rows = ref.current!.pendingActualRecords!.map(formatActualRecordRow);
+    expect(rows).toHaveLength(6);
+    expect(rows[1]).toBe('火 10/27 英語 45分 ※保存済みの30分を置き換えます');
+    expect(rows.filter(row => row.includes('置き換えます'))).toHaveLength(1);
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    const sent = (save.mock.calls[0] as unknown as [string, Array<Record<string, unknown>>])[1];
+    expect(sent).toHaveLength(6);
+    expect(sent.every(record => !('replacesMinutes' in record))).toBe(true);
   });
 });
