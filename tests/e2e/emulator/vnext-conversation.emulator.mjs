@@ -2,6 +2,7 @@ import { expect, test } from '../support/fixed-clock.mjs';
 import { SYNTHETIC, answer, nextCall, rendererReply } from '../support/synthetic-provider-client.mjs';
 import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStorage } from '../support/vnext-chat-storage.mjs';
 import { emulatorUserId, notSavedYet, placement, savedAtLeastOnce, savedExactlyOnce, savedFor, unchangedSince } from '../support/schedule-event-ledger.mjs';
+import { attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
 
 // Runs on the shared fixed clock (Asia/Tokyo, E2E_FIXED_NOW): the preview needs capacity left in the week, so a
 // live clock late on Sunday makes turn 2 correctly answer insufficient_capacity and never call the renderer.
@@ -66,6 +67,17 @@ async function firestoreDocuments(request, collection) {
   const response = await request.get(`${FIRESTORE}/${collection}?pageSize=300`, { headers: { Authorization: 'Bearer owner' } });
   expect(response.ok(), collection).toBe(true);
   return (await response.json()).documents ?? [];
+}
+
+async function activeVNextCheckpoint(page) {
+  return page.evaluate(() => {
+    const keys = Object.keys(localStorage).filter(key => !key.includes('.anonymous'));
+    const indexKey = keys.find(key => key.startsWith('studyplanner.aiPlanning.chats.v1.'));
+    const chatId = indexKey ? JSON.parse(localStorage.getItem(indexKey)).activeChatId : null;
+    const coreKeys = chatId ? keys.filter(key => key.startsWith('studyplanner.weeklyPlanning.vnext.') && key.endsWith(`.${chatId}.core`)) : [];
+    if (coreKeys.length !== 1) throw new Error(`Expected one active VNext checkpoint, found ${coreKeys.length}`);
+    return JSON.parse(localStorage.getItem(coreKeys[0]));
+  });
 }
 
 test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approval → save → reload → failure', async ({ page, request }) => {
@@ -164,4 +176,105 @@ test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approva
     .toEqual(['failed', 'needs_scope', 'preview_ready']);
   // The failed turn is complete (its trace is written at its end) and the provider saw nothing after the failed reading.
   expect(await providerRequests()).toBe(requestsAtFailure);
+});
+
+test('P1 worker-first: a provider outage preserves the unsaved plan and the next turn advances', async ({ page, request }) => {
+  const writes = attachWriteLedger(page);
+  const userId = await emulatorUserId(request, { email: email(), password: password() });
+  const events = async () => (await firestoreDocuments(request, 'schedule_events'))
+    .filter(document => document.fields?.userId?.stringValue === userId);
+  await signIn(page, PLANNING);
+  await openPlanning(page);
+  const eventsBefore = await events();
+
+  await send(page, '数学を60分');
+  const facts = await nextCall(request);
+  expect(facts.schema).toBe('weekly_planning_vnext_native_v1');
+  await answer(request, facts, { planningIntent: 'discuss', conversationActs: [], answer: null, delta: {
+    patch: [], remove: [], relate: [], defer: [], add: [
+      { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+      { kind: 'workload', localId: 'math-minutes', taskRef: { localId: 'math' }, componentRef: null,
+        quantityRole: 'target', amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null },
+    ],
+  } });
+  const factsRenderer = await nextCall(request);
+  expect(factsRenderer.schema).toBe('weekly_planning_stable_v5_dialogue_response');
+  await answer(request, factsRenderer, rendererReply(factsRenderer));
+  await expect.poll(async () => (await activeVNextCheckpoint(page)).vnext.messages.length).toBe(2);
+
+  await send(page, 'この条件で予定を作って');
+  const plan = await nextCall(request);
+  expect(plan.schema).toBe('weekly_planning_vnext_native_v1');
+  await answer(request, plan, { planningIntent: 'create_plan', conversationActs: [], answer: null,
+    delta: { add: [], patch: [], remove: [], relate: [], defer: [] } });
+  const planRenderer = await nextCall(request);
+  expect(planRenderer.schema).toBe('weekly_planning_stable_v5_dialogue_response');
+  await answer(request, planRenderer, rendererReply(planRenderer));
+  await expect(page.locator('.ai-planning-plan-card')).toBeVisible();
+  const beforeFailure = await activeVNextCheckpoint(page);
+  expect(JSON.stringify(beforeFailure.vnext.state.graph)).toContain('数学');
+  expect(beforeFailure.vnext.preview).not.toBeNull();
+  expect(await events()).toEqual(eventsBefore);
+
+  const assistantBubbles = page.locator('.ai-planning-message-row.assistant .ai-planning-bubble');
+  const beforeFirstFailureReplies = await assistantBubbles.count();
+  await send(page, '数学を90分に変更して');
+  const failed = await nextCall(request);
+  expect(failed.schema).toBe('weekly_planning_vnext_native_v1');
+  await answer(request, failed, null, 500);
+  await expect(assistantBubbles).toHaveCount(beforeFirstFailureReplies + 1);
+  const assistant = assistantBubbles.last();
+  await expect(assistant).toContainText('今回の内容は計画に反映していません。');
+  await expect(assistant).not.toContainText('言い方を変えて');
+  await expect(assistant).not.toContainText('保存しました');
+  await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
+  const afterFailure = await activeVNextCheckpoint(page);
+  expect(afterFailure.vnext.state.graph).toEqual(beforeFailure.vnext.state.graph);
+  expect(afterFailure.vnext.preview).toEqual(beforeFailure.vnext.preview);
+  expect(afterFailure.vnext.failureRecovery).toMatchObject({ reason: 'provider_error', consecutiveCount: 1 });
+  await expect(page.locator('.ai-planning-plan-card')).toBeVisible();
+  expect(await events()).toEqual(eventsBefore);
+  expect(protectedWritesIn(writes.writes())).toEqual([]);
+
+  await send(page, '英語の音読は30分です');
+  const resumed = await nextCall(request); // A new Worker must accept the checkpoint containing failureRecovery.
+  expect(resumed.schema).toBe('weekly_planning_vnext_native_v1');
+  await answer(request, resumed, { planningIntent: 'discuss', conversationActs: [], answer: null, delta: {
+    patch: [], remove: [], relate: [], defer: [], add: [
+      { kind: 'task', localId: 'reading', category: 'study', title: '英語の音読' },
+      { kind: 'workload', localId: 'reading-minutes', taskRef: { localId: 'reading' }, componentRef: null,
+        quantityRole: 'target', amount: 30, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null },
+    ],
+  } });
+  const resumedRenderer = await nextCall(request);
+  expect(resumedRenderer.schema).toBe('weekly_planning_stable_v5_dialogue_response');
+  await answer(request, resumedRenderer, rendererReply(resumedRenderer));
+  await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
+  await expect.poll(async () => JSON.stringify((await activeVNextCheckpoint(page)).vnext.state.graph)).toContain('英語の音読');
+  const afterResume = await activeVNextCheckpoint(page);
+  expect(afterResume.vnext.failureRecovery).toBeUndefined();
+  await expect.poll(async () => (await readVNextChatStorage(page, '英語の音読は30分です')).userTextPersisted).toBe(true);
+  expect(await events()).toEqual(eventsBefore);
+
+  const beforeRepeatedFailureReplies = await assistantBubbles.count();
+  await send(page, '数学を90分に変更して');
+  await answer(request, await nextCall(request), null, 500);
+  await expect(assistantBubbles).toHaveCount(beforeRepeatedFailureReplies + 1);
+  await expect(assistant).toContainText('今回の内容は計画に反映していません。');
+  const firstRepeatedFailureReply = await assistant.innerText();
+  await send(page, '数学を90分に変更して');
+  await answer(request, await nextCall(request), null, 500);
+  await expect(assistantBubbles).toHaveCount(beforeRepeatedFailureReplies + 2);
+  await expect(assistant).toContainText('続けて失敗しています。');
+  const secondRepeatedFailureReply = await assistant.innerText();
+  expect(secondRepeatedFailureReply).not.toBe(firstRepeatedFailureReply);
+  expect(secondRepeatedFailureReply).not.toContain('言い方を変えて');
+  const afterRepeatedFailure = await activeVNextCheckpoint(page);
+  expect(afterRepeatedFailure.vnext.failureRecovery).toMatchObject({ reason: 'provider_error', consecutiveCount: 2 });
+  expect(afterRepeatedFailure.vnext.state.graph).toEqual(afterResume.vnext.state.graph);
+  expect(afterRepeatedFailure.vnext.preview).toEqual(afterResume.vnext.preview);
+  expect(await events()).toEqual(eventsBefore);
+  expect(protectedWritesIn(writes.writes())).toEqual([]);
 });
