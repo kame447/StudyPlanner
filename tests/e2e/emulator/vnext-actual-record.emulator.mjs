@@ -8,7 +8,7 @@ import { RECORD_ONLY_KINDS, scriptedActualReading, WEEK_RECORDS, WEEK_TOTAL_AFTE
 import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
 import { expectDurableVNext, observeDurableTurns } from '../support/vnext-durable-observation.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
-import { openAiPlanning } from '../support/vnext-production-flows.mjs';
+import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 // The wording and arithmetic of the records belong to ONE owner (fix-01 B): expected texts are built from its functions, never from a
 // second format kept in this spec.
 import { formatActualRecordRow, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
@@ -113,7 +113,9 @@ const text = field => field?.stringValue ?? null;
 const integer = field => (field?.integerValue === undefined ? null : Number(field.integerValue));
 
 /** The account's `actuals` documents with the fields the contract is about (a missing field stays null: never defaulted). */
-async function actualDocuments(request, userId) {
+// The records the conversation saved. The neighbouring-week and other-account seeds (SEED_PREFIX) are checked separately.
+const SEED_PREFIX = 'i4-';
+async function actualDocuments(request, userId, { includeSeeds = false } = {}) {
   const response = await request.get(`${FIRESTORE}/actuals?pageSize=300`, { headers: OWNER });
   expect(response.ok(), 'actuals').toBe(true);
   return ((await response.json()).documents ?? [])
@@ -123,12 +125,12 @@ async function actualDocuments(request, userId) {
       start: text(fields.actualStartTime), end: text(fields.actualEndTime), fieldNames: Object.keys(fields).sort(),
       updatedAt: text(fields.updatedAt),
     }))
-    .filter(record => record.userId === userId)
+    .filter(record => record.userId === userId && (includeSeeds || !record.docId.startsWith(SEED_PREFIX)))
     .sort((a, b) => `${a.date}${a.subject}${a.docId}`.localeCompare(`${b.date}${b.subject}${b.docId}`));
 }
 
 async function deleteActualsOf(request, userId) {
-  for (const record of await actualDocuments(request, userId)) {
+  for (const record of await actualDocuments(request, userId, { includeSeeds: true })) {
     const response = await request.delete(`${FIRESTORE}/actuals/${record.docId}`, { headers: OWNER });
     expect(response.ok(), 'test cleanup of the synthetic account').toBe(true);
   }
@@ -147,7 +149,6 @@ async function putActual(request, docId, fields) {
 
 const snapshotOf = async (request, docId) => (await request.get(`${FIRESTORE}/actuals/${docId}`, { headers: OWNER })).json();
 
-const without = (records, dates) => records.filter(record => !dates.includes(record.date));
 const total = records => records.reduce((sum, record) => sum + (record.minutes ?? 0), 0);
 
 test.describe('examinee week of study records by conversation (durable emulator stack)', () => {
@@ -324,7 +325,7 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await expectWeekShown(page, week, scenarioRows(week, { 1: 50 }), WEEK_TOTAL_AFTER_TUESDAY_FIX);
     await page.reload();
     await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
-    expect(total(without(await actualDocuments(request, userId), neighbours.otherWeekDates))).toBe(WEEK_TOTAL_AFTER_TUESDAY_FIX);
+    expect(total(await actualDocuments(request, userId))).toBe(WEEK_TOTAL_AFTER_TUESDAY_FIX);
     await expectNeighboursUnchanged(request);
   });
 
@@ -341,18 +342,16 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await expectNeighboursUnchanged(request);
   });
 
-  test('N2: "来週の数学の計画を60分" is a plan, not a record: no actuals write, no 実績 section', async ({ page, request }) => {
+  test('N2: a plan sentence ("数学の計画を60分入れてください") is a plan, not a record: no actuals write, no 実績 card', async ({ page, request }) => {
     const firestore = attachWriteLedger(page);
     await signIn(page);
     const week = await previousWeekOf(page);
     await seedNeighbours(request, week);
     await openAiPlanning(page);
-    // Next week's Monday relative to the planner's own (current) week, which the plan flows' target logic also stays inside.
-    const nowMs = await page.evaluate(() => Date.now());
-    const jst = new Date(nowMs + 9 * 3600_000);
-    const today = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()));
-    const nextWeekDate = isoDay(addDays(today, 7 - ((today.getUTCDay() + 6) % 7)));
-    await sendTurn(page, request, '来週の数学の計画を60分入れてください。', () => scriptedActualReading('plan_next_week', { week, nextWeekDate }));
+    // A day inside the planner's own week (as the plan flows do), so the application can answer with a plan preview.
+    const target = await goToTargetPlannerWeek(page);
+    await sendTurn(page, request, `${target.text}に数学の計画を60分入れてください。`,
+      () => scriptedReading('plan', { title: '数学', date: target.iso }, null));
     expect(await actualDocuments(request, userId), 'a plan sentence creates no record').toEqual([]);
     expectNothingWrittenYet(firestore);
     await expect(page.locator('.ai-planning-actual-card'), 'a plan turn offers no 実績 card').toHaveCount(0);

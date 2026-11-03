@@ -40,11 +40,9 @@ const record = (date, { subject, minutes }) => ({ dateExpression: date, subject,
 
  *   actual_vague_math    N4: 「数学ちょっと」 → no record, question missing_minutes (label 数学)
  *   actual_vague_weekend N4: 「土日で化学3時間」 → no record, question split_needed (label 土日の化学)
- *   plan_next_week       N2: a plan sentence for next week (study plan facts; no study_record)
  * @param week the seven absolute dates of the recorded week, Monday first
- * @param nextWeekDate N2 only: a day of the following week
  */
-export function scriptedActualReading(kind, { week, nextWeekDate }) {
+export function scriptedActualReading(kind, { week }) {
   const records = indexes => indexes.map(day => ({ day, ...WEEK_RECORDS.find(entry => entry.day === day) }));
   const on = days => reading('discuss', {}, [], records(days).map(entry => record(week[entry.day], entry)));
   switch (kind) {
@@ -56,12 +54,6 @@ export function scriptedActualReading(kind, { week, nextWeekDate }) {
     case 'actual_tue_fix': return reading('discuss', {}, [], [record(week[1], { subject: '英語', minutes: 50 })]);
     case 'actual_vague_math': return reading('discuss', {}, [], [], { reason: 'missing_minutes', label: '数学' });
     case 'actual_vague_weekend': return reading('discuss', {}, [], [], { reason: 'split_needed', label: '土日の化学' });
-    case 'plan_next_week': return reading('create_plan', { add: [
-      { kind: 'task', localId: 'math-plan', category: 'study', title: '数学' },
-      { kind: 'workload', localId: 'math-plan-work', taskRef: { localId: 'math-plan' }, componentRef: null, quantityRole: 'remaining',
-        amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
-      { kind: 'task_date_rule', localId: 'math-plan-day', taskRef: { localId: 'math-plan' }, targetRef: { localId: 'math-plan' },
-        ruleKind: 'allowed_date', dateExpression: nextWeekDate, constraintLevel: 'hard' }] });
     default: throw new Error(`Unknown scripted actual turn kind: ${kind}`);
   }
 }
