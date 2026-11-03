@@ -1,30 +1,31 @@
 # Weekly Planning
 
 Status: canonical domain index
-Updated: 2026-09-26
+Updated: 2026-11-04
 
-Stable V5 is the sole production weekly-planning runtime. This directory is the only current documentation root for weekly-planning responsibility.
+VNext is the production weekly-planning conversation core. Stable V5 remains in source for local comparison and for pure responsibilities reused through the VNext boundary; it is not a production conversation fallback. This directory is the canonical documentation root for weekly planning.
 
 ## Read order
 
-1. [Current contract](architecture/current-contract-v5.md)
-2. [Product intent](spec/product-intent.md)
-3. [Learning consultation and advice](spec/learning-consultation-and-advice.md)
-4. [Semantic ownership](architecture/weekly-planning-semantic-ownership-boundary-v5.md)
-5. [Dialogue architecture](architecture/weekly-planning-dialogue-architecture-v5.md)
-6. [Availability architecture](architecture/weekly-planning-availability-architecture-v5.md)
-7. [Scheduling policy](policies/scheduling.md)
-8. [Human grounding policy](policies/human-grounding.md)
-9. [Test philosophy](quality/test-philosophy.md)
-10. [Regression scenarios](quality/regression-scenarios.md)
-11. [Current roadmap](roadmap/current.md)
-12. [Active work](work/README.md)
+1. [VNext production conversation contract](architecture/vnext-conversation-core.md)
+2. [Stable V5 contract (local comparison and reused pure logic)](architecture/current-contract-v5.md)
+3. [Product intent](spec/product-intent.md)
+4. [Learning consultation and advice](spec/learning-consultation-and-advice.md)
+5. [Semantic ownership in V5](architecture/weekly-planning-semantic-ownership-boundary-v5.md)
+6. [Dialogue architecture in V5](architecture/weekly-planning-dialogue-architecture-v5.md)
+7. [Availability architecture in V5](architecture/weekly-planning-availability-architecture-v5.md)
+8. [Scheduling policy](policies/scheduling.md)
+9. [Human grounding policy](policies/human-grounding.md)
+10. [Test philosophy](quality/test-philosophy.md)
+11. [Regression scenarios](quality/regression-scenarios.md)
+12. [Current roadmap](roadmap/current.md)
+13. [Active work](work/README.md)
 
 ## Supporting current references
 
 These documents supplement the canonical owners above; they do not override them.
 
-The [VNext core contract](architecture/vnext-conversation-core.md) is the production conversation core's contract (Issue #926: ownership, extension rules, scale limits). Stable V5 stays in source for local comparison (`VITE_WEEKLY_PLANNING_CORE=stable_v5`) and as the owner of the pure responsibilities VNext reuses.
+The [VNext core contract](architecture/vnext-conversation-core.md) governs production conversation ownership, extensions and scale limits. [Issue #926](https://github.com/kame447/StudyPlanner/issues/926) was closed after production adoption via [PR #928](https://github.com/kame447/StudyPlanner/pull/928). Local V5 comparison requires `VITE_WEEKLY_PLANNING_CORE=stable_v5` on a development host. The VNext boundary continues to reuse V5 pure scheduling, preview, renderer and approval responsibilities.
 
 - [Semantic / orchestration direction](architecture/semantic-v5-direction.md)
 - [Semantic schema reference](architecture/weekly-planning-semantic-schema-v5.md)
@@ -45,7 +46,9 @@ The [VNext core contract](architecture/vnext-conversation-core.md) is the produc
 
 ## Current state
 
-- Stable V5 owns weekly-planning production semantics.
+- VNext owns the production conversation state and interpretation-to-transaction flow. Stable V5 is retained for local comparison and reused pure responsibilities, not for production dialogue fallback.
+- [Issue #973](https://github.com/kame447/StudyPlanner/issues/973) (examinee weekly actual-record conversation and regression E2E) is open; a Draft PR is not evidence of a shipped feature.
+- [PR #970](https://github.com/kame447/StudyPlanner/pull/970) and [PR #971](https://github.com/kame447/StudyPlanner/pull/971) removed unused legacy planning/intake helpers without introducing a new production flow.
 - AI interprets natural language and realizes typed dialogue; deterministic application code owns validation, lifecycle, repair/question/proposal decisions, scheduling, preview, approval and save.
 - Issue #246 extends the product toward pre-scheduling learning consultation. Its dormant typed foundation was merged by PR #280, but production routing and advice execution are still pending; [the canonical consultation requirement](spec/learning-consultation-and-advice.md) must not be read as an already-shipped production guarantee. Advice enters normal planning only after explicit user adoption.
 - Accepted active movable-work date constraints are resolved into scheduler-facing hard date bounds / preferred placements before downstream distribution and placement; downstream code must not become a second owner of the same temporal meaning.
