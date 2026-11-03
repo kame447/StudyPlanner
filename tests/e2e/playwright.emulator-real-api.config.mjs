@@ -54,6 +54,15 @@ export default defineConfig({
       metadata: { email: 'e2e-real-api@example.test' },
       use: { ...devices['Desktop Chrome'], storageState: VNEXT_STATE },
     },
+    // The examinee's last-week study record with the real model (#973 R1): a fresh conversation per scenario, browser clock fixed
+    // at 2026-11-03 inside the spec. Same stack and the same one-run owner-only workflow; nothing above changes.
+    {
+      name: 'chromium-emulator-real-api-actual',
+      testMatch: 'emulator/vnext-actual-record-real-api.emulator.mjs',
+      dependencies: ['emulator-real-api-setup'],
+      metadata: { email: 'e2e-real-api@example.test' },
+      use: { ...devices['Desktop Chrome'], storageState: VNEXT_STATE },
+    },
   ],
   webServer: [
     {
