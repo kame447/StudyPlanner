@@ -102,6 +102,19 @@ describe('phase-scoped Firestore write ledger', () => {
       expect((await during('save', batch(host, [{ update: 'schedule_event_migrations/u1' }]))).violations()).toHaveLength(1);
     });
 
+    it('same commit: UPDATE schedule_event_migrations + VERIFY schedule_event_migrations is a violation in save', async () => {
+      expect((await during('save', batch(host, [{ update: 'schedule_event_migrations/u1' }, { verify: 'schedule_event_migrations/u1' }]))).violations()).toHaveLength(1);
+    });
+
+    it('same commit: UPDATE plans + UPDATE todos is a violation in cleanup', async () => {
+      expect((await during('cleanup', batch(host, [{ update: 'plans/p1' }, { update: 'todos/t1' }]))).violations()).toHaveLength(1);
+    });
+
+    it('a verify of another collection, and a delete paired with an allowed update, are violations in save', async () => {
+      expect((await during('save', batch(host, [{ update: 'schedule_events/e1' }, { verify: 'todos/t1' }]))).violations()).toHaveLength(1);
+      expect((await during('save', batch(host, [{ update: 'plans/p1' }, { delete: 'plans/p2' }]))).violations()).toHaveLength(1);
+    });
+
     it('a profile write is tolerated in an authorized phase', async () => {
       expect((await during('save', batch(host, [{ update: 'profiles/u1' }]))).violations()).toEqual([]);
     });

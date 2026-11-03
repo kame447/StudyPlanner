@@ -10,19 +10,20 @@ const EMULATOR_PORT = '8180';
 
 export const NO_WRITE_PHASE = 'none';
 
-// Exact allow-lists of the authorized phases, from the product's own write paths. A write in an authorized phase that is
-// not listed (other collection, other operation kind, unclassified) is a violation like one in a no-write phase.
-//  save: the approval transaction sets the operation and item documents and the plan (canonical `schedule_events`, legacy
-//    `plans`); it only READS (verify) schedule_event_migrations. weeklyPlanningApprovalFirestoreRepository.ts:196-206 (saveApprovedPlan),
-//    :296-305 (completeOperation); collections :38-40, plan reference :94-107.
+// Exact allow-lists of the authorized phases, from the product's own write paths, checked PER OPERATION as (kind -> collections):
+// a write in an authorized phase that is not listed (other collection, other kind, wrong pairing, unclassified) is a violation.
+//  save: the approval transaction sets the operation and item documents and the plan (canonical `schedule_events`, legacy `plans`):
+//    weeklyPlanningApprovalFirestoreRepository.ts:203-207 (saveApprovedPlan), :297-305 (completeOperation); collections :38-40, plan ref :94-107.
+//    Everything else the transaction touches is only READ and reaches the wire as a verify: the operation, item, migration and plan
+//    documents (:170-188 saveApprovedPlan reads, :232-250 completeOperation reads).
 //  sweep, cleanup: 「予定を削除」 -> deletePlanWithDependents: batch.delete of the plan (`schedule_events` canonical, `plans` legacy) and of
 //    its `actuals`: firebaseScheduleEventAuthority.ts:614-643 (:360 planEventDeleteOperation), firebasePlannerRepository.ts:502-517.
 //    Its only non-delete write is a `todos` merge when the plan has a linked todo; the flow's test plan has none, so it is not allowed.
+const APPROVAL_DOCUMENTS = ['plans', 'schedule_events', 'weekly_planning_approval_operations', 'weekly_planning_approval_items'];
 export const PHASE_ALLOWLISTS = {
-  save: { kinds: ['update', 'verify'], collections: ['plans', 'schedule_events', 'weekly_planning_approval_operations',
-    'weekly_planning_approval_items', 'schedule_event_migrations'] },
-  sweep: { kinds: ['delete'], collections: ['plans', 'schedule_events', 'actuals'] },
-  cleanup: { kinds: ['delete'], collections: ['plans', 'schedule_events', 'actuals'] },
+  save: { update: APPROVAL_DOCUMENTS, verify: [...APPROVAL_DOCUMENTS, 'schedule_event_migrations'] },
+  sweep: { delete: ['plans', 'schedule_events', 'actuals'] },
+  cleanup: { delete: ['plans', 'schedule_events', 'actuals'] },
 };
 
 function permitted(write) {
@@ -30,10 +31,8 @@ function permitted(write) {
   if (write.classification === 'protocol' || write.classification === 'allowed') return true;
   if (write.phase === NO_WRITE_PHASE) return false;
   const list = PHASE_ALLOWLISTS[write.phase];
-  if (!list || write.classification !== 'forbidden') return false; // unclassified or an unknown phase
-  return write.operationKinds.every(kind => list.kinds.includes(kind))
-    && write.collections.every(name => list.collections.includes(name))
-    && (!write.collections.includes('schedule_event_migrations') || write.operationKinds.includes('verify'));
+  if (!list || write.classification !== 'forbidden' || !write.operations?.length) return false; // unclassified, unknown phase, no per-write detail
+  return write.operations.every(({ kind, collection }) => list[kind]?.includes(collection));
 }
 
 export function createWriteLedger() {
@@ -56,7 +55,7 @@ export function createWriteLedger() {
       parsed.hostname = PRODUCTION_HOST; // same path shapes on the emulator; the classifier only knows the production host
       parsed.port = '';
       parsed.protocol = 'https:';
-      const write = classifyFirestoreWrite({ url: parsed.toString(), method, postData });
+      const write = classifyFirestoreWrite({ url: parsed.toString(), method, postData }, { withOperations: true });
       if (!write) return null;
       const entry = { phase, ...write };
       writes.push(entry);
