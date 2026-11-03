@@ -90,11 +90,6 @@ export function formatActualRecordRow(record: PendingWeeklyPlanningActualRecord)
 export const ALREADY_SAVED_ACTUAL_RECORDS_PREFIX = 'その内容はすでに保存されています：';
 export const SAVING_ACTUAL_RECORDS_LABEL = '保存中（まだ確定していません）';
 
-/** The server has not confirmed this batch yet, even if planner data already shows its optimistic rows. */
-export function formatSavingActualRecordsReply(records: readonly PendingWeeklyPlanningActualRecord[]): string {
-  return `${SAVING_ACTUAL_RECORDS_LABEL}：${records.map(formatActualRecordRow).join('、')}。`;
-}
-
 /** 「その内容はすでに保存されています：月 10/26 数学 60分（1時間）、…。」 */
 export function formatAlreadySavedActualRecordsReply(records: readonly PendingWeeklyPlanningActualRecord[]): string {
   return `${ALREADY_SAVED_ACTUAL_RECORDS_PREFIX}${records.map(formatActualRecordRow).join('、')}。`;

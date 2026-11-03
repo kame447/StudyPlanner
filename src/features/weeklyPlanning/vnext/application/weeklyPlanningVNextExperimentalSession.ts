@@ -62,7 +62,7 @@ import {
   type WeeklyPlanningVNextSessionCheckpoint,
 } from './weeklyPlanningVNextSessionCheckpoint';
 import {
-  applyVNextStudyRecords, markVNextActualRecordsSaved, savedStudyRecordMinutes, vnextActualRecordId, vnextStudyRecordReply,
+  applyVNextStudyRecords, markVNextActualRecordsSaved, savedStudyRecordMinutes, vnextStudyRecordReply,
   type VNextActualRecord, type VNextStudyRecordQuestion,
 } from '../weeklyPlanningVNextStudyRecords';
 
@@ -128,8 +128,6 @@ export interface WeeklyPlanningVNextExperimentalPorts {
     saveBlock(block: WeeklyPlanDraftBlock, approvalOperationId: string): Promise<{ planId: string }>;
   };
   calendar(): WeeklyPlanningVNextCalendar;
-  /** IDs whose batch save has started but has not resolved. */
-  savingActualRecordIds?(): ReadonlySet<string>;
   /**
    * The Stable V5 dialogue renderer: explains the turn's result, never changes state. Made per turn,
    * as V5 does, so a failed turn's recovery reply can check it is still current before each call.
@@ -431,7 +429,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     const question = interpretation.studyRecordQuestion ?? null;
     const restDays = interpretation.studyRestDays ?? [];
     const applied = applyVNextStudyRecords({ records: priorRecords, readings, restDays, acceptedDate: scope.clock.currentDate, ownerId: scope.ownerId,
-      saved: savedStudyRecordMinutes(calendar.actuals, scope.ownerId, ports.savingActualRecordIds?.()) });
+      saved: savedStudyRecordMinutes(calendar.actuals, scope.ownerId) });
     if (applied.status === 'rejected') {
       return { outcome: 'rejected', graphRevision: read.checkpoint.state.graph.revision, readiness: before.readiness, question: presentedQuestion,
         preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [], reply: systemReply('rejected', []), replySource: 'system',
@@ -444,10 +442,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     if (recordOnly) {
       const { changed, alreadySaved } = applied;
       const removedCount = priorRecords.filter(record => !nextRecords.some(next => next.id === record.id)).length;
-      const savingIds = ports.savingActualRecordIds?.();
-      const saving = nextRecords.filter(record => savingIds?.has(record.id) && readings.some(reading =>
-        vnextActualRecordId(scope.ownerId, reading.dateExpression, reading.subject) === record.id && reading.minutes === record.minutes));
-      const reply = vnextStudyRecordReply({ alreadySaved, saving, changed, removedCount, all: nextRecords, question, restDays: applied.restDays });
+      const reply = vnextStudyRecordReply({ alreadySaved, changed, removedCount, all: nextRecords, question, restDays: applied.restDays });
       const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
         ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
         vnext: { ...withoutStudyRecords(read.checkpoint), ...studyRecordFields(nextRecords, nextRecordQuestion),

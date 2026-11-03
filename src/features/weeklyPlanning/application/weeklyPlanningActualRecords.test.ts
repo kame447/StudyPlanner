@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   formatActualRecordRow,
   formatAlreadySavedActualRecordsReply,
-  formatSavingActualRecordsReply,
   resolvePendingActualRecordsAgainstSaved,
   toActualRecordsToSave,
   formatActualRecordsTotal,
@@ -73,9 +72,5 @@ describe('weekly actual record confirmation wording', () => {
     const text = formatAlreadySavedActualRecordsReply(selectPendingActualRecords(week).slice(0, 2));
     expect(text).toBe('その内容はすでに保存されています：月 10/26 数学 60分（1時間）、火 10/27 英語 45分。');
     expect(text).not.toContain('まだ保存していません');
-  });
-  it('words an in-flight restatement as unconfirmed', () => {
-    expect(formatSavingActualRecordsReply(selectPendingActualRecords(week).slice(0, 1)))
-      .toBe('保存中（まだ確定していません）：月 10/26 数学 60分（1時間）。');
   });
 });

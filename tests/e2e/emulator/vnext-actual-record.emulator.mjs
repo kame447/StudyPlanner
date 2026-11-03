@@ -8,11 +8,11 @@ import { RECORD_ONLY_KINDS, scriptedActualReading, WEEK_RECORDS, WEEK_TOTAL_AFTE
 import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
 import { expectDurableVNext, observeDurableTurns } from '../support/vnext-durable-observation.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
-import { VNEXT_STUDY_RECORD_SAVE_GUIDE } from '../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextStudyRecords.ts';
+import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextStudyRecords.ts';
 import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 // The wording and arithmetic of the records belong to ONE owner (fix-01 B): expected texts are built from its functions, never from a
 // second format kept in this spec.
-import { formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatSavingActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // #973 I4: the examinee's week of study records by CONVERSATION, on the durable emulator stack (production build with durable
 // turns, production Worker, Auth + Firestore emulators, synthetic provider answering from scripted readings; no model call).
@@ -525,8 +525,7 @@ test.describe('examinee week of study records by conversation (durable emulator 
       await expect(dialog).toBeHidden();
       await expect(CONFIRM.open(page), 'the confirmation card remains while saving').toBeVisible();
       await actualTurn(page, request, week, statement, 'actual_week');
-      await expect(lastReply(page)).toHaveText(`${formatSavingActualRecordsReply(rows.map(({ date, subject, minutes }) =>
-        ({ id: '', occurrenceDate: date, subject, minutes })))}ここまでの合計は${formatActualRecordsTotal(WEEK_TOTAL_MINUTES)}です。`);
+      await expect(lastReply(page)).toHaveText(`${VNEXT_STUDY_RECORD_UNCHANGED}ここまでの合計は${formatActualRecordsTotal(WEEK_TOTAL_MINUTES)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
       expect(await lastReply(page).innerText()).not.toContain('すでに保存されています');
       await openConfirmation(page);
       await expect(dialog).toBeVisible();

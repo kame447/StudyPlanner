@@ -15,7 +15,8 @@ import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weekly
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
-import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, formatSavingActualRecordsReply, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
 
 const OWNER = 'exam-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03'; const NOW = `${TODAY}T00:00:00.000Z`;
 const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartDate: WEEK, conversationId: 'exam-conversation',
@@ -151,7 +152,7 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(ids);
     await act(async () => { await ref.current!.submitTurn('先週の同じ勉強を記録しました。'); });
     const inFlightReply = ref.current!.state.messages[ref.current!.state.messages.length - 1]?.content;
-    expect(inFlightReply).toBe(`${formatSavingActualRecordsReply(original)}ここまでの合計は6時間35分（395分）です。`);
+    expect(inFlightReply).toBe(`${VNEXT_STUDY_RECORD_UNCHANGED}ここまでの合計は6時間35分（395分）です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
     expect(inFlightReply).not.toContain('すでに保存されています');
     expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(ids);
     expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));

@@ -193,6 +193,7 @@ export function useWeeklyPlanningVNextApplication(
   const liveSession = useMemo(() => ({ get checkpoint() { return runtime.local.checkpoint; },
     get legacyV5Checkpoint() { return runtime.local.legacyV5Checkpoint; } }), [runtime]);
   const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: liveSession,
+    savingActualRecordIds: () => savingActualRecordIds.current,
     ports: async turn => {
       await services.preload?.();
       const local = runtime.local;
@@ -202,7 +203,6 @@ export function useWeeklyPlanningVNextApplication(
         // This composition uses the ordinary approval application below, never the session's save entry.
         approvalLedger: { read: () => null, write: () => { throw new Error('Approval belongs to the existing application.'); } },
         plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { throw new Error('Approval belongs to the existing application.'); } },
-        savingActualRecordIds: () => savingActualRecordIds.current,
         calendar: () => ({ plans: turn.plans, actuals: turn.actuals ?? [], monthEvents: turn.monthEvents ?? [],
           scheduleTemplates: turn.scheduleTemplates, timetableTermId: turn.timetableTermId }),
         createRenderer: options => services.createRenderer(client, options), now: services.now };
