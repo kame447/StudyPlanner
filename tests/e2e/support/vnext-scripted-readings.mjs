@@ -33,4 +33,3 @@ export function scriptedReading(kind, { title, date }, context) {
     default: throw new Error(`Unknown scripted turn kind: ${kind}`);
   }
 }
-

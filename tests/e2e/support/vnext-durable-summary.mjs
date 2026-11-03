@@ -19,4 +19,3 @@ export function summarizeDurableTurnBody(text) {
     rendererCalls: completed?.result?.dialogueRendererTrace?.request ? 1 : 0,
   };
 }
-
