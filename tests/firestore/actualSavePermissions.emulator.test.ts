@@ -237,4 +237,43 @@ describe.skipIf(!host)('Actual first save through real Firestore repository and 
     expect(unlinked.progressSource).toEqual(retained.progressSource);
   });
 
+  describe('time-only (duration) actuals saved in one batch', () => {
+    const records = (prefix: string) => [
+      { id: `${prefix}-mon`, occurrenceDate: '2026-10-26', subject: '数学', title: '数学', minutes: 60 },
+      { id: `${prefix}-tue`, occurrenceDate: '2026-10-27', subject: '英語', title: '英語', minutes: 45 },
+      { id: `${prefix}-sun`, occurrenceDate: '2026-11-01', subject: '化学', title: '化学', minutes: 90 },
+    ];
+
+    it('lets the owner create them, with no clock times and no plan link, and rereads them', async () => {
+      const input = records('dur-own');
+      const saved = await createFirebasePlannerRepository(ownerDb).saveDurationActualsBatch(owner, input);
+      expect(saved).toHaveLength(3);
+      for (const record of input) {
+        const data = (await getDocFromServer(doc(ownerDb, 'actuals', record.id))).data();
+        expect(data).toMatchObject({ userId: owner, planId: null, occurrenceDate: record.occurrenceDate, actualDurationMinutes: record.minutes });
+        expect(data).not.toHaveProperty('actualStartTime');
+        expect(data).not.toHaveProperty('actualEndTime');
+      }
+    });
+
+    it('saving the same records again rewrites the same documents and adds none', async () => {
+      const repository = createFirebasePlannerRepository(ownerDb);
+      const input = records('dur-repeat');
+      await repository.saveDurationActualsBatch(owner, input);
+      await repository.saveDurationActualsBatch(owner, input);
+      const rows = (await getDocsFromServer(query(collection(ownerDb, 'actuals'), where('userId', '==', owner))))
+        .docs.filter(row => row.id.startsWith('dur-repeat-'));
+      expect(rows.map(row => row.id).sort()).toEqual(input.map(record => record.id).sort());
+    });
+
+    it('is refused for another owner and saves none of the batch when one id belongs to someone else', async () => {
+      const taken = records('dur-foreign');
+      await createFirebasePlannerRepository(foreignDb).saveDurationActualsBatch(foreign, [taken[0]]);
+      await expect(createFirebasePlannerRepository(ownerDb).saveDurationActualsBatch(owner, taken)).rejects.toThrow('permission-denied');
+      expect((await getDocFromServer(doc(foreignDb, 'actuals', taken[0].id))).data()).toMatchObject({ userId: foreign });
+      for (const record of taken.slice(1)) expect((await getDocsFromServer(exactRange(ownerDb, owner, record.id))).empty).toBe(true);
+      await expect(createFirebasePlannerRepository(ownerDb).saveDurationActualsBatch(foreign, records('dur-impersonate'))).rejects.toThrow('permission-denied');
+    });
+  });
+
 });

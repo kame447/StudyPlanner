@@ -8,7 +8,7 @@ import {
   getLearningReportRange,
   shiftLearningReportAnchor,
 } from './learningReport';
-import type { Actual, MonthEvent, Plan, StudyMaterial, StudySubject } from '../types/domain';
+import type { MonthEvent, Plan, StudyMaterial, StudySubject, TimedActual } from '../types/domain';
 
 const timestamp = '2026-08-01T00:00:00.000Z';
 
@@ -34,7 +34,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
   };
 }
 
-function makeActual(overrides: Partial<Actual> = {}): Actual {
+function makeActual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1',
     userId: 'user-1',

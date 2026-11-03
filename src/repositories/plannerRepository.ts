@@ -12,6 +12,7 @@ import {
   replaceById,
   upsertActualRecord,
 } from './repositoryUtils';
+import { buildDurationActuals } from '../domain/durationActuals';
 
 type OwnedRecord = { id: string; userId: string };
 
@@ -453,6 +454,17 @@ mutation.planDeletes,
 
       await storageGateway.writeActuals(nextActuals);
       return nextActual;
+    },
+    async saveDurationActualsBatch(userId, records) {
+      const built = buildDurationActuals(userId, records, new Date().toISOString());
+      const builtIds = new Set(built.map((actual) => actual.id));
+      const existing = await storageGateway.readActuals();
+      // The same id of another owner is never overwritten.
+      if (existing.some((actual) => builtIds.has(actual.id) && actual.userId !== userId)) {
+        throw new Error('記録の所有者が一致しません。');
+      }
+      await storageGateway.writeActuals([...existing.filter((actual) => !builtIds.has(actual.id)), ...built]);
+      return built;
     },
     async deleteActual(userId, actualId) {
       const actuals = (await storageGateway.readActuals()).filter(

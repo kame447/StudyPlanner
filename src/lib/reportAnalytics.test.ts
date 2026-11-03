@@ -8,7 +8,7 @@ import {
   OTHER_MATERIAL_LABEL,
   UNSET_MATERIAL_LABEL,
 } from './reportAnalytics';
-import type { Actual, Plan, StudyMaterial, StudySubject } from '../types/domain';
+import type { Plan, StudyMaterial, StudySubject, TimedActual } from '../types/domain';
 
 const baseTimestamp = '2026-05-01T00:00:00.000Z';
 
@@ -34,7 +34,7 @@ function plan(overrides: Partial<Plan> = {}): Plan {
   };
 }
 
-function actual(overrides: Partial<Actual> = {}): Actual {
+function actual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1',
     userId: 'user-1',

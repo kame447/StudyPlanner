@@ -1,5 +1,6 @@
 import { getEntryDurationMinutes } from './entryTimeRange';
 import type { Actual, Plan, StudyMaterial } from '../types/domain';
+import { getActualDurationMinutes } from './actualDuration';
 
 export interface MaterialStructureItem {
   id: string;
@@ -60,7 +61,7 @@ export function buildMaterialActivitySummary(
     .sort(
       (left, right) =>
         right.occurrenceDate.localeCompare(left.occurrenceDate) ||
-        right.actualStartTime.localeCompare(left.actualStartTime),
+        (right.actualStartTime ?? '').localeCompare(left.actualStartTime ?? ''),
     );
   const materialPlans = plans
     .filter((plan) => isRecordForMaterial(plan, material))
@@ -71,7 +72,7 @@ export function buildMaterialActivitySummary(
     );
   const actualMinutes = materialActuals.reduce(
     (sum, actual) =>
-      sum + getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime),
+      sum + getActualDurationMinutes(actual),
     0,
   );
   const plannedMinutes = materialPlans.reduce(
