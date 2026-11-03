@@ -427,7 +427,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   if (interpretation.status === 'interpreted') {
     const readings = interpretation.studyRecords ?? [];
     const question = interpretation.studyRecordQuestion ?? null;
-    const applied = applyVNextStudyRecords({ records: priorRecords, readings, acceptedDate: scope.clock.currentDate, conversationId: scope.conversationId });
+    const applied = applyVNextStudyRecords({ records: priorRecords, readings, acceptedDate: scope.clock.currentDate, ownerId: scope.ownerId });
     if (applied.status === 'rejected') {
       return { outcome: 'rejected', graphRevision: read.checkpoint.state.graph.revision, readiness: before.readiness, question: presentedQuestion,
         preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [], reply: systemReply('rejected', []), replySource: 'system',

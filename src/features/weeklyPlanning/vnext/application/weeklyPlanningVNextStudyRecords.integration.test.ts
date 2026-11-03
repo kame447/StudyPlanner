@@ -23,9 +23,10 @@ const rec = (dateExpression: string, subject: string, minutes: number) => ({ dat
 const MON = rec('2026-10-26', '数学', 60), TUE = rec('2026-10-27', '英語', 45), WED = rec('2026-10-28', '現代文', 30),
   FRI = rec('2026-10-30', '英語', 50), SAT = rec('2026-10-31', '数学', 120), SUN = rec('2026-11-01', '化学', 90);
 
-function harness(responses: unknown[]) {
+function harness(responses: unknown[], conversationId = scope.conversationId, ownerId = OWNER) {
+  const chatScope = { ...scope, conversationId, ownerId };
   const memory = createMemoryStorageHarness();
-  const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: memory.storage });
+  const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: WEEK, storage: memory.storage });
   const contexts: Array<Record<string, unknown>> = [];
   const saves: unknown[] = [];
   const ports: WeeklyPlanningVNextExperimentalPorts = { checkpoint: local.checkpoint, legacyV5Checkpoint: { read: () => null },
@@ -37,7 +38,7 @@ function harness(responses: unknown[]) {
     calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }), now: () => `${TODAY}T00:00:00.000Z`,
     createRenderer: () => ({ async render() { return { status: 'rendered', text: '合成の返信', rawResponse: '' }; } }) };
   let sequence = 0;
-  const turn = (userText: string) => submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, userText, turnId: `turn-${++sequence}`,
+  const turn = (userText: string) => submitWeeklyPlanningVNextExperimentalTurn({ scope: chatScope, ports, userText, turnId: `turn-${++sequence}`,
     shownRevision: local.readCheckpoint()?.vnext.presentedQuestion?.graphRevision ?? null });
   const stored = () => local.readCheckpoint()!.vnext;
   return { turn, stored, ports, local, contexts, saves };
@@ -64,6 +65,24 @@ describe('VNext study records (#973 I2)', () => {
     expect(result.preview).toBeNull();
     expect(result.graphRevision).toBe(0);
     expect(h.saves).toEqual([]);
+  });
+
+  it('the record id is owner × date × subject, so the same day and subject is the same id in another chat, after a reload, and in a resend', async () => {
+    const first = await harness([reading([MON])], 'conversation-A').turn('月曜は数学を60分やりました。');
+    const otherChat = await harness([reading([MON])], 'conversation-B').turn('月曜は数学を60分やりました。');
+    expect(first.actualRecords![0].id).toBe(`wp-actual-${OWNER}-2026-10-26-数学`);
+    expect(otherChat.actualRecords![0].id).toBe(first.actualRecords![0].id);
+    // Spacing and width of the subject do not make another record; another owner never shares an id.
+    const wide = await harness([reading([rec('2026-10-26', '　数学 ', 60)])]).turn('月曜は数学を60分やりました。');
+    expect(wide.actualRecords![0].id).toBe(first.actualRecords![0].id);
+    const another = await harness([reading([MON])], 'conversation-A', 'another-owner').turn('月曜は数学を60分やりました。');
+    expect(another.actualRecords![0].id).toBe('wp-actual-another-owner-2026-10-26-数学');
+    // One chat, reloaded from its checkpoint, then the same sentence again: still one record with the same id.
+    const h = harness([reading([MON]), reading([MON])]);
+    const once = await h.turn('月曜は数学を60分やりました。');
+    const again = await h.turn('月曜は数学を60分やりました。');
+    expect(again.outcome).toBe('noop');
+    expect(again.actualRecords!.map(record => record.id)).toEqual(once.actualRecords!.map(record => record.id));
   });
 
   it('S2: short turns accumulate; a Tuesday correction replaces (45→50), never adds; the rest day makes no record', async () => {

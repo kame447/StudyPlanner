@@ -46,9 +46,13 @@ const validDate = (value: string): boolean => {
 export const vnextSubjectKey = (subject: string): string =>
   subject.normalize('NFKC').toLowerCase().replace(/\s+/gu, '').replace(/\//gu, '_');
 
-/** Deterministic from the conversation, the day and the subject, so a resend can never make a second record. */
-export const vnextActualRecordId = (conversationId: string, occurrenceDate: string, subject: string): string =>
-  `wp-actual-${conversationId}-${occurrenceDate}-${vnextSubjectKey(subject)}`;
+/**
+ * Deterministic from the signed-in owner, the day and the subject, never from the conversation: the same day and subject
+ * is one record however many chats or reloads state it, so a resend or another chat can only rewrite the same document.
+ * `/` cannot appear in a document id.
+ */
+export const vnextActualRecordId = (ownerId: string, occurrenceDate: string, subject: string): string =>
+  `wp-actual-${ownerId.replace(/\//gu, '_')}-${occurrenceDate}-${vnextSubjectKey(subject)}`;
 
 export type VNextStudyRecordResult =
   | { status: 'applied' | 'noop'; records: VNextActualRecord[] }
@@ -67,7 +71,8 @@ export function applyVNextStudyRecords(params: {
   records: readonly VNextActualRecord[];
   readings: readonly VNextStudyRecordReading[];
   acceptedDate: string;
-  conversationId: string;
+  /** The signed-in owner, from the caller; never read from the model. */
+  ownerId: string;
 }): VNextStudyRecordResult {
   const errors: VNextTurnError[] = [];
   const invalid = (index: number, field: string) =>
@@ -79,7 +84,7 @@ export function applyVNextStudyRecords(params: {
     if (!subject || !vnextSubjectKey(subject)) invalid(index, 'subject');
     if (!Number.isInteger(reading.minutes) || reading.minutes < 0 || reading.minutes > MAX_RECORD_MINUTES) invalid(index, 'minutes');
     if (errors.length) return;
-    const id = vnextActualRecordId(params.conversationId, reading.dateExpression, subject);
+    const id = vnextActualRecordId(params.ownerId, reading.dateExpression, subject);
     if (reading.minutes === 0) { next.delete(id); return; }
     const existing = next.get(id);
     if (existing && existing.minutes === reading.minutes) return;

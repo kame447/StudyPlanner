@@ -86,7 +86,7 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
   }
   if (reading.studyRecords?.length) {
     // The same pure rule the session applies, so a reading the session would reject is repaired here.
-    const records = applyVNextStudyRecords({ records: [], readings: reading.studyRecords, acceptedDate: input.clock.currentDate, conversationId: 'native-provider-dry-run' });
+    const records = applyVNextStudyRecords({ records: [], readings: reading.studyRecords, acceptedDate: input.clock.currentDate, ownerId: 'native-provider-dry-run' });
     if (records.status === 'rejected') return records.errors;
   }
   const result = !Object.values(reading.delta).some(items => items.length) ? { status: 'noop' as const, state: input.state } : applyWeeklyPlanningVNextTurn(input.state, reading.delta, {
