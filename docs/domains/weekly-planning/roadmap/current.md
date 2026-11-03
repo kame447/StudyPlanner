@@ -1,7 +1,7 @@
 # 週間計画 roadmap
 
 Status: canonical / execution order
-Updated: 2026-10-07
+Updated: 2026-11-03
 
 Current contract: [../architecture/current-contract-v5.md](../architecture/current-contract-v5.md)
 Learning consultation/advice requirement: [../spec/learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md)
@@ -91,6 +91,21 @@ Production consultation is still not wired. When resumed, Issue #246 must consum
 - #51 final approval multi-device uniqueness — separate owner
 
 Do not treat the completed foundation as a production guarantee and do not recreate the old branch merely because the Issue remains open.
+
+## 2026-11-03 user priority order: stages
+
+The stable principles and their order are in [AGENTS.md](../../../../AGENTS.md) ("Conversation and planning principles"). This section only fixes the execution stages for weekly planning. Do not create placeholder Issues or PRs for every stage; each stage is a small release unit attached to an existing owner when it starts.
+
+- Current: Issue #973 / PR #974, a week of past study actuals recorded by conversation and saved only after explicit confirmation. Its existing acceptance conditions (safe Actual save, no write before confirmation, no invented times, V5 regression evidence) stay as they are. The ten priorities are not added to #973's merge conditions.
+- Stage A (priorities 1–3: continuity, recovery without repetition, speech/behavior consistency): first reproduce and classify current defects, then fix them in small units. The next recovery scenarios to demonstrate are:
+  1. A provider/Worker failure in the middle of a multi-turn conversation keeps entered facts, pending records and the tentative plan, accepts the next utterance, and never calls unsaved data saved.
+  2. A save whose result is unknown (connection lost after the commit was sent) is resolved by querying the same deterministic operation and retrying idempotently, with no duplicate and no false "saved".
+  3. When the user's short answers do not advance the same question twice, the next turn changes method (a narrowed choice, or a tentative preview from retained state) instead of asking the same question a third time.
+  4. Owner mismatch or an authentication/permission error is not routed around; the conversation stays at a safe unsaved consultation or preview and says so.
+- Stage B (priorities 4–6: no unnecessary questions, whole picture first, early tentative preview): after Stage A's scenarios hold.
+- Stage C (priorities 7–10: history, cross-session memory, compaction): owned by Issue #294 and the [user-context roadmap](../../user-context/roadmap/current.md). Weekly planning consumes it; it does not create a second memory owner.
+
+Next step: Stage A characterization (where an internal error currently stops or loops the conversation) on current main after #973 merges, then one release unit per scenario above.
 
 ## Independent scopes
 

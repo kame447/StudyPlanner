@@ -166,6 +166,34 @@ Priority order:
 5. Preserve architecture flexibility for future backend migration
 6. Leave room for future sharing and mobile app support
 
+### Conversation and planning principles (user decision, 2026-11-03)
+
+Laplance's central idea is to generate future states from past states: past actuals, the constraints at the time, accepted and rejected proposals with their reasons, and current conditions feed future proposals. First make conversation quality and continuity solid; then move to longer-term planning.
+
+Priority order for the planning conversation:
+
+1. The conversation continues even when an internal error occurs.
+2. After an error, recover through a different method and never repeat the same question or failing operation indefinitely.
+3. What the assistant says matches what the system actually did.
+4. Do not ask what does not need confirming now.
+5. Grasp the overall picture first, then fill in details.
+6. Once enough is known, show a tentative preview without fixing details, and draw out further requirements from it.
+7. Keep past conversation content and reflect it in the current proposal.
+8. Keep the user's tacit knowledge across sessions: numeric information as structured data, qualitative information as memory.
+9. Compact accumulated qualitative memory appropriately.
+10. Compaction must not drop important information.
+
+Boundaries that apply at every stage, regardless of position in the order:
+
+- Safety, owner isolation, accuracy of actuals, and zero writes before the user's explicit confirmation are base conditions. A lower priority never permits breaking them.
+- Continuing the conversation is separate from the operation succeeding. After a provider, read or write failure, keep entered information, tentative plans and open points; never call unsaved data saved; accept the next utterance. When a save result is unknown, query the result of the same logical operation and retry idempotently. Do not route around owner mismatch, authentication or permission errors; stay at a safe unsaved consultation or preview.
+- Do not blame the user for a technical failure. Record the failure reason and state difference, then move to an existing verified read path, a proposal from retained state, a narrowed question, or an input method the user can choose; state the limit when no alternative exists. Regex additions, timeout extensions and unconditional retries are not recovery designs.
+- Ask only about uncertainty that changes the next decision, what is required before saving, or an important contradiction. Do not re-ask what was answered; when ambiguous, ask one question at a time. A preview is not write approval. Never invent minutes or times of past actuals.
+- Numbers come from each domain's current structured data, never overwritten by an old conversation summary. Qualitative memory keeps, per unit of meaning, the source utterance or evidence, time, scope, explicit-versus-inferred, and corrections or withdrawals. "Not searchable" and "nothing found" are different; a memory read failure must not stop the current consultation.
+- Context compaction for continuing a conversation and long-term memory consolidation are different responsibilities. A summary is a regenerable projection, never the only source. Important facts, constraints, negations, corrections, deadlines, scope, open items and their sources are kept separately within the existing retention/forget/sensitive-data policy; deleted or withdrawn content must not be revived from source text or old summaries. "Zero information loss" is demonstrated with fixed important items and longitudinal scenarios, not promised unconditionally.
+
+Execution order and owners live in the weekly-planning and user-context canonical roadmaps; long-term memory is owned by Issue #294.
+
 ## MVP scope
 
 You should implement only the MVP unless explicitly asked otherwise.
