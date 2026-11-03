@@ -24,6 +24,17 @@ const reading = (intent: 'create_plan' | 'discuss', add: VNextAddFact[] = []) =>
   planningIntent: intent, conversationActs: [], delta: { ...EMPTY, add }, answer: null,
 });
 
+// f27b3a66's Worker checkpoint parser requires exactly these four vnext keys.
+function oldWorkerAcceptsCheckpoint(raw: string): boolean {
+  const checkpoint: unknown = JSON.parse(raw);
+  if (typeof checkpoint !== 'object' || checkpoint === null || !('vnext' in checkpoint)) return false;
+  const vnext = checkpoint.vnext;
+  if (typeof vnext !== 'object' || vnext === null || Array.isArray(vnext)) return false;
+  const expected = ['state', 'presentedQuestion', 'preview', 'messages'];
+  const actual = Object.keys(vnext);
+  return actual.length === expected.length && actual.every((key) => expected.includes(key));
+}
+
 function harness(script: Array<unknown | Error>) {
   const memory = createMemoryStorageHarness();
   const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: memory.storage });
@@ -53,7 +64,7 @@ function harness(script: Array<unknown | Error>) {
     shownRevision: local.readCheckpoint()?.vnext.presentedQuestion?.graphRevision ?? null,
   });
   const stored = () => local.readCheckpoint()!.vnext;
-  return { turn, stored, savedPlans };
+  return { turn, stored, rawCheckpoint: () => local.checkpoint.read(), savedPlans };
 }
 
 async function prepared(rest: Array<unknown | Error>) {
@@ -66,6 +77,19 @@ async function prepared(rest: Array<unknown | Error>) {
 }
 
 describe('Stage A P1: provider failure after an unsaved VNext plan', () => {
+  it('lets the next utterance reach an old Worker after a provider failure', async () => {
+    const h = await prepared([new Error('synthetic provider unavailable'), reading('discuss')]);
+    const failed = await h.turn('数学を90分に変えてください。');
+    expect(failed.outcome).toBe('interpretation_failed');
+    expect(h.stored().failureRecovery).toMatchObject({ reason: 'provider_error', consecutiveCount: 1 });
+    const raw = h.rawCheckpoint();
+    expect(raw).not.toBeNull();
+    // The durable gateway sends these exact bytes to the Worker on the next utterance.
+    expect(oldWorkerAcceptsCheckpoint(raw!)).toBe(true);
+    const next = await h.turn('今の仮案を見せてください。');
+    expect(next.outcome).toBe('noop');
+  });
+
   it('keeps accepted facts and the unsaved preview, and accepts the next utterance', async () => {
     const h = await prepared([new Error('synthetic provider unavailable'), reading('discuss')]);
     const before = structuredClone(h.stored());
