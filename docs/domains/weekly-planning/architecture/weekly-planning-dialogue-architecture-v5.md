@@ -1,7 +1,7 @@
 # weeklyPlanning dialogue architecture v5
 
-Status: canonical supplement / Stable V5
-Updated: 2026-08-22
+Status: canonical supplement / Stable V5 reference for local comparison and reused pure responsibilities
+Updated: 2026-11-04
 
 Parent contract: [current-contract-v5.md](current-contract-v5.md)
 Roadmap: [../roadmap/current.md](../roadmap/current.md)
@@ -23,7 +23,7 @@ raw user turn + relevant conversation + typed machine state
 → save
 ```
 
-Stable V5 is the sole production weekly-planning runtime.
+This is the Stable V5 dialogue architecture reference, not the production conversation entry point. VNext is the production conversation core (see [VNext contract](vnext-conversation-core.md)); it reuses the applicable pure V5 responsibilities without a production fallback to the V5 conversation runtime.
 
 ## Ownership
 

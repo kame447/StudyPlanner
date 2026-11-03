@@ -17,13 +17,6 @@ export function isValidPlanningDurationDays(value: unknown): value is number {
     && Number(value) >= 1;
 }
 
-export function hasCompleteDateWindow(value: {
-  windowStartDate?: string;
-  windowEndDate?: string;
-}): boolean {
-  return Boolean(value.windowStartDate) === Boolean(value.windowEndDate);
-}
-
 export function isValidDateWindow(value: {
   windowStartDate?: string;
   windowEndDate?: string;
