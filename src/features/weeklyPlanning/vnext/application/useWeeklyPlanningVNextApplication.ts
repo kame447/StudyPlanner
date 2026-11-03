@@ -169,7 +169,8 @@ export function useWeeklyPlanningVNextApplication(
         const core = snapshot.local.checkpoint.read();
         if (core !== null) destination.checkpoint.write(core);
         else destination.checkpoint.remove();
-        destination.save(snapshot.conversationId, snapshot.planningState);
+        destination.save(snapshot.conversationId, snapshot.planningState,
+          snapshot.local.readActualSaveAttempt(snapshot.conversationId));
         saveAiPlanningChatSearchText(ownerId, chatId, snapshot.planningState.messages);
         if (runtime.session.conversationId === snapshot.conversationId) runtime.local = destination;
         return true;
@@ -261,11 +262,18 @@ export function useWeeklyPlanningVNextApplication(
     const records = pendingActualRecords;
     // Nothing to save, an owner that is not signed in, or a save already running: never write (no owner mismatch writes).
     if (records.length === 0 || actualRecordsInFlight.current || !input.userId || !input.saveWeeklyActualRecords || !current()) return;
+    const saveLocal = runtime.local;
+    const saveConversationId = runtime.session.conversationId;
+    const attemptedAt = services.now();
+    // Keep the exact confirmed batch in the browser's UI snapshot, outside the Worker checkpoint.
+    saveLocal.save(saveConversationId, runtime.state, { attemptedAt,
+      records: records.map(({ id, minutes }) => ({ id, minutes })) });
     actualRecordsInFlight.current = true;
     savingActualRecordIds.current = new Set(records.map(record => record.id));
     redraw(value => value + 1);
     try {
-      await input.saveWeeklyActualRecords(ownerId, toActualRecordsToSave(records));
+      try { await input.saveWeeklyActualRecords(ownerId, toActualRecordsToSave(records)); }
+      catch (error) { saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt); throw error; }
       // A turn may have corrected a value while the batch was in flight. Only the values that this
       // batch actually wrote may acquire the saved mark; a correction remains pending.
       let latest: WeeklyPlanningActualRecord[] = [];
@@ -286,6 +294,7 @@ export function useWeeklyPlanningVNextApplication(
           ids,
         );
       } catch { /* the in-memory minutes above hide the saved values for this session */ }
+      saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt);
       chat.checkpoint();
     } finally {
       actualRecordsInFlight.current = false;

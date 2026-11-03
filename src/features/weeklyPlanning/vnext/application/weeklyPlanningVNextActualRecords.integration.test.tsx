@@ -110,6 +110,8 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(records.map(record => Object.keys(record).sort())).toEqual(Array(6).fill(['id', 'minutes', 'occurrenceDate', 'subject']));
     expect(ref.current!.pendingActualRecords).toEqual([]);
     expect(storedStatuses(ref)).toEqual(Array(6).fill('saved'));
+    const savedUi = storage.storage.getItem(`studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${ref.current!.chat.index.activeChatId}.ui`)!;
+    expect(JSON.parse(savedUi)).not.toHaveProperty('actualSaveAttempt');
     await act(async () => renderer!.unmount()); renderer = undefined;
     const reloaded = await mount(inputWith(save));
     expect(reloaded.current!.pendingActualRecords).toEqual([]);
@@ -217,6 +219,14 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     act(() => { void first.current!.approveActualRecords!(); });
     expect(save).toHaveBeenCalledOnce();
     expect(storedStatuses(first)).toEqual(Array(6).fill('pending'));
+    const chatId = first.current!.chat.index.activeChatId;
+    const uiKey = `studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.ui`;
+    const coreKey = `studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.core`;
+    const ui = JSON.parse(storage.storage.getItem(uiKey)!);
+    const sent = (save.mock.calls[0] as unknown as [string, Array<{ id: string; minutes: number }>])[1];
+    expect(ui.actualSaveAttempt).toEqual({ attemptedAt: NOW,
+      records: sent.map(({ id, minutes }) => ({ id, minutes })) });
+    expect(storage.storage.getItem(coreKey)).not.toContain('"actualSaveAttempt"');
 
     // Reload while the SDK save promise has neither resolved nor rejected. No saved documents are loaded.
     await act(async () => { renderer!.unmount(); }); renderer = undefined;
@@ -242,6 +252,8 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     await act(async () => { renderer!.update(<Harness ref={ref} input={optimistic} services={sharedServices} />); });
     expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(original.map(record => record.id));
     await act(async () => { rejectSave(new Error('保存はされていません')); await expect(saving).rejects.toThrow('保存はされていません'); });
+    const rejectedUi = storage.storage.getItem(`studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${ref.current!.chat.index.activeChatId}.ui`)!;
+    expect(JSON.parse(rejectedUi)).not.toHaveProperty('actualSaveAttempt');
     await act(async () => { renderer!.update(<Harness ref={ref} input={initial} services={sharedServices} />); });
     expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));
     expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(original.map(record => record.id));
