@@ -1,5 +1,5 @@
 // @ts-expect-error The e2e support module is plain ESM without declarations.
-import { createWriteLedger, protectedWritesIn } from '../../../../../tests/e2e/support/vnext-firestore-writes.mjs';
+import { cancellationCommitProblems, createWriteLedger, protectedWritesIn } from '../../../../../tests/e2e/support/vnext-firestore-writes.mjs';
 import { describe, expect, it } from 'vitest';
 
 const DOC = 'projects/p/databases/(default)/documents';
@@ -72,11 +72,37 @@ describe('phase-scoped Firestore write ledger', () => {
       expect(ledger.violations()).toEqual([]);
     });
 
-    it('a plan delete with its actuals is allowed in cleanup and in sweep', async () => {
+    it('the occurrence cancellation (one update of the plan) is allowed in cleanup and in sweep, canonical and legacy', async () => {
       for (const phase of ['cleanup', 'sweep']) {
-        const ledger = await during(phase, batch(host, [{ delete: 'schedule_events/e1' }, { delete: 'actuals/a1' }]));
-        expect(ledger.violations()).toEqual([]);
+        for (const collection of ['schedule_events', 'plans']) {
+          const ledger = await during(phase, batch(host, [{ update: `${collection}/e1` }]));
+          expect(ledger.violations()).toEqual([]);
+          expect(cancellationCommitProblems(ledger.commitsIn(phase), 1)).toEqual([]);
+        }
       }
+    });
+
+    it('a delete, an actuals write, a todos write or a migration write in cleanup or sweep is a violation', async () => {
+      for (const phase of ['cleanup', 'sweep']) {
+        for (const op of [{ delete: 'schedule_events/e1' }, { delete: 'plans/e1' }, { update: 'actuals/a1' }, { delete: 'actuals/a1' },
+          { update: 'todos/t1' }, { update: 'schedule_event_migrations/u1' }, { update: 'study_subjects/s1' }]) {
+          expect((await during(phase, batch(host, [op]))).violations()).toHaveLength(1);
+        }
+      }
+    });
+
+    it('the cancellation commit count must equal the removed count, with one operation per commit', async () => {
+      const ledger = createWriteLedger();
+      await ledger.during('sweep', async () => {
+        ledger.record(batch(host, [{ update: 'schedule_events/e1' }]));
+        ledger.record(batch(host, [{ update: 'schedule_events/e2' }]));
+      });
+      expect(cancellationCommitProblems(ledger.commitsIn('sweep'), 2)).toEqual([]);
+      expect(cancellationCommitProblems(ledger.commitsIn('sweep'), 1)).toHaveLength(1);
+      expect(cancellationCommitProblems(ledger.commitsIn('sweep'), 3)).toHaveLength(1);
+      const two = await during('cleanup', batch(host, [{ update: 'schedule_events/e1' }, { update: 'plans/e2' }]));
+      expect(two.violations()).toEqual([]);
+      expect(cancellationCommitProblems(two.commitsIn('cleanup'), 1)).toHaveLength(1);
     });
 
     it('an unrelated collection written in save is a violation', async () => {
@@ -87,15 +113,10 @@ describe('phase-scoped Firestore write ledger', () => {
       expect((await during('save', batch(host, [{ update: 'schedule_events/e1' }, { delete: 'schedule_events/e2' }]))).violations()).toHaveLength(1);
     });
 
-    it('a non-delete write in cleanup or sweep is a violation', async () => {
+    it('an update paired with a todos write in one cancellation commit is a violation', async () => {
       for (const phase of ['cleanup', 'sweep']) {
-        expect((await during(phase, batch(host, [{ update: 'schedule_events/e1' }]))).violations()).toHaveLength(1);
-        expect((await during(phase, batch(host, [{ delete: 'schedule_events/e1' }, { update: 'todos/t1' }]))).violations()).toHaveLength(1);
+        expect((await during(phase, batch(host, [{ update: 'schedule_events/e1' }, { update: 'todos/t1' }]))).violations()).toHaveLength(1);
       }
-    });
-
-    it('a delete of other data in cleanup is a violation', async () => {
-      expect((await during('cleanup', batch(host, [{ delete: 'study_subjects/s1' }]))).violations()).toHaveLength(1);
     });
 
     it('the migration collection may only be read, never written, in save', async () => {

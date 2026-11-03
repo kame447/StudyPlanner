@@ -16,14 +16,17 @@ export const NO_WRITE_PHASE = 'none';
 //    weeklyPlanningApprovalFirestoreRepository.ts:203-207 (saveApprovedPlan), :297-305 (completeOperation); collections :38-40, plan ref :94-107.
 //    Everything else the transaction touches is only READ and reaches the wire as a verify: the operation, item, migration and plan
 //    documents (:170-188 saveApprovedPlan reads, :232-250 completeOperation reads).
-//  sweep, cleanup: 「予定を削除」 -> deletePlanWithDependents: batch.delete of the plan (`schedule_events` canonical, `plans` legacy) and of
-//    its `actuals`: firebaseScheduleEventAuthority.ts:614-643 (:360 planEventDeleteOperation), firebasePlannerRepository.ts:502-517.
-//    Its only non-delete write is a `todos` merge when the plan has a linked todo; the flow's test plan has none, so it is not allowed.
+//  sweep, cleanup: 「予定を削除」 on the day view is the product's occurrence CANCELLATION, not a delete: the plan is kept with the day added to
+//    its excludedDates and a new updatedAt (domain/dayOccurrenceCancellation.ts:44-50), written by
+//    applyRecurringPlanMutation({ planUpserts: [plan] }) (hooks/usePlannerDataState.ts:1086) as one writeBatch `set` of the plan:
+//    `schedule_events` on a canonical account (firebaseScheduleEventAuthority.ts:544-607, set op :366-372), `plans` on a legacy one
+//    (firebasePlannerRepository.ts:441). Exactly one update of one of those collections per removed block; no delete, actuals,
+//    todos or migration write (whole-plan deletePlanWithDependents is not reachable from the one-off dialog, DayView.tsx:544).
 const APPROVAL_DOCUMENTS = ['plans', 'schedule_events', 'weekly_planning_approval_operations', 'weekly_planning_approval_items'];
 export const PHASE_ALLOWLISTS = {
   save: { update: APPROVAL_DOCUMENTS, verify: [...APPROVAL_DOCUMENTS, 'schedule_event_migrations'] },
-  sweep: { delete: ['plans', 'schedule_events', 'actuals'] },
-  cleanup: { delete: ['plans', 'schedule_events', 'actuals'] },
+  sweep: { update: ['plans', 'schedule_events'] },
+  cleanup: { update: ['plans', 'schedule_events'] },
 };
 
 function permitted(write) {
@@ -66,6 +69,8 @@ export function createWriteLedger() {
      *  phase any write that is not on that phase's exact allow-list. */
     violations: () => writes.filter(write => !permitted(write)),
     inPhase: name => writes.filter(write => write.phase === name),
+    /** Mutating commits of a phase (handshakes and profile writes excluded): one per removed block in sweep/cleanup, each with exactly one operation. */
+    commitsIn: name => writes.filter(write => write.phase === name && write.classification === 'forbidden'),
   };
 }
 
@@ -75,4 +80,14 @@ export const protectedWritesIn = writes => writes.filter(write => write.classifi
 export function attachWriteLedger(page, ledger = createWriteLedger()) {
   page.on('request', request => { ledger.record({ url: request.url(), method: request.method(), postData: request.postData() }); });
   return ledger;
+}
+
+/** Each removed block is exactly one commit with exactly one operation. */
+export function cancellationCommitProblems(commits, removed) {
+  const problems = [];
+  if (commits.length !== removed) problems.push(`expected ${removed} cancellation commit(s), saw ${commits.length}`);
+  commits.forEach((commit, index) => {
+    if (commit.operations?.length !== 1) problems.push(`commit ${index} has ${commit.operations?.length ?? 'unknown'} operations, expected 1`);
+  });
+  return problems;
 }

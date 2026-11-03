@@ -2,7 +2,7 @@ import { expect } from '@playwright/test';
 import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStorage } from './vnext-chat-storage.mjs';
 import { expectDurableVNext, observeDurableTurns } from './vnext-durable-observation.mjs';
 import { openScheduleDay, removeSavedPlansByTitle, sweepLeftoverPlans } from './schedule-plan-cleanup.mjs';
-import { attachWriteLedger, protectedWritesIn } from './vnext-firestore-writes.mjs';
+import { attachWriteLedger, cancellationCommitProblems, protectedWritesIn } from './vnext-firestore-writes.mjs';
 import { addDays, chooseTargetDay, isoDay, keyForWeek, onlyWeek, weeksOf } from './vnext-planner-week.mjs';
 
 // The VNext production flows (Issue #926), defined once and run by BOTH the production smoke (real model, live account,
@@ -33,6 +33,7 @@ export const openAiPlanning = async page => {
 // the sweep, the approved save and the cleanup are the only authorized ones (flow 3).
 const observeFirestore = attachWriteLedger;
 const expectNoUnauthorizedWrites = ledger => expect(ledger.violations()).toEqual([]);
+const expectCancellationCommits = (ledger, phase, removed) => expect(cancellationCommitProblems(ledger.commitsIn(phase), removed), `${phase}: one cancellation commit per removed block`).toEqual([]);
 
 // One turn: start the optional scripted answers, send, wait for a new assistant bubble and a usable composer.
 async function sendTurn(page, text, scripted) {
@@ -99,6 +100,7 @@ export async function goToTargetPlannerWeek(page, { sweepLeftovers = false, plan
   const nowMs = await page.evaluate(() => Date.now());
   const target = chooseTargetDay(week, nowMs);
   let visitedDayView = false;
+  let swept = 0;
   if (sweepLeftovers) {
     // A failed earlier run left its plan on ITS target day, which was the day after its own date: sweep today through ours.
     const jstToday = new Date(nowMs + 9 * 3600_000);
@@ -107,6 +109,8 @@ export async function goToTargetPlannerWeek(page, { sweepLeftovers = false, plan
     for (let day = today; day.getTime() <= target.date.getTime(); day = addDays(day, 1)) dates.push(day);
     const sweep = () => sweepLeftoverPlans(page, { titlePrefix: LEFTOVER_TITLE_PREFIX, dates });
     const removed = ledger ? await ledger.during('sweep', sweep) : await sweep();
+    if (ledger) expectCancellationCommits(ledger, 'sweep', removed);
+    swept = removed;
     if (removed > 0) console.warn(`Removed ${removed} leftover ${LEFTOVER_TITLE_PREFIX} plan title(s) from an earlier failed run.`);
     visitedDayView = true;
   } else if (target.switchWeek) {
@@ -116,7 +120,7 @@ export async function goToTargetPlannerWeek(page, { sweepLeftovers = false, plan
   // The planner follows the selected day's week (the day view ends on the target day); the first turn's week is checked
   // after it (expectTurnInTargetWeek), because a fresh week has no `.ui` of its own to read before a turn.
   if (visitedDayView) await openAiPlanning(page);
-  return { ...target, iso: isoDay(target.date), text: dayText(target.date) };
+  return { ...target, iso: isoDay(target.date), text: dayText(target.date), swept };
 }
 
 // Sums the shown start-end minutes of entries for this title. Existence alone is not a correction check.
@@ -167,7 +171,7 @@ const visibleEntries = (page, title) => page.getByText(title).locator('visible=t
  * expired_request), so both run on real time. `test` is Playwright's;
  * `signIn(page)` ends on the signed-in app; `tag` makes titles unique per run.
  */
-export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exerciseWeekSwitch = false }) {
+export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exerciseWeekSwitch = false, seedEarlierRun = false }) {
   const scripted = (request, turn) => (beforeTurn ? () => beforeTurn({ request, ...turn }) : undefined);
 
   test.describe('VNext production core', () => {
@@ -233,7 +237,52 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
       expectNoUnauthorizedWrites(firestore);
     });
 
-    const planFlow = (name, { week = false } = {}) => test(name, async ({ page, request }) => {
+    // Two turns (90 minutes, then the correction to 60), the preview check and the approved save, inside the flow's own `save` phase.
+    async function planAndSave(page, request, firestore, target, title) {
+      await sendTurn(page, `${target.text}の夜に「${title}」を合計90分したいです。30分ずつに分けても構いません。計画案を作ってください。`,
+        scripted(request, { kind: 'plan', title, date: target.iso }));
+      await expectTurnInTargetWeek(page, target, { previewRequired: false });
+      await sendTurn(page, `訂正です。「${title}」は合計60分にしてください。`,
+        scripted(request, { kind: 'correction', title, date: target.iso }));
+      await expectTurnInTargetWeek(page, target, { previewRequired: true });
+      const previewButton = page.locator('.ai-planning-preview-button').first();
+      await expect(previewButton, 'a plan preview must exist after the correction').toBeVisible({ timeout: 30_000 });
+      await previewButton.click();
+      const dialog = previewDialog(page);
+      await expect(dialog).toBeVisible();
+      // The correction must be reflected in the preview itself: blocks for the title total 60 minutes.
+      const previewMinutes = await shownMinutes(dialog.locator('[data-ai-preview-action-block]'), title,
+        /^(.*) (\d{2}:\d{2})-(\d{2}:\d{2})$/u, 'data-ai-preview-action-block');
+      expect(previewMinutes, 'preview blocks for the title must total the corrected 60 minutes').toBe(60);
+      return dialog;
+    }
+
+    // The emulator account starts empty, so the leftover sweep would find nothing. An earlier run's plan is left behind here, in
+    // its own browser context before the flow's page signs in, so the sweep must remove it and its write is observed and checked.
+    async function leaveEarlierRunsPlan(browser, request) {
+      // A manually created context does not inherit the project's options: pass the ones the page depends on.
+      const { baseURL, storageState, timezoneId, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale } = test.info().project.use;
+      const context = await browser.newContext({ baseURL, storageState, timezoneId, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale });
+      try {
+        const page = await context.newPage();
+        const firestore = observeFirestore(page);
+        const title = `E2E-${tag}-前回の残り`;
+        await signIn(page);
+        await openAiPlanning(page);
+        const target = await goToTargetPlannerWeek(page);
+        const dialog = await planAndSave(page, request, firestore, target, title);
+        await firestore.during('save', async () => {
+          await promoteThenSave(dialog);
+          await expect(dialog).toBeHidden({ timeout: 60_000 });
+        });
+        expect(protectedWritesIn(firestore.inPhase('save'))).not.toEqual([]);
+        await openScheduleDay(page, target.date);
+        await expect.poll(() => visibleEntries(page, title).count(), { timeout: 30_000 }).toBeGreaterThan(0);
+        expectNoUnauthorizedWrites(firestore);
+      } finally { await context.close(); }
+    }
+
+    const planFlow = (name, { week = false } = {}) => test(name, async ({ page, request, browser }) => {
       const firestore = observeFirestore(page);
       const durable = observeDurableTurns(page);
       const title = `E2E-${tag}-読書`;
@@ -243,6 +292,7 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
       let primaryError = null;
       let cleanupError = null;
       try {
+        if (seedEarlierRun && !week) await leaveEarlierRunsPlan(browser, request);
         await signIn(page);
         await openAiPlanning(page);
         // The planner's own week, read while it has a single `.ui` (before any week change).
@@ -255,21 +305,8 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
         // Earlier failed runs' plans are removed first, then the planner is put on the target day's week.
         target = await goToTargetPlannerWeek(page, { sweepLeftovers: true, plannerWeek, ledger: firestore });
         if (week) expect(target.switchWeek, 'this case must take the week-switching branch').toBe(true);
-        await sendTurn(page, `${target.text}の夜に「${title}」を合計90分したいです。30分ずつに分けても構いません。計画案を作ってください。`,
-          scripted(request, { kind: 'plan', title, date: target.iso }));
-        await expectTurnInTargetWeek(page, target, { previewRequired: false });
-        await sendTurn(page, `訂正です。「${title}」は合計60分にしてください。`,
-          scripted(request, { kind: 'correction', title, date: target.iso }));
-        await expectTurnInTargetWeek(page, target, { previewRequired: true });
-        const previewButton = page.locator('.ai-planning-preview-button').first();
-        await expect(previewButton, 'a plan preview must exist after the correction').toBeVisible({ timeout: 30_000 });
-        await previewButton.click();
-        const dialog = previewDialog(page);
-        await expect(dialog).toBeVisible();
-        // The correction must be reflected in the preview itself: blocks for the title total 60 minutes.
-        const previewMinutes = await shownMinutes(dialog.locator('[data-ai-preview-action-block]'), title,
-          /^(.*) (\d{2}:\d{2})-(\d{2}:\d{2})$/u, 'data-ai-preview-action-block');
-        expect(previewMinutes, 'preview blocks for the title must total the corrected 60 minutes').toBe(60);
+        if (seedEarlierRun && !week) expect(target.swept, 'the sweep removes the plan an earlier run left behind').toBeGreaterThan(0);
+        const dialog = await planAndSave(page, request, firestore, target, title);
         attemptedSave = true; // the save click may write even when a later wait fails: cleanup must then still run
         // The approved save is the one authorized write of the flow; the observer must see it (a blind observer proves nothing).
         await firestore.during('save', async () => {
@@ -293,6 +330,10 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exer
             // Exactly the blocks observed saved are removed and none remain; when the save never became visible nothing may be found.
             const removed = await firestore.during('cleanup', () => removeSavedPlansByTitle(page, { title, date: target.date, allowNone: savedBlocks === null }));
             expect(removed, 'cleanup removes exactly the saved blocks').toBe(savedBlocks ?? removed);
+            // Each removed block is one cancellation commit. The occurrence is cancelled, not deleted, and the page exposes no
+            // persisted copy of it, so besides 0 visible blocks (checked by the helper) the evidence is that commit.
+            expectCancellationCommits(firestore, 'cleanup', removed);
+            expectNoUnauthorizedWrites(firestore);
           } catch (error) { cleanupError = error; }
         }
       }
