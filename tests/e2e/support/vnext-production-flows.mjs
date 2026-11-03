@@ -128,15 +128,26 @@ async function shownMinutes(locator, title, pattern, idAttribute) {
   return total;
 }
 
+// Selects the day seven days before today in the schedule's day view: the AI planner works on the selected date's week,
+// and the week of today - 7 always ends before tomorrow.
+async function selectDayOfPreviousWeek(page) {
+  await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
+  await page.getByRole('tab', { name: '日', exact: true }).click();
+  const previous = page.getByRole('button', { name: '前の期間へ' });
+  for (let step = 0; step < 7; step++) await previous.click();
+}
+
 // Only visible nodes: the hidden AI view still holds the same title in its messages.
 const visibleEntries = (page, title) => page.getByText(title).locator('visible=true');
 
 /**
- * Registers the three flows (and, when `switchWeekClock` is a Date, a fourth that runs flow 3 with the clock set there,
- * which must take the week-switching branch). `test` is Playwright's (the emulator passes its fixed-clock one);
+ * Registers the three flows (and, with `exerciseWeekSwitch`, a fourth that runs flow 3 after selecting a day of the PREVIOUS
+ * week in the schedule view, so tomorrow lies outside the planner's week and the week-switching branch must be taken).
+ * The clock is never moved: the durable Worker refuses a turn whose browser start time is not near its own (durableTurnJob.ts
+ * expired_request), so both run on real time. `test` is Playwright's;
  * `signIn(page)` ends on the signed-in app; `tag` makes titles unique per run.
  */
-export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, switchWeekClock = null }) {
+export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exerciseWeekSwitch = false }) {
   const scripted = (request, turn) => (beforeTurn ? () => beforeTurn({ request, ...turn }) : undefined);
 
   test.describe('VNext production core', () => {
@@ -201,8 +212,7 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, swit
       expect(firestore.forbidden).toEqual([]);
     });
 
-    const planFlow = (name, { week = false } = {}) => test(name, async ({ page, request, context }) => {
-      if (week) await context.clock.setSystemTime(switchWeekClock);
+    const planFlow = (name, { week = false } = {}) => test(name, async ({ page, request }) => {
       const firestore = observeFirestore(page);
       const durable = observeDurableTurns(page);
       const title = `E2E-${tag}-読書`;
@@ -212,6 +222,7 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, swit
       let cleanupError = null;
       try {
         await signIn(page);
+        if (week) await selectDayOfPreviousWeek(page);
         await openAiPlanning(page);
         // Earlier failed runs' plans are removed first, then the planner is put on the target day's week.
         target = await goToTargetPlannerWeek(page, { sweepLeftovers: true });
@@ -252,6 +263,6 @@ export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, swit
       if (cleanupError) throw cleanupError;
     });
     planFlow('flow 3: plan with a splittable duration and a correction, approve, verify, clean up');
-    if (switchWeekClock) planFlow('flow 3 on the last day of the planner week: the planner switches to the next week', { week: true });
+    if (exerciseWeekSwitch) planFlow('flow 3 with the planner on the previous week: it switches to the target week', { week: true });
   });
 }

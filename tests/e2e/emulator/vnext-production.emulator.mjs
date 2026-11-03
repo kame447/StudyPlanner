@@ -1,7 +1,9 @@
-import { expect, test } from '../support/fixed-clock.mjs';
+import { expect, test } from '@playwright/test';
 import { answerScriptedTurn } from '../support/synthetic-provider-client.mjs';
 import { defineVNextProductionFlows } from '../support/vnext-production-flows.mjs';
 
+// Real clock: the durable Worker refuses a turn whose browser start time is not within minutes of its own, so this
+// target cannot use the fixed past clock of the other emulator specs. Flows derive their dates from the browser clock.
 // The VNext production smoke's flows (support/vnext-production-flows.mjs, also run by
 // weekly-planning-vnext-production.live.mjs against production) on the durable emulator target: the real application
 // build with durable turns on, the production Worker with its Durable Object job, the Auth and Firestore emulators,
@@ -25,13 +27,10 @@ async function signIn(page) {
   await expect(primaryNav).toBeVisible();
 }
 
-// The last day (Sunday, JST) of the planner's week: tomorrow is outside it, so flow 3 must switch weeks.
-const SUNDAY = new Date('2026-08-23T10:00:00+09:00');
-
 defineVNextProductionFlows({
   test,
   signIn,
   tag: 'E2E-VNEXT-emulator',
-  switchWeekClock: SUNDAY,
+  exerciseWeekSwitch: true,
   beforeTurn: ({ request, ...turn }) => answerScriptedTurn(request, turn),
 });
