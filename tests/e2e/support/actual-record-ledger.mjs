@@ -1,25 +1,41 @@
 // The independent oracle of the examinee weekly-record gate (#973). Every expected value below comes from the fixed
-// scenario in ARGON-FIRST.md (week 2026-10-26 Mon .. 2026-11-01 Sun, today 2026-11-03 Tue), written here by hand and
+// scenario in ARGON-FIRST.md (example week 2026-10-26 Mon .. 2026-11-01 Sun, today 2026-11-03 Tue; the live gate derives the week from the real clock), written here by hand and
 // never read from the product or from a model output. The display formats are re-implemented on purpose (not imported from
 // weeklyPlanningActualRecords.ts): a wrong format in the product must fail this gate, not be copied by it.
 // Checks return their violations (an empty list means the claim holds), like schedule-event-ledger.mjs.
 
-/** The browser clock of the gate: Tuesday 2026-11-03, so "last week" is 10/26..11/01. */
-export const EXAM_NOW = new Date('2026-11-03T10:00:00+09:00');
+/** Today in Japan (the browser runs in Asia/Tokyo) as an ISO date. The gate runs on the real clock: the durable Worker rejects a turn that does not start about now. */
+export const todayInJapan = (now = Date.now()) => new Date(now + 9 * 60 * 60_000).toISOString().slice(0, 10);
 
-/** One record per studied day; Thursday 10/29 is a rest day and has none. */
-export const WEEK = [
-  { date: '2026-10-26', subject: '数学', minutes: 60 },
-  { date: '2026-10-27', subject: '英語', minutes: 45 },
-  { date: '2026-10-28', subject: '現代文', minutes: 30 },
-  { date: '2026-10-30', subject: '英語', minutes: 50 },
-  { date: '2026-10-31', subject: '数学', minutes: 120 },
-  { date: '2026-11-01', subject: '化学', minutes: 90 },
-];
-export const REST_DAY = '2026-10-29';
-export const WEEK_TOTAL = 395;
-export const CORRECTED_TUESDAY = { date: '2026-10-27', subject: '英語', minutes: 50 };
-export const CORRECTED_TOTAL = 400;
+const addDays = (iso, days) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * "Last week" of a run: the Monday..Sunday before the week that contains `todayIso` (weeks start on Monday). The scenario is the
+ * one of ARGON-FIRST (月数学60 火英語45 水現代文30 木休み 金英語50 土数学120 日化学90 = 395) with the dates the real clock gives.
+ * One record per studied day; Thursday is a rest day and has none.
+ */
+export function examWeekOf(todayIso) {
+  const dayOfWeek = new Date(`${todayIso}T00:00:00Z`).getUTCDay();
+  const lastMonday = addDays(todayIso, -((dayOfWeek + 6) % 7) - 7);
+  const day = (offset) => addDays(lastMonday, offset);
+  return {
+    week: [
+      { date: day(0), subject: '数学', minutes: 60 },
+      { date: day(1), subject: '英語', minutes: 45 },
+      { date: day(2), subject: '現代文', minutes: 30 },
+      { date: day(4), subject: '英語', minutes: 50 },
+      { date: day(5), subject: '数学', minutes: 120 },
+      { date: day(6), subject: '化学', minutes: 90 },
+    ],
+    restDay: day(3),
+    correctedTuesday: { date: day(1), subject: '英語', minutes: 50 },
+    total: 395,
+    correctedTotal: 400,
+  };
+}
+
+/** The example week of the scenario (today Tuesday 2026-11-03 → 10/26..11/01), for the oracle's own controls. */
+export const { week: WEEK, restDay: REST_DAY, correctedTuesday: CORRECTED_TUESDAY, total: WEEK_TOTAL, correctedTotal: CORRECTED_TOTAL } = examWeekOf('2026-11-03');
 
 /** Words that say "already saved". Before the user's click on the confirmation's save button no reply may contain one. */
 export const SAVED_WORDS = ['記録しました', '保存しました', '保存済み'];

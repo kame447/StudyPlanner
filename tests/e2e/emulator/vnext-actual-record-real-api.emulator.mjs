@@ -1,7 +1,7 @@
 import { expect, test as base } from '@playwright/test';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import {
-  CORRECTED_TOTAL, CORRECTED_TUESDAY, EXAM_NOW, REST_DAY, WEEK, WEEK_TOTAL,
+  examWeekOf, todayInJapan,
   byDate, noClockTimes, noneSaved, nothingOn, pendingReply, questionMarksIn, rowText, savedExactly, savedReply,
   savedWordsIn, studyRecordIdPrefix, studyRecordsOf, sumMinutes, totalText,
 } from '../support/actual-record-ledger.mjs';
@@ -9,7 +9,7 @@ import {
 // The examinee's "last week" study record with the REAL model, through the real Worker (#973 R1). Run only by the
 // owner-only weekly-planning-real-api-checkpoint workflow (profile vnext-worker), never by a pull request, and not by
 // the scripted suites: scripted readings prove the code path, not that the model reads a student's sentences.
-// The browser clock is Tuesday 2026-11-03 10:00 JST so "last week" is 2026-10-26..11-01. Every expected value comes from
+// "Last week" is the Monday..Sunday before the run's week in Japan (real clock). Every expected value comes from
 // the fixed scenario (support/actual-record-ledger.mjs), never from a model output; a model failure stays a failure
 // (no retry, no skip, no loosened expectation). Evidence per turn: the reply the user saw and what the confirmation lists.
 // Ids are owner x date x subject (fix-02), so each scenario clears this account's study records first. N3 sends the same week again after a
@@ -22,13 +22,10 @@ const TURN_ENDPOINT = '/weekly-planning/turns';
 const email = () => test.info().project.metadata.email;
 const password = () => process.env.STUDYPLANNER_LIVE_PASSWORD;
 
-const test = base.extend({
-  timezoneId: ['Asia/Tokyo', { option: true }],
-  context: async ({ context }, use) => {
-    await context.clock.install({ time: EXAM_NOW });
-    await use(context);
-  },
-});
+// The real clock: the durable Worker accepts a turn only if it starts within a few minutes of now (durableTurnJob.ts acceptanceAgeMs), so
+// the browser clock is never faked here. "Last week" is the Monday..Sunday before this run's week in Japan, computed once at load.
+const { week: WEEK, restDay: REST_DAY, correctedTuesday: CORRECTED_TUESDAY, total: WEEK_TOTAL, correctedTotal: CORRECTED_TOTAL } = examWeekOf(todayInJapan());
+const test = base.extend({ timezoneId: ['Asia/Tokyo', { option: true }] });
 
 async function signIn(page) {
   await page.goto(VNEXT);

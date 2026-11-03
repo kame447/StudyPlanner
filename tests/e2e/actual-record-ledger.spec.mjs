@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import {
-  CORRECTED_TUESDAY, REST_DAY, WEEK, WEEK_TOTAL, actualRecords, noClockTimes, noneSaved, nothingOn, pendingReply,
+  examWeekOf, todayInJapan, CORRECTED_TUESDAY, REST_DAY, WEEK, WEEK_TOTAL, actualRecords, noClockTimes, noneSaved, nothingOn, pendingReply,
   questionMarksIn, rowText, savedExactly, savedReply, savedWordsIn, studyRecordsOf, sumMinutes, totalText,
 } from './support/actual-record-ledger.mjs';
 
@@ -66,4 +66,21 @@ test('the reply checks: pending wording is exact, "saved" words are found, quest
     + '金 10/30 英語 50分、土 10/31 数学 120分（2時間）、日 11/1 化学 90分（1時間30分）。');
   expect(alreadySaved).not.toContain('まだ保存していません');
   expect(savedWordsIn(alreadySaved)).toEqual([]);
+});
+
+test('last week follows the real clock: the Monday..Sunday before this run\'s week, with the same scenario', () => {
+  const span = (today) => { const { week, restDay } = examWeekOf(today); return [week[0].date, restDay, week[5].date]; };
+  expect(span('2026-11-02')).toEqual(['2026-10-26', '2026-10-29', '2026-11-01']); // Monday
+  expect(span('2026-11-03')).toEqual(['2026-10-26', '2026-10-29', '2026-11-01']); // Tuesday
+  expect(span('2026-11-08')).toEqual(['2026-10-26', '2026-10-29', '2026-11-01']); // Sunday
+  expect(span('2026-11-11')).toEqual(['2026-11-02', '2026-11-05', '2026-11-08']); // Wednesday of the next week
+  expect(span('2027-01-05')).toEqual(['2026-12-28', '2026-12-31', '2027-01-03']); // across the year end
+  const { week, correctedTuesday, total, correctedTotal } = examWeekOf('2026-11-11');
+  expect(sumMinutes(week)).toBe(total);
+  expect(correctedTuesday).toEqual({ date: week[1].date, subject: '英語', minutes: 50 });
+  expect(correctedTotal).toBe(total + 5);
+  expect(rowText(week[0])).toBe('月 11/2 数学 60分（1時間）');
+  // 2026-11-03 10:00 JST is still 2026-11-03 in Japan; 2026-11-02 23:30 UTC is already the 3rd there.
+  expect(todayInJapan(Date.parse('2026-11-03T01:00:00Z'))).toBe('2026-11-03');
+  expect(todayInJapan(Date.parse('2026-11-02T23:30:00Z'))).toBe('2026-11-03');
 });
