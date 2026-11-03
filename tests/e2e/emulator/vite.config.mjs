@@ -11,6 +11,14 @@ const emulatorDir = path.dirname(fileURLToPath(import.meta.url));
 const firebaseClient = path.resolve(emulatorDir, '../../../src/lib/firebaseClient.ts');
 const emulatorClient = path.resolve(emulatorDir, 'firebaseClient.emulator.js');
 
+// The durable-turn target (#926): the same production build with VITE_DURABLE_WEEKLY_TURNS on, so the page talks
+// to the Worker's durable turn job exactly as in production, while the model stays the synthetic provider.
+// It is a second build and preview server with its own output directory, port and Worker URL, selected only by
+// STUDYPLANNER_E2E_DURABLE=1; every other target is unchanged.
+const durableTurns = process.env.STUDYPLANNER_E2E_DURABLE === '1';
+const workerPort = process.env.STUDYPLANNER_E2E_WORKER_PORT ?? '18787';
+const appPort = Number(process.env.STUDYPLANNER_E2E_APP_PORT ?? 4176);
+
 // Variables already in the environment take precedence over .env files, so a developer's local
 // production values cannot leak into this target.
 Object.assign(process.env, {
@@ -21,10 +29,11 @@ Object.assign(process.env, {
   VITE_FIREBASE_STORAGE_BUCKET: '',
   VITE_FIREBASE_MESSAGING_SENDER_ID: '',
   VITE_FIREBASE_MEASUREMENT_ID: '',
-  VITE_CLOUDFLARE_AI_PROXY_URL: 'http://127.0.0.1:18787',
+  VITE_CLOUDFLARE_AI_PROXY_URL: `http://127.0.0.1:${workerPort}`,
   VITE_WEEKLY_PLANNING_TRACE_ENABLED: 'true',
-  // The explicit real-API workflow (#926) builds the production durable path; every other target does not.
-  VITE_DURABLE_WEEKLY_TURNS: process.env.STUDYPLANNER_E2E_REAL_API === '1' ? 'enabled' : 'disabled',
+  // The real-API workflow and the durable-turn target (#926) build the production durable path; every other
+  // target does not.
+  VITE_DURABLE_WEEKLY_TURNS: process.env.STUDYPLANNER_E2E_REAL_API === '1' || durableTurns ? 'enabled' : 'disabled',
   // Exercise the production VNext composition even if the shell selected a local V5 comparison.
   VITE_WEEKLY_PLANNING_CORE: 'vnext',
   // Ports from firebase.emulator-e2e.json, apart from the defaults other local tools often hold.
@@ -45,6 +54,6 @@ const emulatorClientPlugin = {
 // A production build, as deployed: the dev server's StrictMode double effects are not production behavior.
 export default mergeConfig(applicationConfig, {
   plugins: [emulatorClientPlugin],
-  build: { outDir: 'artifacts/emulator-dist', emptyOutDir: true },
-  preview: { host: '127.0.0.1', port: 4176, strictPort: true, https: false },
+  build: { outDir: durableTurns ? 'artifacts/emulator-dist-durable' : 'artifacts/emulator-dist', emptyOutDir: true },
+  preview: { host: '127.0.0.1', port: appPort, strictPort: true, https: false },
 });

@@ -93,7 +93,7 @@ export function redactedWriteObservation(value) {
 }
 
 /** Decode the Firebase SDK's sendRawJson WebChannel form or a REST JSON WriteRequest. */
-export function classifyFirestoreWrite({ url: rawUrl, method, postData }) {
+export function classifyFirestoreWrite({ url: rawUrl, method, postData }, { withOperations = false } = {}) {
   const url = new URL(rawUrl);
   if (url.hostname !== 'firestore.googleapis.com') return null;
   const channel = url.pathname.endsWith('/google.firestore.v1.Firestore/Write/channel');
@@ -104,17 +104,28 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }) {
   if (!channel && !commit && !batch && !rest) return null;
   const transport = channel ? 'write_channel' : commit ? 'commit' : batch ? 'batch_write' : 'rest';
   const operationKinds = [];
-  const result = (classification, collections = []) => redactedWriteObservation({ transport, classification, collections, operationKinds });
+  const operations = []; // additive, redacted per-write list: { kind, collection } (leaf collection name only; no ids, paths or bodies)
+  // Opt-in (`withOperations`) so every existing caller's result shape is unchanged.
+  const result = (classification, collections = []) => ({
+    ...redactedWriteObservation({ transport, classification, collections, operationKinds }),
+    ...(withOperations ? { operations: operations.map(({ kind, collection }) => ({
+      kind: ['update', 'delete', 'transform', 'verify'].includes(kind) ? kind : 'unknown',
+      collection: KNOWN_COLLECTIONS.has(collection) ? collection : 'unknown_collection',
+    })) } : {}),
+  });
   const unknown = (collections = []) => result('unclassified', collections);
   const targets = [];
   const verifiedTargets = [];
   let malformed = false;
+  let currentKind = 'unknown';
   const target = (name, destination = targets) => {
     if (typeof name !== 'string') { malformed = true; return; }
     const match = name.match(/^projects\/[^/]+\/databases\/[^/]+\/documents\/(.+)$/u);
     const parts = match?.[1].split('/');
     if (!parts || parts.length < 2 || parts.length % 2 || parts.some(part => !part)) { malformed = true; return; }
-    destination.push(parts.filter((_, index) => index % 2 === 0));
+    const collectionNames = parts.filter((_, index) => index % 2 === 0);
+    destination.push(collectionNames);
+    operations.push({ kind: currentKind, collection: collectionNames[collectionNames.length - 1] });
   };
   const envelope = message => {
     if (!message || typeof message !== 'object' || Array.isArray(message)
@@ -129,6 +140,7 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }) {
           'update', 'delete', 'transform', 'verify', 'updateMask', 'updateTransforms', 'currentDocument',
         ].includes(key))) { malformed = true; continue; }
         operationKinds.push(actions[0]);
+        currentKind = actions[0];
         if (actions[0] === 'verify') {
           // SDK Transaction.commit emits VerifyMutation for reads without a mutation.
           // No masks/transforms may smuggle an operation into a verify-only entry.
@@ -173,6 +185,7 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }) {
       } else return unknown();
     } else {
       operationKinds.push(method === 'DELETE' ? 'delete' : 'update');
+      currentKind = method === 'DELETE' ? 'delete' : 'update';
       const resource = decodeURIComponent(url.pathname.replace(/^\/v1\//u, ''));
       if (method === 'POST') {
         const body = JSON.parse(postData);
