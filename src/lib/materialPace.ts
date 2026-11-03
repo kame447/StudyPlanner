@@ -167,49 +167,31 @@ export function calculateMaterialPace(
       ? Math.min(100, Math.max(0, (currentUnit / totalUnits) * 100))
       : 0;
 
+  const baseResult = {
+    unitLabel,
+    totalUnits,
+    currentUnit,
+    remainingUnits,
+    targetDate,
+    remainingDays,
+    dailyQuota: null,
+    suggestedDailyUnits: null,
+    progressRate,
+    estimatedDailyMinutes: null,
+  };
+
   if (material.paceEnabled !== true) {
-    return {
-      enabled: false,
-      unitLabel,
-      totalUnits,
-      currentUnit,
-      remainingUnits,
-      targetDate,
-      remainingDays,
-      dailyQuota: null,
-      suggestedDailyUnits: null,
-      progressRate,
-      estimatedDailyMinutes: null,
-      status: 'disabled',
-    };
+    return { enabled: false, ...baseResult, status: 'disabled' };
   }
 
   if (totalUnits === null) {
-    return {
-      enabled: true,
-      unitLabel,
-      totalUnits,
-      currentUnit,
-      remainingUnits,
-      targetDate,
-      remainingDays,
-      dailyQuota: null,
-      suggestedDailyUnits: null,
-      progressRate,
-      estimatedDailyMinutes: null,
-      status: 'invalid',
-    };
+    return { enabled: true, ...baseResult, status: 'invalid' };
   }
 
   if (remainingUnits <= 0) {
     return {
       enabled: true,
-      unitLabel,
-      totalUnits,
-      currentUnit,
-      remainingUnits,
-      targetDate,
-      remainingDays,
+      ...baseResult,
       dailyQuota: 0,
       suggestedDailyUnits: 0,
       progressRate: 100,
@@ -219,37 +201,11 @@ export function calculateMaterialPace(
   }
 
   if (!targetDate) {
-    return {
-      enabled: true,
-      unitLabel,
-      totalUnits,
-      currentUnit,
-      remainingUnits,
-      targetDate,
-      remainingDays,
-      dailyQuota: null,
-      suggestedDailyUnits: null,
-      progressRate,
-      estimatedDailyMinutes: null,
-      status: 'no-target',
-    };
+    return { enabled: true, ...baseResult, status: 'no-target' };
   }
 
   if (remainingDays === null || remainingDays <= 0) {
-    return {
-      enabled: true,
-      unitLabel,
-      totalUnits,
-      currentUnit,
-      remainingUnits,
-      targetDate,
-      remainingDays,
-      dailyQuota: null,
-      suggestedDailyUnits: null,
-      progressRate,
-      estimatedDailyMinutes: null,
-      status: 'overdue',
-    };
+    return { enabled: true, ...baseResult, status: 'overdue' };
   }
 
   const dailyQuota = remainingUnits / remainingDays;
@@ -260,15 +216,9 @@ export function calculateMaterialPace(
 
   return {
     enabled: true,
-    unitLabel,
-    totalUnits,
-    currentUnit,
-    remainingUnits,
-    targetDate,
-    remainingDays,
+    ...baseResult,
     dailyQuota,
     suggestedDailyUnits,
-    progressRate,
     estimatedDailyMinutes:
       estimatedMinutesPerUnit === null
         ? null
