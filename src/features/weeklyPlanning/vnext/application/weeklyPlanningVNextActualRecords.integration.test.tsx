@@ -15,7 +15,8 @@ import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weekly
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
-import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, sumActualRecordMinutes,
+  type PendingWeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
 
 const OWNER = 'exam-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03'; const NOW = `${TODAY}T00:00:00.000Z`;
@@ -114,6 +115,44 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(reloaded.current!.pendingActualRecords).toEqual([]);
     await act(async () => { await reloaded.current!.approveActualRecords!(); });
     expect(save).toHaveBeenCalledOnce();
+  });
+
+  it('offers a changed minute value for replacement in the same mount and saves it under the same document id', async () => {
+    await seedRecords(storage.storage);
+    const documents = new Map<string, PendingWeeklyPlanningActualRecord>();
+    const save = vi.fn(async (_ownerId: string, records: PendingWeeklyPlanningActualRecord[]) => {
+      for (const record of records) documents.set(record.id, record);
+    });
+    const sharedServices: WeeklyPlanningVNextLocalApplicationServices = { ...services(), interpret: () => async () => ({
+      status: 'interpreted' as const, planningIntent: 'discuss' as const, answer: null, conversationActs: [],
+      studyRecords: [rec('2026-10-27', '英語', 50)], studyRecordQuestion: null,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 },
+    }) };
+    const ref = createRef<WeeklyPlanningApplication>();
+    const initial = inputWith(save);
+    await act(async () => { renderer = create(<Harness ref={ref} input={initial} services={sharedServices} />); });
+    const firstIds = ref.current!.pendingActualRecords!.map(record => record.id);
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(documents.size).toBe(6);
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+
+    // The planner publishes the saved documents without remounting the conversation.
+    const loaded = { ...initial, actuals: [...documents.values()].map(record =>
+      savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
+    await act(async () => { renderer!.update(<Harness ref={ref} input={loaded} services={sharedServices} />); });
+    await act(async () => { await ref.current!.submitTurn('火曜の英語は50分でした。'); });
+    const correction = ref.current!.pendingActualRecords!;
+    expect(correction).toHaveLength(1);
+    expect(correction[0]).toMatchObject({ id: firstIds[1], minutes: 50, replacesMinutes: 45 });
+    expect(formatActualRecordRow(correction[0])).toBe('火 10/27 英語 50分 ※保存済みの45分を置き換えます');
+    expect(storedStatuses(ref)[1]).toBe('pending');
+
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][1]).toEqual([{ id: firstIds[1], occurrenceDate: '2026-10-27', subject: '英語', minutes: 50 }]);
+    expect(documents.size).toBe(6);
+    expect(documents.get(firstIds[1])?.minutes).toBe(50);
+    expect(ref.current!.pendingActualRecords).toEqual([]);
   });
 
   it('keeps every record pending after a failed save and a retry saves the same batch', async () => {
