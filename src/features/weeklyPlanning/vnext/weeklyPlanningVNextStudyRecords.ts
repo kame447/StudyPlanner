@@ -5,7 +5,7 @@
 // confirmation UI's explicit action (DESIGN-DECISION 4).
 import type { VNextTurnError } from './weeklyPlanningVNextTypes';
 // The display format has one owner (fix-01 B); this file only phrases the conversation around it.
-import { formatActualRecordRow, formatActualRecordsTotal, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
+import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
 
 /** One stated record as the model reads it: absolute date, subject as the user said it, stated minutes. */
 export interface VNextStudyRecordReading {
@@ -55,8 +55,26 @@ export const vnextActualRecordId = (ownerId: string, occurrenceDate: string, sub
   `wp-actual-${ownerId.replace(/\//gu, '_')}-${occurrenceDate}-${vnextSubjectKey(subject)}`;
 
 export type VNextStudyRecordResult =
-  | { status: 'applied' | 'noop'; records: VNextActualRecord[] }
+  | { status: 'applied' | 'noop'; records: VNextActualRecord[];
+      /** Stated this turn and equal to what is already saved (same id, same minutes): kept as 'saved', never offered again. */
+      alreadySaved: VNextActualRecord[];
+      /** Stated this turn and not saved as stated (new, or other minutes than the saved ones): awaiting confirmation. */
+      changed: VNextActualRecord[] }
   | { status: 'rejected'; errors: VNextTurnError[] };
+
+/**
+ * The minutes of the owner's study records that are already saved, by id, read from the actuals the application has loaded
+ * (the same list the turn already carries). Only duration-only actuals made from a conversation (`wp-actual-<owner>-…`) count;
+ * a record outside the loaded range is simply unknown and is confirmed as before.
+ */
+export function savedStudyRecordMinutes(
+  actuals: readonly { id: string; userId?: string; actualDurationMinutes?: number }[], ownerId: string,
+): Map<string, number> {
+  const prefix = `wp-actual-${ownerId.replace(/\//gu, '_')}-`;
+  return new Map(actuals.filter(actual => actual.id.startsWith(prefix) && (actual.userId === undefined || actual.userId === ownerId)
+    && Number.isInteger(actual.actualDurationMinutes) && (actual.actualDurationMinutes as number) > 0)
+    .map(actual => [actual.id, actual.actualDurationMinutes as number]));
+}
 
 const sortRecords = (records: VNextActualRecord[]): VNextActualRecord[] =>
   [...records].sort((a, b) => a.occurrenceDate.localeCompare(b.occurrenceDate) || a.id.localeCompare(b.id));
@@ -73,11 +91,14 @@ export function applyVNextStudyRecords(params: {
   acceptedDate: string;
   /** The signed-in owner, from the caller; never read from the model. */
   ownerId: string;
+  /** Minutes already saved, by record id (see savedStudyRecordMinutes); absent means none known. */
+  saved?: ReadonlyMap<string, number>;
 }): VNextStudyRecordResult {
   const errors: VNextTurnError[] = [];
   const invalid = (index: number, field: string) =>
     errors.push({ code: 'invalid_value', path: `studyRecords[${index}].${field}`, localId: null, factId: null });
   const next = new Map(params.records.map(record => [record.id, record]));
+  const stated = new Set<string>();
   params.readings.forEach((reading, index) => {
     const subject = reading.subject.trim();
     if (!validDate(reading.dateExpression) || reading.dateExpression > params.acceptedDate) invalid(index, 'dateExpression');
@@ -85,14 +106,24 @@ export function applyVNextStudyRecords(params: {
     if (!Number.isInteger(reading.minutes) || reading.minutes < 0 || reading.minutes > MAX_RECORD_MINUTES) invalid(index, 'minutes');
     if (errors.length) return;
     const id = vnextActualRecordId(params.ownerId, reading.dateExpression, subject);
-    if (reading.minutes === 0) { next.delete(id); return; }
+    if (reading.minutes === 0) { next.delete(id); stated.delete(id); return; }
+    stated.add(id);
+    // The saved document, when the application knows it, decides: same minutes is saved already, other minutes a replacement
+    // still to confirm. Without it (outside the loaded range) the record keeps the status this conversation gave it.
     const existing = next.get(id);
-    if (existing && existing.minutes === reading.minutes) return;
-    next.set(id, { id, occurrenceDate: reading.dateExpression, subject, minutes: reading.minutes, status: 'pending' });
+    const known = params.saved?.get(id);
+    const status = known === undefined ? (existing?.minutes === reading.minutes ? existing.status : 'pending')
+      : known === reading.minutes ? 'saved' as const : 'pending' as const;
+    if (existing && existing.minutes === reading.minutes && existing.status === status) return;
+    next.set(id, { id, occurrenceDate: reading.dateExpression, subject, minutes: reading.minutes, status });
   });
   if (errors.length) return { status: 'rejected', errors };
   const records = sortRecords([...next.values()]);
-  return { status: JSON.stringify(records) === JSON.stringify(sortRecords([...params.records])) ? 'noop' : 'applied', records };
+  const before = new Map(params.records.map(record => [record.id, record]));
+  const statedRecords = records.filter(record => stated.has(record.id));
+  return { status: JSON.stringify(records) === JSON.stringify(sortRecords([...params.records])) ? 'noop' : 'applied', records,
+    alreadySaved: statedRecords.filter(record => record.status === 'saved'),
+    changed: statedRecords.filter(record => record.status === 'pending' && before.get(record.id)?.minutes !== record.minutes) };
 }
 
 /** Marks exactly the named records saved; values, dates and subjects never change. */
@@ -122,17 +153,23 @@ export const VNEXT_STUDY_RECORD_REMOVED = 'その日を確認リストから外�
 export const VNEXT_STUDY_RECORD_SAVE_GUIDE = 'ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。';
 
 export function vnextStudyRecordReply(params: {
+  /** Stated this turn and already saved as stated. */
+  alreadySaved?: readonly VNextActualRecord[];
   changed: readonly VNextActualRecord[];
   removedCount: number;
   all: readonly VNextActualRecord[];
   question: VNextStudyRecordQuestion | null;
 }): string {
+  const saved = params.alreadySaved ?? [];
   const lines: string[] = [];
+  if (saved.length) lines.push(formatAlreadySavedActualRecordsReply(saved));
   if (params.changed.length) lines.push(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${params.changed.map(formatActualRecordRow).join('、')}。`);
   else if (params.removedCount) lines.push(VNEXT_STUDY_RECORD_REMOVED);
-  else if (!params.question) lines.push(VNEXT_STUDY_RECORD_UNCHANGED);
-  if (params.all.length) lines.push(`ここまでの合計は${formatActualRecordsTotal(sumActualRecordMinutes(params.all))}です。`);
+  else if (!params.question && !saved.length) lines.push(VNEXT_STUDY_RECORD_UNCHANGED);
+  const waiting = params.all.filter(record => record.status !== 'saved');
+  // Only saved records were stated: nothing is waiting, so no total and no "press save" guidance.
+  if (waiting.length || params.changed.length) lines.push(`ここまでの合計は${formatActualRecordsTotal(sumActualRecordMinutes(params.all))}です。`);
   if (params.question) lines.push(vnextStudyRecordQuestionText(params.question));
-  else if (params.all.length) lines.push(VNEXT_STUDY_RECORD_SAVE_GUIDE);
+  else if (waiting.length) lines.push(VNEXT_STUDY_RECORD_SAVE_GUIDE);
   return lines.join('');
 }

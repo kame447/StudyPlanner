@@ -62,7 +62,7 @@ import {
   type WeeklyPlanningVNextSessionCheckpoint,
 } from './weeklyPlanningVNextSessionCheckpoint';
 import {
-  applyVNextStudyRecords, markVNextActualRecordsSaved, vnextStudyRecordReply,
+  applyVNextStudyRecords, markVNextActualRecordsSaved, savedStudyRecordMinutes, vnextStudyRecordReply,
   type VNextActualRecord, type VNextStudyRecordQuestion,
 } from '../weeklyPlanningVNextStudyRecords';
 
@@ -427,7 +427,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   if (interpretation.status === 'interpreted') {
     const readings = interpretation.studyRecords ?? [];
     const question = interpretation.studyRecordQuestion ?? null;
-    const applied = applyVNextStudyRecords({ records: priorRecords, readings, acceptedDate: scope.clock.currentDate, ownerId: scope.ownerId });
+    const applied = applyVNextStudyRecords({ records: priorRecords, readings, acceptedDate: scope.clock.currentDate, ownerId: scope.ownerId,
+      saved: savedStudyRecordMinutes(calendar.actuals, scope.ownerId) });
     if (applied.status === 'rejected') {
       return { outcome: 'rejected', graphRevision: read.checkpoint.state.graph.revision, readiness: before.readiness, question: presentedQuestion,
         preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [], reply: systemReply('rejected', []), replySource: 'system',
@@ -438,10 +439,9 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     const recordOnly = (readings.length > 0 || question !== null) && isEmpty(interpretation.delta)
       && !interpretation.conversationActs?.length && interpretation.answer === null;
     if (recordOnly) {
-      const priorById = new Map(priorRecords.map(record => [record.id, record]));
-      const changed = nextRecords.filter(record => priorById.get(record.id)?.minutes !== record.minutes);
+      const { changed, alreadySaved } = applied;
       const removedCount = priorRecords.filter(record => !nextRecords.some(next => next.id === record.id)).length;
-      const reply = vnextStudyRecordReply({ changed, removedCount, all: nextRecords, question });
+      const reply = vnextStudyRecordReply({ alreadySaved, changed, removedCount, all: nextRecords, question });
       const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
         ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
         vnext: { ...withoutStudyRecords(read.checkpoint), ...studyRecordFields(nextRecords, nextRecordQuestion),
@@ -451,7 +451,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       });
       if (raw === null) throw new Error('VNext checkpoint exceeds the storage limit');
       ports.checkpoint.write(raw);
-      return { outcome: changed.length || removedCount || question !== null ? 'applied' : 'noop',
+      return { outcome: applied.status === 'applied' || removedCount || question !== null ? 'applied' : 'noop',
         graphRevision: read.checkpoint.state.graph.revision, readiness: before.readiness, question: presentedQuestion,
         preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [], reply, replySource: 'system',
         interpretation, appliedDelta: null, errors: [], actualRecords: nextRecords };

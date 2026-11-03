@@ -15,7 +15,7 @@ import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weekly
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
-import { formatActualRecordRow, formatActualRecordsTotal, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
 
 const OWNER = 'exam-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03'; const NOW = `${TODAY}T00:00:00.000Z`;
 const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartDate: WEEK, conversationId: 'exam-conversation',
@@ -159,7 +159,10 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(second.current!.pendingActualRecords).toEqual([]);
     expect(stored.vnext.actualRecords!.map(record => record.id)).toEqual(before);
     expect(stored.vnext.actualRecords!.map(record => record.status)).toEqual(Array(6).fill('saved'));
-    expect(second.current!.state.messages[second.current!.state.messages.length - 1]?.content).toContain('その内容はすでに確認リストにあります。');
+    // fix-03: records saved before the reload are said to be saved (not "not saved yet" and not "already in the list").
+    const reply = second.current!.state.messages[second.current!.state.messages.length - 1]?.content;
+    expect(reply).toBe(formatAlreadySavedActualRecordsReply(stored.vnext.actualRecords!));
+    expect(reply).not.toContain('まだ保存していません');
   });
   // What is already saved decides, by document id, whether a record is new, a no-op or a replacement (#973 fix-02).
   const savedDoc = (id: string, subject: string, occurrenceDate: string, minutes: number): DurationActual => ({

@@ -9,8 +9,8 @@ import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weekly
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { markWeeklyPlanningVNextActualRecordsSaved, submitWeeklyPlanningVNextExperimentalTurn,
   type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
-import { formatActualRecordMinutes, formatActualRecordRow, formatActualRecordsTotal, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
-import { VNEXT_STUDY_RECORD_PENDING_PREFIX, VNEXT_STUDY_RECORD_REMOVED, VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
+import { formatActualRecordMinutes, formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, selectPendingActualRecords, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import { savedStudyRecordMinutes, vnextActualRecordId, VNEXT_STUDY_RECORD_PENDING_PREFIX, VNEXT_STUDY_RECORD_REMOVED, VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
 import type { VNextAddFact } from '../weeklyPlanningVNextTypes';
 
 const OWNER = 'synthetic-actual-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03';
@@ -23,7 +23,7 @@ const rec = (dateExpression: string, subject: string, minutes: number) => ({ dat
 const MON = rec('2026-10-26', '数学', 60), TUE = rec('2026-10-27', '英語', 45), WED = rec('2026-10-28', '現代文', 30),
   FRI = rec('2026-10-30', '英語', 50), SAT = rec('2026-10-31', '数学', 120), SUN = rec('2026-11-01', '化学', 90);
 
-function harness(responses: unknown[], conversationId = scope.conversationId, ownerId = OWNER) {
+function harness(responses: unknown[], conversationId = scope.conversationId, ownerId = OWNER, savedActuals: unknown[] = []) {
   const chatScope = { ...scope, conversationId, ownerId };
   const memory = createMemoryStorageHarness();
   const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: WEEK, storage: memory.storage });
@@ -35,7 +35,7 @@ function harness(responses: unknown[], conversationId = scope.conversationId, ow
       contexts.push(JSON.parse(input.messages[1].content)); return JSON.stringify(responses.shift());
     } }, approvalLedger: { read: () => null, write: () => undefined },
     plans: { findExistingPlanId: async () => undefined, async saveBlock(block) { saves.push(block); return { planId: `plan:${block.id}` }; } },
-    calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }), now: () => `${TODAY}T00:00:00.000Z`,
+    calendar: () => ({ plans: [], actuals: savedActuals as never[], monthEvents: [], scheduleTemplates: [] }), now: () => `${TODAY}T00:00:00.000Z`,
     createRenderer: () => ({ async render() { return { status: 'rendered', text: '合成の返信', rawResponse: '' }; } }) };
   let sequence = 0;
   const turn = (userText: string) => submitWeeklyPlanningVNextExperimentalTurn({ scope: chatScope, ports, userText, turnId: `turn-${++sequence}`,
@@ -166,6 +166,42 @@ describe('VNext study records (#973 I2)', () => {
     expect(h.stored().actualRecords![0].status).toBe('saved');
     await h.turn('月曜の数学は75分でした。');
     expect(h.stored().actualRecords!.map(record => `${record.minutes}:${record.status}`)).toEqual(['75:pending', '45:pending']);
+  });
+
+  // What a reload leaves: a new chat with an empty checkpoint, while the planner has loaded the actuals saved earlier.
+  const savedDoc = (record: { dateExpression: string; subject: string; minutes: number }, owner = OWNER) => ({
+    id: vnextActualRecordId(owner, record.dateExpression, record.subject), userId: owner, planId: null, occurrenceDate: record.dateExpression,
+    actualDurationMinutes: record.minutes, subject: record.subject, title: record.subject });
+  const savedWeek = [MON, TUE, WED, FRI, SAT, SUN];
+
+  it('fix-03: the same week resent in a new chat after it was saved is already saved: status saved, nothing to confirm, and it says so', async () => {
+    const h = harness([reading(savedWeek)], 'conversation-after-reload', OWNER, savedWeek.map(record => savedDoc(record)));
+    const result = await h.turn('先週の分です。月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学2時間、日曜は化学90分。');
+    expect(result.actualRecords!.every(record => record.status === 'saved')).toBe(true);
+    expect(key(result.actualRecords!)).toHaveLength(6);
+    expect(selectPendingActualRecords(result.actualRecords)).toEqual([]);
+    expect(result.reply).toBe(formatAlreadySavedActualRecordsReply(result.actualRecords!));
+    expect(result.reply).not.toContain('まだ保存していません');
+    expect(h.stored().actualRecords!.every(record => record.status === 'saved')).toBe(true);
+    expect(h.saves).toEqual([]);
+  });
+
+  it('fix-03: with other minutes only that record awaits confirmation; the reply says both, separately', async () => {
+    const h = harness([reading([MON, rec('2026-10-27', '英語', 50), WED])], 'conversation-after-reload', OWNER, savedWeek.map(record => savedDoc(record)));
+    const result = await h.turn('月曜は数学60分、火曜は英語50分、水曜は現代文30分。');
+    const byDay = Object.fromEntries(result.actualRecords!.map(record => [record.occurrenceDate, `${record.minutes}:${record.status}`]));
+    expect(byDay).toEqual({ '2026-10-26': '60:saved', '2026-10-27': '50:pending', '2026-10-28': '30:saved' });
+    expect(selectPendingActualRecords(result.actualRecords).map(record => record.id)).toEqual([vnextActualRecordId(OWNER, '2026-10-27', '英語')]);
+    const [monday, tuesday, wednesday] = result.actualRecords!;
+    expect(result.reply).toBe(`${formatAlreadySavedActualRecordsReply([monday, wednesday])}${VNEXT_STUDY_RECORD_PENDING_PREFIX}${formatActualRecordRow(tuesday)}。`
+      + `ここまでの合計は${formatActualRecordsTotal(140)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+  });
+
+  it('fix-03: only this owner\'s saved study records count (other owners, timed actuals and ids outside the owner prefix do not)', () => {
+    const mine = savedDoc(MON);
+    expect(savedStudyRecordMinutes([mine, savedDoc(TUE, 'someone-else'), { id: 'plain-actual', userId: OWNER, actualDurationMinutes: 30 },
+      { id: vnextActualRecordId(OWNER, '2026-10-28', '現代文'), userId: OWNER }, { ...savedDoc(WED), userId: 'someone-else' }], OWNER))
+      .toEqual(new Map([[mine.id, 60]]));
   });
 
   it('display formats come from their single owner (60分（1時間）, 6時間35分（395分）)', () => {
