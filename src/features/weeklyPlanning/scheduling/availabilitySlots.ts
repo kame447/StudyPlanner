@@ -137,13 +137,6 @@ export function buildAvailabilitySlots(params: {
   });
 }
 
-export function sumSlotMinutes(slots: AvailabilitySlot[]): number {
-  return slots.reduce(
-    (sum, slot) => sum + Math.max(0, slot.endMinutes - slot.startMinutes),
-    0,
-  );
-}
-
 export function sumIntervals(intervals: TimeInterval[]): number {
   return intervals.reduce(
     (sum, interval) => sum + Math.max(0, interval.endMinutes - interval.startMinutes),
