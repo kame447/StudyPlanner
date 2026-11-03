@@ -5,7 +5,7 @@
 import { forwardRef, createRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../../testUtils/weeklyPlanningApplicationTestHarness';
+import { createMemoryStorageHarness, createWeeklyPlanningTestDraftBlock, installWeeklyPlanningTestStorage } from '../../testUtils/weeklyPlanningApplicationTestHarness';
 import { createReadyPlannerDataAvailability } from '../../testUtils/plannerDataAvailabilityTest';
 import type { DurationActual } from '../../../../types/domain';
 import type { WeeklyPlanningApplication, UseWeeklyPlanningApplicationInput } from '../../application/useWeeklyPlanningApplication';
@@ -18,6 +18,8 @@ import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExpe
 import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, sumActualRecordMinutes,
   type PendingWeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
+import { readAndClassifyActualSave } from '../weeklyPlanningVNextActualSaveReadback';
+import { ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
 
 const OWNER = 'exam-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03'; const NOW = `${TODAY}T00:00:00.000Z`;
 const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartDate: WEEK, conversationId: 'exam-conversation',
@@ -67,15 +69,28 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
   const inputWith = (saveWeeklyActualRecords?: UseWeeklyPlanningApplicationInput['saveWeeklyActualRecords'], userId: string | null = OWNER): UseWeeklyPlanningApplicationInput =>
     ({ userId, selectedDate: WEEK, plans: [], scheduleTemplates: [], plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
       isPlannerDataSnapshotCurrent: () => true, saveWeeklyApprovedPlan: vi.fn(), saveWeeklyActualRecords });
-  async function mount(input: UseWeeklyPlanningApplicationInput) {
+  async function mount(input: UseWeeklyPlanningApplicationInput, overrides: Partial<WeeklyPlanningVNextLocalApplicationServices> = {}) {
     const ref = createRef<WeeklyPlanningApplication>();
-    await act(async () => { renderer = create(<Harness ref={ref} input={input} services={services()} />); });
+    await act(async () => { renderer = create(<Harness ref={ref} input={input} services={{ ...services(), ...overrides }} />); });
     return ref;
   }
   // The chat owns its own checkpoint slot (the seeded week slot is copied into it on first load).
   const storedStatuses = (ref: { current: WeeklyPlanningApplication | null }) =>
     createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId })
       .readCheckpoint()!.vnext.actualRecords!.map(record => record.status);
+
+  async function reloadUnansweredSave() {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => new Promise<void>(() => undefined));
+    const first = await mount(inputWith(save));
+    const records = first.current!.pendingActualRecords!;
+    act(() => { void first.current!.approveActualRecords!(); });
+    const chatId = first.current!.chat.index.activeChatId;
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    return { records, save, chatId };
+  }
+  const attemptInUi = (chatId: string) => JSON.parse(storage.storage.getItem(
+    `studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.ui`)!).actualSaveAttempt;
 
 
   it('offers no records and never calls the save port when the conversation proposed none', async () => {
@@ -235,6 +250,97 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(save).toHaveBeenCalledOnce();
     const lastingReplies = reloaded.current!.state.messages.filter(message => message.role === 'assistant').map(message => message.content);
     expect(lastingReplies.some(reply => reply.includes('保存結果を確認できていません'))).toBe(true);
+  });
+
+  it.each([
+    { kind: 'saved', expected: '保存を確認しました', statuses: ['saved', 'saved', 'saved', 'saved', 'saved', 'saved'] },
+    { kind: 'not_saved', expected: 'サーバー上に保存されていません', statuses: ['pending', 'pending', 'pending', 'pending', 'pending', 'pending'] },
+    { kind: 'partial', expected: '未保存の記録', statuses: ['saved', 'saved', 'saved', 'pending', 'pending', 'pending'] },
+    { kind: 'conflicting', expected: '保存済みの値が異なる記録', statuses: ['saved', 'saved', 'saved', 'saved', 'saved', 'pending'] },
+  ])('reads an unanswered $kind batch once after reload without saving it again', async ({ kind, expected, statuses }) => {
+    const { records, save, chatId } = await reloadUnansweredSave();
+    const matching = records.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes));
+    const rows = kind === 'saved' ? matching : kind === 'not_saved' ? [] : kind === 'partial' ? matching.slice(0, 3)
+      : matching.map((row, index) => index === 5 ? { ...row, actualDurationMinutes: row.actualDurationMinutes + 1 } : row);
+    const readConfirmed = vi.fn(async () => ({ fromCache: false, hasPendingWrites: false, records: rows }));
+    const readActualSave = vi.fn((ownerId: string, attempted: Parameters<typeof readAndClassifyActualSave>[0]['attempted']) =>
+      readAndClassifyActualSave({ ownerId, attempted, readConfirmed }));
+    const reloaded = await mount(inputWith(save), { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(reloaded.current!.state.messages.some(message => message.content.includes(expected))).toBe(true)); });
+    expect(readActualSave).toHaveBeenCalledOnce();
+    expect(readConfirmed).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenCalledOnce();
+    expect(storedStatuses(reloaded)).toEqual(statuses);
+    expect(reloaded.current!.pendingActualRecords).toHaveLength(statuses.filter(status => status === 'pending').length);
+    expect(attemptInUi(chatId) === undefined).toBe(kind === 'saved');
+    const lastingUi = JSON.parse(storage.storage.getItem(`studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.ui`)!);
+    expect(lastingUi.payload.state.messages.some((message: { content: string }) => message.content.includes(expected))).toBe(true);
+    expect(storage.storage.getItem(`studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.core`)).not.toContain('actualSaveAttempt');
+  });
+
+  it.each([
+    { reason: 'unavailable', text: 'サーバーに接続できないため' },
+    { reason: 'permission_denied', text: '読取権限がないため' },
+    { reason: 'auth_mismatch', text: '認証された利用者が一致しないため' },
+    { reason: 'unconfirmed_snapshot', text: '保存結果を確認できていません' },
+  ] as const)('keeps $reason unknown after reload, including optimistic planner rows', async ({ reason, text }) => {
+    const { records, save, chatId } = await reloadUnansweredSave();
+    const readActualSave = vi.fn(async () => { throw new ActualSaveReadbackUnknownError(reason); });
+    const optimistic = { ...inputWith(save), actuals: records.map(record =>
+      savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
+    const reloaded = await mount(optimistic, { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(reloaded.current!.state.messages.some(message => message.content.includes(text))).toBe(true)); });
+    expect(readActualSave).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenCalledOnce();
+    expect(storedStatuses(reloaded)).toEqual(Array(6).fill('pending'));
+    expect(reloaded.current!.pendingActualRecords).toHaveLength(6);
+    expect(attemptInUi(chatId)).toBeDefined();
+    const lastingUi = JSON.parse(storage.storage.getItem(`studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.ui`)!);
+    expect(lastingUi.payload.state.messages.some((message: { content: string }) => message.content.includes(text))).toBe(true);
+  });
+
+  it('keeps the later permission reason in history when a second reload follows an offline read', async () => {
+    const { save, chatId } = await reloadUnansweredSave();
+    const firstRead = vi.fn(async () => { throw new ActualSaveReadbackUnknownError('unavailable'); });
+    const offline = await mount(inputWith(save), { readActualSave: firstRead });
+    await act(async () => { await vi.waitFor(() => expect(offline.current!.state.messages.some(message =>
+      message.content.includes('サーバーに接続できないため'))).toBe(true)); });
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    const secondRead = vi.fn(async () => { throw new ActualSaveReadbackUnknownError('permission_denied'); });
+    const denied = await mount(inputWith(save), { readActualSave: secondRead });
+    await act(async () => { await vi.waitFor(() => expect(denied.current!.state.messages.some(message =>
+      message.content.includes('読取権限がないため'))).toBe(true)); });
+    expect(firstRead).toHaveBeenCalledOnce();
+    expect(secondRead).toHaveBeenCalledOnce();
+    expect(denied.current!.state.messages.some(message => message.content.includes('サーバーに接続できないため'))).toBe(true);
+    expect(attemptInUi(chatId)).toBeDefined();
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it('does not turn an unapproved planning draft into a saved plan during actual readback', async () => {
+    const { save, chatId } = await reloadUnansweredSave();
+    const uiKey = `studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${chatId}.ui`;
+    const ui = JSON.parse(storage.storage.getItem(uiKey)!);
+    ui.payload.state.draftBlocks = [createWeeklyPlanningTestDraftBlock({ id: 'unapproved-plan', userId: OWNER,
+      overrides: { date: TODAY } })];
+    storage.storage.setItem(uiKey, JSON.stringify(ui));
+    const input = inputWith(save);
+    const readActualSave: NonNullable<WeeklyPlanningVNextLocalApplicationServices['readActualSave']> = async (_owner, attempted) => ({
+      status: 'saved', confirmedIds: attempted.map(record => record.id), unconfirmedRecords: [], conflictingIds: [],
+    });
+    const reloaded = await mount(input, { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(reloaded.current!.state.messages.some(message =>
+      message.content.includes('保存を確認しました'))).toBe(true)); });
+    expect(reloaded.current!.pendingDraftBlocks).toMatchObject([{ id: 'unapproved-plan', status: 'draft' }]);
+    expect(input.saveWeeklyApprovedPlan).not.toHaveBeenCalled();
+  });
+
+  it('never reads an old owner’s attempt after the signed-in owner changes', async () => {
+    const { save } = await reloadUnansweredSave();
+    const readActualSave = vi.fn(async () => { throw new Error('wrong owner was read'); });
+    await mount(inputWith(save, 'other-owner'), { readActualSave });
+    expect(readActualSave).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledOnce();
   });
 
   it('keeps the same pending batch when an in-flight save rejects after optimistic rows appeared', async () => {

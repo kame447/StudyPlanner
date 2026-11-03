@@ -13,14 +13,17 @@ import { isPlannerDataReadyForOwner } from '../../../../domain/plannerDataReadAu
 import type { WeeklyPlanningAction, PlanningState } from '../../types';
 import { createAiPlanningChatSessionWithStore } from '../../chat/aiPlanningChatSession';
 import { hasStoredAiPlanningChatIndex, readAiPlanningChatSnapshotRaw, saveAiPlanningChatSearchText } from '../../chat/aiPlanningChatStore';
-import { createWeeklyPlanningVNextLocalSession, type WeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
+import { createWeeklyPlanningVNextLocalSession, type WeeklyPlanningVNextLocalSession, type WeeklyPlanningActualSaveAttempt } from './weeklyPlanningVNextLocalSession';
 import { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt } from './weeklyPlanningVNextRuntimeGateway';
 import { durableWeeklyPlanningEnabled, cancelDurableWeeklyTurn } from '../../application/weeklyPlanningDurableTurnClient';
 import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../application/weeklyPlanningDurableRecovery';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
 import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn } from '../../application/weeklyPlanningTurnPreparation';
-import { resolvePendingActualRecordsAgainstSaved, selectPendingActualRecords, toActualRecordsToSave, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
+import { formatActualSaveReadbackReply, formatUnknownActualSaveReadbackReply, resolvePendingActualRecordsAgainstSaved,
+  selectPendingActualRecords, toActualRecordsToSave, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
+import { ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
+import type { ActualSaveIntentRecord, ActualSaveReadbackClassification } from '../weeklyPlanningVNextActualSaveReadback';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -29,6 +32,7 @@ export interface WeeklyPlanningVNextLocalApplicationServices {
   client: () => WeeklyPlanningVNextExperimentalPorts['client'];
   interpret: (scope: { ownerId: string; conversationId: string }) => WeeklyPlanningVNextExperimentalPorts['interpret'];
   createRenderer: (client: WeeklyPlanningVNextExperimentalPorts['client'], options: { canDispatchRecovery: () => boolean }) => ReturnType<WeeklyPlanningVNextExperimentalPorts['createRenderer']>;
+  readActualSave?: (ownerId: string, attempted: readonly ActualSaveIntentRecord[]) => Promise<ActualSaveReadbackClassification>;
   now: () => string;
 }
 
@@ -45,6 +49,13 @@ function localServices(): WeeklyPlanningVNextLocalApplicationServices {
     client: () => loaded().client(),
     interpret: scope => loaded().interpret(scope),
     createRenderer: (client, options) => loaded().createRenderer(client, options),
+    readActualSave: async (ownerId, attempted) => {
+      const [{ getFirebaseAuth, getFirestoreDb }, { readAndClassifyActualSaveFromServer }] = await Promise.all([
+        import('../../../../lib/firebaseClient'), import('../weeklyPlanningVNextActualSaveServerReadback')]);
+      const firebaseAuth = getFirebaseAuth(), firestoreDb = getFirestoreDb();
+      if (!firebaseAuth || !firestoreDb) throw new ActualSaveReadbackUnknownError('auth_mismatch');
+      return readAndClassifyActualSaveFromServer({ firebaseAuth, firestoreDb, ownerId, attempted });
+    },
     now: () => new Date().toISOString() };
 }
 
@@ -66,8 +77,12 @@ export function useWeeklyPlanningVNextApplication(
   // A confirmation click is the only save authority for study records; the in-flight flag prevents a
   // second click while the first batch is still running (#973).
   const actualRecordsInFlight = useRef(false);
+  const actualReadbackInFlight = useRef(false);
   const savingActualRecordIds = useRef<ReadonlySet<string>>(new Set());
   const [savedActualMinutes, setSavedActualMinutes] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const readbackCandidate = useRef<{ local: WeeklyPlanningVNextLocalSession; conversationId: string;
+    weekStartDate: string; attempt: WeeklyPlanningActualSaveAttempt } | null>(null);
+  const readbackSeen = useRef<Set<string>>(new Set());
   const runtime = useMemo(() => {
     const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: week, storage: services.storage });
     let loaded: ReturnType<typeof local.load>;
@@ -121,11 +136,20 @@ export function useWeeklyPlanningVNextApplication(
     return createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate, storage: services.storage, chatId,
       legacyV5Raw: readAiPlanningChatSnapshotRaw(ownerId, chatId, services.storage) });
   }
+  function captureReadback() {
+    readbackCandidate.current = null;
+    try {
+      const attempt = runtime.local.readActualSaveAttempt(runtime.session.conversationId);
+      if (attempt) readbackCandidate.current = { local: runtime.local, conversationId: runtime.session.conversationId,
+        weekStartDate: runtime.state.weekStartDate, attempt };
+    } catch { /* An unreadable UI snapshot cannot authorize a readback. */ }
+  }
   function install(snapshot: Snapshot) {
     runtime.local = snapshot.local; runtime.state = snapshot.planningState; runtime.ready = true;
     runtime.session = createWeeklyPlanningControllerSession(ownerId, snapshot.weekStartDate, snapshot.conversationId);
     runtime.session.requestSequence = Math.max(snapshot.planningState.conversationRequestSequence ?? 0,
       inferWeeklyPlanningControllerRequestSequence(snapshot.planningState.messages, snapshot.conversationId));
+    captureReadback();
     redraw(value => value + 1);
   }
   const chat = useMemo(() => createAiPlanningChatSessionWithStore<Snapshot>(ownerId, {
@@ -182,7 +206,73 @@ export function useWeeklyPlanningVNextApplication(
       if (record?.weekStartDate) localFor(chatId, record.weekStartDate).clear();
     },
   }), [runtime, ownerId, services]);
-  useLayoutEffect(() => { if (chat.initialize().status === 'saved') chat.checkpoint(); }, [chat]);
+  useLayoutEffect(() => { if (chat.initialize().status === 'saved') chat.checkpoint(); captureReadback(); }, [chat]);
+  useEffect(() => {
+    const candidate = readbackCandidate.current;
+    if (!candidate || !services.readActualSave || !input.userId || !current() || runtime.local !== candidate.local) return;
+    readbackCandidate.current = null;
+    if (input.userId.trim() !== ownerId) return;
+    const key = `${ownerId}:${candidate.conversationId}:${candidate.attempt.attemptedAt}`;
+    if (readbackSeen.current.has(key)) return;
+    readbackSeen.current.add(key);
+    actualReadbackInFlight.current = true;
+    const stillCurrent = () => {
+      if (!current() || runtime.local !== candidate.local || runtime.session.conversationId !== candidate.conversationId
+        || committedInput.current?.userId?.trim() !== ownerId || runtime.state.pendingTurn || runtime.state.pendingApproval) return false;
+      try {
+        const saved = candidate.local.readActualSaveAttempt(candidate.conversationId);
+        return saved?.attemptedAt === candidate.attempt.attemptedAt
+          && JSON.stringify(saved.records) === JSON.stringify(candidate.attempt.records);
+      } catch { return false; }
+    };
+    const tell = (kind: string, content: string) => {
+      if (!stillCurrent()) return;
+      const id = `${candidate.conversationId}:actual-save-readback:${candidate.attempt.attemptedAt}:${kind}`;
+      if (!runtime.state.messages.some(message => message.id === id)) {
+        dispatch({ type: 'append_message', message: { id, role: 'assistant', content, createdAt: services.now() } });
+      }
+    };
+    const run = async () => {
+      try {
+        const stored = candidate.local.readCheckpoint()?.vnext.actualRecords ?? [];
+        const attempted: ActualSaveIntentRecord[] = [];
+        for (const sent of candidate.attempt.records) {
+          const record = stored.find(item => item.id === sent.id && item.minutes === sent.minutes);
+          if (!record) throw new ActualSaveReadbackUnknownError('read_failed');
+          attempted.push({ id: sent.id, minutes: sent.minutes,
+            occurrenceDate: record.occurrenceDate, subject: record.subject });
+        }
+        const result = await services.readActualSave!(ownerId, attempted);
+        if (!stillCurrent()) return;
+        const latest = candidate.local.readCheckpoint()?.vnext.actualRecords ?? [];
+        if (attempted.some(sent => !latest.some(record => record.id === sent.id && record.minutes === sent.minutes))) {
+          throw new ActualSaveReadbackUnknownError('read_failed');
+        }
+        if (result.confirmedIds.length) {
+          const { markWeeklyPlanningVNextActualRecordsSaved } = await loadWeeklyPlanningVNextRuntimeModule();
+          if (!stillCurrent()) return;
+          const beforeMark = candidate.local.readCheckpoint()?.vnext.actualRecords ?? [];
+          if (attempted.some(sent => !beforeMark.some(record => record.id === sent.id && record.minutes === sent.minutes))) {
+            throw new ActualSaveReadbackUnknownError('read_failed');
+          }
+          const marked = markWeeklyPlanningVNextActualRecordsSaved(
+            { ownerId, weekStartDate: candidate.weekStartDate, conversationId: candidate.conversationId },
+            { checkpoint: candidate.local.checkpoint, legacyV5Checkpoint: candidate.local.legacyV5Checkpoint, now: services.now },
+            result.confirmedIds,
+          );
+          if (marked.status === 'unreadable') throw new ActualSaveReadbackUnknownError('read_failed');
+        }
+        const reply = formatActualSaveReadbackReply(attempted, result.confirmedIds, result.conflictingIds);
+        tell(`${result.status}:${result.confirmedIds.join(',')}:${result.conflictingIds.join(',')}`, reply);
+        if (result.status === 'saved') candidate.local.clearActualSaveAttempt(candidate.conversationId, candidate.attempt.attemptedAt);
+        redraw(value => value + 1);
+      } catch (error) {
+        const reason = error instanceof ActualSaveReadbackUnknownError ? error.reason : 'read_failed';
+        tell(`unknown:${reason}`, formatUnknownActualSaveReadbackReply(reason));
+      } finally { actualReadbackInFlight.current = false; }
+    };
+    void run();
+  }, [chat, revision, services, input.userId]);
   // Same unsaved-chat warning as V5: a failed checkpoint write leaves the live state as the only copy.
   useEffect(() => {
     if (!chat.dirty || typeof window === 'undefined' || !window.addEventListener) return;
@@ -253,7 +343,11 @@ export function useWeeklyPlanningVNextApplication(
     try { stored = runtime.local.readCheckpoint()?.vnext.actualRecords; } catch { stored = undefined; }
     // Already-saved documents (the planner's loaded actuals, by id) decide whether a record is a new save, a no-op or a replacement.
     const savedMinutes = new Map<string, number>();
-    for (const actual of input.actuals ?? []) if (!savingActualRecordIds.current.has(actual.id) && 'actualDurationMinutes' in actual && actual.actualDurationMinutes) savedMinutes.set(actual.id, actual.actualDurationMinutes);
+    let unresolvedIds: ReadonlySet<string> = new Set();
+    try { unresolvedIds = new Set(runtime.local.readActualSaveAttempt(runtime.session.conversationId)?.records.map(record => record.id)); }
+    catch { /* An unreadable UI snapshot cannot certify optimistic rows. */ }
+    for (const actual of input.actuals ?? []) if (!savingActualRecordIds.current.has(actual.id)
+      && !unresolvedIds.has(actual.id) && 'actualDurationMinutes' in actual && actual.actualDurationMinutes) savedMinutes.set(actual.id, actual.actualDurationMinutes);
     return resolvePendingActualRecordsAgainstSaved(selectPendingActualRecords(stored)
       .filter(record => savedActualMinutes.get(record.id) !== record.minutes), savedMinutes);
     // `revision` changes after every committed turn and every mark.
@@ -261,7 +355,8 @@ export function useWeeklyPlanningVNextApplication(
   const approveActualRecords = async () => {
     const records = pendingActualRecords;
     // Nothing to save, an owner that is not signed in, or a save already running: never write (no owner mismatch writes).
-    if (records.length === 0 || actualRecordsInFlight.current || !input.userId || !input.saveWeeklyActualRecords || !current()) return;
+    if (records.length === 0 || actualRecordsInFlight.current || actualReadbackInFlight.current
+      || !input.userId || !input.saveWeeklyActualRecords || !current()) return;
     const saveLocal = runtime.local;
     const saveConversationId = runtime.session.conversationId;
     const attemptedAt = services.now();
