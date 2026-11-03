@@ -9,7 +9,8 @@ import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weekly
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { markWeeklyPlanningVNextActualRecordsSaved, submitWeeklyPlanningVNextExperimentalTurn,
   type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
-import { formatVNextActualDay, formatVNextActualMinutes, totalVNextActualMinutes } from '../weeklyPlanningVNextStudyRecords';
+import { formatActualRecordMinutes, formatActualRecordRow, formatActualRecordsTotal, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import { VNEXT_STUDY_RECORD_PENDING_PREFIX, VNEXT_STUDY_RECORD_REMOVED, VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
 import type { VNextAddFact } from '../weeklyPlanningVNextTypes';
 
 const OWNER = 'synthetic-actual-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03';
@@ -51,10 +52,11 @@ describe('VNext study records (#973 I2)', () => {
     expect(result.outcome).toBe('applied');
     expect(key(result.actualRecords!)).toEqual(['2026-10-26 数学 60', '2026-10-27 英語 45', '2026-10-28 現代文 30',
       '2026-10-30 英語 50', '2026-10-31 数学 120', '2026-11-01 化学 90']);
-    expect(totalVNextActualMinutes(result.actualRecords!)).toBe(395);
-    expect(result.reply).toContain('395分（6時間35分）');
-    expect(result.reply).toContain('確認画面で保存できます');
-    expect(result.reply).not.toMatch(/\d{1,2}:\d{2}/u);
+    expect(sumActualRecordMinutes(result.actualRecords!)).toBe(395);
+    // Exact reply, built from the owner's format functions: an unsaved confirmation list, never "recorded".
+    expect(result.reply).toBe(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${result.actualRecords!.map(formatActualRecordRow).join('、')}。`
+      + `ここまでの合計は${formatActualRecordsTotal(395)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+    expect(formatActualRecordsTotal(395)).toBe('6時間35分（395分）');
     expect(result.actualRecords!.every(record => record.status === 'pending')).toBe(true);
     // No fabricated clock time: a record is exactly a date, a subject and minutes.
     expect(result.actualRecords!.map(record => Object.keys(record).sort())).toEqual(Array(6).fill(['id', 'minutes', 'occurrenceDate', 'status', 'subject']));
@@ -71,13 +73,15 @@ describe('VNext study records (#973 I2)', () => {
     const rest = await h.turn('木曜は休みでした。');
     expect(key(rest.actualRecords!)).toEqual(['2026-10-26 数学 60', '2026-10-27 英語 45', '2026-10-28 現代文 30']);
     const weekend = await h.turn('金曜は英語50分、土曜は数学2時間、日曜は化学90分でした。');
-    expect(totalVNextActualMinutes(weekend.actualRecords!)).toBe(395);
+    expect(sumActualRecordMinutes(weekend.actualRecords!)).toBe(395);
     const corrected = await h.turn('あ、火曜は50分だった。');
     expect(key(corrected.actualRecords!)).toEqual(['2026-10-26 数学 60', '2026-10-27 英語 50', '2026-10-28 現代文 30',
       '2026-10-30 英語 50', '2026-10-31 数学 120', '2026-11-01 化学 90']);
     expect(corrected.actualRecords!.filter(record => record.occurrenceDate === '2026-10-27')).toHaveLength(1);
-    expect(totalVNextActualMinutes(corrected.actualRecords!)).toBe(400);
-    expect(corrected.reply).toContain('400分（6時間40分）');
+    expect(sumActualRecordMinutes(corrected.actualRecords!)).toBe(400);
+    expect(corrected.reply).toBe(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${formatActualRecordRow(corrected.actualRecords![1])}。`
+      + `ここまでの合計は${formatActualRecordsTotal(400)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+    expect(formatActualRecordsTotal(400)).toBe('6時間40分（400分）');
     expect(h.stored().actualRecords!.some(record => record.occurrenceDate === '2026-10-29')).toBe(false);
   });
 
@@ -86,9 +90,11 @@ describe('VNext study records (#973 I2)', () => {
     await h.turn('月曜は数学60分。');
     const again = await h.turn('月曜は数学60分でした。');
     expect(again.outcome).toBe('noop');
+    expect(again.reply).toBe(`${VNEXT_STUDY_RECORD_UNCHANGED}ここまでの合計は${formatActualRecordsTotal(60)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
     expect(again.actualRecords).toHaveLength(1);
     const removed = await h.turn('やっぱり月曜は数学をやっていません。');
     expect(removed.actualRecords).toEqual([]);
+    expect(removed.reply).toBe(VNEXT_STUDY_RECORD_REMOVED);
     expect(h.stored().actualRecords).toBeUndefined();
   });
 
@@ -118,7 +124,7 @@ describe('VNext study records (#973 I2)', () => {
     expect(h.stored().pendingStudyRecordQuestion).toBeUndefined();
     const split = await h.turn('土日で化学3時間やった。');
     expect(key(split.actualRecords!)).toEqual(['2026-10-27 数学 30']);
-    expect(split.reply).toContain('土日の化学は、日ごとに何分ずつでしたか？');
+    expect(split.reply).toBe(`ここまでの合計は${formatActualRecordsTotal(30)}です。土日の化学は、日ごとに何分ずつでしたか？`);
   });
 
   it('a future date is not something already done: the reading is rejected, repaired once, and nothing is recorded', async () => {
@@ -143,10 +149,8 @@ describe('VNext study records (#973 I2)', () => {
     expect(h.stored().actualRecords!.map(record => `${record.minutes}:${record.status}`)).toEqual(['75:pending', '45:pending']);
   });
 
-  it('the pure formats: 395 → 395分（6時間35分）, 45 → 45分, and the day label', () => {
-    expect(formatVNextActualMinutes(395)).toBe('395分（6時間35分）');
-    expect(formatVNextActualMinutes(120)).toBe('120分（2時間）');
-    expect(formatVNextActualMinutes(45)).toBe('45分');
-    expect(formatVNextActualDay('2026-10-26')).toBe('月 10/26');
+  it('display formats come from their single owner (60分（1時間）, 6時間35分（395分）)', () => {
+    expect(formatActualRecordMinutes(60)).toBe('60分（1時間）');
+    expect(formatActualRecordRow({ id: 'x', occurrenceDate: '2026-10-26', subject: '数学', minutes: 60 })).toBe('月 10/26 数学 60分（1時間）');
   });
 });

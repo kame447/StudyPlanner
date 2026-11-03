@@ -4,6 +4,8 @@
 // one (DESIGN_CONSTRAINT): only a date, a subject and a duration. Nothing here saves; saving is the
 // confirmation UI's explicit action (DESIGN-DECISION 4).
 import type { VNextTurnError } from './weeklyPlanningVNextTypes';
+// The display format has one owner (fix-01 B); this file only phrases the conversation around it.
+import { formatActualRecordRow, formatActualRecordsTotal, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
 
 /** One stated record as the model reads it: absolute date, subject as the user said it, stated minutes. */
 export interface VNextStudyRecordReading {
@@ -94,28 +96,6 @@ export function markVNextActualRecordsSaved(records: readonly VNextActualRecord[
   return records.map(record => (saved.has(record.id) ? { ...record, status: 'saved' as const } : record));
 }
 
-export const totalVNextActualMinutes = (records: readonly VNextActualRecord[]): number =>
-  records.reduce((sum, record) => sum + record.minutes, 0);
-
-/** 395 → 「395分（6時間35分）」, 60 → 「60分（1時間）」, 45 → 「45分」. */
-export function formatVNextActualMinutes(minutes: number): string {
-  if (minutes < 60) return `${minutes}分`;
-  const hours = Math.floor(minutes / 60), rest = minutes % 60;
-  return `${minutes}分（${hours}時間${rest ? `${rest}分` : ''}）`;
-}
-
-const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const;
-/** 「月 10/26」 */
-export function formatVNextActualDay(date: string): string {
-  const match = ISO_DATE.exec(date)!;
-  const weekday = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))).getUTCDay();
-  return `${WEEKDAYS[weekday]} ${Number(match[2])}/${Number(match[3])}`;
-}
-
-/** The one-line recap of a record, shared by replies and the confirmation list: 「月 10/26 数学 60分（1時間）」. */
-export const formatVNextActualRecord = (record: VNextActualRecord): string =>
-  `${formatVNextActualDay(record.occurrenceDate)} ${record.subject} ${formatVNextActualMinutes(record.minutes)}`;
-
 /** One short question for the one unclear thing, naming it in the user's own words. */
 export function vnextStudyRecordQuestionText(question: VNextStudyRecordQuestion): string {
   const label = question.label?.trim() ? question.label.trim() : null;
@@ -127,7 +107,15 @@ export function vnextStudyRecordQuestionText(question: VNextStudyRecordQuestion)
   }
 }
 
-/** Reply for a turn that only changed records. No save happens here: the confirmation screen saves. */
+/**
+ * Replies for a turn that only changed records. The records are an unsaved list for confirmation: nothing is
+ * saved until the user presses the confirmation screen's save button, so no wording here may say "recorded".
+ */
+export const VNEXT_STUDY_RECORD_PENDING_PREFIX = '確認用に整理しました（まだ保存していません）：';
+export const VNEXT_STUDY_RECORD_UNCHANGED = 'その内容はすでに確認リストにあります。';
+export const VNEXT_STUDY_RECORD_REMOVED = 'その日を確認リストから外しました。';
+export const VNEXT_STUDY_RECORD_SAVE_GUIDE = 'ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。';
+
 export function vnextStudyRecordReply(params: {
   changed: readonly VNextActualRecord[];
   removedCount: number;
@@ -135,11 +123,11 @@ export function vnextStudyRecordReply(params: {
   question: VNextStudyRecordQuestion | null;
 }): string {
   const lines: string[] = [];
-  if (params.changed.length) lines.push(`記録しました：${params.changed.map(formatVNextActualRecord).join('、')}。`);
-  else if (params.removedCount) lines.push('その日の記録を外しました。');
-  else if (!params.question) lines.push('その内容はすでに記録しています。');
-  if (params.all.length) lines.push(`ここまでの合計は${formatVNextActualMinutes(totalVNextActualMinutes(params.all))}です。`);
+  if (params.changed.length) lines.push(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${params.changed.map(formatActualRecordRow).join('、')}。`);
+  else if (params.removedCount) lines.push(VNEXT_STUDY_RECORD_REMOVED);
+  else if (!params.question) lines.push(VNEXT_STUDY_RECORD_UNCHANGED);
+  if (params.all.length) lines.push(`ここまでの合計は${formatActualRecordsTotal(sumActualRecordMinutes(params.all))}です。`);
   if (params.question) lines.push(vnextStudyRecordQuestionText(params.question));
-  else if (params.all.length) lines.push('ほかの日があれば続けて教えてください。そろったら確認画面で保存できます。');
+  else if (params.all.length) lines.push(VNEXT_STUDY_RECORD_SAVE_GUIDE);
   return lines.join('');
 }
