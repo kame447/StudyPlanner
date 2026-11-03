@@ -5,25 +5,6 @@ import { inferStudyTaskProfile } from '../profiling/studyTaskProfile';
 
 export { distributeMinutesAcrossBuckets, roundToPlanningQuantum } from './minuteDistribution';
 
-export function resolveTaskSpreadDayCount(params: {
-  task: SimpleWeeklyTask;
-  dayCount: number;
-  consolidationIntent: boolean;
-  allowTinySession: boolean;
-}): number {
-  if (params.consolidationIntent || params.dayCount <= 1) {
-    return 1;
-  }
-
-  const minimumUsefulDailyMinutes = params.allowTinySession ? 30 : 60;
-  const possibleSpreadDays = Math.max(
-    1,
-    Math.floor(params.task.durationMinutes / minimumUsefulDailyMinutes),
-  );
-
-  return Math.min(params.dayCount, possibleSpreadDays);
-}
-
 export function resolveTaskSpreadDateIndexes(params: {
   taskIndex: number;
   dayCount: number;
