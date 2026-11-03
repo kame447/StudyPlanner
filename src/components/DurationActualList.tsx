@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { ActualMutationAdmissionError } from '../hooks/useActualMutationAdmission';
 import { getActualDurationMinutes } from '../lib/actualDuration';
-import { formatDurationLabel } from '../lib/durationLabel';
+import { formatActualRecordMinutes, formatActualRecordsTotal } from '../features/weeklyPlanning/application/weeklyPlanningActualRecords';
 import type { Actual, DurationActual } from '../types/domain';
 
 /** Day-view rows for actuals that state only a length ("時刻なし ○分"). They have no clock times, so they are listed here
@@ -16,14 +16,14 @@ export function DurationActualList({ actuals, onSelect }: {
     <section className="duration-actual-list" aria-label="時刻なしの記録">
       <div className="duration-actual-list-head">
         <strong>時刻なしの記録</strong>
-        <span>合計 {formatDurationLabel(total)}</span>
+        <span>合計 {formatActualRecordsTotal(total)}</span>
       </div>
       <ul>
         {actuals.map((actual) => (
           <li key={actual.id}>
             <button type="button" className="duration-actual-row" onClick={() => onSelect(actual)}>
               <span>時刻なし</span>
-              <strong>{formatDurationLabel(getActualDurationMinutes(actual))}</strong>
+              <strong>{formatActualRecordMinutes(getActualDurationMinutes(actual))}</strong>
               <span>{[actual.subject.trim(), actual.title?.trim()].filter(Boolean).join(' / ') || '記録'}</span>
             </button>
           </li>
@@ -74,7 +74,7 @@ export function DurationActualDetail({ actual, onDeleteActual, onClose, onPendin
             <span className="type-badge">時刻なし</span>
           </div>
           <p className="comparison-subtitle">
-            記録 {actual.occurrenceDate} / {formatDurationLabel(getActualDurationMinutes(actual))}
+            記録 {actual.occurrenceDate} / {formatActualRecordMinutes(getActualDurationMinutes(actual))}
             {actual.subject ? ` / ${actual.subject}` : ''}
           </p>
         </div>

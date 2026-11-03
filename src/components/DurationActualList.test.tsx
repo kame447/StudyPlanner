@@ -26,7 +26,7 @@ describe('DurationActualList', () => {
     expect(text).toContain('時刻なし');
     expect(text).toContain('60分（1時間）');
     expect(text).toContain('45分');
-    expect(text).toContain('105分（1時間45分）');
+    expect(text).toContain('1時間45分（105分）');
     expect(text).not.toMatch(/\d{2}:\d{2}/u);
     act(() => { renderer.root.findAllByType('button')[0].props.onClick(); });
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));

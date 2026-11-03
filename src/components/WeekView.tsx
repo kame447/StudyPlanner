@@ -75,7 +75,7 @@ import { resolveScheduleActionPlan } from '../lib/scheduleItemActions';
 import type { ActualActionTarget } from '../hooks/useActualMutationAdmission';
 import { WeekSpanningEventsLane } from './WeekSpanningEventsLane';
 import { getActualDurationMinutes, isDurationActual } from '../lib/actualDuration';
-import { formatDurationLabel } from '../lib/durationLabel';
+import { formatActualRecordsTotal } from '../features/weeklyPlanning/application/weeklyPlanningActualRecords';
 import '../styles/week-plan-drag.css';
 
 type WeekTimelineMode = 'plan' | 'actual';
@@ -964,7 +964,7 @@ export function WeekView({
                   >
                     <strong>{formatWeekDate(date, 'compact')}</strong>
                     {timelineMode === 'actual' && durationActualMinutesOn(date) > 0
-                      ? <small className="week-duration-actual-total">時刻なし {formatDurationLabel(durationActualMinutesOn(date))}</small> : null}
+                      ? <small className="week-duration-actual-total">時刻なし {formatActualRecordsTotal(durationActualMinutesOn(date))}</small> : null}
                   </button>
                 ))}
               </div>
