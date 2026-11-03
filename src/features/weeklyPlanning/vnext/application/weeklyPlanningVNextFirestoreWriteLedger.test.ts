@@ -1,5 +1,7 @@
 // @ts-expect-error The e2e support module is plain ESM without declarations.
 import { cancellationCommitProblems, createWriteLedger, protectedWritesIn } from '../../../../../tests/e2e/support/vnext-firestore-writes.mjs';
+// @ts-expect-error The e2e support module is plain ESM without declarations.
+import { assertKnownFlowOptions } from '../../../../../tests/e2e/support/vnext-flow-options.mjs';
 import { describe, expect, it } from 'vitest';
 
 const DOC = 'projects/p/databases/(default)/documents';
@@ -146,5 +148,17 @@ describe('phase-scoped Firestore write ledger', () => {
         expect(ledger.violations()).toHaveLength(1);
       }
     });
+  });
+});
+
+describe('defineVNextProductionFlows options guard', () => {
+  const base = { test: () => undefined, signIn: () => undefined, tag: 't' };
+  it('accepts the known options', () => {
+    expect(() => assertKnownFlowOptions({ ...base, beforeTurn: () => undefined, exerciseWeekSwitch: true })).not.toThrow();
+  });
+  it('throws on an unknown option, so no flag can silently disable an assertion', () => {
+    expect(() => assertKnownFlowOptions({ ...base, seedEarlierRun: false })).toThrow(/seedEarlierRun/);
+    expect(() => assertKnownFlowOptions({ ...base, skipSweepCheck: true })).toThrow(/Unknown/);
+    expect(() => assertKnownFlowOptions(undefined)).toThrow();
   });
 });

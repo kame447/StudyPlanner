@@ -3,6 +3,7 @@ import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStora
 import { expectDurableVNext, observeDurableTurns } from './vnext-durable-observation.mjs';
 import { openScheduleDay, removeSavedPlansByTitle, sweepLeftoverPlans } from './schedule-plan-cleanup.mjs';
 import { attachWriteLedger, cancellationCommitProblems, protectedWritesIn } from './vnext-firestore-writes.mjs';
+import { assertKnownFlowOptions } from './vnext-flow-options.mjs';
 import { addDays, chooseTargetDay, isoDay, keyForWeek, onlyWeek, weeksOf } from './vnext-planner-week.mjs';
 
 // The VNext production flows (Issue #926), defined once and run by BOTH the production smoke (real model, live account,
@@ -171,7 +172,11 @@ const visibleEntries = (page, title) => page.getByText(title).locator('visible=t
  * expired_request), so both run on real time. `test` is Playwright's;
  * `signIn(page)` ends on the signed-in app; `tag` makes titles unique per run.
  */
-export function defineVNextProductionFlows({ test, signIn, tag, beforeTurn, exerciseWeekSwitch = false, seedEarlierRun = false }) {
+export function defineVNextProductionFlows(options) {
+  const { test, signIn, tag, beforeTurn, exerciseWeekSwitch = false } = assertKnownFlowOptions(options);
+  // The scripted emulator stack (beforeTurn) always leaves an earlier run's plan for the sweep and always requires it removed;
+  // production has no such seed (a leftover may not exist) but still checks the commits of whatever the sweep removes.
+  const seedEarlierRun = Boolean(beforeTurn);
   const scripted = (request, turn) => (beforeTurn ? () => beforeTurn({ request, ...turn }) : undefined);
 
   test.describe('VNext production core', () => {

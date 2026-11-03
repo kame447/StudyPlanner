@@ -32,6 +32,5 @@ defineVNextProductionFlows({
   signIn,
   tag: 'E2E-VNEXT-emulator',
   exerciseWeekSwitch: true,
-  seedEarlierRun: true, // the account starts empty: leave an earlier run's plan so the sweep has something to cancel
   beforeTurn: ({ request, ...turn }) => answerScriptedTurn(request, turn),
 });
