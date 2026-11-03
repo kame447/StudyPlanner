@@ -162,6 +162,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     createPlanDraft,
     movePlanOccurrence,
     saveWeeklyApprovedPlan,
+    saveWeeklyActualRecords,
     completeWeeklyApprovalOperation,
     deleteDayOccurrence,
     changeDayTimetableTime,
@@ -232,6 +233,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     plannerDataAvailability,
     isPlannerDataSnapshotCurrent,
     saveWeeklyApprovedPlan,
+    saveWeeklyActualRecords,
     completeWeeklyApprovalOperation,
   });
   const publicPageOpen = usePublicPageNavigation()?.isPublicPage ?? false;
