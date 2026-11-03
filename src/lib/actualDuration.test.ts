@@ -3,6 +3,7 @@ import { elapsedActualMinutes, getActualDurationMinutes, isDurationActual, isTim
 import { buildHomeDashboardModel } from './homeDashboard';
 import { ALL_MATERIALS_FILTER, buildLearningReportModel } from './learningReport';
 import { normalizeStudyRecordsForDisplay } from './studyRecords';
+import { collectStudyDates } from './studyStreak';
 import type { Actual, DurationActual, TimedActual } from '../types/domain';
 
 const STAMP = '2026-11-03T00:00:00.000Z';
@@ -74,5 +75,10 @@ describe('aggregates with duration actuals', () => {
     expect(home.weekActualMinutes).toBe(425);
     expect(home.weekDays.map((day) => day.actualMinutes)).toEqual([60, 45, 30, 0, 50, 150, 90]);
     expect(buildHomeDashboardModel({ plans: [], actuals: [timed()], todos: [], now: new Date(2026, 9, 26, 12, 0) }).weekActualMinutes).toBe(60);
+  });
+
+  it('counts the days of a duration actual as study days for the streak', () => {
+    expect(collectStudyDates({ userId: 'u', plans: [], actuals: week, today: '2026-11-03' }))
+      .toEqual(['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-30', '2026-10-31', '2026-11-01']);
   });
 });
