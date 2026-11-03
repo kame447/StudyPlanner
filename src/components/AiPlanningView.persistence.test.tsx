@@ -153,4 +153,11 @@ it('finishes only the running AI route entry before the chat drawer opens', () =
   expect(entry.finish).toHaveBeenCalledOnce();
   expect(feedback.finish).not.toHaveBeenCalled();
   expect(finished.finish).not.toHaveBeenCalled();
+  const shell = () => renderer!.root.findAllByType('div').find(node =>
+    String(node.props.className ?? '').startsWith('ai-planning-view-shell-v2'))!;
+  expect(shell().props.className).toContain('is-entry-suppressed');
+  act(() => { renderer!.update(<Harness active={false} />); });
+  expect(shell().props.className).not.toContain('is-entry-suppressed');
+  act(() => { renderer!.update(<Harness active />); });
+  expect(shell().props.className).not.toContain('is-entry-suppressed');
 });

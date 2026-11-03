@@ -53,6 +53,13 @@
   animation-duration: 0s;
 }
 
+/* Once an overlay interrupts this retained route's entry, keep that entry
+   cancelled after the overlay closes. The shell clears this class on route exit,
+   so the next route entry can fade normally. */
+.home-main > .ai-planning-view-shell-v2.is-entry-suppressed > .ai-planning-view:not([hidden]) {
+  animation: none;
+}
+
 @keyframes ui-surface-fade {
   from {
     opacity: 0;
