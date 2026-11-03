@@ -11,7 +11,7 @@ import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 // The wording and arithmetic of the records belong to ONE owner (fix-01 B): expected texts are built from its functions, never from a
 // second format kept in this spec.
-import { formatActualRecordMinutes, formatActualRecordRow, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // #973 I4: the examinee's week of study records by CONVERSATION, on the durable emulator stack (production build with durable
 // turns, production Worker, Auth + Firestore emulators, synthetic provider answering from scripted readings; no model call).
@@ -37,9 +37,6 @@ const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
 const rowText = ({ date, subject, minutes }) => formatActualRecordRow({ occurrenceDate: date, subject, minutes });
 // Before the click the chat only organises records for confirmation: it must not say they were recorded or saved (fix-01 A).
 const PENDING_PREFIX = '確認用に整理しました（まだ保存していません）：';
-// Reply to records that are already saved (fix-03 contract): the same rows, stated as saved.
-const ALREADY_SAVED_PREFIX = 'その内容はすでに保存されています：';
-const alreadySavedReply = rows => `${ALREADY_SAVED_PREFIX}${rows.map(rowText).join('、')}。`;
 const pendingReply = (rows, minutes) => `${PENDING_PREFIX}${rows.map(rowText).join('、')}。ここまでの合計は${formatActualRecordsTotal(minutes)}です。`;
 
 const CONFIRM = {
@@ -460,8 +457,9 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await actualTurn(page, request, week, '月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学120分、日曜は化学90分でした。', 'actual_week');
     await testInfo.attach('record-states-after-resend.txt', { body: (await recordStates(page)).join('\n') + `\nchat count: ${(await readChatCount(page))}`, contentType: 'text/plain' });
     // The resent records equal the saved ones (same id, same minutes), so the chat must say they are already saved, built from the
-    // owner's row format, and must not call them unsaved (fix-03; the wording is the owner's, adjusted with I2 when it lands).
-    await expect(lastReply(page)).toContainText(alreadySavedReply(scenarioRows(week)));
+    // owner's function, and must not call them unsaved (fix-03). INTERIM: a substring check on the owner's sentence until the session's
+    // whole reply (with any accompanying sentences) has its own owner function; then this becomes an exact toHaveText.
+    await expect(lastReply(page)).toContainText(formatAlreadySavedActualRecordsReply(scenarioRows(week).map(({ date, subject, minutes }) => ({ id: '', occurrenceDate: date, subject, minutes }))));
     expect(await lastReply(page).innerText(), 'saved records are never called unsaved').not.toContain('まだ保存していません');
     await expect(page.locator('.ai-planning-actual-card'), 'a repeated statement creates nothing new to confirm').toHaveCount(0);
     const second = await actualDocuments(request, userId);
