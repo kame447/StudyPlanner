@@ -31,24 +31,36 @@ export async function openScheduleDay(page, date) {
   if (!(await shown())) throw new Error(`The day view never showed ${label}.`);
 }
 
-const entriesTitled = (page, title) => page.locator(`${SAVED_PLAN_BLOCK}[title^="${attributeValue(`${title} / `)}"]`);
+// The day view titles a saved AI plan block `<title> <minutes>分 / HH:mm-HH:mm / <subject>` and names its
+// action dialog after that full block title (measured on the emulator stack), so a plan titled `T` is the
+// block whose title is `T` or `T <n>分`. Entries are matched on that exact shape, never by a loose prefix.
+const blockTitleOf = text => text.split(' / ')[0];
+const isTitled = (blockTitle, title) => blockTitle === title || new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')} \\d+分$`, 'u').test(blockTitle);
+
+async function titledBlocks(page, title) {
+  const candidates = page.locator(`${SAVED_PLAN_BLOCK}[title^="${attributeValue(title)}"]`);
+  const raw = await candidates.evaluateAll(nodes => nodes.map(node => node.getAttribute('title') ?? ''));
+  return raw.map((text, index) => ({ index, blockTitle: blockTitleOf(text) })).filter(entry => isTitled(entry.blockTitle, title))
+    .map(entry => ({ ...entry, locator: candidates.nth(entry.index) }));
+}
+const countTitled = async (page, title) => (await titledBlocks(page, title)).length;
 
 async function entryTitles(page, prefix) {
   const raw = await page.locator(SAVED_PLAN_BLOCK).evaluateAll(nodes => nodes.map(node => node.getAttribute('title') ?? ''));
-  return [...new Set(raw.map(text => text.split(' / ')[0]).filter(title => title.startsWith(prefix)))];
+  return [...new Set(raw.map(blockTitleOf).filter(blockTitle => blockTitle.startsWith(prefix)))];
 }
 
 /**
- * Deletes every saved one-off plan titled exactly `title` on the open day and proves none remain.
- * `deleteLabels` is the product's accepted label set for a one-off plan; a plan whose danger action is
- * anything else (a recurring series, a changed label) fails loudly instead of deleting.
+ * Deletes every saved one-off plan titled `title` on the open day, proves none remain and returns how many
+ * were deleted. `deleteLabels` is the product's accepted label set for a one-off plan; a plan whose danger
+ * action is anything else (a recurring series, a changed label) fails loudly instead of deleting.
  */
 async function removeVisibleTitled(page, title, deleteLabels) {
-  const entries = entriesTitled(page, title);
-  let remaining = await entries.count();
-  while (remaining > 0) {
-    await entries.first().click();
-    const menu = page.getByRole('dialog', { name: `${title}の操作`, exact: true });
+  let removed = 0;
+  for (let blocks = await titledBlocks(page, title); blocks.length > 0; blocks = await titledBlocks(page, title)) {
+    const before = blocks.length;
+    await blocks[0].locator.click();
+    const menu = page.getByRole('dialog', { name: `${blocks[0].blockTitle}の操作`, exact: true });
     await expect(menu).toBeVisible(WAIT);
     const danger = menu.locator('.schedule-action-item.danger');
     const labels = await danger.locator('strong').allTextContents();
@@ -57,21 +69,24 @@ async function removeVisibleTitled(page, title, deleteLabels) {
     }
     await danger.first().click();
     await expect(menu).toHaveCount(0, WAIT);
-    await expect(entries, 'deleting must remove exactly one entry').toHaveCount(remaining - 1, WAIT);
-    remaining -= 1;
+    await expect.poll(() => countTitled(page, title), { message: 'deleting must remove exactly one entry', timeout: WAIT.timeout }).toBe(before - 1);
+    removed += 1;
   }
-  await expect(entries).toHaveCount(0, WAIT);
+  return removed;
 }
 
-export async function removeSavedPlansByTitle(page, { title, date, deleteLabels = [ONE_OFF_DELETE_LABEL] }) {
+/** Returns the number of entries removed; a call that finds none fails (cleanup of a saved plan is never vacuous). */
+export async function removeSavedPlansByTitle(page, { title, date, deleteLabels = [ONE_OFF_DELETE_LABEL], allowNone = false }) {
   expect(title, 'cleanup needs the exact unique title').toBeTruthy();
   await openScheduleDay(page, date);
-  await removeVisibleTitled(page, title, deleteLabels);
+  const removed = await removeVisibleTitled(page, title, deleteLabels);
+  if (!allowNone) expect(removed, `no saved plan titled "${title}" was found to remove`).toBeGreaterThan(0);
+  return removed;
 }
 
 /**
  * Removes leftovers of earlier failed runs: every saved plan whose title starts with `titlePrefix`
- * on each of `dates`. Returns the number of distinct leftover titles removed so the caller can report it.
+ * on each of `dates`. Returns the number of leftover entries removed so the caller can report it.
  */
 export async function sweepLeftoverPlans(page, { titlePrefix = 'E2E-E2E-VNEXT-', dates, deleteLabels = [ONE_OFF_DELETE_LABEL] }) {
   expect(titlePrefix.length, 'the sweep prefix must be specific').toBeGreaterThanOrEqual(8);
@@ -79,8 +94,7 @@ export async function sweepLeftoverPlans(page, { titlePrefix = 'E2E-E2E-VNEXT-',
   for (const date of dates) {
     await openScheduleDay(page, date);
     for (const title of await entryTitles(page, titlePrefix)) {
-      await removeVisibleTitled(page, title, deleteLabels);
-      removed += 1;
+      removed += await removeVisibleTitled(page, title, deleteLabels);
     }
     expect(await entryTitles(page, titlePrefix), `no ${titlePrefix} plan may remain on ${dayLabel(date)}`).toEqual([]);
   }
@@ -90,9 +104,9 @@ export async function sweepLeftoverPlans(page, { titlePrefix = 'E2E-E2E-VNEXT-',
 /** Negative self-check for specs: a wrong delete label must fail and must leave the plan in place. */
 export async function expectCleanupLabelMismatchFails(page, { title, date }) {
   await openScheduleDay(page, date);
-  const before = await entriesTitled(page, title).count();
+  const before = await countTitled(page, title);
   expect(before, 'the self-check needs a saved plan').toBeGreaterThan(0);
   await expect(removeVisibleTitled(page, title, ['削除'])).rejects.toThrow(/Refusing to delete/u);
-  await page.getByRole('dialog', { name: `${title}の操作`, exact: true }).getByRole('button', { name: '閉じる', exact: true }).click();
-  await expect(entriesTitled(page, title)).toHaveCount(before);
+  await page.getByRole('dialog').filter({ hasText: title }).getByRole('button', { name: '閉じる', exact: true }).click();
+  await expect.poll(() => countTitled(page, title)).toBe(before);
 }
