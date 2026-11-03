@@ -1,4 +1,5 @@
 import { expect, test } from '../support/fixed-clock.mjs';
+import { SYNTHETIC, answer, nextCall, rendererReply } from '../support/synthetic-provider-client.mjs';
 import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStorage } from '../support/vnext-chat-storage.mjs';
 import { emulatorUserId, notSavedYet, placement, savedAtLeastOnce, savedExactlyOnce, savedFor, unchangedSince } from '../support/schedule-event-ledger.mjs';
 
@@ -10,7 +11,6 @@ import { emulatorUserId, notSavedYet, placement, savedAtLeastOnce, savedExactlyO
 // The test answers each forwarded call from the request the Worker actually sent (real network path,
 // scripted model output: real-model quality is the real-API workflow's job). The preview is approved
 // through V5's approval, saved to Firestore, reloaded and survives a failed turn.
-const SYNTHETIC = 'http://127.0.0.1:18790';
 const FIRESTORE = 'http://127.0.0.1:8180/v1/projects/demo-studyplanner/databases/(default)/documents';
 const PLANNING = '/';
 const email = () => test.info().project.metadata.email;
@@ -38,37 +38,6 @@ async function openPlanning(page) {
 async function send(page, text) {
   await page.locator('.ai-planning-composer textarea').fill(text);
   await page.getByRole('button', { name: '送信' }).click();
-}
-
-/** The next model call the Worker forwarded, with the structured-output schema it asked for. */
-async function nextCall(request) {
-  const response = await request.get(`${SYNTHETIC}/__synthetic/next?route=chat`, { timeout: 30_000 });
-  const held = await response.json();
-  return { ...held, schema: held.body?.response_format?.json_schema?.name ?? null };
-}
-
-async function answer(request, call, content, status = 200) {
-  const body = status === 200
-    ? { id: `synthetic-${call.id}`, object: 'chat.completion', model: call.body.model,
-        choices: [{ index: 0, message: { role: 'assistant', content: JSON.stringify(content) }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }
-    : { error: { message: 'synthetic provider failure' } };
-  await request.post(`${SYNTHETIC}/__synthetic/respond`, { data: { id: call.id, status, body } });
-}
-
-/**
- * A renderer reply for the application's decision as the actual request states it: the same action,
- * kind and question, naming every label the request requires (the renderer's own validator checks this).
- */
-function rendererReply(call) {
-  const prompt = call.body.messages.map((message) => {
-    try { return JSON.parse(message.content); } catch { return null; }
-  }).find((content) => content?.applicationDecision);
-  expect(prompt, 'renderer request carries the application decision').toBeTruthy();
-  const decision = prompt.applicationDecision;
-  const labels = [...(decision.relevantLabels ?? []), decision.previewPromotionControlLabel].filter(Boolean);
-  return { actionId: prompt.actionId, actionKind: decision.actionKind, questionCode: decision.questionCode ?? null,
-    groundingAcknowledgement: null, text: `${labels.join('、')}について確認しました。` };
 }
 
 function outcomesIn(value) {
