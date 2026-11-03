@@ -63,9 +63,10 @@ export function useWeeklyPlanningVNextApplication(
   const services = useMemo(() => providedServices ?? localServices(), [providedServices]);
   const [revision, redraw] = useState(0);
   const recoveringDurableRequest = useRef<string | null>(null);
-  // A confirmation click is the only save authority for study records; the in-flight flag makes a second
-  // click or a resent request a no-op while the first batch is still running (#973).
+  // A confirmation click is the only save authority for study records; the in-flight flag prevents a
+  // second click while the first batch is still running (#973).
   const actualRecordsInFlight = useRef(false);
+  const savingActualRecordIds = useRef<ReadonlySet<string>>(new Set());
   const [savedActualIds, setSavedActualIds] = useState<ReadonlySet<string>>(() => new Set());
   const runtime = useMemo(() => {
     const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: week, storage: services.storage });
@@ -201,6 +202,7 @@ export function useWeeklyPlanningVNextApplication(
         // This composition uses the ordinary approval application below, never the session's save entry.
         approvalLedger: { read: () => null, write: () => { throw new Error('Approval belongs to the existing application.'); } },
         plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { throw new Error('Approval belongs to the existing application.'); } },
+        savingActualRecordIds: () => savingActualRecordIds.current,
         calendar: () => ({ plans: turn.plans, actuals: turn.actuals ?? [], monthEvents: turn.monthEvents ?? [],
           scheduleTemplates: turn.scheduleTemplates, timetableTermId: turn.timetableTermId }),
         createRenderer: options => services.createRenderer(client, options), now: services.now };
@@ -250,7 +252,7 @@ export function useWeeklyPlanningVNextApplication(
     try { stored = runtime.local.readCheckpoint()?.vnext.actualRecords; } catch { stored = undefined; }
     // Already-saved documents (the planner's loaded actuals, by id) decide whether a record is a new save, a no-op or a replacement.
     const savedMinutes = new Map<string, number>();
-    for (const actual of input.actuals ?? []) if ('actualDurationMinutes' in actual && actual.actualDurationMinutes) savedMinutes.set(actual.id, actual.actualDurationMinutes);
+    for (const actual of input.actuals ?? []) if (!savingActualRecordIds.current.has(actual.id) && 'actualDurationMinutes' in actual && actual.actualDurationMinutes) savedMinutes.set(actual.id, actual.actualDurationMinutes);
     return resolvePendingActualRecordsAgainstSaved(selectPendingActualRecords(stored).filter(record => !savedActualIds.has(record.id)), savedMinutes);
     // `revision` changes after every committed turn and every mark.
   }, [runtime, runtime.state, revision, savedActualIds, input.actuals]);
@@ -259,10 +261,15 @@ export function useWeeklyPlanningVNextApplication(
     // Nothing to save, an owner that is not signed in, or a save already running: never write (no owner mismatch writes).
     if (records.length === 0 || actualRecordsInFlight.current || !input.userId || !input.saveWeeklyActualRecords || !current()) return;
     actualRecordsInFlight.current = true;
+    savingActualRecordIds.current = new Set(records.map(record => record.id));
     redraw(value => value + 1);
     try {
       await input.saveWeeklyActualRecords(ownerId, toActualRecordsToSave(records));
-      const ids = records.map(record => record.id);
+      // A turn may have corrected a value while the batch was in flight. Only the values that this
+      // batch actually wrote may acquire the saved mark; a correction remains pending.
+      let latest: WeeklyPlanningActualRecord[] = [];
+      try { latest = runtime.local.readCheckpoint()?.vnext.actualRecords ?? []; } catch { /* a committed batch remains committed */ }
+      const ids = records.filter(record => latest.some(item => item.id === record.id && item.minutes === record.minutes)).map(record => record.id);
       setSavedActualIds(previous => new Set([...previous, ...ids]));
       // The persisted mark (I2) keeps a reload from offering the same records again. The saved batch is already
       // committed, so a mark that cannot be written is not reported as a failed save: the in-memory set above hides
@@ -280,6 +287,7 @@ export function useWeeklyPlanningVNextApplication(
       chat.checkpoint();
     } finally {
       actualRecordsInFlight.current = false;
+      savingActualRecordIds.current = new Set();
       redraw(value => value + 1);
     }
   };

@@ -15,7 +15,7 @@ import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weekly
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
-import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, formatSavingActualRecordsReply, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
 
 const OWNER = 'exam-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03'; const NOW = `${TODAY}T00:00:00.000Z`;
 const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartDate: WEEK, conversationId: 'exam-conversation',
@@ -126,6 +126,70 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(save).toHaveBeenCalledTimes(2);
     expect(save.mock.calls[1][1]).toEqual(save.mock.calls[0][1]);
     expect(ref.current!.pendingActualRecords).toEqual([]);
+  });
+
+  it('keeps an optimistic batch unconfirmed through a resend, then marks it saved only when the port resolves', async () => {
+    await seedRecords(storage.storage);
+    let resolveSave!: () => void;
+    const save = vi.fn(() => new Promise<void>(resolve => { resolveSave = resolve; }));
+    const resend: WeeklyPlanningVNextLocalApplicationServices = { ...services(), interpret: () => async () => ({ status: 'interpreted' as const,
+      planningIntent: 'discuss' as const, answer: null, conversationActs: [], studyRecords: WEEK_RECORDS, studyRecordQuestion: null,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }) };
+    const ref = createRef<WeeklyPlanningApplication>();
+    const initial = inputWith(save);
+    await act(async () => { renderer = create(<Harness ref={ref} input={initial} services={resend} />); });
+    const original = ref.current!.pendingActualRecords!;
+    const ids = original.map(record => record.id);
+    let saving!: Promise<void>;
+    act(() => { saving = ref.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledOnce();
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));
+
+    // usePlannerDataState has already published its optimistic rows, while its save port still waits.
+    const optimistic = { ...initial, actuals: original.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
+    await act(async () => { renderer!.update(<Harness ref={ref} input={optimistic} services={resend} />); });
+    expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(ids);
+    await act(async () => { await ref.current!.submitTurn('先週の同じ勉強を記録しました。'); });
+    const inFlightReply = ref.current!.state.messages[ref.current!.state.messages.length - 1]?.content;
+    expect(inFlightReply).toBe(`${formatSavingActualRecordsReply(original)}ここまでの合計は6時間35分（395分）です。`);
+    expect(inFlightReply).not.toContain('すでに保存されています');
+    expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(ids);
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));
+
+    await act(async () => { resolveSave(); await saving; });
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('saved'));
+    await act(async () => { await ref.current!.submitTurn('先週の同じ勉強を記録しました。'); });
+    expect(ref.current!.state.messages[ref.current!.state.messages.length - 1]?.content).toBe(formatAlreadySavedActualRecordsReply(original));
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('saved'));
+    const finalRecords = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage,
+      chatId: ref.current!.chat.index.activeChatId }).readCheckpoint()!.vnext.actualRecords!;
+    expect(finalRecords.map(record => record.id)).toEqual(ids);
+    expect(new Set(finalRecords.map(record => record.id)).size).toBe(6);
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the same pending batch when an in-flight save rejects after optimistic rows appeared', async () => {
+    await seedRecords(storage.storage);
+    let rejectSave!: (error: Error) => void;
+    const save = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; })).mockResolvedValue(undefined);
+    const sharedServices = services();
+    const ref = createRef<WeeklyPlanningApplication>();
+    const initial = inputWith(save);
+    await act(async () => { renderer = create(<Harness ref={ref} input={initial} services={sharedServices} />); });
+    const original = ref.current!.pendingActualRecords!;
+    let saving!: Promise<void>;
+    act(() => { saving = ref.current!.approveActualRecords!(); });
+    const optimistic = { ...initial, actuals: original.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
+    await act(async () => { renderer!.update(<Harness ref={ref} input={optimistic} services={sharedServices} />); });
+    expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(original.map(record => record.id));
+    await act(async () => { rejectSave(new Error('保存はされていません')); await expect(saving).rejects.toThrow('保存はされていません'); });
+    await act(async () => { renderer!.update(<Harness ref={ref} input={initial} services={sharedServices} />); });
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));
+    expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(original.map(record => record.id));
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][1]).toEqual(save.mock.calls[0][1]);
   });
 
   it('writes nothing without a signed-in owner or without a save port', async () => {

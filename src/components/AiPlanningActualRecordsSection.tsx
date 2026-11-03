@@ -2,6 +2,7 @@ import {
   formatActualRecordRow,
   formatActualRecordsTotal,
   sumActualRecordMinutes,
+  SAVING_ACTUAL_RECORDS_LABEL,
   type PendingWeeklyPlanningActualRecord,
 } from '../features/weeklyPlanning/application/weeklyPlanningActualRecords';
 import './AiPlanningActualRecordsSection.css';
@@ -24,7 +25,7 @@ export function AiPlanningActualRecordsSection({ records, isSaving, disabled, er
   return (
     <section className="ai-planning-actual-records" aria-label="学習実績の確認">
       <h3>実績</h3>
-      <p className="ai-planning-actual-records-note">時刻なしで、日ごとの勉強時間だけを記録します。</p>
+      <p className="ai-planning-actual-records-note">{isSaving ? SAVING_ACTUAL_RECORDS_LABEL : '時刻なしで、日ごとの勉強時間だけを記録します。'}</p>
       <ul className="ai-planning-actual-records-list">
         {records.map(record => <li key={record.id}>{formatActualRecordRow(record)}</li>)}
       </ul>

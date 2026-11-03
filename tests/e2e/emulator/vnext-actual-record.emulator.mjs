@@ -12,7 +12,7 @@ import { VNEXT_STUDY_RECORD_SAVE_GUIDE } from '../../../src/features/weeklyPlann
 import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 // The wording and arithmetic of the records belong to ONE owner (fix-01 B): expected texts are built from its functions, never from a
 // second format kept in this spec.
-import { formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatSavingActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // #973 I4: the examinee's week of study records by CONVERSATION, on the durable emulator stack (production build with durable
 // turns, production Worker, Auth + Firestore emulators, synthetic provider answering from scripted readings; no model call).
@@ -500,6 +500,47 @@ test.describe('examinee week of study records by conversation (durable emulator 
     const second = await actualDocuments(request, userId);
     expect(second.map(({ docId }) => docId).sort(), 'same documents (same ids), none added').toEqual(first.map(({ docId }) => docId).sort());
     expect(total(second)).toBe(WEEK_TOTAL_MINUTES);
+  });
+
+  test('unconfirmed save: blocked Firestore write leaves six records saving, and a resend cannot claim they were saved', async ({ page, request }) => {
+    await signIn(page);
+    const week = await previousWeekOf(page);
+    await seedNeighbours(request, week);
+    await openPlannerOnPreviousWeek(page);
+    const statement = '月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学120分、日曜は化学90分でした。';
+    const rows = scenarioRows(week);
+    await actualTurn(page, request, week, statement, 'actual_week');
+    const dialog = await openConfirmation(page);
+    const firestoreRoute = /127\.0\.0\.1:8180/;
+    // Stage A scenario B: Firestore is unreachable only in this page. The synthetic Worker remains available for the resend.
+    await page.route(firestoreRoute, route => route.abort('connectionreset'));
+    try {
+      await CONFIRM.save(dialog).click();
+      await expect(CONFIRM.save(dialog)).toHaveText('保存中...');
+      await expect(dialog).toContainText('保存中（まだ確定していません）');
+      await expect(dialog, 'the confirmation remains available while the write has no acknowledgement').toBeVisible();
+      expect(await actualDocuments(request, userId), 'the server has not received the batch').toEqual([]);
+
+      await dialog.getByRole('button', { name: '閉じる' }).click();
+      await expect(dialog).toBeHidden();
+      await expect(CONFIRM.open(page), 'the confirmation card remains while saving').toBeVisible();
+      await actualTurn(page, request, week, statement, 'actual_week');
+      await expect(lastReply(page)).toHaveText(`${formatSavingActualRecordsReply(rows.map(({ date, subject, minutes }) =>
+        ({ id: '', occurrenceDate: date, subject, minutes })))}ここまでの合計は${formatActualRecordsTotal(WEEK_TOTAL_MINUTES)}です。`);
+      expect(await lastReply(page).innerText()).not.toContain('すでに保存されています');
+      await openConfirmation(page);
+      await expect(dialog).toBeVisible();
+      await expect(CONFIRM.save(dialog)).toBeDisabled();
+      expect(await actualDocuments(request, userId), 'a resend has not written a second batch').toEqual([]);
+    } finally {
+      await page.unroute(firestoreRoute);
+    }
+    await expect.poll(async () => (await actualDocuments(request, userId)).length,
+      { timeout: 30_000, message: 'the queued batch reaches Firestore after reconnection' }).toBe(6);
+    const saved = expectSavedWeek(await actualDocuments(request, userId), week, rows);
+    expect(new Set(saved.map(record => record.docId)).size).toBe(6);
+    await expect(dialog, 'the confirmation closes only after the save resolves').toBeHidden();
+    await expectNeighboursUnchanged(request);
   });
 
   test('save failure: the emulator rejects the batch → nothing is saved, the student retries once it is accepted, and there are no duplicates', async ({ page, request }) => {

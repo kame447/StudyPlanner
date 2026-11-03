@@ -5,7 +5,7 @@
 // confirmation UI's explicit action (DESIGN-DECISION 4).
 import type { VNextTurnError } from './weeklyPlanningVNextTypes';
 // The display format has one owner (fix-01 B); this file only phrases the conversation around it.
-import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, formatRestDaysReply, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
+import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatSavingActualRecordsReply, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
 
 /** One stated record as the model reads it: absolute date, subject as the user said it, stated minutes. */
 export interface VNextStudyRecordReading {
@@ -71,9 +71,10 @@ export type VNextStudyRecordResult =
  */
 export function savedStudyRecordMinutes(
   actuals: readonly { id: string; userId?: string; actualDurationMinutes?: number }[], ownerId: string,
+  savingIds: ReadonlySet<string> = new Set(),
 ): Map<string, number> {
   const prefix = `wp-actual-${ownerId.replace(/\//gu, '_')}-`;
-  return new Map(actuals.filter(actual => actual.id.startsWith(prefix) && (actual.userId === undefined || actual.userId === ownerId)
+  return new Map(actuals.filter(actual => !savingIds.has(actual.id) && actual.id.startsWith(prefix) && (actual.userId === undefined || actual.userId === ownerId)
     && Number.isInteger(actual.actualDurationMinutes) && (actual.actualDurationMinutes as number) > 0)
     .map(actual => [actual.id, actual.actualDurationMinutes as number]));
 }
@@ -165,6 +166,8 @@ export const VNEXT_STUDY_RECORD_SAVE_GUIDE = 'ほかの日があれば続けて�
 export function vnextStudyRecordReply(params: {
   /** Stated this turn and already saved as stated. */
   alreadySaved?: readonly VNextActualRecord[];
+  /** Stated again while the matching batch has not resolved. */
+  saving?: readonly VNextActualRecord[];
   changed: readonly VNextActualRecord[];
   removedCount: number;
   all: readonly VNextActualRecord[];
@@ -173,18 +176,20 @@ export function vnextStudyRecordReply(params: {
   restDays?: readonly string[];
 }): string {
   const saved = params.alreadySaved ?? [];
+  const saving = params.saving ?? [];
   const lines: string[] = [];
   const restOnly = (params.restDays?.length ?? 0) > 0 && !saved.length && !params.changed.length && !params.question;
   if (restOnly) lines.push(formatRestDaysReply(params.restDays!));
   if (saved.length) lines.push(formatAlreadySavedActualRecordsReply(saved));
+  if (saving.length) lines.push(formatSavingActualRecordsReply(saving));
   if (params.changed.length) lines.push(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${params.changed.map(formatActualRecordRow).join('、')}。`);
   else if (restOnly) { /* said above */ }
   else if (params.removedCount) lines.push(VNEXT_STUDY_RECORD_REMOVED);
-  else if (!params.question && !saved.length) lines.push(VNEXT_STUDY_RECORD_UNCHANGED);
+  else if (!params.question && !saved.length && !saving.length) lines.push(VNEXT_STUDY_RECORD_UNCHANGED);
   const waiting = params.all.filter(record => record.status !== 'saved');
   // Only saved records were stated: nothing is waiting, so no total and no "press save" guidance.
   if (waiting.length || params.changed.length) lines.push(`ここまでの合計は${formatActualRecordsTotal(sumActualRecordMinutes(params.all))}です。`);
   if (params.question) lines.push(vnextStudyRecordQuestionText(params.question));
-  else if (waiting.length) lines.push(VNEXT_STUDY_RECORD_SAVE_GUIDE);
+  else if (waiting.some(record => !saving.some(item => item.id === record.id))) lines.push(VNEXT_STUDY_RECORD_SAVE_GUIDE);
   return lines.join('');
 }

@@ -91,6 +91,8 @@ it('saves exactly once for any number of activations while the first save is run
   const { onClick } = saveButton().props;
   await act(async () => { for (let i = 0; i < 5; i += 1) onClick(); });
   expect(approveActualRecords).toHaveBeenCalledOnce();
+  expect(dialogs()).toHaveLength(1);
+  expect(text(renderer!.root.findByProps({ className: 'ai-planning-actual-records-note' }))).toBe('保存中（まだ確定していません）');
   expect(buttonLabel()).toBe('保存中...');
   expect(saveButton().props.disabled).toBe(true);
   await act(async () => { finish(); });
