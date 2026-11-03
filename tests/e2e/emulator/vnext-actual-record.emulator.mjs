@@ -457,9 +457,9 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await actualTurn(page, request, week, '月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学120分、日曜は化学90分でした。', 'actual_week');
     await testInfo.attach('record-states-after-resend.txt', { body: (await recordStates(page)).join('\n') + `\nchat count: ${(await readChatCount(page))}`, contentType: 'text/plain' });
     // The resent records equal the saved ones (same id, same minutes), so the chat must say they are already saved, built from the
-    // owner's function, and must not call them unsaved (fix-03). INTERIM: a substring check on the owner's sentence until the session's
-    // whole reply (with any accompanying sentences) has its own owner function; then this becomes an exact toHaveText.
-    await expect(lastReply(page)).toContainText(formatAlreadySavedActualRecordsReply(scenarioRows(week).map(({ date, subject, minutes }) => ({ id: '', occurrenceDate: date, subject, minutes }))));
+    // owner's function, exactly (when only saved records are stated nothing is waiting, so the session adds no total or guidance:
+    // vnextStudyRecordReply), and must not call them unsaved (fix-03).
+    await expect(lastReply(page)).toHaveText(formatAlreadySavedActualRecordsReply(scenarioRows(week).map(({ date, subject, minutes }) => ({ id: '', occurrenceDate: date, subject, minutes }))));
     expect(await lastReply(page).innerText(), 'saved records are never called unsaved').not.toContain('まだ保存していません');
     await expect(page.locator('.ai-planning-actual-card'), 'a repeated statement creates nothing new to confirm').toHaveCount(0);
     const second = await actualDocuments(request, userId);
