@@ -33,6 +33,18 @@ Object.assign(process.env, {
 
 const VNEXT_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-vnext-state.json');
 
+// The durable-turn target (#926): the production durable job on, the model still the synthetic provider. It is
+// a second Worker and a second production build beside the default pair, on their own ports, so every project
+// above keeps its target unchanged. The VNext production smoke runs here, with its own account.
+const DURABLE = {
+  STUDYPLANNER_E2E_DURABLE: '1',
+  STUDYPLANNER_E2E_WORKER_PORT: '18788',
+  STUDYPLANNER_E2E_APP_PORT: '4180',
+  STUDYPLANNER_E2E_INSPECTOR_PORT: '9330',
+};
+const DURABLE_APP = `http://127.0.0.1:${DURABLE.STUDYPLANNER_E2E_APP_PORT}`;
+const DURABLE_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-vnext-production-state.json');
+
 export default defineConfig({
   testDir: configDir,
   fullyParallel: false,
@@ -91,6 +103,19 @@ export default defineConfig({
       metadata: { email: 'e2e-vnext@example.test' },
       use: { ...devices['Desktop Chrome'], storageState: VNEXT_STATE },
     },
+    {
+      name: 'emulator-vnext-production-setup',
+      testMatch: 'emulator/account.setup.mjs',
+      metadata: { email: 'e2e-vnext-production@example.test', statePath: DURABLE_STATE },
+      use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP },
+    },
+    {
+      name: 'chromium-emulator-vnext-production',
+      testMatch: 'emulator/vnext-production.emulator.mjs',
+      dependencies: ['emulator-vnext-production-setup'],
+      metadata: { email: 'e2e-vnext-production@example.test' },
+      use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: DURABLE_STATE },
+    },
   ],
   webServer: [
     {
@@ -127,6 +152,24 @@ export default defineConfig({
       reuseExistingServer: !isCi,
       timeout: 300_000,
     },
-
+    {
+      // The same Worker with the durable turn job on (STUDYPLANNER_E2E_DURABLE), beside the default one.
+      command: 'node tests/e2e/emulator/worker/start.mjs',
+      cwd: repoRoot,
+      env: DURABLE,
+      wait: { stdout: /Ready on http:\/\/127\.0\.0\.1:18788/ },
+      gracefulShutdown: { signal: 'SIGINT', timeout: 20_000 },
+      timeout: 120_000,
+    },
+    {
+      // The production build with VITE_DURABLE_WEEKLY_TURNS on, in its own output directory and port.
+      command: 'node ./node_modules/vite/bin/vite.js build --config tests/e2e/emulator/vite.config.mjs'
+        + ' && node ./node_modules/vite/bin/vite.js preview --config tests/e2e/emulator/vite.config.mjs',
+      cwd: repoRoot,
+      env: DURABLE,
+      url: DURABLE_APP,
+      reuseExistingServer: !isCi,
+      timeout: 300_000,
+    },
   ],
 });
