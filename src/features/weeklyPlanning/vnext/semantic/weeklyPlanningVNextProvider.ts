@@ -6,6 +6,7 @@ import { applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_ESTIMATE_ANSWER_REQUIREMENT,
   VNEXT_PROVIDER_RESPONSE_FORMAT, type VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
+import { applyVNextStudyRecords } from '../weeklyPlanningVNextStudyRecords';
 import { resolveVNextEventRegistrationActs } from '../weeklyPlanningVNextEventRegistration';
 import { createVNextProviderReferences } from './weeklyPlanningVNextProviderReferences';
 import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../../shared/aiProxyContract';
@@ -23,6 +24,7 @@ const record = (value: unknown): value is RecordValue => value !== null && typeo
 
 function hasContributions(value: unknown): boolean {
   return record(value) && ((Array.isArray(value.conversationActs) && value.conversationActs.length > 0)
+    || (Array.isArray(value.studyRecords) && value.studyRecords.length > 0) || (value.studyRecordQuestion !== null && value.studyRecordQuestion !== undefined)
     || (value.answer !== null && value.answer !== undefined)
     || (record(value.delta) && Object.values(value.delta).some(items => Array.isArray(items) && items.length > 0)));
 }
@@ -81,6 +83,11 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
         ? { questionKey: input.presentedQuestion.key, graphRevision: input.projection.graphRevision } : null,
       projection: input.projection, graph: input.state.graph, interpreted: reading });
     if (resolved.status === 'conflict') return resolved.errors;
+  }
+  if (reading.studyRecords?.length) {
+    // The same pure rule the session applies, so a reading the session would reject is repaired here.
+    const records = applyVNextStudyRecords({ records: [], readings: reading.studyRecords, acceptedDate: input.clock.currentDate, conversationId: 'native-provider-dry-run' });
+    if (records.status === 'rejected') return records.errors;
   }
   const result = !Object.values(reading.delta).some(items => items.length) ? { status: 'noop' as const, state: input.state } : applyWeeklyPlanningVNextTurn(input.state, reading.delta, {
     observedMemoryPace: input.observedMemoryPace,

@@ -11,6 +11,7 @@ import { SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5, SEMANTI
   SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import type { VNextEventRegistrationAct, WeeklyPlanningVNextInterpretedAnswer } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextPlanningIntent, VNextTurnDelta, VNextTurnError } from '../weeklyPlanningVNextTypes';
+import { VNEXT_STUDY_RECORD_QUESTION_REASONS, type VNextStudyRecordQuestion, type VNextStudyRecordReading } from '../weeklyPlanningVNextStudyRecords';
 import { VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 
 export { VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
@@ -23,7 +24,7 @@ const {
   root, VNEXT_PLANNING_INTENT_REQUIREMENT, VNEXT_EVENT_REGISTRATION_REQUIREMENT, VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT,
   VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT, VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_TEMPORAL_TARGET_REQUIREMENT,
   VNEXT_NAMED_TIME_PERIOD_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT, VNEXT_DEFER_ALLOCATION_REQUIREMENT,
-  VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_PROVIDER_RESPONSE_FORMAT,
+  VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_STUDY_RECORD_REQUIREMENT, VNEXT_PROVIDER_RESPONSE_FORMAT,
 } = /*#__PURE__*/ (() => {
   const VNEXT_PLANNING_INTENT_REQUIREMENT = 'planningIntent uses the existing V5 meaning: create_plan for an explicit request to create a plan or preview, including a contextual acceptance of the actual request to create one; update_plan for a requested change to an existing plan or preview; discuss for stating facts or discussing the conditions without asking to create one; unknown when intent is not established. Complete facts, a quantity of work, or an answer to a machine question alone are not a new creation request. Recent conversation is language context only and never creates facts by itself. State intent, never permission: the application owns the authorization gate and retained permission.';
   const VNEXT_EVENT_REGISTRATION_REQUIREMENT = 'conversationActs is additive current-turn meaning, limited to decline_additional_work and request_event_registration. decline_additional_work follows V5: decline the optional invitation for additional work, never dismiss a required question, authorize planning, or save. It is read from what the user says (no more work to add) whichever question is presented, and the application alone decides what it closes. A presentedQuestion with an optionalInvitation field is that invitation: an answer saying there is no work to add (for example no other or no further work) or otherwise declining the offer is decline_additional_work with an empty delta, while naming work to do is ordinary delta facts and not a decline. Its targetRef is null unless the user explicitly names an existing task/component. Keep independent facts and simultaneous registration requests. request_event_registration: an explicit request to put a fixed event on the user calendar, including contextual acceptance. It requests a reviewable candidate, never save or study-plan permission. With neither act return []. targetRef is an existing task/component F alias as factId or a new task/component localId; null selects tasks stated or updated in this turn, never every historical task. Preserve selective targets and independent study work. A fixed time alone is busy information, not a registration request. When the user tells you a fixed time and says it need not be registered or put on the calendar (they only want planning to avoid it), that time is still busy: state it as an unavailable availability_declaration (hard) with its date and clock interval, with no task for it and no request_event_registration. An explicit registration request is a task with fixed_interval plus request_event_registration. Keep fixed_interval hard bounds at their stated times, never invent movable work or an estimate for registration.';
@@ -37,6 +38,7 @@ const {
   const VNEXT_RELATE_REFERENCE_REQUIREMENT = 'relate a/b reference workload facts: an existing workload uses its supplied F alias in factId; a workload added in this delta uses its localId. For derived work use the F alias of its total workload fact (definingFactId). W aliases and workLineageId are not valid relation references; never put a W alias in localId.';
   const VNEXT_DEFER_ALLOCATION_REQUIREMENT = 'allocation none for an ordinary deferral. provisional_timebox only for a missing_effort_estimate or missing_schedulable_work question, when the user explicitly says the effort is unknown or must not become an estimate and explicitly asks to proceed by provisionally placing the work anyway. It is scheduler permission only: never an amount, estimate, completion or new fact, so add no workload or effort_estimate for it. A stated or approximate time is an estimate answer, not provisional_timebox.';
   const VNEXT_ESTIMATE_ANSWER_REQUIREMENT = 'A whole-work or per-unit estimate about the work in a presented missing_effort_estimate question answers that question regardless of its displayed wording, including a question phrased as total time. Use answer for that work, not a new workload or effort_estimate fact. Choose per whole_work or unit from what the user states; the question\'s wording does not require conversion to a total. This answer rule takes precedence over the time-only workload rule. whole_work = minutes for all of the asked work; unit = minutes for one unit in the unitCode/unitLabel shown in presentedQuestion.forWork. Return the stated minutes without multiplying or computing a total. The application binds that answer to the asked work and its quantity basis. Time already spent on completed work or time for another task is not an answer to this work question; represent it as an ordinary delta fact. State the asked work\'s estimate once in answer; do not repeat it in delta. An option answer already carries that option\'s change; do not restate it in delta. For an option answer, per is null.';
+  const VNEXT_STUDY_RECORD_REQUIREMENT = 'studyRecords: only what the user says they actually studied (past or today), one entry per day and subject. dateExpression is the absolute date YYYY-MM-DD resolved from the clock, never future; subject as the user said it; minutes exactly as stated (hours converted), never estimated, split or computed. A rest day is no entry. A plan or intention is never a record (it belongs in delta). Restating a day and subject with other minutes is a correction: emit that same date and subject again. No clock times. If a part is unclear (vague minutes, a total over several days, no date, no subject), leave it out and set studyRecordQuestion to that one thing: reason missing_minutes, missing_date, missing_subject or split_needed, label in the user\'s words; clear entries are still emitted. When pendingStudyRecordQuestion is supplied and the user answers it, emit the completed entry.';
   const text: Schema = { type: 'string' }, number: Schema = { type: 'number' };
   const object = (properties: Record<string, Schema>): Schema => ({ type: 'object', properties,
     required: Object.keys(properties), additionalProperties: false });
@@ -103,7 +105,10 @@ const {
       description: VNEXT_RELATE_REFERENCE_REQUIREMENT }),
     defer: array(object({ questionKey: text,
       allocation: { ...enumeration(['none', 'provisional_timebox']), description: VNEXT_DEFER_ALLOCATION_REQUIREMENT } })),
-  }), answer: { anyOf: [object({ kind: enumeration(['option', 'estimate_minutes']), optionId: nullable(text), minutes: nullable(number),
+  }),
+    studyRecords: { ...array(object({ dateExpression: text, subject: text, minutes: number })), description: VNEXT_STUDY_RECORD_REQUIREMENT },
+    studyRecordQuestion: { ...nullable(object({ reason: enumeration(VNEXT_STUDY_RECORD_QUESTION_REASONS), label: nullable(text) })), description: 'The one unclear part of a study record (see studyRecords), or null.' },
+    answer: { anyOf: [object({ kind: enumeration(['option', 'estimate_minutes']), optionId: nullable(text), minutes: nullable(number),
     per: { ...nullable(enumeration(['whole_work', 'unit'])), description: VNEXT_ESTIMATE_ANSWER_REQUIREMENT } }),
     object({ kind: enumeration(['proposal_decision']), proposalId: { ...text, description: VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT },
       decision: { ...enumeration(['accept', 'reject']), description: VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT } }),
@@ -115,7 +120,7 @@ const {
     root, VNEXT_PLANNING_INTENT_REQUIREMENT, VNEXT_EVENT_REGISTRATION_REQUIREMENT, VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT,
     VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT, VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_TEMPORAL_TARGET_REQUIREMENT,
     VNEXT_NAMED_TIME_PERIOD_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT, VNEXT_DEFER_ALLOCATION_REQUIREMENT,
-    VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_PROVIDER_RESPONSE_FORMAT,
+    VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_STUDY_RECORD_REQUIREMENT, VNEXT_PROVIDER_RESPONSE_FORMAT,
   };
 })();
 
@@ -124,13 +129,16 @@ export {
   VNEXT_LEARNING_STRATEGY_ANSWER_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT,
   VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_NAMED_TIME_PERIOD_REQUIREMENT,
   VNEXT_RELATE_REFERENCE_REQUIREMENT, VNEXT_DEFER_ALLOCATION_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT,
-  VNEXT_PROVIDER_RESPONSE_FORMAT,
+  VNEXT_STUDY_RECORD_REQUIREMENT, VNEXT_PROVIDER_RESPONSE_FORMAT,
 };
 
 export interface VNextProviderReading {
   planningIntent: VNextPlanningIntent;
   conversationActs: VNextEventRegistrationAct[];
   delta: VNextTurnDelta;
+  /** Always set by the decoder; optional so readings built by plan-only callers stay valid. */
+  studyRecords?: VNextStudyRecordReading[];
+  studyRecordQuestion?: VNextStudyRecordQuestion | null;
   answer: WeeklyPlanningVNextInterpretedAnswer | null;
 }
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -196,9 +204,12 @@ function validate(schema: Schema, value: unknown, path: string, localId: string 
 export function decodeVNextProviderOutput(value: unknown):
   | { status: 'decoded'; reading: VNextProviderReading }
   | { status: 'rejected'; errors: VNextTurnError[] } {
-  const errors = validate(root, value, '', null);
+  // The model must state both study-record fields (strict schema); a reading recorded before they existed has
+  // none, which means no records and no record question, so absence decodes as that rather than as an error.
+  const complete = record(value) ? { studyRecords: [], studyRecordQuestion: null, ...value } : value;
+  const errors = validate(root, complete, '', null);
   if (errors.length) return { status: 'rejected', errors };
-  const wire = structuredClone(value) as { planningIntent: VNextPlanningIntent; conversationActs: VNextEventRegistrationAct[]; delta: VNextTurnDelta; answer: Record<string, unknown> | null };
+  const wire = structuredClone(complete) as { planningIntent: VNextPlanningIntent; conversationActs: VNextEventRegistrationAct[]; delta: VNextTurnDelta; studyRecords: VNextStudyRecordReading[]; studyRecordQuestion: VNextStudyRecordQuestion | null; answer: Record<string, unknown> | null };
   let answer: WeeklyPlanningVNextInterpretedAnswer | null = null;
   if (wire.answer) {
     if (wire.answer.kind === 'proposal_decision' && typeof wire.answer.proposalId === 'string'
@@ -213,5 +224,6 @@ export function decodeVNextProviderOutput(value: unknown):
       answer = { kind: 'estimate_minutes', minutes: wire.answer.minutes, per: wire.answer.per };
     } else return { status: 'rejected', errors: [{ code: 'invalid_value', path: 'answer', localId: null, factId: null }] };
   }
-  return { status: 'decoded', reading: { planningIntent: wire.planningIntent, conversationActs: wire.conversationActs, delta: wire.delta, answer } };
+  return { status: 'decoded', reading: { planningIntent: wire.planningIntent, conversationActs: wire.conversationActs, delta: wire.delta,
+    studyRecords: wire.studyRecords, studyRecordQuestion: wire.studyRecordQuestion, answer } };
 }
