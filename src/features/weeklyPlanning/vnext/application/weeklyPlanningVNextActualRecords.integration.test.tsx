@@ -79,9 +79,9 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId })
       .readCheckpoint()!.vnext.actualRecords!.map(record => record.status);
 
-  async function reloadUnansweredSave() {
+  async function reloadUnansweredSave(save: NonNullable<UseWeeklyPlanningApplicationInput['saveWeeklyActualRecords']> =
+    vi.fn(() => new Promise<void>(() => undefined))) {
     await seedRecords(storage.storage);
-    const save = vi.fn(() => new Promise<void>(() => undefined));
     const first = await mount(inputWith(save));
     const records = first.current!.pendingActualRecords!;
     act(() => { void first.current!.approveActualRecords!(); });
@@ -338,9 +338,122 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
   it('never reads an old owner’s attempt after the signed-in owner changes', async () => {
     const { save } = await reloadUnansweredSave();
     const readActualSave = vi.fn(async () => { throw new Error('wrong owner was read'); });
-    await mount(inputWith(save, 'other-owner'), { readActualSave });
+    const foreign = await mount(inputWith(save, 'other-owner'), { readActualSave });
+    await act(async () => { await foreign.current!.approveActualRecords!(); });
     expect(readActualSave).not.toHaveBeenCalled();
     expect(save).toHaveBeenCalledOnce();
+  });
+
+  it('retries a server-confirmed absent batch only after the user clicks, with the same six IDs and one write', async () => {
+    const save = vi.fn().mockImplementationOnce(() => new Promise<void>(() => undefined)).mockResolvedValue(undefined);
+    const { records, chatId } = await reloadUnansweredSave(save);
+    const readActualSave: NonNullable<WeeklyPlanningVNextLocalApplicationServices['readActualSave']> = (ownerId, attempted) =>
+      readAndClassifyActualSave({ ownerId, attempted, readConfirmed: async () => ({
+        fromCache: false, hasPendingWrites: false, records: [],
+      }) });
+    const reloaded = await mount(inputWith(save), { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(reloaded.current!.state.messages.some(message =>
+      message.content.includes('サーバー上に保存されていません'))).toBe(true)); });
+    expect(save).toHaveBeenCalledOnce();
+    expect(storedStatuses(reloaded)).toEqual(Array(6).fill('pending'));
+    await act(async () => { await Promise.all([reloaded.current!.approveActualRecords!(), reloaded.current!.approveActualRecords!()]); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][1]).toEqual(save.mock.calls[0][1]);
+    expect((save.mock.calls[1][1] as PendingWeeklyPlanningActualRecord[]).map(record => record.id)).toEqual(records.map(record => record.id));
+    expect(reloaded.current!.pendingActualRecords).toEqual([]);
+    expect(attemptInUi(chatId)).toBeUndefined();
+    expect(reloaded.current!.state.messages.some(message => message.content.includes('保存しました'))).toBe(true);
+    await act(async () => { await reloaded.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { kind: 'saved', expected: '保存を確認しました' },
+    { kind: 'partial', expected: '未保存の記録' },
+    { kind: 'conflicting', expected: '保存済みの値が異なる記録' },
+    { kind: 'unknown', expected: 'サーバーに接続できないため' },
+    { kind: 'permission', expected: '読取権限がないため' },
+    { kind: 'auth', expected: '認証された利用者が一致しないため' },
+  ])('never retries $kind when the user clicks the remaining records', async ({ kind, expected }) => {
+    const save = vi.fn().mockImplementationOnce(() => new Promise<void>(() => undefined)).mockResolvedValue(undefined);
+    const { records } = await reloadUnansweredSave(save);
+    const matching = records.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes));
+    const rows = kind === 'saved' ? matching : kind === 'partial' ? matching.slice(0, 3)
+      : matching.map((row, index) => index === 5 ? { ...row, actualDurationMinutes: row.actualDurationMinutes + 1 } : row);
+    const readActualSave: NonNullable<WeeklyPlanningVNextLocalApplicationServices['readActualSave']> = (ownerId, attempted) => {
+      if (kind === 'unknown' || kind === 'permission' || kind === 'auth') return Promise.reject(new ActualSaveReadbackUnknownError(
+        kind === 'unknown' ? 'unavailable' : kind === 'permission' ? 'permission_denied' : 'auth_mismatch'));
+      return readAndClassifyActualSave({ ownerId, attempted, readConfirmed: async () => ({
+        fromCache: false, hasPendingWrites: false, records: rows,
+      }) });
+    };
+    const reloaded = await mount(inputWith(save), { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(reloaded.current!.state.messages.some(message =>
+      message.content.includes(expected))).toBe(true)); });
+    await act(async () => { await reloaded.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it('records a rejected retry without claiming a server commit outcome and leaves every row pending', async () => {
+    const save = vi.fn().mockImplementationOnce(() => new Promise<void>(() => undefined))
+      .mockRejectedValueOnce(new Error('write rejected'));
+    await reloadUnansweredSave(save);
+    const readActualSave: NonNullable<WeeklyPlanningVNextLocalApplicationServices['readActualSave']> = (ownerId, attempted) =>
+      readAndClassifyActualSave({ ownerId, attempted, readConfirmed: async () => ({
+        fromCache: false, hasPendingWrites: false, records: [],
+      }) });
+    const reloaded = await mount(inputWith(save), { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(reloaded.current!.state.messages.some(message =>
+      message.content.includes('サーバー上に保存されていません'))).toBe(true)); });
+    await act(async () => { await expect(reloaded.current!.approveActualRecords!()).rejects.toThrow('write rejected'); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(storedStatuses(reloaded)).toEqual(Array(6).fill('pending'));
+    expect(reloaded.current!.state.messages.some(message => message.content.includes('保存処理が失敗しました。保存結果を確認できていません'))).toBe(true);
+  });
+
+  it('keeps a second unanswered attempt unknown through another reload without a third write', async () => {
+    const save = vi.fn().mockImplementationOnce(() => new Promise<void>(() => undefined))
+      .mockImplementationOnce(() => new Promise<void>(() => undefined));
+    const { chatId } = await reloadUnansweredSave(save);
+    const readActualSave: NonNullable<WeeklyPlanningVNextLocalApplicationServices['readActualSave']> = (ownerId, attempted) =>
+      readAndClassifyActualSave({ ownerId, attempted, readConfirmed: async () => ({
+        fromCache: false, hasPendingWrites: false, records: [],
+      }) });
+    const reloaded = await mount(inputWith(save), { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(reloaded.current!.state.messages.some(message =>
+      message.content.includes('サーバー上に保存されていません'))).toBe(true)); });
+    act(() => { void reloaded.current!.approveActualRecords!(); });
+    await act(async () => { await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2)); });
+    expect(attemptInUi(chatId)).toBeDefined();
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    const again = await mount(inputWith(save));
+    expect(again.current!.state.messages.some(message => message.content.includes('保存結果を確認できていません'))).toBe(true);
+    expect(storedStatuses(again)).toEqual(Array(6).fill('pending'));
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['partial', 'auth_mismatch'] as const)('stops a retry if the server or auth changes to $0 before the click writes', async change => {
+    const save = vi.fn().mockImplementationOnce(() => new Promise<void>(() => undefined)).mockResolvedValue(undefined);
+    const { records } = await reloadUnansweredSave(save);
+    const readActualSave = vi.fn(async (ownerId: string, attempted: Parameters<typeof readAndClassifyActualSave>[0]['attempted']) => {
+      if (readActualSave.mock.calls.length > 1) {
+        if (change === 'auth_mismatch') throw new ActualSaveReadbackUnknownError('auth_mismatch');
+        const record = records[0];
+        return readAndClassifyActualSave({ ownerId, attempted, readConfirmed: async () => ({ fromCache: false,
+          hasPendingWrites: false, records: [savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)] }) });
+      }
+      return readAndClassifyActualSave({ ownerId, attempted, readConfirmed: async () => ({
+        fromCache: false, hasPendingWrites: false, records: [],
+      }) });
+    });
+    const reloaded = await mount(inputWith(save), { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(reloaded.current!.state.messages.some(message =>
+      message.content.includes('サーバー上に保存されていません'))).toBe(true)); });
+    await act(async () => { await reloaded.current!.approveActualRecords!(); });
+    expect(readActualSave).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenCalledOnce();
+    expect(reloaded.current!.state.messages.some(message => message.content.includes(change === 'partial'
+      ? '再送していません' : '認証された利用者が一致しないため'))).toBe(true);
   });
 
   it('keeps the same pending batch when an in-flight save rejects after optimistic rows appeared', async () => {

@@ -21,9 +21,11 @@ import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNext
 import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
 import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn } from '../../application/weeklyPlanningTurnPreparation';
 import { formatActualSaveReadbackReply, formatUnknownActualSaveReadbackReply, resolvePendingActualRecordsAgainstSaved,
-  selectPendingActualRecords, toActualRecordsToSave, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
+  selectPendingActualRecords, toActualRecordsToSave, ACTUAL_SAVE_RETRY_BLOCKED_REPLY, ACTUAL_SAVE_RETRY_FAILED_REPLY,
+  ACTUAL_SAVE_RETRY_SAVED_REPLY, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 import { ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
 import type { ActualSaveIntentRecord, ActualSaveReadbackClassification } from '../weeklyPlanningVNextActualSaveReadback';
+import { createWeeklyPlanningApplicationRequestId } from '../../application/weeklyPlanningApplicationIdentity';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -82,6 +84,7 @@ export function useWeeklyPlanningVNextApplication(
   const [savedActualMinutes, setSavedActualMinutes] = useState<ReadonlyMap<string, number>>(() => new Map());
   const readbackCandidate = useRef<{ local: WeeklyPlanningVNextLocalSession; conversationId: string;
     weekStartDate: string; attempt: WeeklyPlanningActualSaveAttempt } | null>(null);
+  const retryEligible = useRef<typeof readbackCandidate.current>(null);
   const readbackSeen = useRef<Set<string>>(new Set());
   const runtime = useMemo(() => {
     const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: week, storage: services.storage });
@@ -138,6 +141,7 @@ export function useWeeklyPlanningVNextApplication(
   }
   function captureReadback() {
     readbackCandidate.current = null;
+    retryEligible.current = null;
     try {
       const attempt = runtime.local.readActualSaveAttempt(runtime.session.conversationId);
       if (attempt) readbackCandidate.current = { local: runtime.local, conversationId: runtime.session.conversationId,
@@ -211,6 +215,7 @@ export function useWeeklyPlanningVNextApplication(
     const candidate = readbackCandidate.current;
     if (!candidate || !services.readActualSave || !input.userId || !current() || runtime.local !== candidate.local) return;
     readbackCandidate.current = null;
+    retryEligible.current = null;
     if (input.userId.trim() !== ownerId) return;
     const key = `${ownerId}:${candidate.conversationId}:${candidate.attempt.attemptedAt}`;
     if (readbackSeen.current.has(key)) return;
@@ -264,9 +269,11 @@ export function useWeeklyPlanningVNextApplication(
         }
         const reply = formatActualSaveReadbackReply(attempted, result.confirmedIds, result.conflictingIds);
         tell(`${result.status}:${result.confirmedIds.join(',')}:${result.conflictingIds.join(',')}`, reply);
+        if (result.status === 'not_saved' && stillCurrent()) retryEligible.current = candidate;
         if (result.status === 'saved') candidate.local.clearActualSaveAttempt(candidate.conversationId, candidate.attempt.attemptedAt);
         redraw(value => value + 1);
       } catch (error) {
+        retryEligible.current = null;
         const reason = error instanceof ActualSaveReadbackUnknownError ? error.reason : 'read_failed';
         tell(`unknown:${reason}`, formatUnknownActualSaveReadbackReply(reason));
       } finally { actualReadbackInFlight.current = false; }
@@ -359,38 +366,97 @@ export function useWeeklyPlanningVNextApplication(
       || !input.userId || !input.saveWeeklyActualRecords || !current()) return;
     const saveLocal = runtime.local;
     const saveConversationId = runtime.session.conversationId;
-    const attemptedAt = services.now();
-    // Keep the exact confirmed batch in the browser's UI snapshot, outside the Worker checkpoint.
-    saveLocal.save(saveConversationId, runtime.state, { attemptedAt,
-      records: records.map(({ id, minutes }) => ({ id, minutes })) });
+    const saveWeekStartDate = runtime.state.weekStartDate;
+    const priorAttempt = saveLocal.readActualSaveAttempt(saveConversationId);
+    const retry = priorAttempt !== null;
+    const sameRetry = () => {
+      if (!priorAttempt || !services.readActualSave || !current() || runtime.local !== saveLocal
+        || runtime.session.conversationId !== saveConversationId || input.userId?.trim() !== ownerId
+        || committedInput.current?.userId?.trim() !== ownerId) return false;
+      const permitted = retryEligible.current;
+      if (!permitted || permitted.local !== saveLocal || permitted.conversationId !== saveConversationId
+        || permitted.attempt.attemptedAt !== priorAttempt.attemptedAt
+        || JSON.stringify(permitted.attempt.records) !== JSON.stringify(priorAttempt.records)) return false;
+      try {
+        const live = saveLocal.readActualSaveAttempt(saveConversationId);
+        const stored = saveLocal.readCheckpoint()?.vnext.actualRecords ?? [];
+        return live?.attemptedAt === priorAttempt.attemptedAt
+          && JSON.stringify(live.records) === JSON.stringify(priorAttempt.records)
+          && records.length === priorAttempt.records.length
+          && records.every((record, index) => record.id === priorAttempt.records[index].id
+            && record.minutes === priorAttempt.records[index].minutes
+            && stored.some(item => item.id === record.id && item.minutes === record.minutes
+              && item.occurrenceDate === record.occurrenceDate && item.subject === record.subject && item.status !== 'saved'));
+      } catch { return false; }
+    };
+    if (retry && !sameRetry()) return;
+    const attemptedAt = priorAttempt?.attemptedAt ?? services.now();
+    if (!retry) {
+      retryEligible.current = null;
+      // A first confirmation captures the exact batch in the browser UI slot, outside the Worker checkpoint.
+      saveLocal.save(saveConversationId, runtime.state, { attemptedAt,
+        records: records.map(({ id, minutes }) => ({ id, minutes })) });
+    }
+    const reportRetry = (content: string) => {
+      if (current() && runtime.local === saveLocal && runtime.session.conversationId === saveConversationId
+        && committedInput.current?.userId?.trim() === ownerId) {
+        dispatch({ type: 'append_message', message: { id: createWeeklyPlanningApplicationRequestId('actual-save-retry'),
+          role: 'assistant', content, createdAt: services.now() } });
+      }
+    };
     actualRecordsInFlight.current = true;
     savingActualRecordIds.current = new Set(records.map(record => record.id));
     redraw(value => value + 1);
     try {
+      if (retry) {
+        let checked: ActualSaveReadbackClassification;
+        try { checked = await services.readActualSave!(ownerId, toActualRecordsToSave(records)); }
+        catch (error) {
+          retryEligible.current = null;
+          const reason = error instanceof ActualSaveReadbackUnknownError ? error.reason : 'read_failed';
+          reportRetry(formatUnknownActualSaveReadbackReply(reason));
+          return;
+        }
+        if (!sameRetry()) { retryEligible.current = null; return; }
+        if (checked.status !== 'not_saved') {
+          retryEligible.current = null;
+          reportRetry(ACTUAL_SAVE_RETRY_BLOCKED_REPLY);
+          return;
+        }
+        retryEligible.current = null;
+      }
       try { await input.saveWeeklyActualRecords(ownerId, toActualRecordsToSave(records)); }
-      catch (error) { saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt); throw error; }
+      catch (error) {
+        if (retry) reportRetry(ACTUAL_SAVE_RETRY_FAILED_REPLY);
+        else saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt);
+        throw error;
+      }
       // A turn may have corrected a value while the batch was in flight. Only the values that this
       // batch actually wrote may acquire the saved mark; a correction remains pending.
       let latest: WeeklyPlanningActualRecord[] = [];
-      try { latest = runtime.local.readCheckpoint()?.vnext.actualRecords ?? []; } catch { /* a committed batch remains committed */ }
+      try { latest = saveLocal.readCheckpoint()?.vnext.actualRecords ?? []; } catch { /* a committed batch remains committed */ }
       const ids = records.filter(record => latest.some(item => item.id === record.id && item.minutes === record.minutes)).map(record => record.id);
-      setSavedActualMinutes(previous => new Map([...previous, ...records.filter(record => ids.includes(record.id))
-        .map(record => [record.id, record.minutes] as const)]));
+      if (current() && runtime.local === saveLocal) setSavedActualMinutes(previous => new Map([...previous,
+        ...records.filter(record => ids.includes(record.id)).map(record => [record.id, record.minutes] as const)]));
       // The persisted mark (I2) keeps a reload from offering the same records again. The saved batch is already
       // committed, so a mark that cannot be written is not reported as a failed save: the in-memory minutes above hide
       // the records for this session and their deterministic ids make any later re-save an overwrite, not a duplicate.
       // Loaded lazily: the session code is not part of the entry chunk. A mark that cannot be written (module load or storage)
       // is not a failed save, so it never reaches the user as one.
+      let marked = false;
       try {
         const { markWeeklyPlanningVNextActualRecordsSaved } = await loadWeeklyPlanningVNextRuntimeModule();
-        markWeeklyPlanningVNextActualRecordsSaved(
-          { ownerId, weekStartDate: week, conversationId: runtime.session.conversationId },
-          { checkpoint: runtime.local.checkpoint, legacyV5Checkpoint: runtime.local.legacyV5Checkpoint, now: services.now },
+        const result = markWeeklyPlanningVNextActualRecordsSaved(
+          { ownerId, weekStartDate: saveWeekStartDate, conversationId: saveConversationId },
+          { checkpoint: saveLocal.checkpoint, legacyV5Checkpoint: saveLocal.legacyV5Checkpoint, now: services.now },
           ids,
         );
+        marked = result.status !== 'unreadable';
       } catch { /* the in-memory minutes above hide the saved values for this session */ }
-      saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt);
-      chat.checkpoint();
+      // If the server acknowledged a retry but the local mark failed, retain its intent for the next server readback.
+      if (!retry || marked) saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt);
+      if (retry) reportRetry(ACTUAL_SAVE_RETRY_SAVED_REPLY);
+      if (current() && runtime.local === saveLocal) chat.checkpoint();
     } finally {
       actualRecordsInFlight.current = false;
       savingActualRecordIds.current = new Set();

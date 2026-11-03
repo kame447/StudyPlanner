@@ -90,6 +90,9 @@ export function formatActualRecordRow(record: PendingWeeklyPlanningActualRecord)
 export const ALREADY_SAVED_ACTUAL_RECORDS_PREFIX = 'その内容はすでに保存されています：';
 export const SAVING_ACTUAL_RECORDS_LABEL = '保存中（まだ確定していません）';
 export const UNKNOWN_ACTUAL_SAVE_RESULT_REPLY = '保存結果を確認できていません。記録は保存済みと扱わず、確認待ちです。';
+export const ACTUAL_SAVE_RETRY_SAVED_REPLY = '勉強記録を保存しました。';
+export const ACTUAL_SAVE_RETRY_FAILED_REPLY = '勉強記録の保存処理が失敗しました。保存結果を確認できていません。';
+export const ACTUAL_SAVE_RETRY_BLOCKED_REPLY = '保存状態が変わったため再送していません。再読み込みして確認してください。';
 
 export function formatActualSaveReadbackReply(
   attempted: readonly PendingWeeklyPlanningActualRecord[],
