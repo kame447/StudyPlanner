@@ -747,9 +747,9 @@ export function createFirebasePlannerRepository(
         await batch.commit();
         return actuals;
       } catch (error) {
-        throw new Error(
+        throw Object.assign(new Error(
           normalizeErrorMessage('記録を保存できませんでした。', error as { message?: string | null }),
-        );
+        ), { code: (error as FirebaseLikeError | null)?.code });
       }
     },
     async deleteActual(_userId, actualId) {

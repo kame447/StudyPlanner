@@ -1470,7 +1470,9 @@ export function usePlannerDataState({
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
       actualState.reject(actualOperation);
-      const userFacingError = resolveUserFacingError(error, '記録を保存できませんでした。');
+      const userFacingError = getErrorDiagnostics(error).code === 'permission-denied'
+        ? new UserFacingError('保存する権限がないため、記録は保存されていません。再ログインしてから、もう一度お試しください。')
+        : resolveUserFacingError(error, '記録を保存できませんでした。');
       showNotice(userFacingError.message, 'error');
       throw userFacingError;
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], false); }
