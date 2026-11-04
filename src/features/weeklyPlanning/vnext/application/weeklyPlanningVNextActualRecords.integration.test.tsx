@@ -185,6 +185,65 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(ref.current!.pendingActualRecords).toEqual([]);
   });
 
+  it.each([
+    { result: 'saved', reply: '保存を確認しました', pending: 0 },
+    { result: 'not_saved', reply: 'サーバー上に保存されていません', pending: 6 },
+    { result: 'partial', reply: '未保存の記録', pending: 3 },
+    { result: 'unknown', reply: 'サーバーに接続できないため', pending: 6 },
+    { result: 'permission_denied', reply: '読取権限がないため', pending: 6 },
+  ] as const)('retains a post-commit rejection for server readback ($result)', async ({ result, reply, pending }) => {
+    await seedRecords(storage.storage);
+    const server = new Map<string, PendingWeeklyPlanningActualRecord>();
+    let writes = 0;
+    const save = vi.fn(async (_owner: string, records: readonly PendingWeeklyPlanningActualRecord[]) => {
+      writes += 1;
+      for (const record of records) server.set(record.id, record);
+      if (writes === 1) throw new Error('client scope expired after server commit');
+    });
+    const first = await mount(inputWith(save));
+    const original = first.current!.pendingActualRecords!;
+    const originalIds = original.map(record => record.id);
+    await act(async () => { await expect(first.current!.approveActualRecords!()).rejects.toThrow('client scope expired'); });
+    expect(server.size).toBe(6);
+    const chatId = first.current!.chat.index.activeChatId;
+    expect(attemptInUi(chatId), 'a rejected client promise does not prove the server write failed').toEqual({
+      attemptedAt: NOW, records: original.map(({ id, minutes }) => ({ id, minutes })),
+    });
+
+    if (result === 'not_saved') server.clear();
+    if (result === 'partial') for (const id of originalIds.slice(3)) server.delete(id);
+    const readActualSave = vi.fn((ownerId: string, attempted: Parameters<typeof readAndClassifyActualSave>[0]['attempted']) => {
+      if (result === 'unknown' || result === 'permission_denied') return Promise.reject(new ActualSaveReadbackUnknownError(result === 'unknown'
+        ? 'unavailable' : 'permission_denied'));
+      return readAndClassifyActualSave({ ownerId, attempted, readConfirmed: async () => ({
+        fromCache: false, hasPendingWrites: false,
+        records: [...server.values()].map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)),
+      }) });
+    });
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    const reloaded = await mount(inputWith(save), { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(reloaded.current!.state.messages.some(message =>
+      message.content.includes(reply))).toBe(true)); });
+    expect(readActualSave).toHaveBeenCalledOnce();
+    expect(reloaded.current!.pendingActualRecords).toHaveLength(pending);
+    expect(writes, 'server readback never resends by itself').toBe(1);
+    if (result === 'saved') {
+      expect(storedStatuses(reloaded)).toEqual(Array(6).fill('saved'));
+      expect(attemptInUi(chatId)).toBeUndefined();
+      expect([...server.keys()].sort()).toEqual([...originalIds].sort());
+    } else {
+      expect(attemptInUi(chatId)).toBeDefined();
+      await act(async () => { await reloaded.current!.approveActualRecords!(); });
+      expect(writes).toBe(result === 'not_saved' ? 2 : 1);
+      if (result === 'not_saved') {
+        expect([...server.keys()].sort()).toEqual([...originalIds].sort());
+        expect(storedStatuses(reloaded)).toEqual(Array(6).fill('saved'));
+      } else {
+        expect(reloaded.current!.pendingActualRecords).toHaveLength(pending);
+      }
+    }
+  });
+
   it('keeps an optimistic batch unconfirmed through a resend, then marks it saved only when the port resolves', async () => {
     await seedRecords(storage.storage);
     let resolveSave!: () => void;
