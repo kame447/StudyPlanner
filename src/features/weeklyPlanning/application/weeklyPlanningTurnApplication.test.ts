@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as firebaseClient from '../../../lib/firebaseClient';
 import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { WeeklyPlanningAction } from '../types';
@@ -356,6 +357,63 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     const messages = store.getState().messages;
     expect(messages[messages.length - 1]).toMatchObject({ role: 'assistant', content: '相談を続けます。' });
+  });
+
+  it('keeps a visible signed-out owner mismatch unsaved and resumes only for the same owner', async () => {
+    const { store, params } = baseParams();
+    const draft = createWeeklyPlanningTestDraftBlock({ id: 'owner-draft', overrides: { date: '2026-07-27' } });
+    const preview = { stableKey: 'owner-preview', date: '2026-07-28', startTime: '18:00', endTime: '19:00',
+      durationMinutes: 60, title: '英語', field: '英語', year: 1, estimatedMinutes: 60,
+      source: 'weekly_exam_prep' as const, approvalStatus: 'unapproved' as const, workItemKey: 'english:owner-preview' };
+    store.dispatch({ type: 'load_state', state: { ...store.getState(), mode: 'awaiting_approval',
+      draftBlocks: [draft], previewCandidates: [preview] } });
+    const getAuth = vi.spyOn(firebaseClient, 'getFirebaseAuth').mockReturnValue(null);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('unexpected network request'));
+    let failure: unknown;
+    let attempts = 0;
+    const execute: WeeklyPlanningTurnRuntimeGateway['execute'] = vi.fn(async (input) => {
+      if (++attempts === 1) {
+        const receipt = { version: 1 as const, ownerId: input.userId, snapshot: input.snapshot,
+          pending: input.pending, payload: { input: { userId: input.userId,
+            conversationId: input.pending.conversationId, traceRequestId: input.pending.requestId } } };
+        try { await executeDurableWeeklyTurn(receipt, { isCurrent: input.isCurrentTurn }); }
+        catch (error) { failure = error; throw error; }
+        throw new Error('unexpected durable completion');
+      }
+      return { state: createInitialPlanningIntakeState(), message: '同じ会話で相談を続けます。', draftCandidates: [] };
+    });
+    const services = createServices({ runtimeGateway: { execute } });
+    try {
+      await submitWeeklyPlanningApplicationTurn(params, services).catch(() => undefined);
+      const state = store.getState();
+      expect(getAuth).toHaveBeenCalledTimes(1);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(services.stagingLifecycle.prepare).not.toHaveBeenCalled();
+      expect(services.outcomeLifecycle.committed).not.toHaveBeenCalled();
+      expect(state.pendingTurn).toBeUndefined();
+      expect(state.draftBlocks).toEqual([draft]);
+      expect(state.previewCandidates).toEqual([preview]);
+      expect(state.messages).toHaveLength(2);
+      expect(state.messages[0]).toMatchObject({ role: 'user', content: params.userText });
+      expect(state.messages[1].role).toBe('assistant');
+      expect(state.messages[1].content).toContain('ログイン状態');
+      expect(state.messages[1].content).toContain('保存');
+      expect(state.messages[1].content).toContain('承認');
+      expect(state.messages[1].content).toContain('同じアカウント');
+      expect(state.messages[1].content).toContain('相談');
+      expect(state.messages[1].content).not.toContain('保存しました');
+      expect(failure).toMatchObject({ name: 'WeeklyPlanningDurableOwnerMismatchError' });
+
+      const next = await submitWeeklyPlanningApplicationTurn({ ...params, userText: '相談を続けたい' }, services);
+      expect(next.accepted).toBe(true);
+      expect(execute).toHaveBeenCalledTimes(2);
+      expect(fetch).not.toHaveBeenCalled();
+      const messages = store.getState().messages;
+      expect(messages[messages.length - 1]).toMatchObject({ role: 'assistant', content: '同じ会話で相談を続けます。' });
+    } finally {
+      fetch.mockRestore();
+      getAuth.mockRestore();
+    }
   });
 
   it.each(['cancel', 'owner_change', 'revision_change'])('passes a live recovery guard that closes after %s', async (change) => {
