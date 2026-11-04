@@ -389,13 +389,13 @@ export function useWeeklyPlanningVNextApplication(
           && JSON.stringify(live.records) === JSON.stringify(priorAttempt.records)
           && records.length === priorAttempt.records.length
           && records.every((record, index) => record.id === priorAttempt.records[index].id
-            && record.minutes === priorAttempt.records[index].minutes
             && stored.some(item => item.id === record.id && item.minutes === record.minutes
               && item.occurrenceDate === record.occurrenceDate && item.subject === record.subject && item.status !== 'saved'));
       } catch { return false; }
     };
     if (retry && !sameRetry()) return;
-    const attemptedAt = priorAttempt?.attemptedAt ?? services.now();
+    const correctedRetry = priorAttempt !== null && records.some((record, index) => record.minutes !== priorAttempt.records[index].minutes);
+    const attemptedAt = correctedRetry ? services.now() : priorAttempt?.attemptedAt ?? services.now();
     if (!retry) {
       retryEligible.current = null;
       // A first confirmation captures the exact batch in the browser UI slot, outside the Worker checkpoint.
@@ -429,6 +429,11 @@ export function useWeeklyPlanningVNextApplication(
           return;
         }
         retryEligible.current = null;
+        if (correctedRetry) {
+          // The old batch is confirmed absent; retain the corrected values actually being sent if this acknowledgement is lost.
+          saveLocal.save(saveConversationId, runtime.state, { attemptedAt,
+            records: records.map(({ id, minutes }) => ({ id, minutes })) });
+        }
       }
       try { await input.saveWeeklyActualRecords(ownerId, toActualRecordsToSave(records)); }
       catch (error) {
