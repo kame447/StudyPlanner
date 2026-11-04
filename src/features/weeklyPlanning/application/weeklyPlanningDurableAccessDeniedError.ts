@@ -11,3 +11,13 @@ export class WeeklyPlanningDurableAccessDeniedError extends Error {
     this.userMessage = `${reason}。今回の入力は保存も承認もされていません。再ログインして権限を確認した後、この会話で相談を続けられます。`;
   }
 }
+
+/** The local auth identity no longer owns the conversation before any request is sent. */
+export class WeeklyPlanningDurableOwnerMismatchError extends Error {
+  readonly userMessage = 'ログイン状態が変わったため、今回の入力は保存も承認もされていません。同じアカウントで再ログインした後、この会話で相談を続けられます。';
+
+  constructor() {
+    super('会話の所有者が変わりました。');
+    this.name = 'WeeklyPlanningDurableOwnerMismatchError';
+  }
+}

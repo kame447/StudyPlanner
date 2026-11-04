@@ -3,7 +3,7 @@ import { getFirebaseAuth } from '../../../lib/firebaseClient';
 import type { PlanningState, WeeklyPlanningPendingTurn } from '../types';
 import type { IsolatedWeeklyPlanningTurnInput, IsolatedWeeklyPlanningTurnResult } from './weeklyPlanningIsolatedTurn';
 import type { DurableTurnResult } from '../../../../workers/ai-proxy/src/durableTurns/durableTurnJob';
-import { WeeklyPlanningDurableAccessDeniedError } from './weeklyPlanningDurableAccessDeniedError';
+import { WeeklyPlanningDurableAccessDeniedError, WeeklyPlanningDurableOwnerMismatchError } from './weeklyPlanningDurableAccessDeniedError';
 
 export const durableWeeklyPlanningEnabled = () => import.meta.env.VITE_DURABLE_WEEKLY_TURNS === 'enabled';
 const RETENTION_MS = 24 * 60 * 60_000;
@@ -76,7 +76,7 @@ function defaultPorts(): DurableTurnClientPorts {
     fetch: (...args) => fetch(...args), endpoint: `${base}/weekly-planning/turns`, now: Date.now,
     token: async (ownerId) => {
       const user = getFirebaseAuth()?.currentUser;
-      if (!user || user.uid !== ownerId) throw new Error('会話の所有者が変わりました。');
+      if (!user || user.uid !== ownerId) throw new WeeklyPlanningDurableOwnerMismatchError();
       return user.getIdToken();
     },
     wait: (ms) => new Promise((resolve) => {
