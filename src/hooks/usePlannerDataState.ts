@@ -1460,16 +1460,14 @@ export function usePlannerDataState({
     const releaseAdmission = admitActualMutation(nextActuals, [], []);
     const nextIds = new Set(nextActuals.map((actual) => actual.id));
     const merge = (current: Actual[], saved: readonly Actual[]) => [...current.filter((actual) => !nextIds.has(actual.id)), ...saved];
-    const actualOperation = actualState.begin((current) => merge(current, nextActuals));
+    // Tentative chat records reach shared actual views only after the save is acknowledged.
     try {
       const saved = await plannerRepository.saveDurationActualsBatch(userId, records);
       if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
         setActuals((current) => merge(current, saved));
       }
-      actualState.commit(actualOperation);
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
-      actualState.reject(actualOperation);
       const userFacingError = resolveUserFacingError(error, '記録を保存できませんでした。');
       showNotice(userFacingError.message, 'error');
       throw userFacingError;
