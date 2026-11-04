@@ -1,7 +1,7 @@
 # User Context Current Roadmap
 
 Status: canonical current execution order
-Updated: 2026-10-04
+Updated: 2026-11-03
 Owner Issue: #294
 
 全体の責務は [architecture](../architecture/memory-and-conversation.md)、継続する規則は [policy](../policies/memory-lifecycle-and-surfacing.md)、品質条件は [quality](../quality/regression-scenarios.md) を正とする。実装インターフェースは [supporting service design](../architecture/context-service-contract.md)、変更箇所と受入条件は [実装work](../work/20260912-context-harness-delivery.md) を参照する。
@@ -106,6 +106,16 @@ UC-P7で複数session/time/current-state変更/訂正/forget/一時adoptionのco
 #47は共有会話/Fact Graphとoutcome learningを保持し、#294の共通read/episodeをconsumeする。#164はstorage/sync/operation/migrationの必要契約を提供する。初期read adapterは既存repositoryで進められ、WASM等の全体完了を待たない。新共有write/forgetの有効化時は該当契約の完了が必要である。
 
 #152 / PR #174は完了済みのsecurity evaluation履歴であり、current baselineだけを消費する。新しい経路は該当するcurrent security gateで再検証する。#246はadvice lifecycleとpromotionを保持し、共通contextを使う。#187は学習相談に限定したAgents APIと外部sourceの接続・利用条件を所有する。本棚domain、scheduling domain、Actual、明示設定は各現在値を所有する。完了済み#278や#160を再開せず、#212の開発ハーネスと統合しない。#213は観測、#45/#89/#51/#128はそれぞれの運用/承認/互換性を保持する。
+
+## 2026-11-03 user priority order
+
+The user's priority order is in [AGENTS.md](../../../../AGENTS.md) ("Conversation and planning principles"). Priorities 1–6 (conversation continuity, recovery, consistency, questioning and previews) are weekly-planning stages and come first. This roadmap owns priorities 7–10 and maps them onto the existing release order instead of adding a parallel plan:
+
+- Priority 7 (reflect past conversation in the current proposal) and 8 (cross-session tacit knowledge: numbers as structured data, qualitative information as memory): UC-P1A/P1B/P2A for safe reads, staging and bounded retrieval, then UC-P3 for cross-conversation episodes. Numbers stay owned by their domains (Actual, scheduling, bookshelf); memory never overwrites them.
+- Priorities 9 (compaction) and 10 (no loss of important information): UC-P3's conversation compression unit and UC-P5 consolidation/retention. Context compaction for a running conversation and long-term memory consolidation stay separate units; a summary is a regenerable projection, not the source.
+- Provenance (source utterance/evidence, time, scope, explicit vs inferred), correction/withdrawal and forget contracts apply from the first memory written, not only at UC-P5/P6.
+
+These stages start after the weekly-planning Stage A scenarios hold, without waiting for every later weekly-planning stage.
 
 ## Next implementation boundary
 
