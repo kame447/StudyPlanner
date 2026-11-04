@@ -616,6 +616,8 @@ test.describe('examinee week of study records by conversation (durable emulator 
     try {
       await firestore.during('save-actuals', async () => { await CONFIRM.save(dialog).click(); });
       await expect(dialog.getByRole('alert'), 'the failure is shown, not swallowed').toBeVisible({ timeout: 30_000 });
+      await expect(dialog.getByRole('alert'), 'the permission reason and unsaved state are shown without backend details')
+        .toHaveText('保存する権限がないため、記録は保存されていません。再ログインしてから、もう一度お試しください。');
       await expect(CONFIRM.save(dialog), 'the same button offers the retry').toHaveText('実績の保存を再試行');
       expect(await actualDocuments(request, userId), 'all or nothing: a rejected batch saves no record').toEqual([]);
       await expect(dialog, 'the confirmation stays open for a retry').toBeVisible();
