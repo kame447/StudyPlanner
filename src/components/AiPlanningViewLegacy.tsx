@@ -29,6 +29,7 @@ import {
   X,
 } from 'lucide-react';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
+import { PROVISIONAL_ACTUAL_RECORDS_LABEL, REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL } from '../features/weeklyPlanning/application/weeklyPlanningActualRecords';
 import { searchAiPlanningChats } from '../features/weeklyPlanning/chat/aiPlanningChatStore';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
@@ -1032,15 +1033,15 @@ export function AiPlanningView({
             <div className="ai-planning-plan-card ai-planning-actual-card">
               <div className="ai-planning-plan-card-head">
                 <div>
-                  <span>実績</span>
-                  <strong>{application.pendingActualRecords?.length}件の勉強記録</strong>
+                  <span>{PROVISIONAL_ACTUAL_RECORDS_LABEL}</span>
+                  <strong>{application.pendingActualRecords?.length}件の{PROVISIONAL_ACTUAL_RECORDS_LABEL}</strong>
                 </div>
                 <b>{application.pendingActualRecords?.length}件</b>
               </div>
               {/* Opens the confirmation; only the button inside it saves. */}
               <button className="ai-planning-preview-button ai-planning-actual-open" type="button">
                 <BookOpen size={18} aria-hidden="true" />
-                実績を確認
+                {REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL}
                 <ChevronRight size={18} aria-hidden="true" />
               </button>
             </div>

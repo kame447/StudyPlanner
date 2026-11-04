@@ -79,15 +79,23 @@ export function sumActualRecordMinutes(records: readonly PendingWeeklyPlanningAc
 }
 
 /** 「月 10/26 数学 60分（1時間）」 */
-export function formatActualRecordRow(record: PendingWeeklyPlanningActualRecord): string {
+export function formatActualRecordRow(record: PendingWeeklyPlanningActualRecord & { previousMinutes?: number }): string {
   const [year, month, day] = record.occurrenceDate.split('-').map(Number);
   const weekday = WEEKDAY[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
-  const row = `${weekday} ${month}/${day} ${record.subject} ${formatActualRecordMinutes(record.minutes)}`;
+  const minutes = record.previousMinutes === undefined ? formatActualRecordMinutes(record.minutes)
+    : `${formatActualRecordMinutes(record.previousMinutes)}→${formatActualRecordMinutes(record.minutes)}`;
+  const row = `${weekday} ${month}/${day} ${record.subject} ${minutes}`;
   return record.replacesMinutes === undefined ? row : `${row} ※保存済みの${record.replacesMinutes}分を置き換えます`;
 }
 
 /** What the chat says about a restated record that is already saved with the same minutes (never "not saved yet"). */
 export const ALREADY_SAVED_ACTUAL_RECORDS_PREFIX = 'その内容はすでに保存されています：';
+export const PROVISIONAL_ACTUAL_RECORDS_LABEL = '仮実績';
+export const PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL = '仮実績の確認';
+export const REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL = '仮実績を確認';
+export const ACTUAL_RECORDS_REFLECTION_QUESTION = 'この内容を学習実績に反映してよいですか？';
+export const SAVE_ACTUAL_RECORDS_BUTTON_LABEL = 'この内容で実績を保存';
+export const RETRY_ACTUAL_RECORDS_BUTTON_LABEL = '実績の保存を再試行';
 export const SAVING_ACTUAL_RECORDS_LABEL = '保存中（まだ確定していません）';
 
 /** 「その内容はすでに保存されています：月 10/26 数学 60分（1時間）、…。」 */

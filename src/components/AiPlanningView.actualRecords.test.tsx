@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
-import type { PendingWeeklyPlanningActualRecord } from '../features/weeklyPlanning/application/weeklyPlanningActualRecords';
+import { PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL, type PendingWeeklyPlanningActualRecord } from '../features/weeklyPlanning/application/weeklyPlanningActualRecords';
 import { createInitialPlanningState } from '../features/weeklyPlanning/weeklyPlanningReducer';
 import { AiPlanningView } from './AiPlanningView';
 
@@ -45,7 +45,7 @@ function openConfirmation() {
     });
   });
 }
-const dialogs = () => renderer!.root.findAll(node => node.props.role === 'dialog' && node.props['aria-label'] === '実績の確認');
+const dialogs = () => renderer!.root.findAll(node => node.props.role === 'dialog' && node.props['aria-label'] === PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL);
 const saveButton = (): ReactTestInstance => renderer!.root.find(node =>
   node.type === 'button' && String(node.props.className ?? '').includes('ai-planning-actual-records-save'));
 const text = (node: ReactTestInstance): string =>

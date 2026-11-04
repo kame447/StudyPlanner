@@ -26,6 +26,7 @@ import {
 } from '../weeklyPlanningVNextV5Boundary';
 import { createVNextLineageResolver, withCurrentVNextReferences } from '../weeklyPlanningVNextWorkIdentity';
 import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
+import { VNEXT_STUDY_RECORD_SAVE_GUIDE } from '../weeklyPlanningVNextStudyRecords';
 import type { WeeklyPlanningVNextShownPreview } from './weeklyPlanningVNextSessionCheckpoint';
 
 /** As many recent messages as the Stable V5 renderer reads. */
@@ -73,6 +74,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   recentConversation: readonly WeeklyPlanningVNextMessage[];
   authorizationRequired?: boolean;
   registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts;
+  includeStudyRecordSaveGuide?: boolean;
 }): VNextDialogueRenderInput {
   const { state, question, preview } = params;
   // The renderer's helpers follow exact ids, so they read the facts with current references.
@@ -107,7 +109,8 @@ export function createWeeklyPlanningVNextRenderInput(params: {
       : question && targetFactId ? questionIntent(state, question, planningInformation, targetFactId) : null,
     previewPromotionControlLabel: preview ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL : null,
     requiredLabels: [...new Set([...requiredLabelsForStableV5Dialogue({ planningInformation, targetFactId,
-      includePreviewPromotionControl: preview !== null }), ...optionLabels])],
+      includePreviewPromotionControl: preview !== null }), ...optionLabels,
+      ...(params.includeStudyRecordSaveGuide ? [VNEXT_STUDY_RECORD_SAVE_GUIDE] : [])])],
     fallbackText: params.authorizationRequired
       ? '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。'
       : RENDERER_TECHNICAL_STOP,

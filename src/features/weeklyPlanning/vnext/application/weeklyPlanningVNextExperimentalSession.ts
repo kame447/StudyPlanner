@@ -568,6 +568,10 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
+      includeStudyRecordSaveGuide: accepted && interpretation.status === 'interpreted'
+        && (interpretation.planningIntent === 'discuss' || interpretation.planningIntent === 'unknown')
+        && delta !== null && isEmpty(delta) && preview === read.checkpoint.preview
+        && nextRecords.some(record => record.status === 'pending'),
       registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
     });
   // The renderer is a model call: it may run only while this turn is still current.
