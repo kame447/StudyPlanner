@@ -46,6 +46,7 @@ const DURABLE = {
 const DURABLE_APP = `http://127.0.0.1:${DURABLE.STUDYPLANNER_E2E_APP_PORT}`;
 const DURABLE_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-vnext-production-state.json');
 const ACTUAL_CHAT_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-actual-chat-state.json');
+const ACTUAL_CHAT_DIALOGUE_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-actual-chat-dialogue-state.json');
 
 export default defineConfig({
   testDir: configDir,
@@ -141,10 +142,23 @@ export default defineConfig({
     },
     {
       name: 'chromium-emulator-actual-chat',
-      testMatch: ['emulator/vnext-actual-record.emulator.mjs', 'emulator/vnext-actual-correction.emulator.mjs', 'emulator/vnext-actual-provisional-confirm.emulator.mjs', 'emulator/vnext-actual-chat-save-intent.emulator.mjs', 'emulator/vnext-actual-mixed-utterance.emulator.mjs'],
+      testMatch: 'emulator/vnext-actual-record.emulator.mjs',
       dependencies: ['emulator-actual-chat-setup'],
       metadata: { email: 'e2e-actual-chat@example.test' },
       use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: ACTUAL_CHAT_STATE },
+    },
+    {
+      name: 'emulator-actual-chat-dialogue-setup',
+      testMatch: 'emulator/account.setup.mjs',
+      metadata: { email: 'e2e-actual-chat-dialogue@example.test', statePath: ACTUAL_CHAT_DIALOGUE_STATE },
+      use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP },
+    },
+    {
+      name: 'chromium-emulator-actual-chat-dialogue',
+      testMatch: ['emulator/vnext-actual-correction.emulator.mjs', 'emulator/vnext-actual-provisional-confirm.emulator.mjs', 'emulator/vnext-actual-chat-save-intent.emulator.mjs', 'emulator/vnext-actual-mixed-utterance.emulator.mjs'],
+      dependencies: ['emulator-actual-chat-dialogue-setup'],
+      metadata: { email: 'e2e-actual-chat-dialogue@example.test' },
+      use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: ACTUAL_CHAT_DIALOGUE_STATE },
     },
   ],
   webServer: [
