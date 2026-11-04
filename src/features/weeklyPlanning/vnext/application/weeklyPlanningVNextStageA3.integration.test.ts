@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
 import type { WeeklyPlanningVNextInterpretation } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnDelta } from '../weeklyPlanningVNextTypes';
+import { createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
+import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 import {
   submitWeeklyPlanningVNextExperimentalTurn,
+  readWeeklyPlanningVNextExperimentalSession,
   type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope,
 } from './weeklyPlanningVNextExperimentalSession';
@@ -20,7 +23,30 @@ const reading = (delta: VNextTurnDelta, planningIntent: 'discuss' | 'unknown' = 
   metrics: { calls: 1, repairs: 0, latencyMs: 1 },
 });
 
+// f27b3a66's Worker checkpoint parser requires exactly these four vnext keys.
+function oldWorkerAcceptsCheckpoint(raw: string): boolean {
+  const checkpoint: unknown = JSON.parse(raw);
+  if (typeof checkpoint !== 'object' || checkpoint === null || !('vnext' in checkpoint)) return false;
+  const vnext = checkpoint.vnext;
+  if (typeof vnext !== 'object' || vnext === null || Array.isArray(vnext)) return false;
+  const expected = ['state', 'presentedQuestion', 'preview', 'messages'];
+  const actual = Object.keys(vnext);
+  return actual.length === expected.length && actual.every((key) => expected.includes(key));
+}
+
 describe('Stage A scenario 3: repeated unanswered question (scripted, offline)', () => {
+  it('lets the next utterance reach an old Worker after a repeated question', () => {
+    const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
+      ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
+      vnext: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [],
+        unansweredQuestionStreak: { questionKey: 'unanswered-question', graphRevision: 0, count: 1 } },
+      savedAt: '2026-11-02T09:00:00.000Z',
+    })!;
+    expect(parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: scope.ownerId,
+      weekStartDate: scope.weekStartDate })).not.toBeNull();
+    expect(oldWorkerAcceptsCheckpoint(raw)).toBe(true);
+  });
+
   it('changes the visible method on the third short non-answer while retaining the unsaved facts', async () => {
     const scripts = [reading({ ...empty, add: [
       { kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' },
@@ -68,8 +94,21 @@ describe('Stage A scenario 3: repeated unanswered question (scripted, offline)',
     const retainedState = JSON.parse(raw!).vnext.state;
 
     const first = await turn('全部');
+    expect(JSON.parse(raw!).vnext.unansweredQuestionStreak).toMatchObject({
+      questionKey: asked.question!.key, graphRevision: asked.graphRevision, count: 1,
+    });
+    scripts.unshift({ status: 'failed', reason: 'provider_error', errors: [],
+      metrics: { calls: 1, repairs: 0, latencyMs: 1 } });
+    expect((await turn('接続を待っています')).outcome).toBe('interpretation_failed');
+    expect(JSON.parse(raw!).vnext.unansweredQuestionStreak?.count).toBe(1);
     const second = await turn('ない');
-    const third = await turn('そういうこと');
+    expect(JSON.parse(raw!).vnext.unansweredQuestionStreak?.count).toBe(2);
+    expect(readWeeklyPlanningVNextExperimentalSession({ ...scope, ownerId: 'another-owner' }, ports).status).toBe('unreadable');
+    const reloadedPorts = { ...ports, checkpoint: { read: () => raw, write: (value: string) => { raw = value; } } };
+    const third = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports: reloadedPorts,
+      turnId: `turn-${++sequence}`, userText: 'そういうこと',
+      shownRevision: JSON.parse(raw!).vnext.presentedQuestion?.graphRevision ?? null });
+    expect(JSON.parse(raw!).vnext.unansweredQuestionStreak?.count).toBe(3);
     expect(first.question?.key).toBe(asked.question?.key);
     expect(second.question?.key).toBe(asked.question?.key);
     expect(first.reply).toBe(second.reply);
@@ -80,5 +119,15 @@ describe('Stage A scenario 3: repeated unanswered question (scripted, offline)',
     const narrowedQuestion = third.question !== null && third.reply !== second.reply
       && (third.question.key === asked.question?.key || third.question.options.length > 0);
     expect(third.preview !== null || narrowedQuestion).toBe(true);
+
+    scripts.push(reading({ ...empty, defer: [{ questionKey: asked.question!.key, allocation: 'provisional_timebox' }] }));
+    const provisional = await turn('仮置きで予定を見る');
+    expect(provisional.outcome).toBe('applied');
+    expect(JSON.parse(raw!).vnext.state.deferrals).toContainEqual(expect.objectContaining({
+      questionKey: asked.question!.key, allocation: 'provisional_timebox',
+    }));
+    expect(provisional.preview).not.toBeNull();
+    expect(JSON.parse(raw!).vnext.unansweredQuestionStreak).toBeUndefined();
+    expect(saveCalls).toBe(0);
   });
 });
