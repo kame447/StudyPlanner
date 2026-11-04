@@ -1,5 +1,5 @@
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
 import { performance } from 'node:perf_hooks';
 import { getAiConfig } from '../../../lib/aiConfig';
@@ -1249,6 +1249,101 @@ function summarize(observations: readonly ConversationObservation[]) {
 }
 
 const runRealApi = shouldRun ? describe : describe.skip;
+
+const c20ReplayArchive = process.env.WEEKLY_PLANNING_C20_REPLAY_ARCHIVE;
+describe.skipIf(!c20ReplayArchive)(
+  `COV-C20: archived readings through the current VNext core (offline)${c20ReplayArchive
+    ? '' : ' [skipped: WEEKLY_PLANNING_C20_REPLAY_ARCHIVE is unset]'}`,
+  () => {
+    const targets = [
+      { caseId: 'C01', id: 'fixed-event-busy-information-only', turn: 1 },
+      { caseId: 'C02', id: 'fixed-event-registration-negated', turn: 1 },
+      { caseId: 'C03', id: 'fixed-event-yes-without-registration-offer', turn: 1 },
+      { caseId: 'C04', id: 'fixed-event-yes-without-registration-offer', turn: 2 },
+      { caseId: 'C05', id: 'omitted-effort-answer', turn: 1 },
+      { caseId: 'C06', id: 'paraphrase-restatement-no-duplicate', turn: 1 },
+      { caseId: 'C07', id: 'paraphrase-restatement-no-duplicate', turn: 2 },
+      { caseId: 'C08', id: 'past-progress-observed-pace', turn: 1 },
+      { caseId: 'C09', id: 'independent-explicit-remaining', turn: 1 },
+      { caseId: 'C10', id: 'timebox-only-work', turn: 1 },
+      { caseId: 'C11', id: 'issue881-final-b-deadline-at-13', turn: 2 },
+      { caseId: 'C12', id: 'optional-invitation-busy-decline-reopen', turn: 1 },
+      { caseId: 'C13', id: 'optional-invitation-busy-decline-reopen', turn: 2 },
+      { caseId: 'C14', id: 'optional-invitation-busy-decline-reopen', turn: 3 },
+      { caseId: 'C15', id: 'optional-decline-does-not-close-required-effort', turn: 1 },
+      { caseId: 'C16', id: 'optional-decline-does-not-close-required-effort', turn: 2 },
+      { caseId: 'C17', id: 'd5-negative-pages-only', turn: 2 },
+      { caseId: 'C18', id: 'd5-negative-total-minutes', turn: 2 },
+      { caseId: 'C19', id: 'd5-negative-approximate-rate', turn: 2 },
+      { caseId: 'C20', id: 'd5-positive-per-unit-rate', turn: 2 },
+    ];
+    type Archived = { conversations: Array<{ id: string; turns: Array<{
+      userText: string;
+      rawProviderCalls: Array<{ request: { purpose?: string }; rawResponseText?: string }>;
+    }> }> };
+    let archived: Archived | undefined;
+    const replays = new Map<string, Promise<VNextConversationObservation>>();
+    let replayedTurns = 0;
+    let consumedResponses = 0;
+
+    // Multiple C rows share a conversation. Replay its required prefix once, preserving the prior shown reply.
+    function replay(id: string): Promise<VNextConversationObservation> {
+      const cached = replays.get(id);
+      if (cached) return cached;
+      const pending = (async () => {
+        archived ??= JSON.parse(readFileSync(c20ReplayArchive!, 'utf8')) as Archived;
+        const fixture = vnextRealApiConversations.find(conversation => conversation.id === id);
+        const transcript = archived.conversations.find(conversation => conversation.id === id);
+        expect(fixture, `missing conversation fixture: ${id}`).toBeDefined();
+        expect(transcript, `missing archived conversation: ${id}`).toBeDefined();
+        const prefixLength = Math.max(...targets.filter(target => target.id === id).map(target => target.turn));
+        const conversation = { ...fixture!, turns: fixture!.turns.slice(0, prefixLength) };
+        const archivedTurns = transcript!.turns.slice(0, prefixLength);
+        expect(conversation.turns).toHaveLength(prefixLength);
+        expect(archivedTurns.map(turn => turn.userText)).toEqual(conversation.turns.map(turn => turn.userText));
+        const responses = archivedTurns.flatMap(turn => turn.rawProviderCalls.map(call => {
+          if (!call.rawResponseText) throw new Error(`archived response missing: ${id}`);
+          return { purpose: call.request.purpose, text: call.rawResponseText };
+        }));
+        const observed = await runVNextConversation(conversation, { client: {
+          async createChatCompletion(request) {
+            const next = responses.shift();
+            if (!next) throw new Error(`archived response script exhausted: ${id}; no API fallback`);
+            expect(request.purpose, `archived call order: ${id}`).toBe(next.purpose);
+            consumedResponses += 1;
+            return next.text;
+          },
+        } });
+        expect(responses, JSON.stringify(observed.turns.map(turn => ({
+          turn: turn.turn, outcome: turn.outcome, error: turn.error, oracleDifferences: turn.oracleDifferences,
+        })))).toHaveLength(0);
+        expect(observed.turns).toHaveLength(prefixLength);
+        replayedTurns += observed.turns.length;
+        return observed;
+      })();
+      replays.set(id, pending);
+      return pending;
+    }
+
+    afterAll(() => {
+      console.info('COV-C20 replay counts', { conversations: replays.size, turns: replayedTurns, consumedResponses });
+    });
+
+    it.each(targets)('$caseId $id / turn $turn', async ({ id, turn: turnNumber }) => {
+      const observed = (await replay(id)).turns[turnNumber - 1];
+      const diagnostic = JSON.stringify({ outcome: observed.outcome, error: observed.error,
+        interpretation: observed.interpretation, transactionErrors: observed.transactionErrors,
+        questionCode: observed.questionCode, deferredQuestionCodes: observed.deferredQuestionCodes,
+        replySource: observed.replySource, shownReply: observed.shownReply,
+        workMinutes: observed.workMinutes, oracleDifferences: observed.oracleDifferences });
+      expect(observed.error, diagnostic).toBeNull();
+      expect(observed.accepted, diagnostic).toBe(true);
+      expect(observed.oracleDifferences, diagnostic).toEqual([]);
+      expect(observed.status, diagnostic).toBe('pass');
+      expect(observed.saveWritesBeforeApproval, diagnostic).toBe(0);
+    });
+  },
+);
 
 describe('real API provider call capture (offline)', () => {
   it('records request messages and raw content without client credentials or unavailable envelope metadata', async () => {
