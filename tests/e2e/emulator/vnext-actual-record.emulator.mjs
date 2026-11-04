@@ -574,8 +574,7 @@ test.describe('examinee week of study records by conversation (durable emulator 
     const dialog = await openConfirmation(page);
     await expectConfirmationRows(dialog, rows, WEEK_TOTAL_MINUTES);
 
-    // The original batch loses its acknowledgement. Keep the Firestore route blocked across reload so
-    // the new page cannot complete the owner-bound getDocsFromServer readback either.
+    // First lose only the save acknowledgement. The route is removed before reload.
     const firestoreRoute = /127\.0\.0\.1:8180/;
     await page.route(firestoreRoute, route => route.abort('connectionreset'));
     try {
@@ -583,9 +582,32 @@ test.describe('examinee week of study records by conversation (durable emulator 
       await expect(CONFIRM.save(dialog)).toHaveText('保存中...');
       await expect(dialog).toContainText('保存中（まだ確定していません）');
       expect(await actualDocuments(request, userId), 'the blocked first batch never reached the server').toEqual([]);
+    } finally {
+      await page.unroute(firestoreRoute);
+    }
 
-      // Begin the ledger on the reloaded document, so SDK retries from the page being discarded
-      // are not mistaken for an automatic resend by the new page.
+    // The server-only readback uses an exact document-ID range. Its Listen POST alone contains
+    // this lower-bound field/value shape; startup's owner-wide actuals query does not.
+    const listenRoute = '**/google.firestore.v1.Firestore/Listen/channel**';
+    const readbackBound = '"fieldPath":"__name__"},"op":"GREATER_THAN_OR_EQUAL","value":{"referenceValue":"';
+    let blockedReadbacks = 0;
+    let passedListenPosts = 0;
+    await page.route(listenRoute, route => {
+      const request = route.request();
+      let body = '';
+      try { body = decodeURIComponent(request.postData() ?? ''); } catch { /* A malformed body is not the target. */ }
+      if (request.method() === 'POST' && body.includes(readbackBound)
+        && body.includes('/documents/actuals/wp-actual-')) {
+        blockedReadbacks += 1;
+        return route.abort('connectionreset');
+      }
+      if (request.method() === 'POST') passedListenPosts += 1;
+      return route.continue();
+    });
+
+    try {
+      // Begin the ledger on the reloaded document, so retries from the discarded page are not
+      // mistaken for an automatic resend by the new page.
       let firestore;
       const observeReloadedPage = frame => {
         if (frame !== page.mainFrame()) return;
@@ -597,8 +619,13 @@ test.describe('examinee week of study records by conversation (durable emulator 
       expect(firestore, 'the ledger observes the reloaded page').toBeDefined();
       await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
       await openPlannerOnPreviousWeek(page);
+      await expect.poll(() => blockedReadbacks, { message: 'the readback Listen POST was intercepted' }).toBeGreaterThan(0);
+      expect(passedListenPosts, 'ordinary startup Listen POSTs were allowed through').toBeGreaterThan(0);
       await expect(lastReply(page)).toContainText(UNKNOWN_ACTUAL_SAVE_RESULT_REPLY);
-      expect(await lastReply(page).innerText()).not.toContain('すでに保存されています');
+      const reply = await lastReply(page).innerText();
+      expect(reply).not.toContain('すでに保存されています');
+      expect(reply).not.toContain('サーバー上に保存されていません');
+      expect(reply).not.toContain('保存しました');
       expect(await recordStates(page), 'the same six IDs remain pending after the unreadable readback')
         .toEqual(originalIds.map(id => `pending ${id}`));
       expect(await actualDocuments(request, userId), 'the server still has no study records').toEqual([]);
@@ -617,7 +644,7 @@ test.describe('examinee week of study records by conversation (durable emulator 
       expect(protectedWritesIn(firestore.writes()), 'clicking while unknown must not issue a protected write').toEqual([]);
       await expectNeighboursUnchanged(request);
     } finally {
-      await page.unroute(firestoreRoute);
+      await page.unroute(listenRoute);
     }
   });
 
