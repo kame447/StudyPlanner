@@ -96,3 +96,69 @@ it('binds the answer to the presented math question and keeps both works in the 
   expect(local.readCheckpoint()!.vnext.actualRecords ?? []).toEqual([]);
   expect([approvalWrites, planWrites]).toEqual([0, 0]);
 });
+
+it('does not create a preview when the same two works and math answer have no planning intent', async () => {
+  const memory = createMemoryStorageHarness();
+  const local = createWeeklyPlanningVNextLocalSession({ ownerId: scope.ownerId, weekStartDate: WEEK, storage: memory.storage });
+  const dispatches: string[] = [];
+  let approvalWrites = 0;
+  let planWrites = 0;
+  const ports: WeeklyPlanningVNextExperimentalPorts = {
+    checkpoint: local.checkpoint, legacyV5Checkpoint: local.legacyV5Checkpoint,
+    interpret: createWeeklyPlanningVNextRuntimeInterpreter(scope, {
+      choice: { policy: VNEXT_OPTION_CHOICE_POLICY, choose: async () => { throw new Error('unexpected option choice'); } },
+      focusedRequestId: () => 'stage-b-focused-answer',
+    }),
+    client: { async createChatCompletion(request) {
+      if (request.decisionContext?.purpose === 'focused_contextual_answer_v2') {
+        dispatches.push('focused');
+        expect(request.decisionContext.state.pendingQuestion.target).toMatchObject({
+          task: { title: '数学プリント' }, workload: { amount: 10, unitCode: 'page' },
+        });
+        return JSON.stringify({ decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'total_duration',
+          minutes: 40, precision: 'exact', quantityRole: null });
+      }
+      dispatches.push('native');
+      expect(dispatches).toEqual(['native']);
+      return JSON.stringify({ planningIntent: 'discuss', conversationActs: [], answer: null,
+        delta: { add: [task('english', '英語'), work('english-work', 'english', 60, 'minute', '分'),
+          task('math', '数学プリント'), work('math-work', 'math', 10, 'page', '枚')], patch: [], remove: [], relate: [], defer: [] } });
+    } },
+    approvalLedger: { read: () => null, write: () => { approvalWrites++; } },
+    plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { planWrites++; return { planId: 'unexpected' }; } },
+    calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }),
+    now: () => `${WEEK}T00:00:00.000Z`,
+    createRenderer: () => ({ async render(input) {
+      return { status: 'rendered', text: input.questionCode ? '数学プリント10枚の全体には何分かかりますか？' : '条件を受け取りました。', rawResponse: '' };
+    } }),
+  };
+  const first = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'turn-1', shownRevision: null,
+    userText: '今週は英語60分と数学プリント10枚を進めたい。' });
+  expect(first.outcome).toBe('applied');
+  expect(first.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 10 } });
+  expect(first.preview).toBeNull();
+  const before = local.readCheckpoint()!.vnext;
+  expect(before.state.draftGenerationIntent).toBe('not_requested');
+  expect(before.presentedQuestion).toMatchObject({ questionKey: first.question!.key, graphRevision: first.graphRevision, shownText: first.reply });
+  const graph = structuredClone(before.state.graph);
+  const math = graph.tasks.find(item => item.title === '数学プリント')!;
+  const mathWork = graph.workloads.find(item => item.taskId === math.id)!;
+  expect(graph.tasks).toHaveLength(2);
+  expect(graph.workloads.map(item => [item.amount, item.unitCode])).toEqual([[60, 'minute'], [10, 'page']]);
+  expect(graph.effortEstimates).toEqual([]);
+
+  const second = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'turn-2', shownRevision: first.graphRevision,
+    userText: '数学プリント全体で40分です。' });
+  expect(dispatches).toEqual(['native', 'focused']);
+  expect(second.outcome).toBe('applied');
+  expect(second.question).toBeNull();
+  expect(second.preview).toBeNull();
+  const after = local.readCheckpoint()!.vnext;
+  expect(after.state.draftGenerationIntent).toBe('not_requested');
+  expect(after.preview).toBeNull();
+  expect(after.state.graph.tasks).toEqual(graph.tasks);
+  expect(after.state.graph.workloads).toEqual(graph.workloads);
+  expect(after.state.graph.effortEstimates).toHaveLength(1);
+  expect(after.state.graph.effortEstimates[0]).toMatchObject({ taskId: math.id, targetFactId: mathWork.id, kind: 'total_duration', minutes: 40 });
+  expect([approvalWrites, planWrites]).toEqual([0, 0]);
+});
