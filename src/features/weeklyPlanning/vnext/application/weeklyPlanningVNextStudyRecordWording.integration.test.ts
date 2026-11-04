@@ -4,7 +4,12 @@ import { createElement, createRef, forwardRef, useImperativeHandle } from 'react
 import { act, create, type ReactTestRenderer, type ReactTestRendererJSON } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiPlanningActualRecordsSection } from '../../../../components/AiPlanningActualRecordsSection';
-import { formatActualRecordMinutes, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import {
+  ACTUAL_RECORDS_REFLECTION_QUESTION,
+  PROVISIONAL_ACTUAL_RECORDS_LABEL,
+  formatActualRecordMinutes,
+  sumActualRecordMinutes,
+} from '../../application/weeklyPlanningActualRecords';
 import type { UseWeeklyPlanningApplicationInput, WeeklyPlanningApplication } from '../../application/useWeeklyPlanningApplication';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../../application/weeklyPlanningStableV5RuntimeSession';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
@@ -20,7 +25,6 @@ const record = (dateExpression: string, subject: string, minutes: number) => ({ 
 const RECORDS = [record('2026-10-26', '数学', 60), record('2026-10-27', '英語', 45),
   record('2026-10-28', '現代文', 30), record('2026-10-30', '英語', 50),
   record('2026-10-31', '数学', 120), record('2026-11-01', '化学', 90)];
-const CONFIRM = 'この内容を学習実績に反映してよいですか？';
 const reading = (studyRecords = [] as typeof RECORDS) => ({ planningIntent: 'discuss', conversationActs: [],
   delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, answer: null,
   studyRecords, studyRecordQuestion: null, studyRestDays: [] });
@@ -108,10 +112,10 @@ describe('#974 provisional actual wording without Stage A dependencies', () => {
     const h = await scenario([reading(RECORDS), reading()]);
     const reply = await h.seed();
     const confirmation = visibleText(renderer!.toJSON());
-    expect.soft(reply, 'conversation').toContain('仮実績');
-    expect.soft(reply, 'conversation').toContain(CONFIRM);
-    expect.soft(confirmation, 'confirmation UI').toContain('仮実績');
-    expect.soft(confirmation, 'confirmation UI').toContain(CONFIRM);
+    expect.soft(reply, 'conversation').toContain(PROVISIONAL_ACTUAL_RECORDS_LABEL);
+    expect.soft(reply, 'conversation').toContain(ACTUAL_RECORDS_REFLECTION_QUESTION);
+    expect.soft(confirmation, 'confirmation UI').toContain(PROVISIONAL_ACTUAL_RECORDS_LABEL);
+    expect.soft(confirmation, 'confirmation UI').toContain(ACTUAL_RECORDS_REFLECTION_QUESTION);
     await h.turn('はい');
     expect(h.saveActuals).not.toHaveBeenCalled(); expect(h.app().pendingActualRecords).toHaveLength(6);
     await act(async () => { renderer!.root.findByType('button').props.onClick(); });
