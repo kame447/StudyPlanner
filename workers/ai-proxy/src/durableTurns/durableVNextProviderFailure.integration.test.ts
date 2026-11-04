@@ -80,10 +80,9 @@ function harness() {
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-it('retains an unsaved VNext preview or shown question through provider 500/timeout, changes method on repeated failure, and handles the next utterance', async () => {
+it.each(['500', 'timeout'] as const)('retains an unsaved VNext preview or shown question through provider %s, changes method on repeated failure, and handles the next utterance', async failure => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(STARTED);
-  for (const failure of ['500', 'timeout'] as const) {
     for (const phase of ['preview', 'question'] as const) {
       const h = harness();
       const preview = phase === 'preview';
@@ -132,5 +131,4 @@ it('retains an unsaved VNext preview or shown question through provider 500/time
       expect(recovered.checkpoint.vnext.failureRecovery).toBeUndefined();
       expect(recovered.result.result.message).not.toContain('保存しました');
     }
-  }
 });

@@ -5,7 +5,8 @@ import { createWeeklyPlanningVNextRuntimeInterpreter, VNEXT_OPTION_CHOICE_POLICY
   VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeInterpreter';
 import type { AiProxyWorkerEnv } from '../worker';
 import type { DurableTurnExecute } from './durableTurnJob';
-import { createDurableTurnProvider, createDurableVNextOptionChoicePort } from './durableTurnProvider';
+import { createDurableVNextOptionChoicePort } from './durableTurnProvider';
+import { createDurableVNextTurnProvider } from './durableVNextProvider';
 
 /** The browser's VNext composition over the journaled provider. Every request identity is derived from
  * the accepted turn id, so a replayed alarm reproduces each dispatch byte for byte.
@@ -18,7 +19,7 @@ export function executeDurableVNextTurn(
   deadlineAt?: number,
 ) {
   const { userId, conversationId, traceRequestId } = payload.input;
-  const client = createDurableTurnProvider(env, userId, dispatch, sourceIp, deadlineAt);
+  const client = createDurableVNextTurnProvider(env, userId, dispatch, sourceIp, deadlineAt);
   const interpret = createWeeklyPlanningVNextRuntimeInterpreter({ ownerId: userId, conversationId: conversationId! }, {
     choice: createDurableVNextOptionChoicePort(env, userId, dispatch,
       { policy: VNEXT_OPTION_CHOICE_POLICY, semanticPolicy: VNEXT_OPTION_CHOICE_SEMANTIC_POLICY }, sourceIp, deadlineAt),
