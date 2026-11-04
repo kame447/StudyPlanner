@@ -205,15 +205,7 @@ export function isHeavyStudyTask(task: Pick<SimpleWeeklyTask, 'title' | 'sourceT
 
 
 
-export function allowsTinySessionForTask(task: Pick<SimpleWeeklyTask, 'title' | 'sourceText'>): boolean {
-  const normalizedText = normalizeWeeklyPlanningText(
-    `${task.title} ${task.sourceText}`,
-  );
 
-  return /\u6697\u8a18|\u5358\u8a9e|\u5c0f\u30c6\u30b9\u30c8|\u30c1\u30a7\u30c3\u30af|\u78ba\u8a8d|\u5fa9\u7fd2|\u30b9\u30ad\u30de|\u9699\u9593|\u8efd\u304f|30\s*\u5206\s*\u3060\u3051/.test(
-    normalizedText,
-  );
-}
 
 
 

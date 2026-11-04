@@ -26,10 +26,6 @@ export function getPlanTypeLabel(type: PlanType, sourceType?: PlanSourceType): s
   return PLAN_TYPE_LABELS[type];
 }
 
-export function isPrimaryEvent(type: PlanType): boolean {
-  return type !== 'study';
-}
-
 export function buildDefaultPlanTitle(
   type: PlanType,
   subject: string,

@@ -455,12 +455,21 @@ test.describe('examinee week of study records by conversation (durable emulator 
     expectSavedWeek(first, week, scenarioRows(week));
     const afterSave = await recordStates(page);
     expect(afterSave.map(state => state.split(' ')[0]), 'the save marks every record saved in the conversation').toEqual(Array(6).fill('saved'));
+    const userMessagesBeforeReload = await page.locator('.ai-planning-message-row.user .ai-planning-bubble').allTextContents();
+    const assistantMessagesBeforeReload = await assistantBubbles(page).allTextContents();
+    expect(userMessagesBeforeReload.length, 'the previous-week conversation has a user turn').toBeGreaterThan(0);
+    expect(assistantMessagesBeforeReload.length, 'the previous-week conversation has an assistant reply').toBeGreaterThan(0);
 
     // After a reload the conversation is restored and the saved records are not offered again (I3: status 'saved' persists in the
     // session). Re-sending the same statement changes nothing either: the application answers that it is already recorded.
     await page.reload();
     await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
-    await openAiPlanning(page);
+    await openPlannerOnPreviousWeek(page);
+    const restoredUserMessages = page.locator('.ai-planning-message-row.user .ai-planning-bubble');
+    await expect(restoredUserMessages, 'the previous-week user turns return after reload').toHaveCount(userMessagesBeforeReload.length);
+    await expect(assistantBubbles(page), 'the previous-week assistant replies return after reload').toHaveCount(assistantMessagesBeforeReload.length);
+    expect(await restoredUserMessages.allTextContents()).toEqual(userMessagesBeforeReload);
+    expect(await assistantBubbles(page).allTextContents()).toEqual(assistantMessagesBeforeReload);
     await expect(page.locator('.ai-planning-actual-card'), 'saved records are not offered for confirmation again').toHaveCount(0);
     expect(await recordStates(page), 'the saved mark and the record ids survive the reload').toEqual(afterSave);
     await actualTurn(page, request, week, '月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学120分、日曜は化学90分でした。', 'actual_week');
@@ -490,7 +499,7 @@ test.describe('examinee week of study records by conversation (durable emulator 
 
     await page.reload();
     await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
-    await openAiPlanning(page);
+    await openPlannerOnPreviousWeek(page);
     await actualTurn(page, request, week, statement, 'actual_week');
     // Whatever the application offers now, confirming it must leave exactly the documents saved before.
     if (await page.locator('.ai-planning-actual-card').count()) {

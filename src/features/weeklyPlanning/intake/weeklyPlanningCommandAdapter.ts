@@ -7,7 +7,6 @@ import type {
   NoteUncertaintyCommand,
   NormalizedSetPendingPlanningRangeCommand,
   SetPriorityPolicyCommand,
-  SetExamScopeCommand,
   SetPlanningRangeCommand,
   SetPendingPlanningRangeCommand,
   SetStudyGoalCommand,
@@ -15,7 +14,6 @@ import type {
   UpdateLifeConstraintCommand,
 } from './weeklyPlanningCommandTypes';
 import type {
-  ExamPrepScope,
   LifeConstraint,
   PlanningIntakeUncertainty,
   PlanningRange,
@@ -194,9 +192,4 @@ export function toPlanningRangeFromSetPlanningRangeCommand(
   return normalizedDayCount
     ? { ...range, calendarDayCount: normalizedDayCount }
     : range;
-}
-export function toExamScopeFromSetExamScopeCommand(
-  command: SetExamScopeCommand,
-): ExamPrepScope {
-  return command.scope;
 }
