@@ -115,6 +115,24 @@ it('passes both known works to the real renderer, records its shown question and
     expect.objectContaining({ factId: math.id }), expect.objectContaining({ factId: mathWork.id }),
   ]) }, applicationDecision: { questionCode: 'missing_effort_estimate',
     questionIntent: { targetFactId: mathWork.id, measurement: 'total_duration', amount: 10 } } });
+  // Verify the serialized request itself retains values and task bindings in both context channels.
+  expect(h.rendererPrompts[0]).toMatchObject({
+    currentTurnGrounding: { acceptedFacts: expect.arrayContaining([
+      expect.objectContaining({ factId: english.id, kind: 'task', data: expect.objectContaining({ title: '英語' }) }),
+      expect.objectContaining({ factId: englishWork.id, kind: 'workload', data: expect.objectContaining({
+        taskId: english.id, amount: 60, unitCode: 'minute', unitLabel: '分' }) }),
+      expect.objectContaining({ factId: math.id, kind: 'task', data: expect.objectContaining({ title: '数学プリント' }) }),
+      expect.objectContaining({ factId: mathWork.id, kind: 'workload', data: expect.objectContaining({
+        taskId: math.id, amount: 10, unitCode: 'page', unitLabel: '枚' }) }),
+    ]) },
+    planningStateSummary: { acceptedFacts: {
+      tasks: expect.arrayContaining([expect.objectContaining({ id: english.id, title: '英語' }),
+        expect.objectContaining({ id: math.id, title: '数学プリント' })]),
+      workloads: expect.arrayContaining([expect.objectContaining({ id: englishWork.id, taskId: english.id,
+        amount: 60, unitCode: 'minute', unitLabel: '分' }), expect.objectContaining({ id: mathWork.id, taskId: math.id,
+        amount: 10, unitCode: 'page', unitLabel: '枚' })]),
+    } },
+  });
   expect(checkpoint.presentedQuestion).toMatchObject({ questionKey: first.question!.key, graphRevision: first.graphRevision, shownText: firstReply });
   const second = await h.turn('数学プリント全体で40分です。', first.graphRevision);
   expect(h.inputs[1]).toMatchObject({ presentedQuestion: { key: first.question!.key }, presentedText: firstReply });
