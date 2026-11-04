@@ -6,7 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiPlanningActualRecordsSection } from '../../../../components/AiPlanningActualRecordsSection';
 import { ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
 import { PlannerMutationScopeExpiredError } from '../../../../lib/plannerMutationScopeExpiredError';
-import { formatActualRecordMinutes, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
+import {
+  ACTUAL_RECORDS_REFLECTION_QUESTION,
+  PROVISIONAL_ACTUAL_RECORDS_LABEL,
+  RETRY_ACTUAL_RECORDS_BUTTON_LABEL,
+  SAVE_ACTUAL_RECORDS_BUTTON_LABEL,
+  formatActualRecordMinutes,
+  sumActualRecordMinutes,
+} from '../../application/weeklyPlanningActualRecords';
 import type { UseWeeklyPlanningApplicationInput, WeeklyPlanningApplication } from '../../application/useWeeklyPlanningApplication';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../../application/weeklyPlanningStableV5RuntimeSession';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
@@ -26,7 +33,6 @@ const WEEK_RECORDS = [record('2026-10-26', '数学', 60), record('2026-10-27', '
   record('2026-10-28', '現代文', 30), record('2026-10-30', '英語', 50),
   record('2026-10-31', '数学', 120), record('2026-11-01', '化学', 90)];
 const SEED = '先週は月曜に数学60分、火曜に英語45分、水曜に現代文30分、金曜に英語50分、土曜に数学120分、日曜に化学90分やりました。';
-const CONFIRM = 'この内容を学習実績に反映してよいですか？';
 const reading = (studyRecords: typeof WEEK_RECORDS = []) => ({ planningIntent: 'discuss', conversationActs: [],
   delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, answer: null,
   studyRecords, studyRecordQuestion: null, studyRestDays: [] });
@@ -174,7 +180,7 @@ describe('study record wording: adopted Argon points and provisional-actual UX',
     const reply = await h.readback('not_saved');
     expect(reply).toContain('サーバー上に保存されていません');
     const buttonLabel = renderer!.root.findByType('button').children.join('');
-    expect(buttonLabel).toBe('実績の保存を再試行');
+    expect(buttonLabel).toBe(RETRY_ACTUAL_RECORDS_BUTTON_LABEL);
     expect(reply).toContain(buttonLabel);
   });
 
@@ -191,7 +197,7 @@ describe('study record wording: adopted Argon points and provisional-actual UX',
     await h.seed();
     const reply = await h.readback('not_saved', '');
     const buttonLabel = renderer!.root.findByType('button').children.join('');
-    expect(buttonLabel).toBe('この内容で実績を保存');
+    expect(buttonLabel).toBe(SAVE_ACTUAL_RECORDS_BUTTON_LABEL);
     expect(reply).toContain(buttonLabel);
     expect(h.saveActuals).toHaveBeenCalledOnce();
   });
@@ -200,10 +206,10 @@ describe('study record wording: adopted Argon points and provisional-actual UX',
     const h = await scenario([reading(WEEK_RECORDS), reading()]);
     const reply = await h.seed();
     const confirmation = visibleText(renderer!.toJSON());
-    expect.soft(reply, 'conversation').toContain('仮実績');
-    expect.soft(reply, 'conversation').toContain(CONFIRM);
-    expect.soft(confirmation, 'confirmation UI').toContain('仮実績');
-    expect.soft(confirmation, 'confirmation UI').toContain(CONFIRM);
+    expect.soft(reply, 'conversation').toContain(PROVISIONAL_ACTUAL_RECORDS_LABEL);
+    expect.soft(reply, 'conversation').toContain(ACTUAL_RECORDS_REFLECTION_QUESTION);
+    expect.soft(confirmation, 'confirmation UI').toContain(PROVISIONAL_ACTUAL_RECORDS_LABEL);
+    expect.soft(confirmation, 'confirmation UI').toContain(ACTUAL_RECORDS_REFLECTION_QUESTION);
     await h.turn('はい');
     expect(h.saveActuals).not.toHaveBeenCalled();
     expect(h.app().pendingActualRecords).toHaveLength(6);
