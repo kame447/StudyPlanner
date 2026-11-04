@@ -228,6 +228,17 @@ describe('VNext native provider', () => {
       VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT, VNEXT_STUDY_CONTEXT_REQUIREMENT]) expect(prompt).toContain(requirement);
   });
 
+  it('requires a recurring start as an independent earliest_start fact in prompt and schema', () => {
+    const rule = 'For recurring work, a stated start phrase is a separate temporal_constraint with constraintKind earliest_start, in addition to recurrence; never absorb or omit the start.';
+    const example = 'Example: 来週から毎週月曜 => recurrence weekly days weekday:monday AND temporal_constraint earliest_start dateExpression next_week on the same task.';
+    const prompt = buildWeeklyPlanningVNextProviderMessages(input([]))[0].content;
+    const schema = JSON.stringify(VNEXT_PROVIDER_RESPONSE_FORMAT);
+    expect(prompt).toContain(rule);
+    expect(prompt).toContain(example);
+    expect(schema).toContain(rule);
+    expect(schema).toContain(example);
+  });
+
   it('decodes and dry-runs all five ported fact shapes without a V5 state update', async () => {
     const wire = output([task(), task('other', 'Other'), { ...workload('daily', 20), quantityRole: 'target', unitCode: 'minute', unitLabel: '分', perOccurrence: true },
       { kind: 'planning_window', localId: 'window', windowKind: 'relative_week', value: 'next_week', start: null, end: null },
