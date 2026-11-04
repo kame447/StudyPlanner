@@ -243,7 +243,8 @@ export function useWeeklyPlanningVNextApplication(
         const stored = candidate.local.readCheckpoint()?.vnext.actualRecords ?? [];
         const attempted: ActualSaveIntentRecord[] = [];
         for (const sent of candidate.attempt.records) {
-          const record = stored.find(item => item.id === sent.id && item.minutes === sent.minutes);
+          // A later minute correction does not change the identity or the value sent by this attempt.
+          const record = stored.find(item => item.id === sent.id);
           if (!record) throw new ActualSaveReadbackUnknownError('read_failed');
           attempted.push({ id: sent.id, minutes: sent.minutes,
             occurrenceDate: record.occurrenceDate, subject: record.subject });
@@ -251,20 +252,23 @@ export function useWeeklyPlanningVNextApplication(
         const result = await services.readActualSave!(ownerId, attempted);
         if (!stillCurrent()) return;
         const latest = candidate.local.readCheckpoint()?.vnext.actualRecords ?? [];
-        if (attempted.some(sent => !latest.some(record => record.id === sent.id && record.minutes === sent.minutes))) {
+        if (attempted.some(sent => !latest.some(record => record.id === sent.id))) {
           throw new ActualSaveReadbackUnknownError('read_failed');
         }
         if (result.confirmedIds.length) {
           const { markWeeklyPlanningVNextActualRecordsSaved } = await loadWeeklyPlanningVNextRuntimeModule();
           if (!stillCurrent()) return;
           const beforeMark = candidate.local.readCheckpoint()?.vnext.actualRecords ?? [];
-          if (attempted.some(sent => !beforeMark.some(record => record.id === sent.id && record.minutes === sent.minutes))) {
+          if (attempted.some(sent => !beforeMark.some(record => record.id === sent.id))) {
             throw new ActualSaveReadbackUnknownError('read_failed');
           }
+          // The server confirmed the old values; a newer correction still needs its own approval and save.
+          const unchangedConfirmedIds = result.confirmedIds.filter(id => attempted.some(sent => sent.id === id
+            && beforeMark.some(record => record.id === id && record.minutes === sent.minutes)));
           const marked = markWeeklyPlanningVNextActualRecordsSaved(
             { ownerId, weekStartDate: candidate.weekStartDate, conversationId: candidate.conversationId },
             { checkpoint: candidate.local.checkpoint, legacyV5Checkpoint: candidate.local.legacyV5Checkpoint, now: services.now },
-            result.confirmedIds,
+            unchangedConfirmedIds,
           );
           if (marked.status === 'unreadable') throw new ActualSaveReadbackUnknownError('read_failed');
         }
