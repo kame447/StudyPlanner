@@ -7,6 +7,7 @@ import {
 } from 'firebase/firestore';
 import { getFirestoreDb } from '../../lib/firebaseClient';
 import {
+  assertUserPlanningContextSnapshotSourceV1,
   normalizeUserPlanningContextSnapshotV1,
   retainUserPlanningContextRecordsV1,
   userPlanningContextDurableKeyV1,
@@ -235,6 +236,7 @@ class FirestoreUserPlanningContextRepositoryV1 implements UserPlanningContextRep
         return stateFromDocument(parsed);
       }
 
+      assertUserPlanningContextSnapshotSourceV1(localSnapshot, ownerId);
       const now = new Date().toISOString();
       const migrated = migrateLocalUserPlanningContextSnapshotV1(localSnapshot);
       const snapshot = { ...migrated, updatedAt: now };

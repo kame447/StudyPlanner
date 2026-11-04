@@ -22,6 +22,23 @@ const MAX_VALUE_LENGTH = 1000;
 const MAX_SOURCE_TEXT_LENGTH = 2000;
 const MAX_PROMPT_RECORDS = 30;
 
+type UnavailableContextRead = {
+  readonly kind: 'unavailable';
+  readonly reason: 'storage_unavailable' | 'oversize' | 'invalid_json' | 'invalid_snapshot';
+};
+
+type ContextSnapshotRead =
+  | { kind: 'ready'; raw: string; snapshot: UserPlanningContextSnapshotV1 }
+  | { kind: 'missing'; raw: null; snapshot: UserPlanningContextSnapshotV1 }
+  | UnavailableContextRead;
+
+type ContextReadReceipt = Readonly<{ ownerId: string } & (
+  | { kind: 'ready' | 'missing' }
+  | UnavailableContextRead
+)>;
+
+// Keep a read-only fallback's source distinct from a later, recovered read.
+let snapshotReadReceipts = new WeakMap<UserPlanningContextSnapshotV1, ContextReadReceipt>();
 const inMemoryStorage = new Map<string, string>();
 const stagedContexts = new Map<string, {
   ownerId: string;
@@ -50,14 +67,15 @@ function storageAvailable(): boolean {
   return typeof window !== 'undefined' && Boolean(window.localStorage);
 }
 
-function readRaw(ownerId: string): string | null {
+function readRaw(ownerId: string): { kind: 'available'; raw: string | null } | UnavailableContextRead {
   const key = storageKey(ownerId);
   try {
-    return storageAvailable()
+    const raw = storageAvailable()
       ? window.localStorage.getItem(key)
       : inMemoryStorage.get(key) ?? null;
+    return { kind: 'available', raw };
   } catch {
-    return null;
+    return { kind: 'unavailable', reason: 'storage_unavailable' };
   }
 }
 
@@ -234,31 +252,56 @@ function refreshedStatusForRecord(
   return 'active';
 }
 
-function parseSnapshot(raw: string | null, ownerId: string): UserPlanningContextSnapshotV1 {
-  if (!raw) return createEmptyUserPlanningContextSnapshotV1(ownerId);
-  if (new TextEncoder().encode(raw).byteLength > MAX_CONTEXT_BYTES) {
-    removeRaw(ownerId);
-    return createEmptyUserPlanningContextSnapshotV1(ownerId);
+function parseSnapshot(raw: string | null, ownerId: string): ContextSnapshotRead {
+  if (raw === null) {
+    return { kind: 'missing', raw, snapshot: createEmptyUserPlanningContextSnapshotV1(ownerId) };
   }
+  if (new TextEncoder().encode(raw).byteLength > MAX_CONTEXT_BYTES) {
+    return { kind: 'unavailable', reason: 'oversize' };
+  }
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    const normalized = normalizeUserPlanningContextSnapshotV1(parsed, ownerId);
-    if (!normalized) {
-      removeRaw(ownerId);
-      return createEmptyUserPlanningContextSnapshotV1(ownerId);
-    }
-    return normalized;
+    parsed = JSON.parse(raw);
   } catch {
-    removeRaw(ownerId);
-    return createEmptyUserPlanningContextSnapshotV1(ownerId);
+    return { kind: 'unavailable', reason: 'invalid_json' };
+  }
+  const normalized = normalizeUserPlanningContextSnapshotV1(parsed, ownerId);
+  return normalized
+    ? { kind: 'ready', raw, snapshot: normalized }
+    : { kind: 'unavailable', reason: 'invalid_snapshot' };
+}
+
+function readSnapshot(ownerId: string): ContextSnapshotRead {
+  const read = readRaw(ownerId);
+  return read.kind === 'unavailable' ? read : parseSnapshot(read.raw, ownerId);
+}
+
+function readAuthoritativeSnapshot(ownerId: string): Exclude<ContextSnapshotRead, UnavailableContextRead> {
+  const read = readSnapshot(ownerId);
+  if (read.kind === 'unavailable') {
+    throw new Error('保存済みの長期記憶を確認できないため、更新できませんでした。');
+  }
+  return read;
+}
+
+/** Check the original object before normalization or migration copies it. */
+export function assertUserPlanningContextSnapshotSourceV1(
+  snapshot: UserPlanningContextSnapshotV1,
+  ownerId: string,
+): void {
+  const receipt = snapshotReadReceipts.get(snapshot);
+  if (snapshot.ownerId !== ownerId || (receipt && receipt.ownerId !== ownerId)) {
+    throw new Error('User planning context owner mismatch.');
+  }
+  if (receipt?.kind === 'unavailable') {
+    throw new Error('長期記憶を読み取れなかったため、この内容は保存できません。');
   }
 }
 
-export function loadUserPlanningContextSnapshotV1(params: {
-  ownerId: string;
-  currentDate: string;
-}): UserPlanningContextSnapshotV1 {
-  const snapshot = parseSnapshot(readRaw(params.ownerId), params.ownerId);
+function refreshSnapshot(
+  snapshot: UserPlanningContextSnapshotV1,
+  currentDate: string,
+): UserPlanningContextSnapshotV1 {
   return {
     ...snapshot,
     records: snapshot.records.map((record) => {
@@ -269,10 +312,27 @@ export function loadUserPlanningContextSnapshotV1(params: {
       const next = { ...record, resolvedDate };
       return {
         ...next,
-        status: refreshedStatusForRecord(next, params.currentDate),
+        status: refreshedStatusForRecord(next, currentDate),
       };
     }),
   };
+}
+
+export function loadUserPlanningContextSnapshotV1(params: {
+  ownerId: string;
+  currentDate: string;
+}): UserPlanningContextSnapshotV1 {
+  const read = readSnapshot(params.ownerId);
+  const snapshot = refreshSnapshot(
+    read.kind === 'unavailable'
+      ? createEmptyUserPlanningContextSnapshotV1(params.ownerId)
+      : read.snapshot,
+    params.currentDate,
+  );
+  snapshotReadReceipts.set(snapshot, Object.freeze(read.kind === 'unavailable'
+    ? { ownerId: params.ownerId, kind: read.kind, reason: read.reason }
+    : { ownerId: params.ownerId, kind: read.kind }));
+  return snapshot;
 }
 
 function normalizeIdentityPart(value: string | null): string {
@@ -518,13 +578,9 @@ export function finalizeStagedUserPlanningContextV1(params: {
   if (staged.ownerId !== params.ownerId) {
     throw new Error('User planning context owner mismatch.');
   }
-  const current = loadUserPlanningContextSnapshotV1({
-    ownerId: params.ownerId,
-    currentDate: staged.observedDate,
-  });
-  const previousRaw = readRaw(params.ownerId);
+  const current = readAuthoritativeSnapshot(params.ownerId);
   const merged = mergeFacts({
-    snapshot: current,
+    snapshot: refreshSnapshot(current.snapshot, staged.observedDate),
     facts: staged.facts,
     ownerId: params.ownerId,
     conversationId: params.conversationId,
@@ -544,7 +600,7 @@ export function finalizeStagedUserPlanningContextV1(params: {
   if (committedRecords.length === 0) return null;
   return {
     ownerId: params.ownerId,
-    previousRaw,
+    previousRaw: current.raw,
     committedRecords: committedRecords.map((record) => ({ ...record })),
   };
 }
@@ -553,6 +609,7 @@ export function rollbackFinalizedUserPlanningContextV1(
   receipt: UserPlanningContextFinalizeReceiptV1 | null,
 ): void {
   if (!receipt) return;
+  readAuthoritativeSnapshot(receipt.ownerId);
   writeRaw(receipt.ownerId, receipt.previousRaw);
 }
 
@@ -616,10 +673,12 @@ export function exportUserPlanningContextSnapshotV1(params: {
 export function hydrateUserPlanningContextSnapshotV1(
   snapshot: UserPlanningContextSnapshotV1,
 ): void {
+  assertUserPlanningContextSnapshotSourceV1(snapshot, snapshot.ownerId);
   const normalized = normalizeUserPlanningContextSnapshotV1(snapshot, snapshot.ownerId);
   if (!normalized) {
     throw new Error('User planning context snapshot is invalid.');
   }
+  readAuthoritativeSnapshot(normalized.ownerId);
   writeRaw(normalized.ownerId, JSON.stringify(normalized));
 }
 
@@ -633,4 +692,5 @@ export function clearUserPlanningContextForOwnerV1(ownerId: string): void {
 export function resetUserPlanningContextRuntimeForTestV1(): void {
   inMemoryStorage.clear();
   stagedContexts.clear();
+  snapshotReadReceipts = new WeakMap();
 }
