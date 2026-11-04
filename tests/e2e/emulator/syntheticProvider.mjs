@@ -93,7 +93,7 @@ http.createServer(async (request, response) => {
   const route = ROUTES[url.pathname];
   if (!route) return send(response, 404, { error: `unknown synthetic route ${url.pathname}` });
   const parsed = JSON.parse(body || 'null');
-  received.push({ route, body: parsed });
+  received.push({ route, body: parsed, receivedAt: Date.now() });
   const next = scripts[route].shift();
   if (next) return send(response, next.status ?? 200, next.body);
   const entry = { id: nextId++, route, body: parsed, response, taken: false };
