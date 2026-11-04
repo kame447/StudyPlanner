@@ -186,6 +186,31 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(ref.current!.pendingActualRecords).toEqual([]);
   });
 
+  it('keeps six records pending and clears the attempt after a permission-denied refusal', async () => {
+    await seedRecords(storage.storage);
+    const denial = Object.assign(new Error('private backend detail'), { code: 'permission-denied' });
+    const save = vi.fn().mockRejectedValue(denial);
+    const readActualSave = vi.fn();
+    const ref = await mount(inputWith(save), { readActualSave });
+    const original = ref.current!.pendingActualRecords!;
+    const chatId = ref.current!.chat.index.activeChatId;
+    await act(async () => { await expect(ref.current!.approveActualRecords!()).rejects.toBe(denial); });
+    expect(save).toHaveBeenCalledOnce();
+    expect(ref.current!.pendingActualRecords).toEqual(original);
+    expect(sumActualRecordMinutes(ref.current!.pendingActualRecords!)).toBe(395);
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));
+    expect(attemptInUi(chatId)).toBeUndefined();
+    expect(readActualSave).not.toHaveBeenCalled();
+
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    const reloaded = await mount(inputWith(save), { readActualSave });
+    expect(reloaded.current!.pendingActualRecords).toEqual(original);
+    expect(storedStatuses(reloaded)).toEqual(Array(6).fill('pending'));
+    expect(attemptInUi(chatId)).toBeUndefined();
+    expect(readActualSave).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledOnce();
+  });
+
   it.each([
     { result: 'saved', reply: '保存を確認しました', pending: 0 },
     { result: 'not_saved', reply: 'サーバー上に保存されていません', pending: 6 },
