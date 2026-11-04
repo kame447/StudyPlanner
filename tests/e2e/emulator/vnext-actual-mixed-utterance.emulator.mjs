@@ -4,7 +4,7 @@ import { openAiPlanning } from '../support/vnext-production-flows.mjs';
 import { openScheduleDay } from '../support/schedule-plan-cleanup.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
-import { formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { SAVE_ACTUAL_RECORDS_BUTTON_LABEL, formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 import { vnextActualRecordId } from '../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextStudyRecords.ts';
 
 // Real Pages, durable Worker and Auth/Firestore emulators; the interpretation and renderer are synthetic.
@@ -144,12 +144,12 @@ test('a mixed utterance keeps past actual and future plan separate across save a
   await expect(records.first()).toHaveText(formatActualRecordRow({ occurrenceDate: yesterday, subject: actualSubject, minutes: 60 }));
   await expect(records.first()).not.toContainText(planSubject);
   await expect(dialog.locator('[aria-label="実績の合計"]')).toHaveText(`合計 ${formatActualRecordsTotal(60)}`);
-  await expect(dialog.getByRole('button', { name: 'この内容で実績を保存', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: SAVE_ACTUAL_RECORDS_BUTTON_LABEL, exact: true })).toBeVisible();
   expect(await snapshot(request, owner)).toEqual(baseline);
 
   // This click authorizes the actual only; the plan's promote/save controls are untouched.
   await writes.during('save-actuals', async () => {
-    await dialog.getByRole('button', { name: 'この内容で実績を保存', exact: true }).click();
+    await dialog.getByRole('button', { name: SAVE_ACTUAL_RECORDS_BUTTON_LABEL, exact: true }).click();
     await expect(dialog.locator('.ai-planning-actual-records-save')).toHaveCount(0);
     await expect(dialog).toBeVisible();
     await expect.poll(() => writes.commitsIn('save-actuals').length).toBeGreaterThanOrEqual(1);

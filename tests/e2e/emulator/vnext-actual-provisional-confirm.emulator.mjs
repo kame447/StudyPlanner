@@ -5,14 +5,13 @@ import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import { openAiPlanning } from '../support/vnext-production-flows.mjs';
 import { vnextActualRecordId } from '../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextStudyRecords.ts';
-import { formatActualRecordMinutes, formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { PROVISIONAL_ACTUAL_RECORDS_LABEL, PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL, REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL, ACTUAL_RECORDS_REFLECTION_QUESTION, SAVE_ACTUAL_RECORDS_BUTTON_LABEL, formatActualRecordMinutes, formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // PR #974 comment 6634537603 requires 仮実績 and this confirmation question in both
-// conversation and confirmation UI. These new contract words have no exported product
-// constant yet; import it here when the product introduces one. This is a real Pages /
+// conversation and confirmation UI. This is a real Pages /
 // durable Worker / Auth + Firestore emulator test; model readings and renderer are synthetic.
-const PROVISIONAL = '仮実績';
-const CONFIRM_QUESTION = 'この内容を学習実績に反映してよいですか？';
+const PROVISIONAL = PROVISIONAL_ACTUAL_RECORDS_LABEL;
+const CONFIRM_QUESTION = ACTUAL_RECORDS_REFLECTION_QUESTION;
 const FIRESTORE = 'http://127.0.0.1:8180/v1/projects/demo-studyplanner/databases/(default)/documents';
 const EMPTY = { add: [], patch: [], remove: [], relate: [], defer: [] };
 const composer = page => page.locator('.ai-planning-composer textarea');
@@ -100,8 +99,8 @@ async function turn(page, request, text, interpreted, { renderer = false } = {})
 }
 
 async function openConfirmation(page) {
-  await page.locator('.ai-planning-actual-card .ai-planning-actual-open').click();
-  const dialog = page.getByRole('dialog').filter({ has: page.locator('.ai-planning-actual-records') });
+  await page.locator('.ai-planning-actual-card').getByRole('button', { name: REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL, exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL, exact: true });
   await expect(dialog).toBeVisible();
   return dialog;
 }
@@ -111,7 +110,7 @@ async function expectRows(dialog, records, total) {
   await expect(rows).toHaveCount(records.length);
   for (const record of records) await expect(dialog.getByText(formatActualRecordRow(record), { exact: true })).toBeVisible();
   await expect(dialog.locator('[aria-label="実績の合計"]')).toHaveText(`合計 ${formatActualRecordsTotal(total)}`);
-  await expect(dialog.getByRole('button', { name: 'この内容で実績を保存', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: SAVE_ACTUAL_RECORDS_BUTTON_LABEL, exact: true })).toBeVisible();
 }
 
 test('provisional actuals are explained, corrected and approved before they are saved', async ({ page, request }) => {
@@ -172,7 +171,7 @@ test('provisional actuals are explained, corrected and approved before they are 
   dialog = await openConfirmation(page);
   await expectRows(dialog, corrected, 400);
   await writes.during('save-actuals', async () => {
-    await dialog.getByRole('button', { name: 'この内容で実績を保存', exact: true }).click();
+    await dialog.getByRole('button', { name: SAVE_ACTUAL_RECORDS_BUTTON_LABEL, exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect.poll(() => writes.commitsIn('save-actuals').length).toBeGreaterThanOrEqual(1);
     await expect.poll(async () => (await actualDocuments(request, owner)).length).toBe(before.length + 6);

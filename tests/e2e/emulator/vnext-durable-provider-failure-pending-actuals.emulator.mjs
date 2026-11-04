@@ -3,7 +3,7 @@ import { SYNTHETIC, answer, nextCall, rendererReply, VNEXT_READING_SCHEMA, RENDE
 import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
-import { formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL, formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 import { interpretationFailureReply } from '../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalSession.ts';
 
 const FIRESTORE = 'http://127.0.0.1:8180/v1/projects/demo-studyplanner/databases/(default)/documents';
@@ -106,7 +106,7 @@ test('provider 500 keeps pending actuals and the preview, then the user corrects
   expect(before.vnext.actualRecords[0]).toMatchObject({ occurrenceDate: date, subject, minutes: 35, status: 'pending' });
   const id = before.vnext.actualRecords[0].id;
   expect(await actualDocument(request, id)).toBeNull();
-  await expect(page.locator('.ai-planning-actual-card').getByRole('button', { name: '実績を確認' })).toBeVisible();
+  await expect(page.locator('.ai-planning-actual-card').getByRole('button', { name: REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL })).toBeVisible();
   expect(protectedWritesIn(writes.writes())).toEqual([]);
 
   const failedText = 'その実績を40分に訂正してください。';
@@ -119,7 +119,7 @@ test('provider 500 keeps pending actuals and the preview, then the user corrects
   await answer(request, failure, null, 500);
   await expect(bubbles(page)).toHaveCount(beforeMessages + 1);
   await expect(bubbles(page).last()).toHaveText(interpretationFailureReply(
-    { reason: 'provider_error', consecutiveCount: 1 }, before.vnext.preview,
+    { reason: 'provider_error', consecutiveCount: 1 }, before.vnext.preview, true,
   ));
   await expect(page.locator('.ai-planning-conversation').getByText(failedText, { exact: true })).toHaveCount(1);
   await expect(composer(page)).toBeEnabled();
@@ -136,7 +136,7 @@ test('provider 500 keeps pending actuals and the preview, then the user corrects
   expect(await actualDocument(request, id)).toBeNull();
   expect(protectedWritesIn(writes.writes())).toEqual([]);
 
-  await page.locator('.ai-planning-actual-card').getByRole('button', { name: '実績を確認' }).click();
+  await page.locator('.ai-planning-actual-card').getByRole('button', { name: REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL }).click();
   const retainedDialog = page.getByRole('dialog', { name: '計画プレビュー' });
   await expect(retainedDialog.getByText(formatActualRecordRow({ occurrenceDate: date, subject, minutes: 35 }), { exact: true })).toBeVisible();
   await expect(retainedDialog.locator('[aria-label="実績の合計"]')).toHaveText(`合計 ${formatActualRecordsTotal(35)}`);
@@ -156,7 +156,7 @@ test('provider 500 keeps pending actuals and the preview, then the user corrects
   expect(await actualDocument(request, id)).toBeNull();
   expect(protectedWritesIn(writes.writes())).toEqual([]);
 
-  await page.locator('.ai-planning-actual-card').getByRole('button', { name: '実績を確認' }).click();
+  await page.locator('.ai-planning-actual-card').getByRole('button', { name: REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL }).click();
   // With an existing plan, the actual-record section is inside the plan preview dialog.
   const dialog = page.getByRole('dialog', { name: '計画プレビュー' });
   await expect(dialog).toBeVisible();

@@ -62,9 +62,9 @@ export const byDate = (records) => [...records].sort((a, b) => a.date.localeComp
 
 /** The fixed reply of a records-only turn (the product owns the wording; the scenario fixes what it must say). */
 export function pendingReply(changed, all) {
-  return `確認用に整理しました（まだ保存していません）：${changed.map(rowText).join('、')}。`
+  return `仮実績として整理しました（まだ保存していません）：${changed.map(rowText).join('、')}。`
     + `ここまでの合計は${totalText(sumMinutes(all))}です。`
-    + 'ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。';
+    + 'この内容を学習実績に反映してよいですか？確認画面の「この内容で実績を保存」を押すと保存されます。';
 }
 
 /** 「10/29（木）」 */
@@ -76,7 +76,7 @@ export function dayText(date) {
 /** Reply to a rest day stated alone (fix-04): one flat sentence, then the total and the save guidance when records are waiting. No advice, no suggestion, no question. */
 export function restDayReply(restDate, waiting) {
   return `${dayText(restDate)}はお休みですね。${waiting.length
-    ? `ここまでの合計は${totalText(sumMinutes(waiting))}です。ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。` : ''}`;
+    ? `ここまでの合計は${totalText(sumMinutes(waiting))}です。確認画面の「この内容で実績を保存」を押すと保存されます。` : ''}`;
 }
 
 export const savedWordsIn = (reply) => SAVED_WORDS.filter((word) => reply.includes(word));

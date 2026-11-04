@@ -52,18 +52,18 @@ test('the reply checks: pending wording is exact, "saved" words are found, quest
   expect(rowText(WEEK[0])).toBe('月 10/26 数学 60分（1時間）');
   expect(rowText(WEEK[5])).toBe('日 11/1 化学 90分（1時間30分）');
   const reply = pendingReply(WEEK, WEEK);
-  expect(reply).toBe('確認用に整理しました（まだ保存していません）：月 10/26 数学 60分（1時間）、火 10/27 英語 45分、水 10/28 現代文 30分、'
+  expect(reply).toBe('仮実績として整理しました（まだ保存していません）：月 10/26 数学 60分（1時間）、火 10/27 英語 45分、水 10/28 現代文 30分、'
     + '金 10/30 英語 50分、土 10/31 数学 120分（2時間）、日 11/1 化学 90分（1時間30分）。ここまでの合計は6時間35分（395分）です。'
-    + 'ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。');
+    + 'この内容を学習実績に反映してよいですか？確認画面の「この内容で実績を保存」を押すと保存されます。');
   expect(savedWordsIn(reply)).toEqual([]);
   for (const word of ['記録しました', '保存しました', '保存済み']) expect(savedWordsIn(`はい、${word}。`)).toEqual([word]);
   expect(questionMarksIn('数学は何分くらい勉強しましたか？')).toBe(1);
   expect(questionMarksIn('何分でしたか？いつですか？')).toBe(2);
-  expect(questionMarksIn(reply)).toBe(0);
+  expect(questionMarksIn(reply)).toBe(1);
   // A rest day stated alone: one flat sentence (+ total and guidance only while records wait), never a question.
   expect(restDayReply('2026-10-29', [])).toBe('10/29（木）はお休みですね。');
   expect(restDayReply('2026-10-29', WEEK.slice(0, 3))).toBe('10/29（木）はお休みですね。ここまでの合計は2時間15分（135分）です。'
-    + 'ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。');
+    + '確認画面の「この内容で実績を保存」を押すと保存されます。');
   expect(questionMarksIn(restDayReply('2026-10-29', WEEK.slice(0, 3)))).toBe(0);
   // After a save and a reload the same sentence is answered as saved, with that one sentence and never as "not saved yet".
   const alreadySaved = savedReply(WEEK);

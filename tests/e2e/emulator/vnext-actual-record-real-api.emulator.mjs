@@ -1,3 +1,4 @@
+import { SAVE_ACTUAL_RECORDS_BUTTON_LABEL } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 import { expect, test as base } from '@playwright/test';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import {
@@ -121,7 +122,7 @@ async function confirmAndSave(page) {
   await page.locator('.ai-planning-actual-open').click();
   const section = page.locator('section.ai-planning-actual-records');
   await expect(section).toBeVisible();
-  await section.getByRole('button', { name: 'この内容で実績を保存' }).click();
+  await section.getByRole('button', { name: SAVE_ACTUAL_RECORDS_BUTTON_LABEL }).click();
   await expect(page.locator('.ai-planning-actual-card')).toBeHidden({ timeout: 60_000 });
 }
 

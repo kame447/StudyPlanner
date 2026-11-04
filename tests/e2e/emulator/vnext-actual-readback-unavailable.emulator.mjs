@@ -5,7 +5,8 @@ import { RECORD_ONLY_KINDS, scriptedActualReading, WEEK_RECORDS, WEEK_TOTAL_MINU
 import { attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import { openAiPlanning } from '../support/vnext-production-flows.mjs';
-import { UNKNOWN_ACTUAL_SAVE_RESULT_REPLY, formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL, PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL, UNKNOWN_ACTUAL_SAVE_RESULT_REPLY, formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { VNEXT_STUDY_RECORD_PENDING_PREFIX } from '../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextStudyRecords.ts';
 
 // The test body and its helpers are copied from ce0bdacc; this is an independent
 // test of unavailable readback while a save result is unknown.
@@ -15,12 +16,12 @@ const OWNER = { Authorization: 'Bearer owner' };
 
 const rowText = ({ date, subject, minutes }) => formatActualRecordRow({ occurrenceDate: date, subject, minutes });
 // Before the click the chat only organises records for confirmation: it must not say they were recorded or saved (fix-01 A).
-const PENDING_PREFIX = '確認用に整理しました（まだ保存していません）：';
+const PENDING_PREFIX = VNEXT_STUDY_RECORD_PENDING_PREFIX;
 const pendingReply = (rows, minutes) => `${PENDING_PREFIX}${rows.map(rowText).join('、')}。ここまでの合計は${formatActualRecordsTotal(minutes)}です。`;
 
 const CONFIRM = {
-  open: page => page.locator('.ai-planning-actual-card').getByRole('button', { name: '実績を確認' }),
-  dialog: page => page.getByRole('dialog', { name: '実績の確認' }),
+  open: page => page.locator('.ai-planning-actual-card').getByRole('button', { name: REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL }),
+  dialog: page => page.getByRole('dialog', { name: PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL }),
   section: dialog => dialog,
   save: dialog => dialog.locator('button.ai-planning-actual-records-save'),
   total: dialog => dialog.locator('[aria-label="実績の合計"]'),

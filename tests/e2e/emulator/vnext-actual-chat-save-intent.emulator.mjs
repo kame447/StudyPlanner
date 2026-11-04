@@ -5,7 +5,7 @@ import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import { openAiPlanning } from '../support/vnext-production-flows.mjs';
 import { vnextActualRecordId } from '../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextStudyRecords.ts';
-import { ACTUAL_SAVE_RETRY_SAVED_REPLY, ALREADY_SAVED_ACTUAL_RECORDS_PREFIX, formatActualRecordRow,
+import { REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL, PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL, SAVE_ACTUAL_RECORDS_BUTTON_LABEL, ACTUAL_SAVE_RETRY_SAVED_REPLY, ALREADY_SAVED_ACTUAL_RECORDS_PREFIX, formatActualRecordRow,
   formatActualRecordsTotal, formatActualSaveReadbackReply } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // Durable Worker, real Pages and Firestore/Auth emulators; both interpretation and renderer are synthetic.
@@ -96,8 +96,8 @@ async function turn(page, request, text, interpreted, { renderer = false } = {})
   return bubbles(page).last().innerText();
 }
 async function openConfirmation(page) {
-  await page.locator('.ai-planning-actual-card').getByRole('button', { name: '実績を確認', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '実績の確認' });
+  await page.locator('.ai-planning-actual-card').getByRole('button', { name: REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL, exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL });
   await expect(dialog).toBeVisible();
   return dialog;
 }
@@ -106,7 +106,7 @@ async function checkPendingDialog(page, rows) {
   for (const row of rows) await expect(dialog.getByText(formatActualRecordRow(row), { exact: true })).toBeVisible();
   await expect(dialog.locator('.ai-planning-actual-records-list li')).toHaveCount(6);
   await expect(dialog.locator('[aria-label="実績の合計"]')).toHaveText(`合計 ${formatActualRecordsTotal(400)}`);
-  await expect(dialog.getByRole('button', { name: 'この内容で実績を保存', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: SAVE_ACTUAL_RECORDS_BUTTON_LABEL, exact: true })).toBeVisible();
   return dialog;
 }
 
@@ -179,7 +179,7 @@ test('chat save requests do not save corrected pending actuals; explicit UI appr
   const dialog = await checkPendingDialog(page, correctedRows);
   expect(await actualDocuments(request, owner)).toEqual(before);
   await writes.during('save-actuals', async () => {
-    await dialog.getByRole('button', { name: 'この内容で実績を保存', exact: true }).click();
+    await dialog.getByRole('button', { name: SAVE_ACTUAL_RECORDS_BUTTON_LABEL, exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect.poll(() => writes.commitsIn('save-actuals').length).toBeGreaterThanOrEqual(1);
     await expect.poll(async () => (await actualDocuments(request, owner)).length).toBe(before.length + 6);
