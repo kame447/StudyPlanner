@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { createMemoryStorageHarness } from '../../testUtils/weeklyPlanningApplicationTestHarness';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import type { VNextAddFact } from '../weeklyPlanningVNextTypes';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
+import { parseWeeklyPlanningVNextSessionCheckpoint as parseOldCheckpoint } from './weeklyPlanningVNextSessionCheckpoint.f27b3a66.fixture';
+import { parseWeeklyPlanningVNextSessionCheckpoint as parseExpandCheckpoint } from './weeklyPlanningVNextSessionCheckpoint.8413f709.fixture';
 
 const OWNER = 'stage-a-provider-owner';
 const WEEK = '2026-11-02';
@@ -23,17 +25,6 @@ const planFacts: VNextAddFact[] = [
 const reading = (intent: 'create_plan' | 'discuss', add: VNextAddFact[] = []) => ({
   planningIntent: intent, conversationActs: [], delta: { ...EMPTY, add }, answer: null,
 });
-
-// f27b3a66's Worker checkpoint parser requires exactly these four vnext keys.
-function oldWorkerAcceptsCheckpoint(raw: string): boolean {
-  const checkpoint: unknown = JSON.parse(raw);
-  if (typeof checkpoint !== 'object' || checkpoint === null || !('vnext' in checkpoint)) return false;
-  const vnext = checkpoint.vnext;
-  if (typeof vnext !== 'object' || vnext === null || Array.isArray(vnext)) return false;
-  const expected = ['state', 'presentedQuestion', 'preview', 'messages'];
-  const actual = Object.keys(vnext);
-  return actual.length === expected.length && actual.every((key) => expected.includes(key));
-}
 
 function harness(script: Array<unknown | Error>) {
   const memory = createMemoryStorageHarness();
@@ -77,17 +68,31 @@ async function prepared(rest: Array<unknown | Error>) {
 }
 
 describe('Stage A P1: provider failure after an unsaved VNext plan', () => {
-  it('lets the next utterance reach an old Worker after a provider failure', async () => {
-    const h = await prepared([new Error('synthetic provider unavailable'), reading('discuss')]);
-    const failed = await h.turn('数学を90分に変えてください。');
-    expect(failed.outcome).toBe('interpretation_failed');
-    expect(h.stored().failureRecovery).toMatchObject({ reason: 'provider_error', consecutiveCount: 1 });
-    const raw = h.rawCheckpoint();
-    expect(raw).not.toBeNull();
-    // The durable gateway sends these exact bytes to the Worker on the next utterance.
-    expect(oldWorkerAcceptsCheckpoint(raw!)).toBe(true);
-    const next = await h.turn('今の仮案を見せてください。');
-    expect(next.outcome).toBe('noop');
+  describe('expand-first checkpoint compatibility after a provider failure', () => {
+    let h: Awaited<ReturnType<typeof prepared>>;
+    let raw: string;
+
+    beforeAll(async () => {
+      h = await prepared([new Error('synthetic provider unavailable'), reading('discuss')]);
+      const failed = await h.turn('数学を90分に変えてください。');
+      expect(failed.outcome).toBe('interpretation_failed');
+      expect(h.stored().failureRecovery).toMatchObject({ reason: 'provider_error', consecutiveCount: 1 });
+      const checkpoint = h.rawCheckpoint();
+      expect(checkpoint).not.toBeNull();
+      // Both real parsers receive the same bytes sent by the durable gateway on the next utterance.
+      raw = checkpoint!;
+    });
+
+    it('records that the f27b3a66 parser rejects the extended checkpoint', () => {
+      expect(parseOldCheckpoint({ raw, ownerId: OWNER, weekStartDate: WEEK })).toBeNull();
+    });
+
+    it('accepts the same checkpoint with the expand parser shared by Pages and Worker', async () => {
+      // Release gate: #991 must be live on both Pages and Worker before #985 ships.
+      expect(parseExpandCheckpoint({ raw, ownerId: OWNER, weekStartDate: WEEK })).not.toBeNull();
+      const next = await h.turn('今の仮案を見せてください。');
+      expect(next.outcome).toBe('noop');
+    });
   });
 
   it('keeps accepted facts and the unsaved preview, and accepts the next utterance', async () => {

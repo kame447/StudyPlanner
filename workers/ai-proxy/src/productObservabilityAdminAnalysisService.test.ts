@@ -348,6 +348,64 @@ describe('ProductObservabilityAdminAnalysisService', () => {
     expect(analysis.planningEfficiency.requestCount).toBe(included ? 3 : 0);
   });
 
+  it('keeps empty analysis ratios unknown and preserves the checkpoint', async () => {
+    const checkpoint = overview().rollupCheckpoint;
+    const service = new ProductObservabilityAdminAnalysisService(env, new FakeFirestore() as never, {
+      getDailyRollups: async () => [],
+      getRollupCheckpoint: async () => checkpoint,
+    } as never);
+    const result = await service.getAiAnalysis({ environment: 'production', fromDate: '2026-08-28', toDate: '2026-08-29' });
+    expect(result.byModel).toEqual([]);
+    expect(result.byOperationKind).toEqual([]);
+    expect(result.latencyP50Ms).toBeNull();
+    expect(result.latencyP95Ms).toBeNull();
+    expect(result.planningEfficiency).toMatchObject({
+      turnCount: 0, requestCount: 0, repairRate: null, requestsPerTurn: null,
+      estimatedCostPerTurnMicros: null, cacheHitTokenRatio: null,
+    });
+    expect(result.rollupCheckpoint).toBe(checkpoint);
+  });
+
+  it('preserves unknown costs and tokens, tied dimension order and legacy missing operation kinds', async () => {
+    const daily = overview().daily;
+    for (const day of daily) {
+      day.ai = { ...day.ai, promptTokensUnknownCount: 1, estimatedCostUnknownCount: 1 };
+      day.aiByPurpose = [{ key: 'weekly_planning', aggregate: day.ai }];
+      day.aiByModel = [{ key: 'z-model', aggregate: day.ai }, { key: 'a-model', aggregate: day.ai }];
+      delete day.aiByOperationKind;
+    }
+    const before = structuredClone(daily);
+    const service = new ProductObservabilityAdminAnalysisService(env, new FakeFirestore() as never, {
+      getDailyRollups: async () => daily,
+      getRollupCheckpoint: async () => overview().rollupCheckpoint,
+    } as never);
+    const result = await service.getAiAnalysis({ environment: 'production', fromDate: '2026-08-28', toDate: '2026-08-29' });
+    expect(result.byModel.map((entry) => entry.key)).toEqual(['a-model', 'z-model']);
+    expect(result.byOperationKind).toEqual([]);
+    expect(result.planningEfficiency).toMatchObject({
+      turnCount: 2, requestCount: 3, estimatedCostMicros: 3_000,
+      estimatedCostUnknownCount: 2, estimatedCostPerTurnMicros: null,
+      promptTokens: 100, cacheHitTokenRatio: null,
+    });
+    expect(daily).toEqual(before);
+  });
+
+  it('starts both reads before either resolves and propagates the original read error', async () => {
+    const calls: unknown[] = [];
+    let rejectDaily!: (error: Error) => void;
+    const daily = new Promise<never>((_resolve, reject) => { rejectDaily = reject; });
+    const service = new ProductObservabilityAdminAnalysisService(env, new FakeFirestore() as never, {
+      getDailyRollups: (params: unknown) => { calls.push(params); return daily; },
+      getRollupCheckpoint: () => { calls.push('checkpoint'); return Promise.resolve(overview().rollupCheckpoint); },
+    } as never);
+    const params = { environment: 'production' as const, fromDate: '2026-08-28', toDate: '2026-08-29' };
+    const pending = service.getAiAnalysis(params);
+    expect(calls).toEqual([params, 'checkpoint']);
+    const error = new Error('read failure');
+    rejectDaily(error);
+    await expect(pending).rejects.toBe(error);
+  });
+
   it('merges daily AI dimensions and derives planning efficiency per turn server-side', async () => {
     const service = new ProductObservabilityAdminAnalysisService(
       env,

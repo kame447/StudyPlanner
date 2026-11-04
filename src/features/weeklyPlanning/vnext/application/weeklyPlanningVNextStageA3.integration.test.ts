@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
 import type { WeeklyPlanningVNextInterpretation } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
+import { parseWeeklyPlanningVNextSessionCheckpoint as parseOldCheckpoint } from './weeklyPlanningVNextSessionCheckpoint.f27b3a66.fixture';
+import { parseWeeklyPlanningVNextSessionCheckpoint as parseExpandCheckpoint } from './weeklyPlanningVNextSessionCheckpoint.8413f709.fixture';
 import {
   submitWeeklyPlanningVNextExperimentalTurn,
   readWeeklyPlanningVNextExperimentalSession,
@@ -24,28 +26,29 @@ const reading = (delta: VNextTurnDelta, planningIntent: 'discuss' | 'unknown' = 
   metrics: { calls: 1, repairs: 0, latencyMs: 1 },
 });
 
-// f27b3a66's Worker checkpoint parser requires exactly these four vnext keys.
-function oldWorkerAcceptsCheckpoint(raw: string): boolean {
-  const checkpoint: unknown = JSON.parse(raw);
-  if (typeof checkpoint !== 'object' || checkpoint === null || !('vnext' in checkpoint)) return false;
-  const vnext = checkpoint.vnext;
-  if (typeof vnext !== 'object' || vnext === null || Array.isArray(vnext)) return false;
-  const expected = ['state', 'presentedQuestion', 'preview', 'messages'];
-  const actual = Object.keys(vnext);
-  return actual.length === expected.length && actual.every((key) => expected.includes(key));
-}
-
 describe('Stage A scenario 3: repeated unanswered question (scripted, offline)', () => {
-  it('lets the next utterance reach an old Worker after a repeated question', () => {
-    const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
-      ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
-      vnext: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [],
-        unansweredQuestionStreak: { questionKey: 'unanswered-question', graphRevision: 0, count: 1 } },
-      savedAt: '2026-11-02T09:00:00.000Z',
-    })!;
-    expect(parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: scope.ownerId,
-      weekStartDate: scope.weekStartDate })).not.toBeNull();
-    expect(oldWorkerAcceptsCheckpoint(raw)).toBe(true);
+  describe('expand-first checkpoint compatibility after a repeated question', () => {
+    let raw: string;
+
+    beforeAll(() => {
+      raw = serializeWeeklyPlanningVNextSessionCheckpoint({
+        ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
+        vnext: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [],
+          unansweredQuestionStreak: { questionKey: 'unanswered-question', graphRevision: 0, count: 1 } },
+        savedAt: '2026-11-02T09:00:00.000Z',
+      })!;
+      expect(parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: scope.ownerId,
+        weekStartDate: scope.weekStartDate })).not.toBeNull();
+    });
+
+    it('records that the f27b3a66 parser rejects the extended checkpoint', () => {
+      expect(parseOldCheckpoint({ raw, ownerId: scope.ownerId, weekStartDate: scope.weekStartDate })).toBeNull();
+    });
+
+    it('accepts the same checkpoint with the expand parser shared by Pages and Worker', () => {
+      // Release gate: #991 must be live on both Pages and Worker before #985/#987 ship.
+      expect(parseExpandCheckpoint({ raw, ownerId: scope.ownerId, weekStartDate: scope.weekStartDate })).not.toBeNull();
+    });
   });
 
   it('changes the visible method on the third short non-answer while retaining the unsaved facts', async () => {
