@@ -141,7 +141,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-emulator-actual-chat',
-      testMatch: ['emulator/vnext-actual-record.emulator.mjs', 'emulator/vnext-v5-draft-with-actual.emulator.mjs'],
+      testMatch: ['emulator/vnext-actual-record.emulator.mjs', 'emulator/vnext-v5-draft-with-actual.emulator.mjs', 'emulator/vnext-actual-correction.emulator.mjs'],
       dependencies: ['emulator-actual-chat-setup'],
       metadata: { email: 'e2e-actual-chat@example.test' },
       use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: ACTUAL_CHAT_STATE },
