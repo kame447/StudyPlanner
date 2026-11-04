@@ -3,6 +3,7 @@ import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompa
 import type { WeeklyPlanningVNextInterpretation } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
+import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 import {
   submitWeeklyPlanningVNextExperimentalTurn,
@@ -120,8 +121,32 @@ describe('Stage A scenario 3: repeated unanswered question (scripted, offline)',
       && (third.question.key === asked.question?.key || third.question.options.length > 0);
     expect(third.preview !== null || narrowedQuestion).toBe(true);
 
-    scripts.push(reading({ ...empty, defer: [{ questionKey: asked.question!.key, allocation: 'provisional_timebox' }] }));
-    const provisional = await turn('仮置きで予定を見る');
+    const shownLabels: string[] = JSON.parse(third.reply).requiredLabels;
+    const provisionalChoice = '所要時間はまだ分からないので、仮置きで予定を組んで見せて';
+    expect(shownLabels).toContain(provisionalChoice);
+    expect(provisionalChoice).toContain('所要時間はまだ分からない');
+    expect(provisionalChoice).toContain('仮置きで予定を組んで');
+    let providerCalls = 0;
+    const providerPorts: WeeklyPlanningVNextExperimentalPorts = { ...ports,
+      interpret: createWeeklyPlanningVNextProviderInterpreter(),
+      client: { async createChatCompletion(request) {
+        providerCalls += 1;
+        expect(JSON.stringify(request.responseFormat)).toContain('effort is unknown or must not become an estimate');
+        expect(JSON.stringify(request.responseFormat)).toContain('provisionally placing the work anyway');
+        const context = JSON.parse(request.messages[1].content);
+        expect(context.userText).toBe(provisionalChoice);
+        expect(context.presentedQuestion?.key).toBe(context.openQuestions[0].key);
+        return JSON.stringify({ planningIntent: 'unknown', conversationActs: [], answer: null,
+          delta: { ...empty, defer: [{ questionKey: context.openQuestions[0].key,
+            allocation: 'provisional_timebox' }] } });
+      } },
+    };
+    const provisional = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports: providerPorts,
+      turnId: `turn-${++sequence}`, userText: provisionalChoice,
+      shownRevision: JSON.parse(raw!).vnext.presentedQuestion?.graphRevision ?? null });
+    expect(providerCalls).toBe(1);
+    expect(provisional.interpretation).toMatchObject({ status: 'interpreted', metrics: { calls: 1, repairs: 0 },
+      delta: { defer: [{ questionKey: asked.question!.key, allocation: 'provisional_timebox' }] } });
     expect(provisional.outcome).toBe('applied');
     expect(JSON.parse(raw!).vnext.state.deferrals).toContainEqual(expect.objectContaining({
       questionKey: asked.question!.key, allocation: 'provisional_timebox',
