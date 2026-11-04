@@ -550,6 +550,11 @@ describe('provisional allocation through application and approval persistence', 
   });
 
   it('keeps accepted task-total roots through replacement, checkpoint, explicit approval and trace persistence', async () => {
+    // This identity yields a real fact ID with a phone-like digit run. Keep the
+    // privacy boundary deterministic without replacing the generated roots.
+    let uuidSequence = 0x89c;
+    vi.spyOn(crypto, 'randomUUID').mockImplementation(() =>
+      `123e4567-e89b-42d3-a456-${(++uuidSequence).toString(16).padStart(12, '0')}`);
     const storage = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storage.storage);
     const repository = createLocalPlannerRepository(storage.storage);
@@ -586,6 +591,7 @@ describe('provisional allocation through application and approval persistence', 
     expect(first).not.toBeNull();
     const taskId = first.graph.tasks[0].id;
     const oldBudget = first.graph.effortEstimates[0];
+    expect(oldBudget.id).toBe('wpf_effort_10186823pnnsm');
     expect(first.graph.workloads).toEqual([]);
     expect(first.planningState.previewCandidates).toEqual([expect.objectContaining({
       durationMinutes: 60, stableV5Metadata: expect.objectContaining({ sourceFactRefs: [taskId, oldBudget.id] }),
@@ -625,6 +631,7 @@ describe('provisional allocation through application and approval persistence', 
     const second = readCheckpoint();
     const active = new Set(second.graph.factLifecycles.filter((fact) => fact.status === 'active').map((fact) => fact.factId));
     const newBudget = second.graph.effortEstimates.find((fact) => active.has(fact.id))!;
+    expect(newBudget.id).toBe('wpf_effort_cx0iek1e5aw14');
     expect(newBudget).toMatchObject({ taskId, targetFactId: taskId, minutes: 90 });
     expect(newBudget.id).not.toBe(oldBudget.id);
     expect(second.graph.factLifecycles.find((fact) => fact.factId === oldBudget.id))
@@ -734,7 +741,15 @@ describe('provisional allocation through application and approval persistence', 
       }, { token: `wpt_${'d'.repeat(43)}`, epoch: '103' }, {
         sessionId: 'weekly-trace-523e4567-e89b-52d3-a456-426614174000', logicalConversationId: second.conversationId,
       }, new Date().toISOString());
-      expect(JSON.stringify(prepared.entries[0])).toContain(index === 0 ? oldBudget.id : newBudget.id);
+      // Server diagnostics preserve the lineage structure, but their strings
+      // follow the privacy policy rather than the unredacted graph-ID contract.
+      expect(prepared.entries[0]).toMatchObject({ constraintContext: { scheduler: { preview: {
+        representativeCandidates: [{ stableV5Metadata: {
+          sourceFactRefs: ['wpf_task_a01kelh22gw9', index === 0
+            ? 'wpf_effort_1[PHONE]pnnsm' : 'wpf_effort_cx0iek1e5aw14'],
+        } }],
+      } } } });
+      expect(JSON.stringify(prepared.entries[0])).not.toContain(oldBudget.id);
       expect(JSON.stringify(prepared.entries[0])).toContain('task-total-lineage-sentinel');
       expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     }

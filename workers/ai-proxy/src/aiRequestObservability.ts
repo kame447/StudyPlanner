@@ -123,12 +123,10 @@ export function isAiRequestObservabilityConfigured(env: ProductObservabilityEnv)
   return (env.OBSERVABILITY_IDENTITY_SECRET?.trim().length ?? 0) >= MIN_IDENTITY_SECRET_LENGTH;
 }
 
-export async function recordAiRequestMetricBestEffort(
+function buildAiRequestMetricPayload(
   params: RecordAiRequestMetricParams,
-): Promise<void> {
-  if (!isAiRequestObservabilityConfigured(params.env)) return;
-
-  const nowMs = params.nowMs ?? Date.now();
+  nowMs: number,
+): ExtendedAiRequestMetricPayload {
   const usage = params.usage ?? emptyAiRequestUsage();
   const errorCategory = params.status === 'success' ? null : params.status;
   const pricing = estimateAiRequestCost({
@@ -137,7 +135,7 @@ export async function recordAiRequestMetricBestEffort(
     operationKind: params.operationKind,
     usage,
   });
-  const payload: ExtendedAiRequestMetricPayload = {
+  return {
     operationKind: params.operationKind,
     purpose: params.purpose,
     phase: params.phase,
@@ -162,6 +160,15 @@ export async function recordAiRequestMetricBestEffort(
     ...(params.decision ? { decision: params.decision } : {}),
     ...(params.providerCompletion ? { providerCompletion: params.providerCompletion } : {}),
   };
+}
+
+export async function recordAiRequestMetricBestEffort(
+  params: RecordAiRequestMetricParams,
+): Promise<void> {
+  if (!isAiRequestObservabilityConfigured(params.env)) return;
+
+  const nowMs = params.nowMs ?? Date.now();
+  const payload = buildAiRequestMetricPayload(params, nowMs);
 
   try {
     await new ProductObservabilityStore(
