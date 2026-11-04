@@ -162,6 +162,17 @@ describe('UC-P1A independent read safety oracle', () => {
     expect(storage.setItem).not.toHaveBeenCalled();
   });
 
+  it('initializes and hydrates a valid local-only snapshot', async () => {
+    const original = rawSnapshot('a');
+    const storage = fakeStorage([[key('a'), original]]);
+    cloud.getDb.mockReturnValue(null);
+    const local = loadUserPlanningContextSnapshotV1({ ownerId: 'a', currentDate: date });
+    const initial = await getUserPlanningContextRepositoryV1().initialize('a', local);
+    hydrateUserPlanningContextSnapshotV1(initial.snapshot);
+    expect(loadUserPlanningContextSnapshotV1({ ownerId: 'a', currentDate: date }).records).toEqual([record('a')]);
+    expect(storage.setItem).toHaveBeenCalledTimes(1);
+  });
+
   it('does not create an empty cloud record from an unavailable local read', async () => {
     const original = rawSnapshot('a');
     const storage = fakeStorage([[key('a'), original]], ['a']);
