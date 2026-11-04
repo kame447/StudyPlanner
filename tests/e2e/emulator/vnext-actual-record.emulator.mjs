@@ -12,7 +12,7 @@ import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../
 import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 // The wording and arithmetic of the records belong to ONE owner (fix-01 B): expected texts are built from its functions, never from a
 // second format kept in this spec.
-import { ACTUAL_SAVE_RETRY_SAVED_REPLY, formatActualSaveReadbackReply, formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { ACTUAL_SAVE_RETRY_SAVED_REPLY, UNKNOWN_ACTUAL_SAVE_RESULT_REPLY, formatActualSaveReadbackReply, formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // #973 I4: the examinee's week of study records by CONVERSATION, on the durable emulator stack (production build with durable
 // turns, production Worker, Auth + Firestore emulators, synthetic provider answering from scripted readings; no model call).
@@ -556,6 +556,69 @@ test.describe('examinee week of study records by conversation (durable emulator 
     expect(afterReload.map(({ docId, date, subject, minutes }) => ({ docId, date, subject, minutes })))
       .toEqual(saved.map(({ docId, date, subject, minutes }) => ({ docId, date, subject, minutes })));
     await expectNeighboursUnchanged(request);
+  });
+
+  test('A2: lost save acknowledgement and unavailable server readback keep six records pending without another write', async ({ page, request }) => {
+    await signIn(page);
+    const week = await previousWeekOf(page);
+    await seedNeighbours(request, week);
+    await openPlannerOnPreviousWeek(page);
+    const rows = scenarioRows(week);
+    await actualTurn(page, request, week,
+      '先週の勉強をまとめて記録したいです。月曜は数学を60分、火曜は英語を45分、水曜は現代文を30分、木曜は休みでした。金曜は英語を50分、土曜は数学を120分、日曜は化学を90分やりました。', 'actual_week');
+    await expectPendingReply(page, rows, WEEK_TOTAL_MINUTES);
+    const originalIds = (await recordStates(page)).map(state => state.split(' ')[1]);
+    expect(originalIds).toHaveLength(6);
+    expect(new Set(originalIds).size).toBe(6);
+    expect(await actualDocuments(request, userId), 'conversation alone writes no actuals').toEqual([]);
+    const dialog = await openConfirmation(page);
+    await expectConfirmationRows(dialog, rows, WEEK_TOTAL_MINUTES);
+
+    // The original batch loses its acknowledgement. Keep the Firestore route blocked across reload so
+    // the new page cannot complete the owner-bound getDocsFromServer readback either.
+    const firestoreRoute = /127\.0\.0\.1:8180/;
+    await page.route(firestoreRoute, route => route.abort('connectionreset'));
+    try {
+      await CONFIRM.save(dialog).click();
+      await expect(CONFIRM.save(dialog)).toHaveText('保存中...');
+      await expect(dialog).toContainText('保存中（まだ確定していません）');
+      expect(await actualDocuments(request, userId), 'the blocked first batch never reached the server').toEqual([]);
+
+      // Begin the ledger on the reloaded document, so SDK retries from the page being discarded
+      // are not mistaken for an automatic resend by the new page.
+      let firestore;
+      const observeReloadedPage = frame => {
+        if (frame !== page.mainFrame()) return;
+        firestore = attachWriteLedger(page);
+        page.off('framenavigated', observeReloadedPage);
+      };
+      page.on('framenavigated', observeReloadedPage);
+      await page.reload();
+      expect(firestore, 'the ledger observes the reloaded page').toBeDefined();
+      await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
+      await openPlannerOnPreviousWeek(page);
+      await expect(lastReply(page)).toContainText(UNKNOWN_ACTUAL_SAVE_RESULT_REPLY);
+      expect(await lastReply(page).innerText()).not.toContain('すでに保存されています');
+      expect(await recordStates(page), 'the same six IDs remain pending after the unreadable readback')
+        .toEqual(originalIds.map(id => `pending ${id}`));
+      expect(await actualDocuments(request, userId), 'the server still has no study records').toEqual([]);
+      expect(protectedWritesIn(firestore.writes()), 'reload must not resend the interrupted batch').toEqual([]);
+
+      const pendingDialog = await openConfirmation(page);
+      await expectConfirmationRows(pendingDialog, rows, WEEK_TOTAL_MINUTES);
+      await expect(CONFIRM.save(pendingDialog), 'the unknown state still exposes a clickable confirmation').toBeEnabled();
+      const replyCount = await assistantBubbles(page).count();
+      await CONFIRM.save(pendingDialog).click();
+      await expect(pendingDialog).toBeVisible();
+      expect(await assistantBubbles(page).count(), 'an unknown result makes no new saved claim').toBe(replyCount);
+      expect(await recordStates(page), 'an unknown retry cannot change the six pending IDs')
+        .toEqual(originalIds.map(id => `pending ${id}`));
+      expect(await actualDocuments(request, userId), 'clicking while readback is unknown writes zero documents').toEqual([]);
+      expect(protectedWritesIn(firestore.writes()), 'clicking while unknown must not issue a protected write').toEqual([]);
+      await expectNeighboursUnchanged(request);
+    } finally {
+      await page.unroute(firestoreRoute);
+    }
   });
 
   test('unconfirmed save: blocked Firestore write leaves six records saving, and a resend cannot claim they were saved', async ({ page, request }) => {
