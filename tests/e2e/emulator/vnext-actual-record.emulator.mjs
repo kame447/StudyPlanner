@@ -558,6 +558,138 @@ test.describe('examinee week of study records by conversation (durable emulator 
     await expectNeighboursUnchanged(request);
   });
 
+  test('A2 corrected unknown save: read back the original attempt after a correction and explicitly save the corrected six', async ({ page, request }) => {
+    await signIn(page);
+    const week = await previousWeekOf(page);
+    await seedNeighbours(request, week);
+    await openPlannerOnPreviousWeek(page);
+    const rows = scenarioRows(week);
+    const correctedRows = scenarioRows(week, { 1: 50 });
+    await actualTurn(page, request, week,
+      '月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学120分、日曜は化学90分でした。', 'actual_week');
+    await expectPendingReply(page, rows, WEEK_TOTAL_MINUTES);
+    const originalIds = (await recordStates(page)).map(state => state.split(' ')[1]);
+    expect(originalIds).toHaveLength(6);
+    expect(new Set(originalIds).size).toBe(6);
+    expect(await actualDocuments(request, userId)).toEqual([]);
+    const dialog = await openConfirmation(page);
+    await expectConfirmationRows(dialog, rows, WEEK_TOTAL_MINUTES);
+
+    // This aborts before the server receives the first save: it deliberately
+    // tests not_saved readback, not a committed write whose ack was lost.
+    const firestoreRoute = /127\.0\.0\.1:8180/;
+    await page.route(firestoreRoute, route => route.abort('connectionreset'));
+    await CONFIRM.save(dialog).click();
+    await expect(CONFIRM.save(dialog)).toHaveText('保存中...');
+    await expect(dialog).toContainText('保存中（まだ確定していません）');
+    expect(await actualDocuments(request, userId)).toEqual([]);
+
+    const readAttempt = () => page.evaluate(() => Object.keys(localStorage)
+      .filter(key => key.includes('.weeklyPlanning.vnext.') && key.endsWith('.ui') && !key.includes('.anonymous'))
+      .flatMap(key => {
+        try { const attempt = JSON.parse(localStorage.getItem(key)).actualSaveAttempt; return attempt ? [attempt] : []; }
+        catch { return []; }
+      }));
+    const recordsInCheckpoint = () => page.evaluate(() => {
+      const find = value => {
+        if (Array.isArray(value)) return null;
+        if (value && typeof value === 'object') {
+          if (Array.isArray(value.actualRecords)) return value.actualRecords;
+          for (const item of Object.values(value)) { const found = find(item); if (found) return found; }
+        }
+        return null;
+      };
+      return Object.keys(localStorage).filter(key => key.includes('.weeklyPlanning.vnext.') && key.endsWith('.core') && !key.includes('.anonymous'))
+        .flatMap(key => { try { return find(JSON.parse(localStorage.getItem(key))) ?? []; } catch { return []; } });
+    });
+    const attempt = (await readAttempt())[0];
+    expect(attempt?.records).toHaveLength(6);
+    expect(attempt.records.map(record => record.id).sort()).toEqual([...originalIds].sort());
+    expect(attempt.records.map(record => record.minutes)).toEqual(rows.map(row => row.minutes));
+
+    // Allow ordinary startup reads but fail the exact-id Listen requests used
+    // by getDocsFromServer. The request count proves this seam was exercised.
+    const listenPattern = '**/google.firestore.v1.Firestore/Listen/channel**';
+    const isAttemptRead = request => {
+      if (request.method() !== 'POST') return false;
+      const body = decodeURIComponent((request.postData() ?? '').replace(/\+/gu, ' '));
+      return body.includes('"fieldPath":"__name__"')
+        && body.includes('"op":"GREATER_THAN_OR_EQUAL"')
+        && body.includes('/documents/actuals/wp-actual-');
+    };
+    let failedReadbacks = 0;
+    let passedOtherListenPosts = 0;
+    const blockReadback = route => {
+      if (isAttemptRead(route.request())) {
+        failedReadbacks += 1;
+        return route.abort('connectionreset');
+      }
+      if (route.request().method() === 'POST') passedOtherListenPosts += 1;
+      return route.continue();
+    };
+    await page.route(listenPattern, blockReadback);
+    const firestore = attachWriteLedger(page);
+    try {
+      // End the blocked document immediately after reconnecting. If its SDK
+      // retries a write in this interval, the ledger/server checks fail.
+      await page.unroute(firestoreRoute);
+      await page.reload();
+      await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
+      expect(await actualDocuments(request, userId), 'the first attempt did not reach Firestore').toEqual([]);
+      await openPlannerOnPreviousWeek(page);
+      await expect.poll(() => failedReadbacks, { timeout: 60_000 }).toBeGreaterThan(0);
+      expect(passedOtherListenPosts, 'ordinary startup Listen traffic remains available').toBeGreaterThan(0);
+      await expect(lastReply(page)).toContainText('サーバーに接続できないため、保存結果を確認できていません', { timeout: 60_000 });
+      await actualTurn(page, request, week, 'あ、火曜は50分でした。', 'actual_tue_fix');
+      await expectPendingReply(page, [{ date: week[1], subject: '英語', minutes: 50 }], WEEK_TOTAL_AFTER_TUESDAY_FIX);
+      const corrected = await recordsInCheckpoint();
+      expect(corrected).toHaveLength(6);
+      expect(corrected.find(record => record.id === originalIds[1])).toMatchObject({ minutes: 50, status: 'pending' });
+      expect((await readAttempt())[0]).toEqual(attempt);
+      expect(await actualDocuments(request, userId), 'the correction does not save').toEqual([]);
+      expectNothingWrittenYet(firestore);
+    } finally {
+      await page.unroute(listenPattern, blockReadback);
+    }
+
+    let successfulReadbacks = 0;
+    const observeReadback = route => {
+      if (isAttemptRead(route.request())) successfulReadbacks += 1;
+      return route.continue();
+    };
+    await page.route(listenPattern, observeReadback);
+    try {
+      await page.reload();
+      await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
+      await openPlannerOnPreviousWeek(page);
+      await expect.poll(() => successfulReadbacks, { timeout: 60_000, message: 'the original 45-minute attempt reaches server readback after correction' }).toBeGreaterThan(0);
+      await expect(lastReply(page)).toHaveText(formatActualSaveReadbackReply(rows.map((row, index) => ({
+        id: originalIds[index], occurrenceDate: row.date, subject: row.subject, minutes: row.minutes,
+      })), [], []));
+      const pending = await recordsInCheckpoint();
+      expect(pending).toHaveLength(6);
+      expect(pending.every(record => record.status === 'pending')).toBe(true);
+      expect(pending.find(record => record.id === originalIds[1])).toMatchObject({ minutes: 50, status: 'pending' });
+      expect((await readAttempt())[0]).toEqual(attempt);
+      expect(await actualDocuments(request, userId), 'readback never saves automatically').toEqual([]);
+      expectNothingWrittenYet(firestore);
+
+      const retryDialog = await openConfirmation(page);
+      await expectConfirmationRows(retryDialog, correctedRows, WEEK_TOTAL_AFTER_TUESDAY_FIX);
+      expect(await actualDocuments(request, userId)).toEqual([]);
+      await clickSave(firestore, retryDialog, 6, request);
+      const saved = expectSavedWeek(await actualDocuments(request, userId), week, correctedRows);
+      expect(saved).toHaveLength(6);
+      expect(total(saved)).toBe(WEEK_TOTAL_AFTER_TUESDAY_FIX);
+      expect(saved.map(record => record.docId).sort()).toEqual([...originalIds].sort());
+      expect(saved.filter(record => record.date === week[1])).toHaveLength(1);
+      await expectNeighboursUnchanged(request);
+      expect(firestore.violations()).toEqual([]);
+    } finally {
+      await page.unroute(listenPattern, observeReadback);
+    }
+  });
+
   test('unconfirmed save: blocked Firestore write leaves six records saving, and a resend cannot claim they were saved', async ({ page, request }) => {
     await signIn(page);
     const week = await previousWeekOf(page);
