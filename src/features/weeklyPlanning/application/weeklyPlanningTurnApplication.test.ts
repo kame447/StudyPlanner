@@ -354,7 +354,8 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     expect(next.accepted).toBe(true);
     expect(execute).toHaveBeenCalledTimes(2);
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(store.getState().messages.at(-1)).toMatchObject({ role: 'assistant', content: '相談を続けます。' });
+    const messages = store.getState().messages;
+    expect(messages[messages.length - 1]).toMatchObject({ role: 'assistant', content: '相談を続けます。' });
   });
 
   it.each(['cancel', 'owner_change', 'revision_change'])('passes a live recovery guard that closes after %s', async (change) => {
