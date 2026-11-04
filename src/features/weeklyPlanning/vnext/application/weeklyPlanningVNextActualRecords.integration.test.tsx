@@ -358,6 +358,65 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     expect(server.get(original[1].id)?.minutes).toBe(45);
   });
 
+  it.each(['saved', 'not_saved', 'partial', 'unknown'] as const)(
+    'keeps a corrected value pending through $0 readback and saves it only on explicit approval', async kind => {
+      const server = new Map<string, PendingWeeklyPlanningActualRecord>();
+      const save = vi.fn(async (_owner: string, records: readonly PendingWeeklyPlanningActualRecord[]) => {
+        if (save.mock.calls.length === 1) {
+          const committed = kind === 'not_saved' ? [] : kind === 'partial' ? records.slice(0, 3) : records;
+          for (const record of committed) server.set(record.id, record);
+          await new Promise<void>(() => undefined);
+        } else {
+          for (const record of records) server.set(record.id, record);
+        }
+      });
+      const { records: original } = await reloadUnansweredSave(save);
+      const offline = await mount(inputWith(save), {
+        readActualSave: async () => { throw new ActualSaveReadbackUnknownError('unavailable'); },
+        interpret: () => async () => ({ status: 'interpreted' as const, planningIntent: 'discuss' as const,
+          answer: null, conversationActs: [], studyRecords: [rec('2026-10-27', '英語', 50)], studyRecordQuestion: null,
+          delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }),
+      });
+      await act(async () => { await vi.waitFor(() => expect(offline.current!.state.messages.some(message =>
+        message.content.includes('サーバーに接続できないため'))).toBe(true)); });
+      await act(async () => { await offline.current!.submitTurn('火曜の英語は50分でした。'); });
+      expect(sumActualRecordMinutes(offline.current!.pendingActualRecords!)).toBe(400);
+      await act(async () => { renderer!.unmount(); }); renderer = undefined;
+
+      const confirmed = () => [...server.values()].map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes));
+      const readActualSave = vi.fn(async (ownerId: string, attempted: Parameters<typeof readAndClassifyActualSave>[0]['attempted']) => {
+        if (kind === 'unknown') throw new ActualSaveReadbackUnknownError('unavailable');
+        return readAndClassifyActualSave({ ownerId, attempted,
+          readConfirmed: async () => ({ fromCache: false, hasPendingWrites: false, records: confirmed() }) });
+      });
+      const reloaded = await mount({ ...inputWith(save), actuals: confirmed() }, { readActualSave });
+      const statuses = kind === 'saved' ? ['saved', 'pending', 'saved', 'saved', 'saved', 'saved']
+        : kind === 'partial' ? ['saved', 'pending', 'saved', 'pending', 'pending', 'pending'] : Array(6).fill('pending');
+      await act(async () => { await vi.waitFor(() => expect(storedStatuses(reloaded)).toEqual(statuses)); });
+      expect(readActualSave).toHaveBeenCalledOnce();
+      expect(readActualSave.mock.calls[0][1]).toEqual(original.map(({ id, occurrenceDate, subject, minutes }) =>
+        ({ id, occurrenceDate, subject, minutes })));
+      expect(reloaded.current!.pendingActualRecords!.find(record => record.id === original[1].id)).toMatchObject({ minutes: 50 });
+      expect(server.get(original[1].id)?.minutes).toBe(kind === 'not_saved' ? undefined : 45);
+      expect(save).toHaveBeenCalledOnce();
+      if (kind === 'partial' || kind === 'unknown') return;
+
+      await act(async () => { await Promise.all([reloaded.current!.approveActualRecords!(), reloaded.current!.approveActualRecords!()]); });
+      expect(save, 'a confirmed original result allows one explicit save of the corrected pending values').toHaveBeenCalledTimes(2);
+      const correction = { id: original[1].id, occurrenceDate: '2026-10-27', subject: '英語', minutes: 50 };
+      expect(save.mock.calls[1][1]).toEqual(kind === 'saved' ? [correction] : original.map(record =>
+        record.id === correction.id ? correction : { id: record.id, occurrenceDate: record.occurrenceDate, subject: record.subject, minutes: record.minutes }));
+      expect(server.size).toBe(6);
+      expect([...server.keys()].sort()).toEqual(original.map(record => record.id).sort());
+      expect([...server.values()].reduce((total, record) => total + record.minutes, 0)).toBe(400);
+      expect(reloaded.current!.pendingActualRecords).toEqual([]);
+      await act(async () => { renderer!.unmount(); }); renderer = undefined;
+      const saved = await mount({ ...inputWith(save), actuals: confirmed() }, { readActualSave });
+      expect(saved.current!.pendingActualRecords).toEqual([]);
+      await act(async () => { await saved.current!.approveActualRecords!(); });
+      expect(save).toHaveBeenCalledTimes(2);
+    });
+
   it.each([
     { kind: 'saved', expected: '保存を確認しました', statuses: ['saved', 'saved', 'saved', 'saved', 'saved', 'saved'] },
     { kind: 'not_saved', expected: 'サーバー上に保存されていません', statuses: ['pending', 'pending', 'pending', 'pending', 'pending', 'pending'] },
