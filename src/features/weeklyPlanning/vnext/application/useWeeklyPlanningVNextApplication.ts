@@ -23,7 +23,8 @@ import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn } from '../.
 import { formatActualSaveReadbackReply, formatUnknownActualSaveReadbackReply, resolvePendingActualRecordsAgainstSaved,
   selectPendingActualRecords, toActualRecordsToSave, ACTUAL_SAVE_RETRY_BLOCKED_REPLY, ACTUAL_SAVE_RETRY_FAILED_REPLY,
   ACTUAL_SAVE_RETRY_SAVED_REPLY, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
-import { ActualRecordsNotWrittenError, ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
+import { ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
+import { PlannerMutationScopeExpiredError } from '../../../../lib/plannerMutationScopeExpiredError';
 import type { ActualSaveIntentRecord, ActualSaveReadbackClassification } from '../weeklyPlanningVNextActualSaveReadback';
 import { createWeeklyPlanningApplicationRequestId } from '../../application/weeklyPlanningApplicationIdentity';
 
@@ -428,11 +429,9 @@ export function useWeeklyPlanningVNextApplication(
       try { await input.saveWeeklyActualRecords(ownerId, toActualRecordsToSave(records)); }
       catch (error) {
         if (retry) reportRetry(ACTUAL_SAVE_RETRY_FAILED_REPLY);
-        else {
-          // Only a refusal before anything was sent discards the attempt. A scoped mutation may reject
-          // after the server committed, and other errors do not prove absence; reload must read back.
-          if (error instanceof ActualRecordsNotWrittenError) saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt);
-        }
+        // A scope that expired while the batch ran does not prove nothing was written (the server may have
+        // committed): keep the attempt so a reload reads the server back. Other rejections are refusals.
+        else if (!(error instanceof PlannerMutationScopeExpiredError)) saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt);
         throw error;
       }
       // A turn may have corrected a value while the batch was in flight. Only the values that this

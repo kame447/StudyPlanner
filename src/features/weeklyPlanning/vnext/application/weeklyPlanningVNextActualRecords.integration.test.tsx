@@ -19,7 +19,8 @@ import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActu
   type PendingWeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
 import { readAndClassifyActualSave } from '../weeklyPlanningVNextActualSaveReadback';
-import { ActualRecordsNotWrittenError, ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
+import { ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
+import { PlannerMutationScopeExpiredError } from '../../../../lib/plannerMutationScopeExpiredError';
 
 const OWNER = 'exam-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03'; const NOW = `${TODAY}T00:00:00.000Z`;
 const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartDate: WEEK, conversationId: 'exam-conversation',
@@ -174,7 +175,7 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
 
   it('keeps every record pending after a failed save and a retry saves the same batch', async () => {
     await seedRecords(storage.storage);
-    const save = vi.fn().mockRejectedValueOnce(new ActualRecordsNotWrittenError('学習実績を保存できませんでした。保存はされていません。')).mockResolvedValue(undefined);
+    const save = vi.fn().mockRejectedValueOnce(new Error('学習実績を保存できませんでした。保存はされていません。')).mockResolvedValue(undefined);
     const ref = await mount(inputWith(save));
     await act(async () => { await expect(ref.current!.approveActualRecords!()).rejects.toThrow('保存はされていません'); });
     expect(ref.current!.pendingActualRecords).toHaveLength(6);
@@ -198,12 +199,13 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     const save = vi.fn(async (_owner: string, records: readonly PendingWeeklyPlanningActualRecord[]) => {
       writes += 1;
       for (const record of records) server.set(record.id, record);
-      if (writes === 1) throw new Error('client scope expired after server commit');
+      // The binding's own rejection after the repository committed (usePlannerMutationScope).
+      if (writes === 1) throw new PlannerMutationScopeExpiredError();
     });
     const first = await mount(inputWith(save));
     const original = first.current!.pendingActualRecords!;
     const originalIds = original.map(record => record.id);
-    await act(async () => { await expect(first.current!.approveActualRecords!()).rejects.toThrow('client scope expired'); });
+    await act(async () => { await expect(first.current!.approveActualRecords!()).rejects.toThrow(PlannerMutationScopeExpiredError); });
     expect(server.size).toBe(6);
     const chatId = first.current!.chat.index.activeChatId;
     expect(attemptInUi(chatId), 'a rejected client promise does not prove the server write failed').toEqual({
@@ -529,7 +531,7 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     const optimistic = { ...initial, actuals: original.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
     await act(async () => { renderer!.update(<Harness ref={ref} input={optimistic} services={sharedServices} />); });
     expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(original.map(record => record.id));
-    await act(async () => { rejectSave(new ActualRecordsNotWrittenError('保存はされていません')); await expect(saving).rejects.toThrow('保存はされていません'); });
+    await act(async () => { rejectSave(new Error('保存はされていません')); await expect(saving).rejects.toThrow('保存はされていません'); });
     const rejectedUi = storage.storage.getItem(`studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${ref.current!.chat.index.activeChatId}.ui`)!;
     expect(JSON.parse(rejectedUi)).not.toHaveProperty('actualSaveAttempt');
     await act(async () => { renderer!.update(<Harness ref={ref} input={initial} services={sharedServices} />); });

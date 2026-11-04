@@ -1,6 +1,5 @@
 import type { MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import type { DurationActualInput } from '../domain/durationActuals';
-import { ActualRecordsNotWrittenError } from '../domain/actualSaveReadback';
 import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import type { MaterialEditBaseline } from './useActualMutationAdmission';
@@ -315,7 +314,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
 
   async function saveWeeklyActualRecords(owner: string, records: readonly DurationActualInput[]): Promise<void> {
     // Only the signed-in owner's confirmation may write: a record set for anyone else is refused before the repository.
-    if (!user?.id || owner !== user.id) throw new ActualRecordsNotWrittenError('実績の所有者が一致しません。保存はされていません。');
+    if (!user?.id || owner !== user.id) throw new Error('実績の所有者が一致しません。保存はされていません。');
     await saveDurationActualsBatch(records);
   }
 
