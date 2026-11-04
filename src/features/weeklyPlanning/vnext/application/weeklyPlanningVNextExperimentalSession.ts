@@ -305,7 +305,7 @@ function systemReply(outcome: WeeklyPlanningVNextExperimentalTurnOutcome, previe
   return `予定案を作れませんでした（${previewBlockedBy.join(', ')}）。`;
 }
 
-function interpretationFailureReply(failure: WeeklyPlanningVNextFailureRecovery,
+export function interpretationFailureReply(failure: WeeklyPlanningVNextFailureRecovery,
   preview: WeeklyPlanningVNextShownPreview | null): string {
   const cause = failure.reason === 'provider_error'
     ? 'AIへの接続でエラーが起きました。' : 'AIの返答を確認できませんでした。';

@@ -127,7 +127,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-emulator-vnext-production',
-      testMatch: ['emulator/vnext-production.emulator.mjs', 'emulator/vnext-durable-provider-failure.emulator.mjs', 'emulator/vnext-durable-repeated-question.emulator.mjs', 'emulator/vnext-durable-worker-unreachable.emulator.mjs', 'emulator/vnext-durable-worker-terminal.emulator.mjs'],
+      testMatch: ['emulator/vnext-production.emulator.mjs', 'emulator/vnext-durable-provider-failure.emulator.mjs', 'emulator/vnext-durable-repeated-question.emulator.mjs', 'emulator/vnext-durable-worker-unreachable.emulator.mjs', 'emulator/vnext-durable-worker-terminal.emulator.mjs', 'emulator/vnext-durable-provider-failure-pending-actuals.emulator.mjs', 'emulator/vnext-durable-option-conflict-repeat.emulator.mjs', 'emulator/vnext-durable-no-options-repeat.emulator.mjs'],
       dependencies: ['emulator-vnext-production-setup'],
       metadata: { email: 'e2e-vnext-production@example.test' },
       use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: DURABLE_STATE },
@@ -141,7 +141,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-emulator-actual-chat',
-      testMatch: ['emulator/vnext-actual-record.emulator.mjs', 'emulator/vnext-actual-correction.emulator.mjs'],
+      testMatch: ['emulator/vnext-actual-record.emulator.mjs', 'emulator/vnext-actual-correction.emulator.mjs', 'emulator/vnext-actual-readback-unavailable.emulator.mjs'],
       dependencies: ['emulator-actual-chat-setup'],
       metadata: { email: 'e2e-actual-chat@example.test' },
       use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: ACTUAL_CHAT_STATE },

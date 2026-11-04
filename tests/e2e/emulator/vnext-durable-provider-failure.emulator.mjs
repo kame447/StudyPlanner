@@ -1,13 +1,24 @@
 import { expect, test } from '@playwright/test';
+import { createServer } from 'vite';
+import { fileURLToPath } from 'node:url';
 import { SYNTHETIC, answer, nextCall, rendererReply } from '../support/synthetic-provider-client.mjs';
 import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import { attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
 
-// Copied exactly from interpretationFailureReply, weeklyPlanningVNextExperimentalSession.ts:299-311
-// at 0d623e0c: provider_error, with an existing preview, first and repeated failures.
-const firstFailure = 'AIへの接続でエラーが起きました。今回の内容は計画に反映していません。表示済みの予定案は保持しています。復旧後にもう一度送ってください。';
-const repeatedFailure = 'AIへの接続でエラーが起きました。続けて失敗しています。今回の内容は計画に反映していません。表示済みの予定案は保持しています。予定案を確認するか、復旧後に変更を再送できます。';
+// A RED checkout may point P1_ORACLE_ROOT at the fixed product source.
+let interpretationFailureReply;
+test.beforeAll(async () => {
+  const root = process.env.P1_ORACLE_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
+  const server = await createServer({ configFile: false, root, server: { middlewareMode: true }, appType: 'custom' });
+  try {
+    const product = await server.ssrLoadModule('/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalSession.ts');
+    interpretationFailureReply = product.interpretationFailureReply;
+    expect(interpretationFailureReply).toEqual(expect.any(Function));
+  } finally {
+    await server.close();
+  }
+});
 const genericFailure = '週間計画の会話状態を更新できませんでした。';
 const genericInterruption = '返信の生成が中断しました。自動でAIを再実行していません。';
 const firestore = 'http://127.0.0.1:8180/v1/projects/demo-studyplanner/databases/(default)/documents';
@@ -98,10 +109,10 @@ test('durable 500 preserves the preview, explains repeated failure and accepts t
   expect(before.vnext.failureRecovery).toBeUndefined();
 
   const conversation = page.locator('.ai-planning-conversation');
-  for (const [index, [text, expected]] of [
-    ['数学を90分に変更して', firstFailure],
-    ['数学を90分に変更して', repeatedFailure],
-  ].entries()) {
+  for (const [index, text] of ['数学を90分に変更して', '数学を90分に変更して'].entries()) {
+    const expected = interpretationFailureReply(
+      { reason: 'provider_error', consecutiveCount: index + 1 }, before.vnext.preview,
+    );
     const beforeMessages = await bubbles(page).count();
     const beforePosts = posts.length;
     const beforeProvider = await providerCount(request);

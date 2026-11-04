@@ -36,6 +36,11 @@ export interface WeeklyPlanningVNextMessage {
   content: string;
 }
 
+export const VNEXT_REPEATED_REMAINING_INCONSISTENT_GUIDANCE =
+  '全体から完了量を引いた残りと、入力された残量が一致しません。どの値を直すか選んでください。';
+export const VNEXT_REPEATED_SAME_OR_DISTINCT_WORK_GUIDANCE =
+  '複数の量や時間が、別々に行う作業なのか、同じ作業を表しているのかが未確定です。予定に含める作業を、表示した選択肢から選んでください。';
+
 export const VNEXT_REPEATED_EFFORT_INCONSISTENT_GUIDANCE =
   '時間の見積もりが一致していません。どの見積もりを何分に訂正するか、対象と時間を指定してください。今決められなければ「今回は保留」と答えられます。';
 export const VNEXT_REPEATED_COMPLETED_EXCEEDS_TOTAL_GUIDANCE =
@@ -129,9 +134,9 @@ export function createWeeklyPlanningVNextRenderInput(params: {
         || question?.code === 'missing_schedulable_work')
         ? ['何分くらい', '所要時間はまだ分からないので、仮置きで予定を組んで見せて', '後で決める'] : []),
       ...(params.repeatedQuestionGuidance && question?.code === 'remaining_inconsistent'
-        ? ['全体から完了量を引いた残りと、入力された残量が一致しません。どの値を直すか選んでください。'] : []),
+        ? [VNEXT_REPEATED_REMAINING_INCONSISTENT_GUIDANCE] : []),
       ...(params.repeatedQuestionGuidance && question?.code === 'same_or_distinct_work'
-        ? ['複数の量や時間が、別々に行う作業なのか、同じ作業を表しているのかが未確定です。予定に含める作業を、表示した選択肢から選んでください。'] : []),
+        ? [VNEXT_REPEATED_SAME_OR_DISTINCT_WORK_GUIDANCE] : []),
       ...(params.repeatedQuestionGuidance && question?.code === 'effort_inconsistent'
         ? [VNEXT_REPEATED_EFFORT_INCONSISTENT_GUIDANCE] : []),
       ...(params.repeatedQuestionGuidance && question?.code === 'completed_exceeds_total'

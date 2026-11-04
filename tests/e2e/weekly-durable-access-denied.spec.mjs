@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { expect, test } from '@playwright/test';
+import { createServer } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const { outputFiles } = await build({ stdin: { contents: `
@@ -20,11 +21,20 @@ const owner = 'browser-real-weekly-user';
 const failedText = '数学の予定を変更したい';
 const nextText = '続けて相談したい';
 const reply = 'どの学習を計画しましょうか？';
-// Copied exactly from weeklyPlanningDurableAccessDeniedError.ts at 99b7ad4e.
-const deniedMessage = {
-  401: '認証を確認できませんでした。今回の入力は保存も承認もされていません。再ログインして権限を確認した後、この会話で相談を続けられます。',
-  403: 'この会話への権限を確認できませんでした。今回の入力は保存も承認もされていません。再ログインして権限を確認した後、この会話で相談を続けられます。',
-};
+// A RED checkout may point P4_ORACLE_ROOT at the fixed product source.
+let deniedMessage;
+test.beforeAll(async () => {
+  const oracleRoot = process.env.P4_ORACLE_ROOT ?? root;
+  const server = await createServer({ configFile: false, root: oracleRoot, server: { middlewareMode: true }, appType: 'custom' });
+  try {
+    const product = await server.ssrLoadModule('/src/features/weeklyPlanning/application/weeklyPlanningDurableAccessDeniedError.ts');
+    const ErrorType = product.WeeklyPlanningDurableAccessDeniedError;
+    expect(ErrorType).toEqual(expect.any(Function));
+    deniedMessage = { 401: new ErrorType(401).userMessage, 403: new ErrorType(403).userMessage };
+  } finally {
+    await server.close();
+  }
+});
 
 for (const status of [401, 403]) {
   test(`durable ${status} keeps the consultation and preview unsaved and accepts the next turn`, async ({ page, context }) => {
