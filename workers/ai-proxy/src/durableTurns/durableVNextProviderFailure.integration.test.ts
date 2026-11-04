@@ -26,7 +26,8 @@ const env = { OPENAI_API_KEY: 'synthetic-key', ALLOWED_CHAT_MODELS: 'gpt-6-luna'
   AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 0 }) }) },
 } as unknown as AiProxyWorkerEnv;
 
-function harness() {
+function harness(focusedDecision = { decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
+  minutes: 5, precision: 'approximate', quantityRole: null } as Record<string, unknown>) {
   let record: DurableTurnRecord | undefined;
   let checkpoint: string | null = null;
   let sequence = 0;
@@ -41,8 +42,7 @@ function harness() {
     const name = body.response_format?.json_schema?.name;
     const content = name === VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name ? semantic
       : name === FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5.json_schema.name
-        ? JSON.stringify({ decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
-          minutes: 5, precision: 'approximate', quantityRole: null })
+        ? JSON.stringify(focusedDecision)
         : await successfulWeeklyPlanningRendererCompletion(body);
     return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content } }] });
   });
@@ -131,4 +131,36 @@ it.each(['500', 'timeout'] as const)('retains an unsaved VNext preview or shown 
       expect(recovered.checkpoint.vnext.failureRecovery).toBeUndefined();
       expect(recovered.result.result.message).not.toContain('保存しました');
     }
+});
+
+it('retains an unanswered streak of two through a durable provider 500 and advances it only after the next successful empty reading', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(STARTED);
+  const h = harness({ decision: 'fallback', effortTarget: null, effortMeasurement: null,
+    minutes: null, precision: null, quantityRole: null });
+  const seed = await h.turn('数学を7ページ', reading('discuss', [task('math', '数学'), work('math-work', 'math', 7, 'page')]));
+  expect(seed.checkpoint.vnext.presentedQuestion).not.toBeNull();
+  const first = await h.turn('全部', reading('discuss'));
+  expect(first.checkpoint.vnext.unansweredQuestionStreak).toMatchObject({ count: 1 });
+  const second = await h.turn('ない', reading('discuss'));
+  const retained = second.checkpoint.vnext;
+  expect(retained.unansweredQuestionStreak).toMatchObject({ count: 2,
+    questionKey: seed.checkpoint.vnext.presentedQuestion!.questionKey,
+    graphRevision: seed.checkpoint.vnext.state.graph.revision });
+  const failed = await h.turn('接続を待っています', reading('discuss'), '500');
+  expect(failed.checkpoint.vnext.unansweredQuestionStreak).toEqual(retained.unansweredQuestionStreak);
+  expect(failed.checkpoint.vnext.failureRecovery).toEqual({ reason: 'provider_error', consecutiveCount: 1 });
+  expect(failed.checkpoint.vnext.state).toEqual(retained.state);
+  expect(failed.checkpoint.vnext.preview).toEqual(retained.preview);
+  expect(failed.checkpoint.vnext.presentedQuestion).toEqual(retained.presentedQuestion);
+  expect(failed.checkpoint.vnext.messages).toContainEqual({ role: 'user', content: '接続を待っています' });
+  expect(failed.result.result.message).toContain('今回の内容は計画に反映していません。');
+  expect(failed.result.result.draftCandidates).toEqual([]);
+  const third = await h.turn('そういうこと', reading('discuss'));
+  expect(third.checkpoint.vnext.unansweredQuestionStreak).toMatchObject({ ...retained.unansweredQuestionStreak, count: 3 });
+  expect(third.checkpoint.vnext.failureRecovery).toBeUndefined();
+  expect(third.checkpoint.vnext.state).toEqual(retained.state);
+  expect(third.result.result.message).not.toBe(second.result.result.message);
+  expect(third.result.result.message).not.toContain('保存しました');
+  expect(third.result.result.draftCandidates).toEqual([]);
 });
