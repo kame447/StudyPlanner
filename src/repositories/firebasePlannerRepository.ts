@@ -43,6 +43,7 @@ import {
   normalizeTodoRecord,
   resolveActualForUpsert,
 } from './repositoryUtils';
+import { buildDurationActuals } from '../domain/durationActuals';
 
 type PlannerDoc =
   | Plan
@@ -735,6 +736,20 @@ export function createFirebasePlannerRepository(
         throw new Error(
           normalizeErrorMessage('記録を保存できませんでした。', error as { message?: string | null }),
         );
+      }
+    },
+    async saveDurationActualsBatch(userId, records) {
+      // Validated before any write: a bad record means nothing is saved. One batch commits all of them or none.
+      const actuals = buildDurationActuals(userId, records, new Date().toISOString());
+      try {
+        const batch = writeBatch(firestoreDb);
+        actuals.forEach((actual) => batch.set(doc(firestoreDb, 'actuals', actual.id), stripUndefinedDeep(actual)));
+        await batch.commit();
+        return actuals;
+      } catch (error) {
+        throw Object.assign(new Error(
+          normalizeErrorMessage('記録を保存できませんでした。', error as { message?: string | null }),
+        ), { code: (error as FirebaseLikeError | null)?.code });
       }
     },
     async deleteActual(_userId, actualId) {

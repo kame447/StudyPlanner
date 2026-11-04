@@ -1,5 +1,6 @@
 import type { Actual, Plan } from '../../../types/domain';
 import type { GenericPlanningWorkItem } from '../semantic/weeklyPlanningGenericWorkItems';
+import { getActualDurationMinutes, isDurationActual } from '../../../lib/actualDuration';
 
 export const WEEKLY_PLANNING_ESTIMATE_METADATA_VERSION = 1 as const;
 export const WEEKLY_PLANNING_ESTIMATE_CALIBRATION_VERSION =
@@ -33,6 +34,7 @@ function timeToMinutes(value: string): number | null {
 }
 
 function actualDurationMinutes(actual: Actual): number | null {
+  if (isDurationActual(actual)) return getActualDurationMinutes(actual) || null;
   const start = timeToMinutes(actual.actualStartTime);
   const end = timeToMinutes(actual.actualEndTime);
   if (start === null || end === null) return null;

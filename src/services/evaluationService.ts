@@ -7,6 +7,7 @@ import {
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
 import type { Actual, EvaluationSummary, Plan } from '../types/domain';
+import { getActualDurationMinutes } from '../lib/actualDuration';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -17,7 +18,7 @@ function getPlanMinutes(plan: Plan): number {
 }
 
 function getActualMinutes(actual: Actual): number {
-  return getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime);
+  return getActualDurationMinutes(actual);
 }
 
 function calculateAchievement(

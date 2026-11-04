@@ -17,6 +17,7 @@ import {
 } from './studyRecords';
 import type { Actual, MonthEvent, Plan, TodoTask } from '../types/domain';
 import { calculateStudyStreaks } from './studyStreak';
+import { elapsedActualMinutes, getActualDurationMinutes } from './actualDuration';
 
 export interface HomeDayProgress {
   date: string;
@@ -50,7 +51,7 @@ function timeNowLabel(now: Date): string {
 }
 
 function studyMinutes(actual: Actual): number {
-  return getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime);
+  return getActualDurationMinutes(actual);
 }
 
 function plannedMinutesByNow(plan: Plan, date: string, today: string, nowTime: string): number {
@@ -146,9 +147,7 @@ export function buildHomeDashboardModel({
       0,
     );
     weekActualMinutesByNow += dayActuals.reduce(
-      (sum, actual) => sum + elapsedEntryMinutes(
-        actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, today, nowTime,
-      ),
+      (sum, actual) => sum + elapsedActualMinutes(actual, today, nowTime),
       0,
     );
 

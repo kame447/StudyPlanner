@@ -1,5 +1,5 @@
 import { getEntryDurationMinutes, resolveEntryEndTime } from './entryTimeRange';
-import type { Actual, ActualDraft } from '../types/domain';
+import type { ActualDraft, TimedActual } from '../types/domain';
 
 export interface StandaloneActualEditValues {
   occurrenceDate: string;
@@ -10,7 +10,7 @@ export interface StandaloneActualEditValues {
   note: string;
 }
 
-export function getStandaloneActualDurationMinutes(actual: Actual): number | null {
+export function getStandaloneActualDurationMinutes(actual: TimedActual): number | null {
   const minutes = getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime);
   return minutes > 0 ? minutes : null;
 }
@@ -23,7 +23,7 @@ export function resolveStandaloneActualEndTime(
 }
 
 export function createStandaloneActualDraft(
-  actual: Actual,
+  actual: TimedActual,
   values: StandaloneActualEditValues,
 ): ActualDraft {
   return {
@@ -43,9 +43,9 @@ export function createStandaloneActualDraft(
 }
 
 export function createStandaloneActualCandidate(
-  actual: Actual,
+  actual: TimedActual,
   values: StandaloneActualEditValues,
-): Actual {
+): TimedActual {
   return {
     ...actual,
     planId: null,

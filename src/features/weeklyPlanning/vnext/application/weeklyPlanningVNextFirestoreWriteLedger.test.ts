@@ -1,5 +1,5 @@
 // @ts-expect-error The e2e support module is plain ESM without declarations.
-import { cancellationCommitProblems, createWriteLedger, protectedWritesIn } from '../../../../../tests/e2e/support/vnext-firestore-writes.mjs';
+import { actualsCommitProblems, cancellationCommitProblems, createWriteLedger, protectedWritesIn } from '../../../../../tests/e2e/support/vnext-firestore-writes.mjs';
 // @ts-expect-error The e2e support module is plain ESM without declarations.
 import { assertKnownFlowOptions } from '../../../../../tests/e2e/support/vnext-flow-options.mjs';
 import { describe, expect, it } from 'vitest';
@@ -82,6 +82,34 @@ describe('phase-scoped Firestore write ledger', () => {
           expect(cancellationCommitProblems(ledger.commitsIn(phase), 1)).toEqual([]);
         }
       }
+    });
+
+    it('the confirmed record save: one commit of N actuals updates is allowed in save-actuals', async () => {
+      const ops = Array.from({ length: 6 }, (_, index) => ({ update: `actuals/wp-actual-c1-2026-10-2${index}-math` }));
+      const ledger = await during('save-actuals', batch(host, ops));
+      expect(ledger.violations()).toEqual([]);
+      expect(protectedWritesIn(ledger.inPhase('save-actuals'))).toHaveLength(1);
+      expect(actualsCommitProblems(ledger.commitsIn('save-actuals'), 6)).toEqual([]);
+    });
+
+    it('save-actuals rejects any other collection or a delete, and the commit check counts operations and commits', async () => {
+      for (const extra of [{ update: 'schedule_events/e1' }, { update: 'plans/p1' }, { update: 'todos/t1' }, { delete: 'actuals/a1' }]) {
+        const ledger = await during('save-actuals', batch(host, [{ update: 'actuals/a1' }, extra]));
+        expect(ledger.violations(), JSON.stringify(extra)).toHaveLength(1);
+      }
+      const ledger = await during('save-actuals', batch(host, [{ update: 'actuals/a1' }, { update: 'actuals/a2' }]));
+      expect(actualsCommitProblems(ledger.commitsIn('save-actuals'), 6)).not.toEqual([]);
+      const two = createWriteLedger();
+      await two.during('save-actuals', async () => { two.record(batch(host, [{ update: 'actuals/a1' }])); two.record(batch(host, [{ update: 'actuals/a2' }])); });
+      expect(actualsCommitProblems(two.commitsIn('save-actuals'), 1)).not.toEqual([]);
+    });
+
+    it('an actuals write outside save-actuals (no-write phase, save, cleanup) is a violation', async () => {
+      const none = createWriteLedger();
+      none.record(batch(host, [{ update: 'actuals/a1' }]));
+      expect(none.violations()).toHaveLength(1);
+      const ledger = await during('save', batch(host, [{ update: 'actuals/a1' }]));
+      expect(ledger.violations()).toHaveLength(1);
     });
 
     it('a delete, an actuals write, a todos write or a migration write in cleanup or sweep is a violation', async () => {
