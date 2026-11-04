@@ -115,6 +115,86 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(Object.keys(payload)).toEqual(['core', 'checkpoint', 'legacyV5Checkpoint', 'weekStartDate', 'input']);
   });
 
+  it.each([
+    { code: 'effort_inconsistent', large: false }, { code: 'effort_inconsistent', large: true },
+    { code: 'completed_exceeds_total', large: false }, { code: 'completed_exceeds_total', large: true },
+  ])('persists the third $code explanation through actual renderer, outbox reload and Worker (large=$large)', async ({ code, large }) => {
+    const rendererRequests: { messages: readonly { content: string }[] }[] = [];
+    const rendererInputs: unknown[] = [];
+    const add: VNextAddFact[] = code === 'completed_exceeds_total'
+      ? [task, work('total', 'scope_total', 10), work('done', 'completed', 12)]
+      : [task, work('pages', 'remaining', 8),
+      { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'task' }, targetRef: { localId: 'pages' },
+        effortKind: 'duration_per_unit', minutes: 5, unitCode: 'page', unitLabel: '枚', precision: 'exact' },
+      { kind: 'effort_estimate', localId: 'total', taskRef: { localId: 'task' }, targetRef: { localId: 'pages' },
+        effortKind: 'total_duration', minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' }];
+    const h = harness({ nativeReadings: [add, [], [], []].map(add => ({ planningIntent: 'discuss',
+      conversationActs: [], delta: { ...EMPTY, add }, answer: null })), createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+        rendererRequests.push(structuredClone(request));
+        const response = JSON.parse(await successfulWeeklyPlanningRendererCompletion(request));
+        const prompt = JSON.parse(request.messages[1].content);
+        response.text += prompt.applicationDecision.relevantLabels.join(' / ');
+        return JSON.stringify(response);
+      } });
+      return { render(input) {
+        Object.assign(input.communication!, { futureEffortConflictSentinel: 'keep-effort-conflict-guidance',
+          ...(large ? { futureLargeEffortConflictField: 'z'.repeat(48 * 1024) } : {}) });
+        rendererInputs.push(structuredClone(input));
+        return renderer.render(input);
+      } };
+    } });
+    await h.submit(code === 'completed_exceeds_total'
+      ? '数学プリントは全体10枚、12枚完了です。' : '数学プリントは残り8枚、1枚5分、全体60分です。');
+    expect(h.results[0].dialogueRendererTrace?.response?.status,
+      JSON.stringify(h.results[0].dialogueRendererTrace?.response)).toBe('rendered');
+    await h.submit('うーん'); await h.submit('まだ分からない');
+    failAppend = true;
+    await h.submit('そうですね');
+    const result = h.results[3];
+    const sent = rendererRequests[rendererRequests.length - 1];
+    const prompt = JSON.parse(sent.messages[1].content);
+    expect(prompt.applicationDecision).toMatchObject({ questionCode: code,
+      communication: { goal: 'explain_question' }, relevantLabels: expect.arrayContaining(code === 'completed_exceeds_total'
+        ? ['全体10枚', '完了12枚'] : ['1枚あたり5分', '全体60分']) });
+    expect(result.dialogueRendererTrace?.response?.status).toBe('rendered');
+    const actualInput = rendererInputs[3] as Parameters<typeof createWeeklyPlanningStableV5DialoguePrompt>[0];
+    const actualPrompt = createWeeklyPlanningStableV5DialoguePrompt(actualInput);
+    expect(sent.messages).toEqual([{ role: 'system', content: actualPrompt.systemPrompt },
+      { role: 'user', content: actualPrompt.userPrompt }]);
+    expect(result.dialogueRendererTrace?.request?.promptContext).toEqual(actualInput);
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const failedWrite = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(failedWrite.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-effort-conflict', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(failedWrite.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    if (!large) {
+      const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(actualInput);
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-effort-conflict-guidance');
+    expect(saved).toContain('explain_question');
+    expect(saved).toContain(code);
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) {
+      const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+        originalBytes: new TextEncoder().encode(JSON.stringify(rendererInputs[3])).byteLength });
+      expect(saved).not.toContain('z'.repeat(48 * 1024));
+    }
+  });
+
   it('keeps successful placement and records the actual native request and renderer evidence', async () => {
     const h = harness();
     const submitted = await h.submit('数学を30分');
