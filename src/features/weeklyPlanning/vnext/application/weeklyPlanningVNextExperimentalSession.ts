@@ -520,7 +520,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
       repeatedQuestionGuidance: question !== null && question.optionalInvitation === undefined
-        && vnextQuestionKeyAllowsProvisionalTimebox(question.key)
+        && (vnextQuestionKeyAllowsProvisionalTimebox(question.key)
+          || (question.code === 'remaining_inconsistent' && question.key.startsWith('remaining_inconsistent:')))
         && unansweredQuestionStreak !== undefined && unansweredQuestionStreak.count >= 3,
       registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
     });

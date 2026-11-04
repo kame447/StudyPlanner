@@ -112,7 +112,9 @@ export function createWeeklyPlanningVNextRenderInput(params: {
       includePreviewPromotionControl: preview !== null }), ...optionLabels,
       ...(params.repeatedQuestionGuidance && (question?.code === 'missing_effort_estimate'
         || question?.code === 'missing_schedulable_work')
-        ? ['何分くらい', '所要時間はまだ分からないので、仮置きで予定を組んで見せて', '後で決める'] : [])])],
+        ? ['何分くらい', '所要時間はまだ分からないので、仮置きで予定を組んで見せて', '後で決める'] : []),
+      ...(params.repeatedQuestionGuidance && question?.code === 'remaining_inconsistent'
+        ? ['全体から完了量を引いた残りと、入力された残量が一致しません。どの値を直すか選んでください。'] : [])])],
     fallbackText: params.authorizationRequired
       ? '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。'
       : RENDERER_TECHNICAL_STOP,
