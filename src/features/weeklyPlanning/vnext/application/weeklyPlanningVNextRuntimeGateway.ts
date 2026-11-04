@@ -59,8 +59,12 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
           throw new Error('VNext durable receipt does not match the current conversation.');
         }
         if (!input.resumeDurable) saveDurableWeeklyTurnReceipt(receipt);
+        const retained = before === null ? null : parseWeeklyPlanningVNextSessionCheckpoint({ raw: before,
+          ownerId: input.userId, weekStartDate: input.snapshot.weekStartDate });
         completed = await executeDurableWeeklyTurn<WeeklyPlanningVNextDurableTurnResult>(receipt, {
           resumeOnly: input.resumeDurable, isCurrent: input.isCurrentTurn,
+          hasPendingActualRecords: retained?.vnext.actualRecords?.some(record => record.status === 'pending') === true,
+          hasRetainedPlanPreview: retained?.vnext.preview != null,
         });
       } else {
         const { executeIsolatedWeeklyPlanningVNextTurn } = await loadWeeklyPlanningVNextRuntimeModule();

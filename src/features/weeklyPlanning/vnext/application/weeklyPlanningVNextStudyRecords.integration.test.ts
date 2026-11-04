@@ -10,7 +10,7 @@ import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLoca
 import { markWeeklyPlanningVNextActualRecordsSaved, submitWeeklyPlanningVNextExperimentalTurn,
   type WeeklyPlanningVNextExperimentalPorts, type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
 import { formatRestDaysReply, formatActualRecordMinutes, formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, selectPendingActualRecords, sumActualRecordMinutes } from '../../application/weeklyPlanningActualRecords';
-import { savedStudyRecordMinutes, vnextActualRecordId, VNEXT_STUDY_RECORD_PENDING_PREFIX, VNEXT_STUDY_RECORD_REMOVED, VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
+import { savedStudyRecordMinutes, vnextActualRecordId, VNEXT_STUDY_RECORD_PENDING_PREFIX, VNEXT_STUDY_RECORD_REMOVED, VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_CONFIRMATION_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
 import type { VNextAddFact } from '../weeklyPlanningVNextTypes';
 
 const OWNER = 'synthetic-actual-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03';
@@ -57,7 +57,7 @@ describe('VNext study records (#973 I2)', () => {
     expect(sumActualRecordMinutes(result.actualRecords!)).toBe(395);
     // Exact reply, built from the owner's format functions: an unsaved confirmation list, never "recorded".
     expect(result.reply).toBe(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${result.actualRecords!.map(formatActualRecordRow).join('、')}。`
-      + `ここまでの合計は${formatActualRecordsTotal(395)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+      + `ここまでの合計は${formatActualRecordsTotal(395)}です。${VNEXT_STUDY_RECORD_CONFIRMATION_GUIDE}`);
     expect(formatActualRecordsTotal(395)).toBe('6時間35分（395分）');
     expect(result.actualRecords!.every(record => record.status === 'pending')).toBe(true);
     // No fabricated clock time: a record is exactly a date, a subject and minutes.
@@ -99,8 +99,8 @@ describe('VNext study records (#973 I2)', () => {
       '2026-10-30 英語 50', '2026-10-31 数学 120', '2026-11-01 化学 90']);
     expect(corrected.actualRecords!.filter(record => record.occurrenceDate === '2026-10-27')).toHaveLength(1);
     expect(sumActualRecordMinutes(corrected.actualRecords!)).toBe(400);
-    expect(corrected.reply).toBe(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${formatActualRecordRow(corrected.actualRecords![1])}。`
-      + `ここまでの合計は${formatActualRecordsTotal(400)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+    expect(corrected.reply).toBe(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${formatActualRecordRow({ ...corrected.actualRecords![1], previousMinutes: 45 })}。`
+      + `ここまでの合計は${formatActualRecordsTotal(400)}です。${VNEXT_STUDY_RECORD_CONFIRMATION_GUIDE}`);
     expect(formatActualRecordsTotal(400)).toBe('6時間40分（400分）');
     expect(h.stored().actualRecords!.some(record => record.occurrenceDate === '2026-10-29')).toBe(false);
   });
@@ -195,7 +195,7 @@ describe('VNext study records (#973 I2)', () => {
     expect(selectPendingActualRecords(result.actualRecords).map(record => record.id)).toEqual([vnextActualRecordId(OWNER, '2026-10-27', '英語')]);
     const [monday, tuesday, wednesday] = result.actualRecords!;
     expect(result.reply).toBe(`${formatAlreadySavedActualRecordsReply([monday, wednesday])}${VNEXT_STUDY_RECORD_PENDING_PREFIX}${formatActualRecordRow(tuesday)}。`
-      + `ここまでの合計は${formatActualRecordsTotal(140)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+      + `ここまでの合計は${formatActualRecordsTotal(140)}です。${VNEXT_STUDY_RECORD_CONFIRMATION_GUIDE}`);
   });
 
   it('fix-03: only this owner\'s saved study records count (other owners, timed actuals and ids outside the owner prefix do not)', () => {
@@ -243,7 +243,7 @@ describe('VNext study records (#973 I2)', () => {
   it('fix-04: a rest day stated together with records only takes effect (the reply is the records reply)', async () => {
     const h = harness([reading([MON], null, {}, [THU])]);
     const result = await h.turn('月曜は数学60分、木曜は休みでした。');
-    expect(result.reply).toBe(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${formatActualRecordRow(result.actualRecords![0])}。ここまでの合計は${formatActualRecordsTotal(60)}です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+    expect(result.reply).toBe(`${VNEXT_STUDY_RECORD_PENDING_PREFIX}${formatActualRecordRow(result.actualRecords![0])}。ここまでの合計は${formatActualRecordsTotal(60)}です。${VNEXT_STUDY_RECORD_CONFIRMATION_GUIDE}`);
   });
 
   it('fix-04: a future rest day is not something that happened: rejected, repaired once, nothing changes', async () => {

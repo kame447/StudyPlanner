@@ -19,6 +19,7 @@ import type { Plan } from '../types/domain';
 import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
 import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
 import { AiPlanningActualRecordsSection } from './AiPlanningActualRecordsSection';
+import { PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL } from '../features/weeklyPlanning/application/weeklyPlanningActualRecords';
 import { AiPlanningView as AiPlanningViewLegacy, type AiPlanningStarterCatalog } from './AiPlanningViewLegacy';
 import './AiPlanningPreviewDialog.css';
 import './AiPlanningPreviewDialogLayout.css';
@@ -308,12 +309,12 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
                 className="ai-planning-preview-modal ai-planning-preview-dialog-v2"
                 role="dialog"
                 aria-modal="true"
-                aria-label="実績の確認"
+                aria-label={PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL}
                 onClick={(event) => event.stopPropagation()}
               >
                 <header className="ai-planning-preview-header">
                   <button type="button" onClick={() => requestClosePreview()}>閉じる</button>
-                  <div><h2>実績の確認</h2></div>
+                  <div><h2>{PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL}</h2></div>
                 </header>
                 {actualRecordsSection}
               </section>

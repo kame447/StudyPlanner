@@ -26,6 +26,7 @@ import {
 } from '../weeklyPlanningVNextV5Boundary';
 import { createVNextLineageResolver, withCurrentVNextReferences } from '../weeklyPlanningVNextWorkIdentity';
 import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
+import { VNEXT_STUDY_RECORD_SAVE_GUIDE } from '../weeklyPlanningVNextStudyRecords';
 import type { WeeklyPlanningVNextShownPreview } from './weeklyPlanningVNextSessionCheckpoint';
 
 /** As many recent messages as the Stable V5 renderer reads. */
@@ -84,6 +85,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   authorizationRequired?: boolean;
   repeatedQuestionGuidance?: boolean;
   registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts;
+  includeStudyRecordSaveGuide?: boolean;
 }): VNextDialogueRenderInput {
   const { state, question, preview } = params;
   // The renderer's helpers follow exact ids, so they read the facts with current references.
@@ -130,6 +132,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
     previewPromotionControlLabel: preview ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL : null,
     requiredLabels: [...new Set([...requiredLabelsForStableV5Dialogue({ planningInformation, targetFactId,
       includePreviewPromotionControl: preview !== null }), ...optionLabels, ...effortConflictLabels, ...completedConflictLabels,
+      ...(params.includeStudyRecordSaveGuide ? [VNEXT_STUDY_RECORD_SAVE_GUIDE] : []),
       ...(params.repeatedQuestionGuidance && (question?.code === 'missing_effort_estimate'
         || question?.code === 'missing_schedulable_work')
         ? ['何分くらい', '所要時間はまだ分からないので、仮置きで予定を組んで見せて', '後で決める'] : []),

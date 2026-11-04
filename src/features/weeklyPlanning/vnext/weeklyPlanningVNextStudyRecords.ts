@@ -5,7 +5,7 @@
 // confirmation UI's explicit action (DESIGN-DECISION 4).
 import type { VNextTurnError } from './weeklyPlanningVNextTypes';
 // The display format has one owner (fix-01 B); this file only phrases the conversation around it.
-import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, formatRestDaysReply, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
+import { ACTUAL_RECORDS_REFLECTION_QUESTION, SAVE_ACTUAL_RECORDS_BUTTON_LABEL, formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, formatRestDaysReply, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
 
 /** One stated record as the model reads it: absolute date, subject as the user said it, stated minutes. */
 export interface VNextStudyRecordReading {
@@ -59,7 +59,7 @@ export type VNextStudyRecordResult =
       /** Stated this turn and equal to what is already saved (same id, same minutes): kept as 'saved', never offered again. */
       alreadySaved: VNextActualRecord[];
       /** Stated this turn and not saved as stated (new, or other minutes than the saved ones): awaiting confirmation. */
-      changed: VNextActualRecord[];
+      changed: Array<VNextActualRecord & { previousMinutes?: number }>;
       /** Days the user said were rest days (valid, unique, ascending). */
       restDays: string[] }
   | { status: 'rejected'; errors: VNextTurnError[] };
@@ -133,7 +133,10 @@ export function applyVNextStudyRecords(params: {
   const statedRecords = records.filter(record => stated.has(record.id));
   return { status: JSON.stringify(records) === JSON.stringify(sortRecords([...params.records])) ? 'noop' : 'applied', records,
     alreadySaved: statedRecords.filter(record => record.status === 'saved'),
-    changed: statedRecords.filter(record => record.status === 'pending' && before.get(record.id)?.minutes !== record.minutes), restDays: rest };
+    // Only this turn's display copy carries the old pending value; checkpoint records stay unchanged in shape.
+    changed: statedRecords.filter(record => record.status === 'pending' && before.get(record.id)?.minutes !== record.minutes)
+      .map(record => before.get(record.id)?.status === 'pending'
+        ? { ...record, previousMinutes: before.get(record.id)!.minutes } : record), restDays: rest };
 }
 
 /** Marks exactly the named records saved; values, dates and subjects never change. */
@@ -157,15 +160,16 @@ export function vnextStudyRecordQuestionText(question: VNextStudyRecordQuestion)
  * Replies for a turn that only changed records. The records are an unsaved list for confirmation: nothing is
  * saved until the user presses the confirmation screen's save button, so no wording here may say "recorded".
  */
-export const VNEXT_STUDY_RECORD_PENDING_PREFIX = '確認用に整理しました（まだ保存していません）：';
+export const VNEXT_STUDY_RECORD_PENDING_PREFIX = '仮実績として整理しました（まだ保存していません）：';
 export const VNEXT_STUDY_RECORD_UNCHANGED = 'その内容はすでに確認リストにあります。';
 export const VNEXT_STUDY_RECORD_REMOVED = 'その日を確認リストから外しました。';
-export const VNEXT_STUDY_RECORD_SAVE_GUIDE = 'ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。';
+export const VNEXT_STUDY_RECORD_SAVE_GUIDE = `確認画面の「${SAVE_ACTUAL_RECORDS_BUTTON_LABEL}」を押すと保存されます。`;
+export const VNEXT_STUDY_RECORD_CONFIRMATION_GUIDE = `${ACTUAL_RECORDS_REFLECTION_QUESTION}${VNEXT_STUDY_RECORD_SAVE_GUIDE}`;
 
 export function vnextStudyRecordReply(params: {
   /** Stated this turn and already saved as stated. */
   alreadySaved?: readonly VNextActualRecord[];
-  changed: readonly VNextActualRecord[];
+  changed: readonly (VNextActualRecord & { previousMinutes?: number })[];
   removedCount: number;
   all: readonly VNextActualRecord[];
   question: VNextStudyRecordQuestion | null;
@@ -185,6 +189,6 @@ export function vnextStudyRecordReply(params: {
   // Only saved records were stated: nothing is waiting, so no total and no "press save" guidance.
   if (waiting.length || params.changed.length) lines.push(`ここまでの合計は${formatActualRecordsTotal(sumActualRecordMinutes(params.all))}です。`);
   if (params.question) lines.push(vnextStudyRecordQuestionText(params.question));
-  else if (waiting.length) lines.push(VNEXT_STUDY_RECORD_SAVE_GUIDE);
+  else if (waiting.length) lines.push(params.changed.length ? VNEXT_STUDY_RECORD_CONFIRMATION_GUIDE : VNEXT_STUDY_RECORD_SAVE_GUIDE);
   return lines.join('');
 }

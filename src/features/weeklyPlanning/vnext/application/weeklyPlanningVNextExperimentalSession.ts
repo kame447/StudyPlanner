@@ -306,13 +306,16 @@ function systemReply(outcome: WeeklyPlanningVNextExperimentalTurnOutcome, previe
 }
 
 export function interpretationFailureReply(failure: WeeklyPlanningVNextFailureRecovery,
-  preview: WeeklyPlanningVNextShownPreview | null): string {
+  preview: WeeklyPlanningVNextShownPreview | null, hasPendingActualRecords = false): string {
   const cause = failure.reason === 'provider_error'
     ? 'AIへの接続でエラーが起きました。' : 'AIの返答を確認できませんでした。';
-  const retained = preview ? '表示済みの予定案は保持しています。' : 'これまでの条件は保持しています。';
-  const unapplied = '今回の内容は計画に反映していません。';
+  const retained = hasPendingActualRecords ? preview
+    ? '仮実績の確認リストと表示中の仮案は保持しています。今回の入力は保存していません。'
+    : '仮実績の確認リストは保持しています。今回の入力は保存していません。'
+    : preview ? '表示済みの予定案は保持しています。' : 'これまでの条件は保持しています。';
+  const unapplied = hasPendingActualRecords ? '今回の入力は反映していません。' : '今回の内容は計画に反映していません。';
   if (failure.consecutiveCount >= 2) {
-    const route = preview
+    const route = hasPendingActualRecords ? '仮実績の確認リストを見直すか、復旧後に今回の入力を再送できます。' : preview
       ? '予定案を確認するか、復旧後に変更を再送できます。'
       : 'これまでの会話を確認し、復旧後に今回の内容を再送できます。';
     return `${cause}続けて失敗しています。${unapplied}${retained}${route}`;
@@ -602,6 +605,10 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
+      includeStudyRecordSaveGuide: accepted && interpretation.status === 'interpreted'
+        && (interpretation.planningIntent === 'discuss' || interpretation.planningIntent === 'unknown')
+        && delta !== null && isEmpty(delta) && preview === read.checkpoint.preview
+        && nextRecords.some(record => record.status === 'pending'),
       // Repetition changes presentation only; shown options still bind through the existing answer boundary.
       repeatedQuestionGuidance: question !== null && question.optionalInvitation === undefined
         && (vnextQuestionKeyAllowsProvisionalTimebox(question.key)
@@ -642,7 +649,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       replySource = 'renderer_recovery';
       shows = stillShown ? { question: stillShown } : 'unchanged';
     } else {
-      reply = failureRecovery ? interpretationFailureReply(failureRecovery, preview) : systemReply(outcome, []);
+      reply = failureRecovery ? interpretationFailureReply(failureRecovery, preview,
+        nextRecords.some(record => record.status === 'pending')) : systemReply(outcome, []);
       replySource = 'system';
       shows = 'unchanged';
     }

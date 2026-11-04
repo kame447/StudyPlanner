@@ -27,6 +27,7 @@ import type { ExecuteWeeklyPlanningTurnRuntimeParams } from '../../application/w
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { createWeeklyPlanningVNextOptionChoiceInterpreter } from './weeklyPlanningVNextOptionChoice';
 import { createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoiceBrowserPort';
+import { VNEXT_STUDY_RECORD_SAVE_GUIDE } from '../weeklyPlanningVNextStudyRecords';
 
 const OWNER = 'synthetic-gateway-owner'; const WEEK = '2026-11-02'; const NOW = `${WEEK}T00:00:00.000Z`;
 const CONVERSATION = 'weekly-conversation-423e4567-e89b-52d3-a456-426614174000';
@@ -102,6 +103,83 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
 const diagnosticEntries = () => writes.flatMap(write => write.entries).filter(entry => entry.kind === 'turn_diagnostic');
 
 describe('VNext session → gateway → existing controller and trace owner', () => {
+  it.each([false, true])('persists the pending-actual save guide through actual renderer/outbox reload/Worker (large=%s)', async large => {
+    const sent: { messages: readonly { content: string }[] }[] = [];
+    const inputs: Parameters<typeof createWeeklyPlanningStableV5DialoguePrompt>[0][] = [];
+    const h = harness({ nativeReadings: [
+      { planningIntent: 'discuss', conversationActs: [], delta: EMPTY, answer: null,
+        studyRecords: [{ dateExpression: '2026-10-26', subject: '数学', minutes: 60 }], studyRecordQuestion: null },
+      { planningIntent: 'discuss', conversationActs: [], delta: EMPTY, answer: null },
+    ], createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+        sent.push(structuredClone(request));
+        const response = JSON.parse(await successfulWeeklyPlanningRendererCompletion(request));
+        response.text += JSON.parse(request.messages[1].content).applicationDecision.relevantLabels.join(' / ');
+        return JSON.stringify(response);
+      } });
+      return { render(input) {
+        Object.assign(input.communication!, { futureActualGuideSentinel: 'keep-pending-actual-guide',
+          ...(large ? { futureLargeActualGuide: 'z'.repeat(48 * 1024) } : {}) });
+        inputs.push(structuredClone(input));
+        return renderer.render(input);
+      } };
+    } });
+    await h.submit('月曜は数学60分でした');
+    failAppend = true;
+    await h.submit('保存して');
+    expect(h.results[1].dialogueRendererTrace?.response?.status).toBe('rendered');
+    expect(JSON.parse(sent[0].messages[1].content).applicationDecision.relevantLabels).toContain(VNEXT_STUDY_RECORD_SAVE_GUIDE);
+    const prompt = createWeeklyPlanningStableV5DialoguePrompt(inputs[0]);
+    expect(sent[0].messages).toEqual([{ role: 'system', content: prompt.systemPrompt }, { role: 'user', content: prompt.userPrompt }]);
+    expect(h.results[1].dialogueRendererTrace?.request?.promptContext).toEqual(inputs[0]);
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const failed = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(failed.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-pending-actual-guide', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(item => item.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(failed.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    const context = (server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } }).dialogueRenderer.request.promptContext;
+    if (large) expect(context).toMatchObject({ traceTruncated: true,
+      originalBytes: new TextEncoder().encode(JSON.stringify(inputs[0])).byteLength });
+    else expect(context).toEqual(inputs[0]);
+    expect(JSON.stringify(server.entries[0])).toContain('keep-pending-actual-guide');
+    expect(JSON.stringify(server.entries[0])).not.toContain('z'.repeat(48 * 1024));
+  });
+
+  it('keeps pending actuals separate while two plan-changing turns omit the actual-save guide', async () => {
+    const inputs: Parameters<typeof createWeeklyPlanningStableV5DialoguePrompt>[0][] = [];
+    const h = harness({ nativeReadings: [
+      { planningIntent: 'discuss', conversationActs: [], delta: EMPTY, answer: null,
+        studyRecords: [{ dateExpression: '2026-10-26', subject: '数学', minutes: 60 }], studyRecordQuestion: null },
+      { planningIntent: 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('math-work', 'remaining', 30, 'minute')] }, answer: null },
+      { planningIntent: 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [
+        { kind: 'task', localId: 'english', category: 'study', title: '英語' },
+        { ...work('english-work', 'remaining', 30, 'minute'), taskRef: { localId: 'english' } },
+      ] }, answer: null },
+    ], createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) { inputs.push(structuredClone(input)); return renderer.render(input); } };
+    } });
+    await h.submit('月曜は数学60分でした');
+    await h.submit('数学を30分、この条件で予定を作って');
+    expect(h.local.readCheckpoint()!.vnext.preview?.blocks).toHaveLength(1);
+    await h.submit('英語も30分追加して予定を作って');
+    expect(h.local.readCheckpoint()!.vnext.preview?.blocks).toHaveLength(2);
+    expect(inputs).toHaveLength(2);
+    for (const input of inputs) expect(input.requiredLabels).not.toContain(VNEXT_STUDY_RECORD_SAVE_GUIDE);
+    expect(h.local.readCheckpoint()!.vnext.actualRecords).toHaveLength(1);
+    expect(h.local.readCheckpoint()!.vnext.actualRecords![0]).toMatchObject({ subject: '数学', minutes: 60, status: 'pending' });
+  });
+
   it('omits in-flight optimistic actuals from the shared local/durable payload without changing the wire shape', () => {
     const actuals = [{ id: 'saving-one' }, { id: 'saved-one' }, { id: 'saving-two' }] as ExecuteWeeklyPlanningTurnRuntimeParams['actuals'];
     const input = { snapshot: createInitialPlanningState(WEEK), pending: { conversationId: CONVERSATION,

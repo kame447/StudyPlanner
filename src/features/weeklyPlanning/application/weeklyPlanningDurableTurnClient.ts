@@ -71,13 +71,13 @@ export function clearDurableWeeklyTurnReceipt(ownerId: string, requestId: string
   const current = readDurableWeeklyTurnReceipt(ownerId, core);
   if (current?.pending.requestId === requestId) window.localStorage.removeItem(durableReceiptKey(ownerId, core));
 }
-function defaultPorts(): DurableTurnClientPorts {
+function defaultPorts(hasPendingActualRecords = false, hasRetainedPlanPreview = false): DurableTurnClientPorts {
   const base = getCloudflareAiProxyUrl().replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
   return {
     fetch: (...args) => fetch(...args), endpoint: `${base}/weekly-planning/turns`, now: Date.now,
     token: async (ownerId) => {
       const user = getFirebaseAuth()?.currentUser;
-      if (!user || user.uid !== ownerId) throw new WeeklyPlanningDurableOwnerMismatchError();
+      if (!user || user.uid !== ownerId) throw new WeeklyPlanningDurableOwnerMismatchError(hasPendingActualRecords, hasRetainedPlanPreview);
       return user.getIdToken();
     },
     wait: (ms) => new Promise((resolve) => {
@@ -93,12 +93,16 @@ function defaultPorts(): DurableTurnClientPorts {
 /** Resume is GET-only. An uncertain POST is reconciled by reading its same identity first. */
 export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlanningTurnResult = IsolatedWeeklyPlanningTurnResult>(
   receipt: DurableWeeklyTurnReceipt<DurableWeeklyTurnPayload>,
-  options: { resumeOnly?: boolean; isCurrent?: () => boolean; ports?: DurableTurnClientPorts } = {},
+  options: { resumeOnly?: boolean; isCurrent?: () => boolean; ports?: DurableTurnClientPorts;
+    /** Presentation context from the existing VNext checkpoint; never save or retry authority. */
+    hasPendingActualRecords?: boolean; hasRetainedPlanPreview?: boolean } = {},
 ): Promise<Result> {
   if (receipt.cancelRequested) throw new Error('この返信はキャンセルされています。');
-  const ports = options.ports ?? defaultPorts();
+  const hasPendingActualRecords = receiptCore(receipt) === 'vnext' && options.hasPendingActualRecords === true;
+  const hasRetainedPlanPreview = options.hasRetainedPlanPreview === true;
+  const ports = options.ports ?? defaultPorts(hasPendingActualRecords, hasRetainedPlanPreview);
   const unavailable = (message: string) => receiptCore(receipt) === 'vnext'
-    ? new WeeklyPlanningDurableWorkerUnavailableError(message) : new Error(message);
+    ? new WeeklyPlanningDurableWorkerUnavailableError(message, hasPendingActualRecords, hasRetainedPlanPreview) : new Error(message);
   const identity = { ownerId: receipt.ownerId, conversationId: receipt.pending.conversationId,
     requestId: receipt.pending.requestId, baseRevision: receipt.pending.baseRevision,
     startedAt: Date.parse(receipt.pending.startedAt) };
@@ -126,7 +130,7 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
         }
         throw unavailable('保存された返信を確認できませんでした。新しいAI処理は開始していません。');
       }
-      if (response.status === 401 || response.status === 403) throw new WeeklyPlanningDurableAccessDeniedError(response.status);
+      if (response.status === 401 || response.status === 403) throw new WeeklyPlanningDurableAccessDeniedError(response.status, hasPendingActualRecords, hasRetainedPlanPreview);
       if ((response.status >= 400 && response.status < 500) || response.status === 503) throw unavailable('返信の継続を受け付けられませんでした。会話を開き直してください。');
       if (!response.ok) { needsReconcile = true; await ports.wait(Math.min(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.pollBaseMs + attempts++ * 1000)); continue; }
       const state = await response.json() as DurableTurnResult;

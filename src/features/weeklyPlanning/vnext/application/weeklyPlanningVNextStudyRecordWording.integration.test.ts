@@ -110,7 +110,7 @@ describe('study record wording: adopted Argon points and provisional-actual UX',
       expect(savePlan).not.toHaveBeenCalled();
       return reply;
     };
-    const readback = async (kind: 'not_saved' | 'unknown') => {
+    const readback = async (kind: 'not_saved' | 'unknown', error = '保存結果を確認できませんでした。') => {
       saveActuals.mockRejectedValueOnce(new PlannerMutationScopeExpiredError());
       await act(async () => { await expect(app().approveActualRecords!()).rejects.toThrow(PlannerMutationScopeExpiredError); });
       const readActualSave: NonNullable<WeeklyPlanningVNextLocalApplicationServices['readActualSave']> = vi.fn((ownerId, attempted) =>
@@ -119,7 +119,7 @@ describe('study record wording: adopted Argon points and provisional-actual UX',
           return { fromCache: false, hasPendingWrites: false, records: [] };
         } }));
       // Error is a public input of the real confirmation component. No page-level error persistence is assumed.
-      await mount({ ...services, readActualSave }, '保存結果を確認できませんでした。');
+      await mount({ ...services, readActualSave }, error);
       await act(async () => { await vi.waitFor(() => expect(app().state.messages.some(message =>
         message.id.includes(':actual-save-readback:'))).toBe(true)); });
       expect(readActualSave).toHaveBeenCalledOnce();
@@ -184,6 +184,16 @@ describe('study record wording: adopted Argon points and provisional-actual UX',
     const reply = await h.readback('unknown');
     expect(reply).toContain('確認待ち');
     expect(['再読み込み', '再読込', '開き直'].some(action => reply.includes(action)), reply).toBe(true);
+  });
+
+  it('not_saved after a reload names the actual button when no previous UI error is retained', async () => {
+    const h = await scenario([reading(WEEK_RECORDS)]);
+    await h.seed();
+    const reply = await h.readback('not_saved', '');
+    const buttonLabel = renderer!.root.findByType('button').children.join('');
+    expect(buttonLabel).toBe('この内容で実績を保存');
+    expect(reply).toContain(buttonLabel);
+    expect(h.saveActuals).toHaveBeenCalledOnce();
   });
 
   it('6: conversation and confirmation show provisional actuals and ask for reflection; chat yes cannot save', async () => {

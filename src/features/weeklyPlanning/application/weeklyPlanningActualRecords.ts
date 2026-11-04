@@ -79,17 +79,25 @@ export function sumActualRecordMinutes(records: readonly PendingWeeklyPlanningAc
 }
 
 /** 「月 10/26 数学 60分（1時間）」 */
-export function formatActualRecordRow(record: PendingWeeklyPlanningActualRecord): string {
+export function formatActualRecordRow(record: PendingWeeklyPlanningActualRecord & { previousMinutes?: number }): string {
   const [year, month, day] = record.occurrenceDate.split('-').map(Number);
   const weekday = WEEKDAY[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
-  const row = `${weekday} ${month}/${day} ${record.subject} ${formatActualRecordMinutes(record.minutes)}`;
+  const minutes = record.previousMinutes === undefined ? formatActualRecordMinutes(record.minutes)
+    : `${formatActualRecordMinutes(record.previousMinutes)}→${formatActualRecordMinutes(record.minutes)}`;
+  const row = `${weekday} ${month}/${day} ${record.subject} ${minutes}`;
   return record.replacesMinutes === undefined ? row : `${row} ※保存済みの${record.replacesMinutes}分を置き換えます`;
 }
 
 /** What the chat says about a restated record that is already saved with the same minutes (never "not saved yet"). */
 export const ALREADY_SAVED_ACTUAL_RECORDS_PREFIX = 'その内容はすでに保存されています：';
+export const PROVISIONAL_ACTUAL_RECORDS_LABEL = '仮実績';
+export const PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL = '仮実績の確認';
+export const REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL = '仮実績を確認';
+export const ACTUAL_RECORDS_REFLECTION_QUESTION = 'この内容を学習実績に反映してよいですか？';
+export const SAVE_ACTUAL_RECORDS_BUTTON_LABEL = 'この内容で実績を保存';
+export const RETRY_ACTUAL_RECORDS_BUTTON_LABEL = '実績の保存を再試行';
 export const SAVING_ACTUAL_RECORDS_LABEL = '保存中（まだ確定していません）';
-export const UNKNOWN_ACTUAL_SAVE_RESULT_REPLY = '保存結果を確認できていません。記録は保存済みと扱わず、確認待ちです。';
+export const UNKNOWN_ACTUAL_SAVE_RESULT_REPLY = '保存結果を確認できていません。記録は保存済みと扱わず、確認待ちです。再読み込みで保存の状態を確認できます。';
 export const ACTUAL_SAVE_RETRY_SAVED_REPLY = '勉強記録を保存しました。';
 export const ACTUAL_SAVE_RETRY_FAILED_REPLY = '勉強記録の保存処理が失敗しました。保存結果を確認できていません。';
 export const ACTUAL_SAVE_RETRY_BLOCKED_REPLY = '保存状態が変わったため再送していません。再読み込みして確認してください。';
@@ -104,7 +112,7 @@ export function formatActualSaveReadbackReply(
   const missing = attempted.filter(record => !confirmedIds.includes(record.id) && !conflictingIds.includes(record.id));
   if (confirmed.length === attempted.length) return `保存を確認しました：${confirmed.map(formatActualRecordRow).join('、')}。`;
   if (confirmed.length === 0 && conflicting.length === 0 && missing.length === attempted.length) {
-    return 'サーバー上に保存されていません。記録は未保存のままです。保存する場合は保存ボタンから確認してください。';
+    return `サーバー上に保存されていません。記録は未保存のままです。保存する場合は確認画面の「${SAVE_ACTUAL_RECORDS_BUTTON_LABEL}」（エラー表示中は「${RETRY_ACTUAL_RECORDS_BUTTON_LABEL}」）を押してください。`;
   }
   return [confirmed.length ? `保存を確認した記録：${confirmed.map(formatActualRecordRow).join('、')}。` : '',
     missing.length ? `未保存の記録：${missing.map(formatActualRecordRow).join('、')}。` : '',
