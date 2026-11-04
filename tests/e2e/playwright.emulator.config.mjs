@@ -60,6 +60,11 @@ const durableScenarioAccounts = [
   { key: 'worker-unreachable', testMatch: 'emulator/vnext-durable-worker-unreachable.emulator.mjs' },
 ];
 
+const actualChatScenarioAccounts = [
+  { key: 'dialogue', testMatch: ['emulator/vnext-actual-chat-save-intent.emulator.mjs', 'emulator/vnext-actual-correction.emulator.mjs', 'emulator/vnext-actual-mixed-utterance.emulator.mjs', 'emulator/vnext-actual-provisional-confirm.emulator.mjs'] },
+  { key: 'plan-question', testMatch: 'emulator/vnext-actual-pending-with-plan-question.emulator.mjs' },
+];
+
 export default defineConfig({
   testDir: configDir,
   fullyParallel: false,
@@ -166,11 +171,22 @@ export default defineConfig({
     },
     {
       name: 'chromium-emulator-actual-chat',
-      testMatch: ['emulator/vnext-actual-record.emulator.mjs', 'emulator/vnext-actual-correction.emulator.mjs', 'emulator/vnext-actual-readback-unavailable.emulator.mjs', 'emulator/vnext-actual-chat-save-intent.emulator.mjs', 'emulator/vnext-actual-mixed-utterance.emulator.mjs', 'emulator/vnext-actual-provisional-confirm.emulator.mjs', 'emulator/vnext-actual-saving-display.emulator.mjs', 'emulator/vnext-actual-pending-with-plan-question.emulator.mjs'],
+      testMatch: ['emulator/vnext-actual-record.emulator.mjs', 'emulator/vnext-actual-readback-unavailable.emulator.mjs', 'emulator/vnext-actual-saving-display.emulator.mjs'],
       dependencies: ['emulator-actual-chat-setup'],
       metadata: { email: 'e2e-actual-chat@example.test' },
       use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: ACTUAL_CHAT_STATE },
     },
+    ...actualChatScenarioAccounts.flatMap(({ key, testMatch }) => {
+      const email = `e2e-actual-chat-${key}@example.test`;
+      const statePath = path.join(repoRoot, `artifacts/playwright-emulator-actual-chat-${key}-state.json`);
+      const setup = `emulator-actual-chat-${key}-setup`;
+      return [
+        { name: setup, testMatch: 'emulator/account.setup.mjs', metadata: { email, statePath },
+          use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP } },
+        { name: `chromium-emulator-actual-chat-${key}`, testMatch, dependencies: [setup], metadata: { email },
+          use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: statePath } },
+      ];
+    }),
   ],
   webServer: [
     {
