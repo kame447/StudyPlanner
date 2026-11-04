@@ -519,7 +519,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
-      repeatedQuestionGuidance: question?.code === 'missing_effort_estimate'
+      repeatedQuestionGuidance: question !== null && question.optionalInvitation === undefined
         && vnextQuestionKeyAllowsProvisionalTimebox(question.key)
         && unansweredQuestionStreak !== undefined && unansweredQuestionStreak.count >= 3,
       registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
