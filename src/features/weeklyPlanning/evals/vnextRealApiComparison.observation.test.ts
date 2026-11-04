@@ -1,5 +1,5 @@
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
 import { performance } from 'node:perf_hooks';
 import { getAiConfig } from '../../../lib/aiConfig';
@@ -1249,6 +1249,130 @@ function summarize(observations: readonly ConversationObservation[]) {
 }
 
 const runRealApi = shouldRun ? describe : describe.skip;
+
+describe('COV-X0: archived readings replayed through the current VNext core (offline)', () => {
+  const artifacts = [
+    { name: 'd4-rep1', path: '/private/tmp/claude-502/rapid4/a1/weekly-planning-real-api-1/vnext-comparison/vnext-native.json' },
+    { name: 'd4-rep2', path: '/private/tmp/claude-502/rapid4/a1/weekly-planning-real-api-2/vnext-comparison/vnext-native.json' },
+    { name: 'd4-rep3', path: '/private/tmp/claude-502/rapid4/a1/weekly-planning-real-api-3/vnext-comparison/vnext-native.json' },
+    { name: 'R2', path: '/Users/Shogo/.agentstack/reviews/20261103-examinee-weekly-actual-e2e/evidence/R2-41634010795/weekly-planning-real-api-1/vnext-comparison/vnext-native.json' },
+  ];
+  const targets = [
+    { name: 'window-B', id: 'issue881-final-b-deadline-at-13', turn: 1 },
+    { name: 'window-C', id: 'issue881-final-c-corrected-completion', turn: 1 },
+    { name: 'recurrence', id: 'recurrence-out-of-vnext-scope', turn: 1 },
+    { name: 'fixed-event-1', id: 'fixed-event-yes-after-rendered-offer', turn: 1 },
+    { name: 'fixed-event-2', id: 'fixed-event-yes-after-rendered-offer', turn: 2 },
+    { name: 'C-t2', id: 'issue881-final-c-corrected-completion', turn: 2 },
+    { name: 'C-t3', id: 'issue881-final-c-corrected-completion', turn: 3 },
+    { name: 'C-t4', id: 'issue881-final-c-corrected-completion', turn: 4 },
+  ];
+  type Archived = { conversations: Array<{ id: string; turns: Array<{
+    rawProviderCalls: Array<{ rawResponseText?: string }>;
+  }> }> };
+  const cache = new Map<string, Archived>();
+
+  for (const artifact of artifacts) for (const target of targets) {
+    it(`${artifact.name} ${target.name}`, async () => {
+      let archived = cache.get(artifact.path);
+      if (!archived) {
+        archived = JSON.parse(readFileSync(artifact.path, 'utf8')) as Archived;
+        cache.set(artifact.path, archived);
+      }
+      const transcript = archived.conversations.find(({ id }) => id === target.id);
+      const conversation = vnextRealApiConversations.find(({ id }) => id === target.id);
+      expect(transcript).toBeDefined();
+      expect(conversation).toBeDefined();
+      const responses = transcript!.turns.flatMap(({ rawProviderCalls }) => rawProviderCalls.map(({ rawResponseText }) => {
+        if (rawResponseText === undefined) throw new Error('archived provider response is absent');
+        return rawResponseText;
+      }));
+      const result = await runVNextConversation(conversation!, { client: {
+        async createChatCompletion() {
+          const response = responses.shift();
+          if (response === undefined) throw new Error('archived provider script exhausted; no API fallback');
+          return response;
+        },
+      } });
+      expect(responses).toHaveLength(0);
+      const turn = result.turns[target.turn - 1];
+      expect(turn.error).toBeNull();
+      expect(turn.accepted).toBe(true);
+      expect(turn.saveWritesBeforeApproval).toBe(0);
+
+      if (target.name.startsWith('window-')) {
+        expect(turn.appliedDelta?.add).toEqual(expect.arrayContaining([expect.objectContaining({
+          kind: 'planning_window', windowKind: 'relative_day', value: 'tomorrow',
+        })]));
+        expect(turn.questionCode).toBe('missing_schedulable_work');
+        expect(turn.finalCandidateCount).toBe(0);
+      } else if (target.name === 'recurrence') {
+        expect(turn.appliedDelta?.add).toEqual(expect.arrayContaining([
+          expect.objectContaining({ kind: 'task', title: expect.stringContaining('英語') }),
+          expect.objectContaining({ kind: 'recurrence', recurrenceKind: 'weekly', days: ['weekday:monday'] }),
+        ]));
+        expect(turn.temporal).toEqual(expect.arrayContaining([expect.objectContaining({
+          kind: 'earliest_start', dateExpression: '2026-11-09/2026-11-15',
+        })]));
+        expect(turn.workloads).toEqual([]);
+        expect(turn.efforts).toEqual([]);
+        expect(turn.finalCandidateCount).toBe(0);
+      } else if (target.name === 'fixed-event-1') {
+        expect(turn.appliedDelta?.add).toEqual(expect.arrayContaining([expect.objectContaining({
+          kind: 'availability_declaration', availabilityKind: 'unavailable', dateExpression: '2026-11-03',
+          startTime: '16:00', endTime: '17:30',
+        })]));
+        expect(turn.finalCandidateCount).toBe(0);
+      } else if (target.name === 'fixed-event-2') {
+        expect(turn.conversationActKinds).not.toContain('request_event_registration');
+        expect(turn.finalCandidateCount).toBe(0);
+        expect(turn.outcome).toBe('noop');
+      } else {
+        expect(turn.taskIds).toHaveLength(1);
+        expect(turn.temporal).toEqual([expect.objectContaining({
+          taskId: turn.taskIds[0], dateExpression: '2026-08-27',
+        })]);
+        expect(['deadline', 'latest_end']).toContain(turn.temporal[0].kind);
+      }
+    });
+  }
+});
+
+it('COV-X0 d4-rep3 missing start remains an unsaved question without invented dates (offline)', async () => {
+  const artifact = JSON.parse(readFileSync(
+    '/private/tmp/claude-502/rapid4/a1/weekly-planning-real-api-3/vnext-comparison/vnext-native.json', 'utf8',
+  )) as { conversations: Array<{ id: string; turns: Array<{
+    rawProviderCalls: Array<{ rawResponseText?: string }>;
+  }> }> };
+  const id = 'recurrence-out-of-vnext-scope';
+  const fixture = vnextRealApiConversations.find((conversation) => conversation.id === id);
+  const archived = artifact.conversations.find((conversation) => conversation.id === id);
+  expect(fixture).toBeDefined();
+  expect(archived).toBeDefined();
+  expect(clockFor(fixture!).currentDate).toBe('2026-11-02');
+  expect(fixture!.turns[0].userText).toBe('来週から毎週月曜日に英語を勉強する予定にしてください。');
+  const responses = archived!.turns.flatMap((turn) => turn.rawProviderCalls.map((call) => {
+    if (call.rawResponseText === undefined) throw new Error('archived provider response is absent');
+    return call.rawResponseText;
+  }));
+  const observed = await runVNextConversation(fixture!, { client: {
+    async createChatCompletion() {
+      const response = responses.shift();
+      if (response === undefined) throw new Error('archived provider script exhausted; no API fallback');
+      return response;
+    },
+  } });
+  expect(responses).toHaveLength(0);
+  const turn = observed.turns[0];
+  expect(turn.error).toBeNull();
+  expect(turn.accepted).toBe(true);
+  expect(turn.saveWritesBeforeApproval).toBe(0);
+  expect(turn.temporal).toEqual([]);
+  expect(turn.finalCandidates).toEqual([]);
+  expect(turn.previewMinutes).toBeNull();
+  expect(turn.questionCode).toBe('missing_schedulable_work');
+  expect(turn.shownReply).toBe('月曜日に取り組む時間は、どのあたりが空いていそうですか？まだ未定なら、仮の時間枠から一緒に考えられます。');
+});
 
 describe('real API provider call capture (offline)', () => {
   it('records request messages and raw content without client credentials or unavailable envelope metadata', async () => {
