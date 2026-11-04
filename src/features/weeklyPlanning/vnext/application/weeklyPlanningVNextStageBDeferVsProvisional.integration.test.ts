@@ -101,16 +101,28 @@ async function branch(allocation: VNextDeferralAllocation) {
   const projection = projectWeeklyPlanningVNext(checkpoint.state);
   const projectedMath = projection.owners.find(owner => owner.taskId === math.id)!;
   const blocks = second.preview?.blocks ?? [];
-  const mathBlocks = blocks.filter(block => block.title.startsWith('数学プリント'));
-  const englishBlocks = blocks.filter(block => block.title.startsWith('英語'));
+  // Identify scheduled work by its source task, not by its user-facing title.
+  for (const block of blocks) {
+    expect([english.id, math.id]).toContain(block.behaviorMetadata?.taskRef);
+  }
+  const mathBlocks = blocks.filter(block => block.behaviorMetadata?.taskRef === math.id);
+  const englishBlocks = blocks.filter(block => block.behaviorMetadata?.taskRef === english.id);
+  for (const block of englishBlocks) {
+    expect(block.behaviorMetadata?.sourceFactRefs).toContain(englishWork.id);
+    expect(block.behaviorMetadata?.sourceFactRefs).not.toContain(mathWork.id);
+  }
   if (allocation === 'none') {
     expect(mathBlocks).toEqual([]);
+    expect(second.unplacedOwnerKeys).toContain(projectedMath.ownerKey);
     expect(projection.deferredQuestions).toContainEqual(expect.objectContaining({ key: first.question!.key, taskId: math.id }));
     // A partial preview is a product choice, not a demand to schedule unanswered work automatically.
     if (second.preview) expect(englishBlocks.map(block => slotMinutes(block.startTime, block.endTime))).toEqual([60]);
   } else {
     expect(second.preview).not.toBeNull();
     expect(mathBlocks).toHaveLength(1);
+    expect(second.unplacedOwnerKeys).not.toContain(projectedMath.ownerKey);
+    expect(mathBlocks[0].behaviorMetadata?.sourceFactRefs).toContain(mathWork.id);
+    expect(mathBlocks[0].behaviorMetadata?.sourceFactRefs).not.toContain(englishWork.id);
     expect(englishBlocks.map(block => slotMinutes(block.startTime, block.endTime))).toEqual([60]);
     expect(projectedMath.work).toEqual([expect.objectContaining({ amount: 10, unitLabel: '枚', minutes: 60,
       estimateBasis: 'provisional_timebox', estimateFactIds: [] })]);
