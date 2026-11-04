@@ -19,7 +19,7 @@ import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActu
   type PendingWeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
 import { readAndClassifyActualSave } from '../weeklyPlanningVNextActualSaveReadback';
-import { ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
+import { ActualRecordsNotWrittenError, ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
 
 const OWNER = 'exam-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03'; const NOW = `${TODAY}T00:00:00.000Z`;
 const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartDate: WEEK, conversationId: 'exam-conversation',
@@ -174,7 +174,7 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
 
   it('keeps every record pending after a failed save and a retry saves the same batch', async () => {
     await seedRecords(storage.storage);
-    const save = vi.fn().mockRejectedValueOnce(new Error('学習実績を保存できませんでした。保存はされていません。')).mockResolvedValue(undefined);
+    const save = vi.fn().mockRejectedValueOnce(new ActualRecordsNotWrittenError('学習実績を保存できませんでした。保存はされていません。')).mockResolvedValue(undefined);
     const ref = await mount(inputWith(save));
     await act(async () => { await expect(ref.current!.approveActualRecords!()).rejects.toThrow('保存はされていません'); });
     expect(ref.current!.pendingActualRecords).toHaveLength(6);
@@ -529,7 +529,7 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     const optimistic = { ...initial, actuals: original.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
     await act(async () => { renderer!.update(<Harness ref={ref} input={optimistic} services={sharedServices} />); });
     expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(original.map(record => record.id));
-    await act(async () => { rejectSave(new Error('保存はされていません')); await expect(saving).rejects.toThrow('保存はされていません'); });
+    await act(async () => { rejectSave(new ActualRecordsNotWrittenError('保存はされていません')); await expect(saving).rejects.toThrow('保存はされていません'); });
     const rejectedUi = storage.storage.getItem(`studyplanner.weeklyPlanning.vnext.${OWNER}.${WEEK}.${ref.current!.chat.index.activeChatId}.ui`)!;
     expect(JSON.parse(rejectedUi)).not.toHaveProperty('actualSaveAttempt');
     await act(async () => { renderer!.update(<Harness ref={ref} input={initial} services={sharedServices} />); });

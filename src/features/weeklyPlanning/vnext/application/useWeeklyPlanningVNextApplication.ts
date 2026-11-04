@@ -23,7 +23,7 @@ import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn } from '../.
 import { formatActualSaveReadbackReply, formatUnknownActualSaveReadbackReply, resolvePendingActualRecordsAgainstSaved,
   selectPendingActualRecords, toActualRecordsToSave, ACTUAL_SAVE_RETRY_BLOCKED_REPLY, ACTUAL_SAVE_RETRY_FAILED_REPLY,
   ACTUAL_SAVE_RETRY_SAVED_REPLY, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
-import { ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
+import { ActualRecordsNotWrittenError, ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
 import type { ActualSaveIntentRecord, ActualSaveReadbackClassification } from '../weeklyPlanningVNextActualSaveReadback';
 import { createWeeklyPlanningApplicationRequestId } from '../../application/weeklyPlanningApplicationIdentity';
 
@@ -428,7 +428,11 @@ export function useWeeklyPlanningVNextApplication(
       try { await input.saveWeeklyActualRecords(ownerId, toActualRecordsToSave(records)); }
       catch (error) {
         if (retry) reportRetry(ACTUAL_SAVE_RETRY_FAILED_REPLY);
-        else saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt);
+        else {
+          // Only a refusal before anything was sent discards the attempt. A scoped mutation may reject
+          // after the server committed, and other errors do not prove absence; reload must read back.
+          if (error instanceof ActualRecordsNotWrittenError) saveLocal.clearActualSaveAttempt(saveConversationId, attemptedAt);
+        }
         throw error;
       }
       // A turn may have corrected a value while the batch was in flight. Only the values that this

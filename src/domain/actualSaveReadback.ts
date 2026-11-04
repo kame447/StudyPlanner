@@ -14,3 +14,11 @@ export class ActualSaveReadbackUnknownError extends Error {
     this.name = 'ActualSaveReadbackUnknownError';
   }
 }
+
+/** A save refused before anything was sent: the only rejection that proves nothing was written. */
+export class ActualRecordsNotWrittenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ActualRecordsNotWrittenError';
+  }
+}
