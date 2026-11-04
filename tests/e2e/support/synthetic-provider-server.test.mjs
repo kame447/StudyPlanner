@@ -26,7 +26,7 @@ function harness() {
   const source = readFileSync(new URL('../emulator/syntheticProvider.mjs', import.meta.url), 'utf8');
   // Execute the real handler; replace only the HTTP module and timer ports, without opening its shared port.
   vm.runInNewContext(source.replace("import http from 'node:http';", ''), {
-    URL, Buffer,
+    URL, Buffer, Date: { now: () => 1_793_804_400_000 },
     http: { createServer(callback) { handler = callback; return { listen() {} }; } },
     setTimeout(callback, ms) { const id = ++nextTimer; timers.set(id, { callback, ms }); return id; },
     clearTimeout(id) { timers.delete(id); },
@@ -82,4 +82,12 @@ test('reset settles and clears held requests, waiting readers, scripts and hold 
   assert.equal(decision.writableEnded, true);
   assert.equal(decision.body.body.marker, 'new-decision');
   assert.equal(oldWaiter.body.error, 'synthetic provider reset');
+});
+
+test('received requests carry the server clock for correlation with the quota minute', async () => {
+  const h = harness();
+  await h.call('/v1/chat/completions', 'POST', { marker: 'timed-request' });
+  const requests = (await h.call('/__synthetic/requests')).body.received;
+  assert.equal(requests[0].receivedAt, 1_793_804_400_000);
+  assert.deepEqual(requests[0].body, { marker: 'timed-request' });
 });
