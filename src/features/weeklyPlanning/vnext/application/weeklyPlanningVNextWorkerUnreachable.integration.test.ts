@@ -4,6 +4,7 @@ import { createInitialPlanningState, weeklyPlanningReducer } from '../../weeklyP
 import { createWeeklyPlanningControllerSession, submitWeeklyPlanningControlledTurn } from '../../weeklyPlanningTurnController';
 import { submitWeeklyPlanningApplicationTurnWithServices, type WeeklyPlanningTurnApplicationServices } from '../../application/weeklyPlanningTurnApplicationCore';
 import { readDurableWeeklyTurnReceipt, type DurableTurnClientPorts } from '../../application/weeklyPlanningDurableTurnClient';
+import { WEEKLY_PLANNING_DURABLE_WORKER_UNAVAILABLE_USER_MESSAGE } from '../../application/weeklyPlanningDurableWorkerUnavailableError';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../../testUtils/weeklyPlanningApplicationTestHarness';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import type { VNextAddFact } from '../weeklyPlanningVNextTypes';
@@ -130,7 +131,7 @@ it('keeps an unsaved VNext preview through prolonged Worker unreachability, expl
     expect(observations.length).toBeGreaterThan(1);
     for (const observed of observations) {
       expect(observed.state.pendingTurn?.requestId).toBe(lostRequest!.requestId);
-      expect(observed.state.messages.at(-1)?.content).toBe('数学を90分に変えてください。');
+      expect(observed.state.messages[observed.state.messages.length - 1]?.content).toBe('数学を90分に変えてください。');
       expect(observed.state.previewCandidates).toEqual(before.previewCandidates);
       expect(observed.state.draftBlocks).toEqual(before.draftBlocks);
       expect(observed.checkpoint).toBe(beforeCheckpoint);
@@ -152,12 +153,9 @@ it('keeps an unsaved VNext preview through prolonged Worker unreachability, expl
     expect(state.draftBlocks).toEqual(before.draftBlocks);
     expect(outcomes.failed).toHaveBeenCalledTimes(1);
     expect(outcomes.committed).toHaveBeenCalledTimes(1);
-    const failureReply = state.messages.at(-1)!;
+    const failureReply = state.messages[state.messages.length - 1];
     expect(failureReply.role).toBe('assistant');
-    expect.soft(failureReply.content).toMatch(/今回.*(?:反映|適用).*ません/u);
-    expect.soft(failureReply.content).toMatch(/(?:予定案|仮案|プレビュー).*(?:保持|残|そのまま)/u);
-    expect.soft(failureReply.content).toMatch(/(?:保存していません|未保存)/u);
-    expect(failureReply.content).not.toMatch(/保存しました|更新しました|反映しました|適用しました/u);
+    expect(failureReply.content).toBe(WEEKLY_PLANNING_DURABLE_WORKER_UNAVAILABLE_USER_MESSAGE);
 
     recovered = true;
     expect((await submit('今の仮案を見せてください。')).accepted).toBe(true);
