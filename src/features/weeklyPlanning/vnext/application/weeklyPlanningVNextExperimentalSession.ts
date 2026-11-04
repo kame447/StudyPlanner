@@ -519,9 +519,11 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
+      // Repetition changes presentation only; shown options still bind through the existing answer boundary.
       repeatedQuestionGuidance: question !== null && question.optionalInvitation === undefined
         && (vnextQuestionKeyAllowsProvisionalTimebox(question.key)
-          || (question.code === 'remaining_inconsistent' && question.key.startsWith('remaining_inconsistent:')))
+          || (question.code === 'remaining_inconsistent' && question.key.startsWith('remaining_inconsistent:'))
+          || (question.code === 'same_or_distinct_work' && question.key.startsWith('same_or_distinct_work:')))
         && unansweredQuestionStreak !== undefined && unansweredQuestionStreak.count >= 3,
       registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
     });
