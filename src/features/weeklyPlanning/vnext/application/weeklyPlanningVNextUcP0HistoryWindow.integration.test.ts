@@ -86,6 +86,7 @@ it('keeps corrected active facts after older messages leave the window and isola
   expect(input.recentConversation).toEqual(before.messages);
   expect(prompt.recentConversation).toEqual(before.messages);
   expect(prompt.recentConversation.map(message => message.content)).not.toContain(firstText);
+  // The correction utterance remains inside the window; this does not test recall after it leaves.
   expect(prompt.recentConversation.map(message => message.content)).toContain('60分ではなく90分に訂正します。');
 
   const graph = input.state.graph;
@@ -101,7 +102,7 @@ it('keeps corrected active facts after older messages leave the window and isola
   expect(prompt.activeFacts.workloads?.map(fact => fact.amount)).toEqual([90]);
 
   const retained = primary.local.checkpoint.read();
-  for (const [owner, conversation] of [['owner-b', 'conversation-b'], ['owner-a', 'conversation-b']]) {
+  for (const [owner, conversation] of [['owner-b', 'conversation-a'], ['owner-b', 'conversation-b'], ['owner-a', 'conversation-b']]) {
     const control = harness(owner, conversation, [reading()]);
     expect(control.local.checkpoint.read()).toBeNull();
     expect((await control.turn('新しい会話です。')).outcome).toBe('noop');
