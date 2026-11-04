@@ -95,6 +95,70 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     return { memory, repository, save, input, services };
   }
 
+  it('keeps an unapproved preview and its conversation through a failed planner read, then resumes only for the same owner', async () => {
+    const interpret = vi.fn(() => async () => seed);
+    const { input, services, save, memory } = fixture(interpret);
+    const ref = createRef<WeeklyPlanningApplication>();
+    const show = (availability: UseWeeklyPlanningApplicationInput['plannerDataAvailability']) =>
+      <LocalHarness ref={ref} input={{ ...input, plannerDataAvailability: availability }} services={services} />;
+    const ready = createReadyPlannerDataAvailability(OWNER);
+    await act(async () => { renderer = create(show(ready)); });
+    await act(async () => { expect((await ref.current!.submitTurn('数学を30分')).accepted).toBe(true); });
+    expect(interpret).toHaveBeenCalledTimes(1);
+    const candidates = ref.current!.state.previewCandidates!;
+    expect(candidates).toHaveLength(1);
+    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: OWNER, createdAt: NOW });
+    await act(async () => { expect(ref.current!.createDraftBlocks(blocks)).toBe(true); });
+    const before = structuredClone({ draftBlocks: ref.current!.state.draftBlocks,
+      previewCandidates: ref.current!.state.previewCandidates, messages: ref.current!.state.messages });
+    expect(before.draftBlocks).toHaveLength(1);
+    // Promotion consumes the preview candidate; the unapproved block remains the reviewable preview.
+    expect(before.previewCandidates).toEqual([]);
+    const chatId = ref.current!.chat.index.activeChatId;
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId });
+    const conversationId = local.readCheckpoint()!.conversationId;
+    expect(save).not.toHaveBeenCalled();
+
+    const stale: UseWeeklyPlanningApplicationInput['plannerDataAvailability'] = {
+      status: 'stale', ownerId: OWNER, observedAt: '2026-11-02T01:00:00.000Z', lastSuccessfulAt: '2026-08-31T00:00:00.000Z',
+    };
+    await act(async () => { renderer!.update(show(stale)); });
+    expect(ref.current!.plannerDataReady).toBe(false);
+    expect({ draftBlocks: ref.current!.state.draftBlocks, previewCandidates: ref.current!.state.previewCandidates,
+      messages: ref.current!.state.messages }).toEqual(before);
+    expect(local.readCheckpoint()!.conversationId).toBe(conversationId);
+    await act(async () => { expect(await ref.current!.submitTurn('読取失敗中の追加入力')).toMatchObject({ accepted: false }); });
+    // Approval while the planner read is stale is not covered here: no current contract decides it
+    // (V5 and VNext both admit it). See the Stage A read-failure evidence for that open question.
+    expect(interpret).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalled();
+    expect(memory.plans.size).toBe(0);
+    expect(ref.current!.state.messages).toEqual(before.messages);
+    expect(ref.current!.state.draftBlocks).toEqual(before.draftBlocks);
+    expect(ref.current!.state.previewCandidates).toEqual(before.previewCandidates);
+
+    await act(async () => { renderer!.update(show(createReadyPlannerDataAvailability('another-owner'))); });
+    expect(ref.current!.plannerDataReady).toBe(false);
+    await act(async () => { expect(await ref.current!.submitTurn('別 owner の ready 中')).toMatchObject({ accepted: false }); });
+    expect(interpret).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalled();
+    expect(ref.current!.state.messages).toEqual(before.messages);
+
+    await act(async () => { renderer!.update(show(ready)); });
+    expect(ref.current!.plannerDataReady).toBe(true);
+    expect(ref.current!.chat.index.activeChatId).toBe(chatId);
+    expect(local.readCheckpoint()!.conversationId).toBe(conversationId);
+    expect(ref.current!.state.draftBlocks).toEqual(before.draftBlocks);
+    expect(ref.current!.state.previewCandidates).toEqual(before.previewCandidates);
+    await act(async () => { expect((await ref.current!.submitTurn('続けて数学を30分')).accepted).toBe(true); });
+    expect(interpret).toHaveBeenCalledTimes(2);
+    expect(local.readCheckpoint()!.conversationId).toBe(conversationId);
+    expect(ref.current!.state.messages).toEqual(expect.arrayContaining(before.messages));
+    expect(ref.current!.state.draftBlocks.length).toBeGreaterThan(0);
+    expect(save).not.toHaveBeenCalled();
+    expect(memory.plans.size).toBe(0);
+  });
+
   it('turns on locally, previews V5 candidates, reloads, saves through V5 and rolls back to untouched V5 state', async () => {
     const v5State = createInitialPlanningState(WEEK);
     v5State.messages = [{ id: 'v5-message', role: 'assistant', content: '旧版の会話', createdAt: NOW }];
