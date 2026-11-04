@@ -45,7 +45,12 @@ it.each([
   const result = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'turn-1', shownRevision: null, userText: text });
   expect(providerCalls).toBe(1);
   expect(result.outcome).toBe('applied');
-  if (result.question) expect(result.question.optionalInvitation).toBeTruthy();
+  if (result.question) {
+    expect(result.question.optionalInvitation).toBeTruthy();
+    // This checks the typed invitation, not the quality of the displayed natural-language response.
+    expect(result.question).toMatchObject({ code: 'missing_schedulable_work', taskId: null, componentId: null,
+      forWork: null, subjectLineageIds: [], optionalInvitation: { intent: 'missing_task_identity' } });
+  }
   expect(result.preview !== null).toBe(preview);
   const checkpoint = local.readCheckpoint()!.vnext;
   expect(checkpoint.state.draftGenerationIntent).toBe(preview ? 'user_authorized' : 'not_requested');
