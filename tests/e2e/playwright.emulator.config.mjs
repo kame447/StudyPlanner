@@ -47,6 +47,19 @@ const DURABLE_APP = `http://127.0.0.1:${DURABLE.STUDYPLANNER_E2E_APP_PORT}`;
 const DURABLE_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-vnext-production-state.json');
 const ACTUAL_CHAT_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-actual-chat-state.json');
 
+// Each independent durable scenario keeps its own UID quota; the production limits remain active.
+const durableScenarioAccounts = [
+  { key: 'p3-effort', testMatch: 'emulator/vnext-durable-no-options-repeat.emulator.mjs', grep: /effort_inconsistent/ },
+  { key: 'p3-completed', testMatch: 'emulator/vnext-durable-no-options-repeat.emulator.mjs', grep: /completed_exceeds_total/ },
+  { key: 'p3-remaining', testMatch: 'emulator/vnext-durable-option-conflict-repeat.emulator.mjs', grep: /remaining_inconsistent/ },
+  { key: 'p3-work-identity', testMatch: 'emulator/vnext-durable-option-conflict-repeat.emulator.mjs', grep: /same_or_distinct_work/ },
+  { key: 'provider-failure', testMatch: 'emulator/vnext-durable-provider-failure.emulator.mjs' },
+  { key: 'pending-actuals', testMatch: 'emulator/vnext-durable-provider-failure-pending-actuals.emulator.mjs' },
+  { key: 'repeated-question', testMatch: 'emulator/vnext-durable-repeated-question.emulator.mjs' },
+  { key: 'worker-terminal', testMatch: 'emulator/vnext-durable-worker-terminal.emulator.mjs' },
+  { key: 'worker-unreachable', testMatch: 'emulator/vnext-durable-worker-unreachable.emulator.mjs' },
+];
+
 export default defineConfig({
   testDir: configDir,
   fullyParallel: false,
@@ -127,11 +140,23 @@ export default defineConfig({
     },
     {
       name: 'chromium-emulator-vnext-production',
-      testMatch: ['emulator/vnext-production.emulator.mjs', 'emulator/vnext-durable-provider-failure.emulator.mjs', 'emulator/vnext-durable-repeated-question.emulator.mjs', 'emulator/vnext-durable-worker-unreachable.emulator.mjs', 'emulator/vnext-durable-worker-terminal.emulator.mjs', 'emulator/vnext-durable-provider-failure-pending-actuals.emulator.mjs', 'emulator/vnext-durable-option-conflict-repeat.emulator.mjs', 'emulator/vnext-durable-no-options-repeat.emulator.mjs'],
+      testMatch: 'emulator/vnext-production.emulator.mjs',
       dependencies: ['emulator-vnext-production-setup'],
       metadata: { email: 'e2e-vnext-production@example.test' },
       use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: DURABLE_STATE },
     },
+    ...durableScenarioAccounts.flatMap(({ key, testMatch, grep }) => {
+      const email = `e2e-vnext-production-${key}@example.test`;
+      const statePath = path.join(repoRoot, `artifacts/playwright-emulator-vnext-production-${key}-state.json`);
+      const setup = `emulator-vnext-production-${key}-setup`;
+      return [
+        { name: setup, testMatch: 'emulator/account.setup.mjs', metadata: { email, statePath },
+          use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP } },
+        { name: `chromium-emulator-vnext-production-${key}`, testMatch, ...(grep ? { grep } : {}),
+          dependencies: [setup], metadata: { email },
+          use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: statePath } },
+      ];
+    }),
     // The examinee's study-record conversation (#973): the durable target, scripted readings, its own account.
     {
       name: 'emulator-actual-chat-setup',
