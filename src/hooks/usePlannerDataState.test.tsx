@@ -691,7 +691,8 @@ describe('planner user-facing error boundary', () => {
           { id: 'record-1', occurrenceDate: '2026-10-30', subject: '数学', minutes: 30 },
         ]).catch(error => { caught = error; });
       });
-      expect(readState().actuals.map(actual => actual.id)).toEqual(['record-1']);
+      // This chat batch remains tentative until acknowledgement, including before a permission refusal.
+      expect(readState().actuals).toEqual([]);
       await act(async () => { pending.reject(denial); await saving; });
       expect(repository.saveDurationActualsBatch).toHaveBeenCalledTimes(1);
       expect(readState().actuals).toEqual([]);

@@ -1460,16 +1460,14 @@ export function usePlannerDataState({
     const releaseAdmission = admitActualMutation(nextActuals, [], []);
     const nextIds = new Set(nextActuals.map((actual) => actual.id));
     const merge = (current: Actual[], saved: readonly Actual[]) => [...current.filter((actual) => !nextIds.has(actual.id)), ...saved];
-    const actualOperation = actualState.begin((current) => merge(current, nextActuals));
+    // Duration batches are tentative chat records: shared views receive only acknowledged values.
     try {
       const saved = await plannerRepository.saveDurationActualsBatch(userId, records);
       if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
         setActuals((current) => merge(current, saved));
       }
-      actualState.commit(actualOperation);
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
-      actualState.reject(actualOperation);
       const userFacingError = getErrorDiagnostics(error).code === 'permission-denied'
         ? new UserFacingError('保存する権限がないため、記録は保存されていません。再ログインしてから、もう一度お試しください。')
         : resolveUserFacingError(error, '記録を保存できませんでした。');
