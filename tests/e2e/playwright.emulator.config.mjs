@@ -53,6 +53,7 @@ const durableScenarioAccounts = [
   { key: 'p3-completed', testMatch: 'emulator/vnext-durable-no-options-repeat.emulator.mjs', grep: /completed_exceeds_total/ },
   { key: 'p3-remaining', testMatch: 'emulator/vnext-durable-option-conflict-repeat.emulator.mjs', grep: /remaining_inconsistent/ },
   { key: 'p3-work-identity', testMatch: 'emulator/vnext-durable-option-conflict-repeat.emulator.mjs', grep: /same_or_distinct_work/ },
+  { key: 'stage-b-multiwork', testMatch: 'emulator/vnext-durable-stageB-multiwork-answer.emulator.mjs' },
   { key: 'provider-failure', testMatch: 'emulator/vnext-durable-provider-failure.emulator.mjs' },
   { key: 'pending-actuals', testMatch: 'emulator/vnext-durable-provider-failure-pending-actuals.emulator.mjs' },
   { key: 'repeated-question', testMatch: 'emulator/vnext-durable-repeated-question.emulator.mjs' },
