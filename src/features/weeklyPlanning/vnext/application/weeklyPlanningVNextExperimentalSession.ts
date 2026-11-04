@@ -16,7 +16,8 @@ import {
 } from '../../preview/weeklyPlanningPreviewBlocksCore';
 import type { WeeklyPlanDraftBlock } from '../../types';
 import type { WeeklyDraftCandidate } from '../../scheduling/weeklyDraftCandidateGenerator';
-import { projectWeeklyPlanningVNext, type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
+import { projectWeeklyPlanningVNext, vnextQuestionKeyAllowsProvisionalTimebox,
+  type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
   fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts, decideWeeklyPlanningStableDialogueV5,
   type SemanticConversationActV5, type WeeklyPlanningFixedEventCommunicationFacts } from '../weeklyPlanningVNextV5Boundary';
@@ -519,6 +520,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
       repeatedQuestionGuidance: question?.code === 'missing_effort_estimate'
+        && vnextQuestionKeyAllowsProvisionalTimebox(question.key)
         && unansweredQuestionStreak !== undefined && unansweredQuestionStreak.count >= 3,
       registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
     });
