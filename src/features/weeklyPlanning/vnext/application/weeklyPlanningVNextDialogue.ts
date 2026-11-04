@@ -111,7 +111,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
     requiredLabels: [...new Set([...requiredLabelsForStableV5Dialogue({ planningInformation, targetFactId,
       includePreviewPromotionControl: preview !== null }), ...optionLabels,
       ...(params.repeatedQuestionGuidance && question?.code === 'missing_effort_estimate'
-        ? ['何分くらい', '仮置きで予定を見る', '後で決める'] : [])])],
+        ? ['何分くらい', '所要時間はまだ分からないので、仮置きで予定を組んで見せて', '後で決める'] : [])])],
     fallbackText: params.authorizationRequired
       ? '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。'
       : RENDERER_TECHNICAL_STOP,
