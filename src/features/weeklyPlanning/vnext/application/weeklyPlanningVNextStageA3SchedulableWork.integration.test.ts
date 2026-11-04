@@ -90,9 +90,11 @@ describe('Stage A scenario 3: repeated unanswered missing_schedulable_work (scri
         providerCalls += 1;
         const context = JSON.parse(request.messages[1].content);
         expect(context.userText).toBe(provisionalChoice);
-        expect(context.presentedQuestion?.key).toBe(asked.question!.key);
+        // The provider sees question keys only as aliases (ProviderReferences); answer with the alias.
+        expect(context.openQuestions).toHaveLength(1);
+        expect(context.presentedQuestion?.key).toBe(context.openQuestions[0].key);
         return JSON.stringify({ planningIntent: 'unknown', conversationActs: [], answer: null,
-          delta: { ...empty, defer: [{ questionKey: asked.question!.key, allocation: 'provisional_timebox' }] } });
+          delta: { ...empty, defer: [{ questionKey: context.openQuestions[0].key, allocation: 'provisional_timebox' }] } });
       } },
     };
     const provisional = await turn(provisionalChoice, providerPorts);
