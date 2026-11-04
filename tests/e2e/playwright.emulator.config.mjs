@@ -111,7 +111,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-emulator-vnext-production',
-      testMatch: ['emulator/vnext-production.emulator.mjs', 'emulator/vnext-durable-provider-failure.emulator.mjs'],
+      testMatch: ['emulator/vnext-production.emulator.mjs', 'emulator/vnext-durable-provider-failure.emulator.mjs', 'emulator/vnext-durable-worker-unreachable.emulator.mjs'],
       dependencies: ['emulator-vnext-production-setup'],
       metadata: { email: 'e2e-vnext-production@example.test' },
       use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: DURABLE_STATE },
