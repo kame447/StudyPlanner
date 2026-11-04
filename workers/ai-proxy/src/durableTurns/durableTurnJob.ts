@@ -77,6 +77,7 @@ class ExecutionStop extends Error {
 
 export type DurableTurnExecute = (payload: string, dispatch: (
   request: string, send: () => Promise<string>,
+  options?: { stopOnInfrastructureError?: boolean },
 ) => Promise<string>, sourceIp?: string, deadlineAt?: number) => Promise<string>;
 
 const bytes = (value: string) => new TextEncoder().encode(value).byteLength;
@@ -243,6 +244,7 @@ export class DurableTurnJob {
       && latest.identity.startedAt === record.identity.startedAt && latest.fingerprint === record.fingerprint;
     let step = 0;
     let stopped: DurableTurnFailure | undefined;
+    let storageFailure: StorageFailure | undefined;
     const stillCurrent = async () => {
       const latest = await this.storage.read();
       if (!latest || !ownsExecution(latest) || latest.status !== 'running') throw new ExecutionStop('execution_changed');
@@ -250,7 +252,8 @@ export class DurableTurnJob {
       return latest;
     };
     try {
-      const result = await execute(record.payload!, async (request, send) => {
+      const dispatch: Parameters<DurableTurnExecute>[1] = async (request, send) => {
+        if (storageFailure) throw storageFailure;
         if (stopped) throw new ExecutionStop(stopped);
         const index = step++;
         let digest = '';
@@ -283,7 +286,16 @@ export class DurableTurnJob {
           await this.storage.write({ ...latest, journal });
         });
         return response;
-      }, record.sourceIp, record.acceptedAt + DURABLE_TURN_LIMITS.executionMs);
+      };
+      const result = await execute(record.payload!, (request, send, options) => dispatch(request, send).catch(error => {
+        // VNext opts in: an interpreter may catch these errors, but cannot restore permission to publish.
+        if (options?.stopOnInfrastructureError) {
+          if (error instanceof StorageFailure) storageFailure = error;
+          else if (error instanceof ExecutionStop) stopped ??= error.code;
+        }
+        throw error;
+      }), record.sourceIp, record.acceptedAt + DURABLE_TURN_LIMITS.executionMs);
+      if (storageFailure) throw storageFailure;
       if (stopped) throw new ExecutionStop(stopped);
       await this.serialized(async () => {
         const latest = await stillCurrent();
@@ -295,6 +307,7 @@ export class DurableTurnJob {
     } catch (error) {
       // Unknown storage errors deliberately escape. An alarm retry reads the actual committed state;
       // a guessed failure must never overwrite a result from a commit-then-throw storage write.
+      if (storageFailure) throw storageFailure;
       if (error instanceof StorageFailure) throw error;
       const failure = error instanceof ExecutionStop ? error.code : 'execution_failed';
       await this.serialized(async () => {

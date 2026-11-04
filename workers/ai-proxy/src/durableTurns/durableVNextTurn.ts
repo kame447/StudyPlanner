@@ -19,9 +19,11 @@ export function executeDurableVNextTurn(
   deadlineAt?: number,
 ) {
   const { userId, conversationId, traceRequestId } = payload.input;
-  const client = createDurableVNextTurnProvider(env, userId, dispatch, sourceIp, deadlineAt);
+  const guardedDispatch: Parameters<DurableTurnExecute>[1] = (request, send) =>
+    dispatch(request, send, { stopOnInfrastructureError: true });
+  const client = createDurableVNextTurnProvider(env, userId, guardedDispatch, sourceIp, deadlineAt);
   const interpret = createWeeklyPlanningVNextRuntimeInterpreter({ ownerId: userId, conversationId: conversationId! }, {
-    choice: createDurableVNextOptionChoicePort(env, userId, dispatch,
+    choice: createDurableVNextOptionChoicePort(env, userId, guardedDispatch,
       { policy: VNEXT_OPTION_CHOICE_POLICY, semanticPolicy: VNEXT_OPTION_CHOICE_SEMANTIC_POLICY }, sourceIp, deadlineAt),
     focusedRequestId: () => `${traceRequestId}:focused`,
   });
