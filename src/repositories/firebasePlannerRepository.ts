@@ -44,6 +44,7 @@ import {
   resolveActualForUpsert,
 } from './repositoryUtils';
 import { buildDurationActuals } from '../domain/durationActuals';
+import { isDurationActual } from '../lib/actualDuration';
 
 type PlannerDoc =
   | Plan
@@ -283,8 +284,14 @@ export function createFirebasePlannerRepository(
       const publish = studyHistory?.beginRead(userId, 'actuals');
       try {
         const snapshot = await getDocs(query(collection(firestoreDb, 'actuals'), where('userId', '==', userId)));
-        const actuals = dedupeLinkedActualRecords(snapshot.docs.map(row =>
-          normalizeActualRecord({ ...row.data(), id: row.id } as Actual)));
+        const actuals = dedupeLinkedActualRecords(snapshot.docs.map(row => {
+          const actual = normalizeActualRecord({ ...row.data(), id: row.id } as Actual);
+          // A full read must not certify a tentative duration or publish an incomplete replacement.
+          if (isDurationActual(actual) && (row.metadata?.hasPendingWrites ?? snapshot.metadata?.hasPendingWrites) === true) {
+            throw new Error('保存中の学習実績はまだ確定していません。');
+          }
+          return actual;
+        }));
         publish?.(actuals, snapshot.metadata);
         return actuals;
       } catch (error) {

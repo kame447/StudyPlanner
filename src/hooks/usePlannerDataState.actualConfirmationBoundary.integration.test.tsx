@@ -115,7 +115,8 @@ it('does not let a pending-writes SDK snapshot certify the replacement during a 
   boundary.getDocs.mockImplementation(async (request: { source: { name: string }; constraints: unknown[] }) => {
     expect(request.source.name).toBe('actuals');
     expect(request.constraints).toEqual([{ field: 'userId', op: '==', value: OWNER }]);
-    return { docs: sdkRows.map(row => ({ id: row.id, data: () => row })),
+    return { docs: sdkRows.map(row => ({ id: row.id, data: () => row,
+      metadata: { fromCache: pendingWrites, hasPendingWrites: pendingWrites && row.id === correction.id } })),
       metadata: { fromCache: pendingWrites, hasPendingWrites: pendingWrites } };
   });
   const firebase = createFirebasePlannerRepository({} as Firestore);
@@ -132,14 +133,47 @@ it('does not let a pending-writes SDK snapshot certify the replacement during a 
   let done!: Promise<unknown>;
   await act(async () => { done = capture(state.saveDurationActualsBatch([correction])); await entered.promise; });
   expect((await fixture.repository.getActuals(OWNER)).find(row => row.id === correction.id)?.actualDurationMinutes).toBe(45);
-  await act(async () => { await state.loadPlannerData(OWNER); });
+  await act(async () => { await expect(state.loadPlannerData(OWNER)).rejects.toThrow('学習データを読み込めませんでした。'); });
   expect(pendingWrites).toBe(true);
   expect(boundary.getDocs).toHaveBeenCalledTimes(2);
   expect.soft(tuesdayTotal(), 'cached pending writes are not a server acknowledgement').toBe('時刻なし 45分');
+  expectConfirmedWeek(395);
+  for (const record of week) expect(state.actuals.find(row => row.id === record.id)?.actualDurationMinutes).toBe(record.minutes);
+  expect(save).toHaveBeenCalledOnce();
   expect(notice).not.toHaveBeenCalledWith('記録を保存しました。', 'success');
   await act(async () => { ack.resolve(); expect(await done).toBeUndefined(); });
   expect(tuesdayTotal()).toBe('時刻なし 50分'); expectConfirmedWeek(400);
   expect(save).toHaveBeenCalledOnce();
+});
+
+it.each(['timed pending', 'timed pending with confirmed duration', 'cached confirmed duration', 'server confirmed duration'] as const)
+('preserves the existing Firebase read for %s', async scenario => {
+  const duration = buildDurationActuals(OWNER, [week[1]], STAMP)[0];
+  const timed = { id: 'legacy-timed', userId: OWNER, planId: null, occurrenceDate: '2026-10-27', title: '旧経路の数学',
+    subject: '数学', actualStartTime: '09:00', actualEndTime: '09:30', note: '', updatedAt: STAMP };
+  const includesTimed = scenario.startsWith('timed');
+  const includesDuration = scenario !== 'timed pending';
+  const cached = scenario !== 'server confirmed duration';
+  const docs = [
+    ...(includesTimed ? [{ id: timed.id, data: () => timed, metadata: { fromCache: cached, hasPendingWrites: true } }] : []),
+    ...(includesDuration ? [{ id: duration.id, data: () => duration, metadata: { fromCache: cached, hasPendingWrites: false } }] : []),
+  ];
+  boundary.getDocs.mockResolvedValue({ docs, metadata: { fromCache: cached, hasPendingWrites: includesTimed } });
+  const repository = createFirebasePlannerRepository({} as Firestore);
+  const result = await repository.getActuals(OWNER);
+  expect(result).toHaveLength(docs.length);
+  if (includesTimed) expect(result).toContainEqual(expect.objectContaining({ id: timed.id, actualStartTime: '09:00', actualEndTime: '09:30' }));
+  if (includesDuration) expect(result).toContainEqual(expect.objectContaining({ id: duration.id, actualDurationMinutes: 45 }));
+  expect(boundary.getDocs).toHaveBeenCalledOnce();
+});
+
+it('does not convert a query with unproved pending duration metadata into an empty or partial success', async () => {
+  const rows = buildDurationActuals(OWNER, week, STAMP);
+  boundary.getDocs.mockResolvedValue({ docs: rows.map(row => ({ id: row.id, data: () => row })),
+    metadata: { fromCache: true, hasPendingWrites: true } });
+  const repository = createFirebasePlannerRepository({} as Firestore);
+  await expect(repository.getActuals(OWNER)).rejects.toThrow('保存中の学習実績はまだ確定していません');
+  expect(boundary.getDocs).toHaveBeenCalledOnce();
 });
 
 it('keeps the shared legacy timed-Actual save immediately visible before its acknowledgement', async () => {
