@@ -2,11 +2,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearUserPlanningContextForOwnerV1,
   finalizeStagedUserPlanningContextV1,
+  hydrateUserPlanningContextSnapshotV1,
   loadUserPlanningContextSnapshotV1,
   resetUserPlanningContextRuntimeForTestV1,
   stageUserPlanningContextFactsV1,
 } from './userPlanningContextSpace';
 import { createEmptyUserPlanningContextSnapshotV1, type UserPlanningContextRecordV1 } from './userPlanningContextTypes';
+import { getUserPlanningContextRepositoryV1, resetUserPlanningContextRepositoryForTestV1 } from './userPlanningContextRepository';
+
+const cloud = vi.hoisted(() => ({
+  getDb: vi.fn(), get: vi.fn(), set: vi.fn(),
+}));
+vi.mock('../../lib/firebaseClient', () => ({ getFirestoreDb: cloud.getDb }));
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn(() => ({ ownerDocument: true })),
+  onSnapshot: vi.fn(),
+  runTransaction: vi.fn(async (_db: unknown, operation: (transaction: unknown) => Promise<unknown>) =>
+    operation({ get: cloud.get, set: cloud.set })),
+}));
 
 const date = '2026-11-05';
 const now = '2026-11-05T03:00:00.000Z';
@@ -49,7 +62,11 @@ function allowReadFailure(action: () => unknown) {
   try { action(); } catch { /* An explicit read/save rejection is an acceptable outcome. */ }
 }
 
-afterEach(() => { vi.unstubAllGlobals(); resetUserPlanningContextRuntimeForTestV1(); });
+afterEach(() => {
+  vi.unstubAllGlobals(); resetUserPlanningContextRuntimeForTestV1();
+  resetUserPlanningContextRepositoryForTestV1();
+  cloud.getDb.mockReset(); cloud.get.mockReset(); cloud.set.mockReset();
+});
 
 const invalidPayloads = [
   ['malformed JSON', '{"records": [不正な JSON'],
@@ -123,6 +140,52 @@ describe('UC-P1A independent read safety oracle', () => {
     expect(storage.removeItem).toHaveBeenCalledExactlyOnceWith(key('a'));
     expect(storage.values.get(key('b'))).toBe(originalB);
     expect(loadUserPlanningContextSnapshotV1({ ownerId: 'b', currentDate: date }).records).toEqual([record('b')]);
+  });
+
+  it('does not hydrate a temporary read failure as empty after local reads recover', async () => {
+    const original = rawSnapshot('a');
+    const storage = fakeStorage([[key('a'), original]]);
+    storage.getItem.mockImplementationOnce(() => { throw new Error('temporary read unavailable'); });
+    cloud.getDb.mockReturnValue(null);
+    let recovered: string | null | undefined;
+    let localReturned = false;
+    try {
+      const local = loadUserPlanningContextSnapshotV1({ ownerId: 'a', currentDate: date });
+      localReturned = true;
+      recovered = storage.getItem(key('a'));
+      const initial = await getUserPlanningContextRepositoryV1().initialize('a', local);
+      hydrateUserPlanningContextSnapshotV1(initial.snapshot);
+    } catch { /* Safe explicit rejection may stop initialization or hydration. */ }
+    if (localReturned) expect(recovered).toBe(original); // The next read has recovered.
+    expect(storage.getItem).toHaveBeenCalledWith(key('a'));
+    expect.soft(storage.values.get(key('a'))).toBe(original);
+    expect(storage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('does not create an empty cloud record from an unavailable local read', async () => {
+    const original = rawSnapshot('a');
+    const storage = fakeStorage([[key('a'), original]], ['a']);
+    cloud.getDb.mockReturnValue({ fakeFirestore: true });
+    cloud.get.mockResolvedValue({ exists: () => false });
+    try {
+      const local = loadUserPlanningContextSnapshotV1({ ownerId: 'a', currentDate: date });
+      await getUserPlanningContextRepositoryV1().initialize('a', local);
+    } catch { /* Safe explicit rejection may stop initialization. */ }
+    expect(storage.getItem).toHaveBeenCalledWith(key('a'));
+    expect(storage.values.get(key('a'))).toBe(original);
+    expect(cloud.set).not.toHaveBeenCalled();
+  });
+
+  it('creates an empty cloud record when the local and remote keys are genuinely absent', async () => {
+    const storage = fakeStorage([]);
+    cloud.getDb.mockReturnValue({ fakeFirestore: true });
+    cloud.get.mockResolvedValue({ exists: () => false });
+    const local = loadUserPlanningContextSnapshotV1({ ownerId: 'a', currentDate: date });
+    const initial = await getUserPlanningContextRepositoryV1().initialize('a', local);
+    expect(initial.snapshot.records).toEqual([]);
+    expect(cloud.get).toHaveBeenCalledTimes(1);
+    expect(cloud.set).toHaveBeenCalledTimes(1);
+    expect(storage.setItem).not.toHaveBeenCalled();
   });
 
   it('keeps a revoked record revoked when the same fact is staged again', () => {
