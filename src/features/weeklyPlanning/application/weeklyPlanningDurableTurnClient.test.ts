@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { executeDurableWeeklyTurn, cancelDurableWeeklyTurn, readDurableWeeklyTurnReceipt, saveDurableWeeklyTurnReceipt, durableReceiptKey, type DurableTurnClientPorts } from './weeklyPlanningDurableTurnClient';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { durableReceipt } from './weeklyPlanningDurableTurn.testUtils';
+import { WEEKLY_PLANNING_DURABLE_WORKER_UNAVAILABLE_USER_MESSAGE, WeeklyPlanningDurableWorkerUnavailableError } from './weeklyPlanningDurableWorkerUnavailableError';
 vi.mock('../../../lib/firebaseClient', () => ({ getFirebaseAuth: () => ({ currentUser: {
   uid: durableReceipt().ownerId, getIdToken: async () => 'owner-token',
 } }) }));
@@ -19,6 +20,32 @@ function harness() {
 }
 
 describe('durable browser turn transport', () => {
+  it.each([
+    { status: 404, message: '保存された返信を確認できませんでした。新しいAI処理は開始していません。' },
+    { status: 409, message: '返信の継続を受け付けられませんでした。会話を開き直してください。' },
+    { status: 429, message: '返信の継続を受け付けられませんでした。会話を開き直してください。' },
+    { status: 503, message: '返信の継続を受け付けられませんでした。会話を開き直してください。' },
+    { status: 'failed', message: '返信の生成が中断しました。自動でAIを再実行していません。' },
+    { status: 'expired', message: '返信の生成が中断しました。自動でAIを再実行していません。' },
+    { status: 'retention', message: '返信の保存期限が切れました。' },
+  ])('exposes a controlled VNext failure for $status and keeps the V5 error contract', async ({ status, message }) => {
+    for (const core of ['vnext', 'stable_v5'] as const) {
+      const h = harness();
+      const receipt = core === 'vnext' ? { ...h.receipt, payload: { ...h.receipt.payload, core } } : h.receipt;
+      if (status === 'retention') h.ports.now = () => h.identity.startedAt + 86_400_000;
+      else h.fetch.mockResolvedValueOnce(typeof status === 'number'
+        ? new Response(null, { status }) : h.response(status));
+      const error: unknown = await executeDurableWeeklyTurn(receipt, { ports: h.ports }).catch(error => error);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(message);
+      if (core === 'vnext') {
+        expect(error).toBeInstanceOf(WeeklyPlanningDurableWorkerUnavailableError);
+        expect((error as WeeklyPlanningDurableWorkerUnavailableError).userMessage).toBe(WEEKLY_PLANNING_DURABLE_WORKER_UNAVAILABLE_USER_MESSAGE);
+      } else expect(error).not.toBeInstanceOf(WeeklyPlanningDurableWorkerUnavailableError);
+      expect(h.fetch).toHaveBeenCalledTimes(status === 'retention' ? 0 : 1);
+    }
+  });
+
   it('calls native fetch without binding it to the transport ports object', async () => {
     const h = harness(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(h.identity.startedAt);
     let receiver: unknown;

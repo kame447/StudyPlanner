@@ -3,6 +3,7 @@ import { getFirebaseAuth } from '../../../lib/firebaseClient';
 import type { PlanningState, WeeklyPlanningPendingTurn } from '../types';
 import type { IsolatedWeeklyPlanningTurnInput, IsolatedWeeklyPlanningTurnResult } from './weeklyPlanningIsolatedTurn';
 import type { DurableTurnResult } from '../../../../workers/ai-proxy/src/durableTurns/durableTurnJob';
+import { WeeklyPlanningDurableWorkerUnavailableError } from './weeklyPlanningDurableWorkerUnavailableError';
 
 export const durableWeeklyPlanningEnabled = () => import.meta.env.VITE_DURABLE_WEEKLY_TURNS === 'enabled';
 const RETENTION_MS = 24 * 60 * 60_000;
@@ -95,6 +96,8 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
 ): Promise<Result> {
   if (receipt.cancelRequested) throw new Error('この返信はキャンセルされています。');
   const ports = options.ports ?? defaultPorts();
+  const unavailable = (message: string) => receiptCore(receipt) === 'vnext'
+    ? new WeeklyPlanningDurableWorkerUnavailableError(message) : new Error(message);
   const identity = { ownerId: receipt.ownerId, conversationId: receipt.pending.conversationId,
     requestId: receipt.pending.requestId, baseRevision: receipt.pending.baseRevision,
     startedAt: Date.parse(receipt.pending.startedAt) };
@@ -120,10 +123,10 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
         if (needsReconcile && maySubmit && ports.now() - identity.startedAt < DURABLE_CLIENT_TIMING.reconcileWindowMs) {
           needsReconcile = false; await ports.wait(DURABLE_CLIENT_TIMING.pollBaseMs); continue;
         }
-        throw new Error('保存された返信を確認できませんでした。新しいAI処理は開始していません。');
+        throw unavailable('保存された返信を確認できませんでした。新しいAI処理は開始していません。');
       }
       if (response.status === 401 || response.status === 403) throw new Error('再ログインして会話を開き直してください。');
-      if ((response.status >= 400 && response.status < 500) || response.status === 503) throw new Error('返信の継続を受け付けられませんでした。会話を開き直してください。');
+      if ((response.status >= 400 && response.status < 500) || response.status === 503) throw unavailable('返信の継続を受け付けられませんでした。会話を開き直してください。');
       if (!response.ok) { needsReconcile = true; await ports.wait(Math.min(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.pollBaseMs + attempts++ * 1000)); continue; }
       const state = await response.json() as DurableTurnResult;
       if (!state || typeof state !== 'object') throw new Error('保存された返信の形式を確認できませんでした。');
@@ -142,14 +145,14 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
           || !Array.isArray(result.stagedContextFacts) || typeof result.observedDate !== 'string') throw new Error('保存された返信の形式を確認できませんでした。');
         return result;
       }
-      if (state.status === 'failed' || state.status === 'expired') throw new Error('返信の生成が中断しました。自動でAIを再実行していません。');
+      if (state.status === 'failed' || state.status === 'expired') throw unavailable('返信の生成が中断しました。自動でAIを再実行していません。');
     } catch (error) {
       if (!(error instanceof TypeError) && !(error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) throw error;
       needsReconcile = true;
     }
     await ports.wait(Math.min(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.pollBaseMs + attempts++ * 1000));
   }
-  throw new Error('返信の保存期限が切れました。');
+  throw unavailable('返信の保存期限が切れました。');
 }
 
 /** Explicit user cancellation only; browser suspension/visibility never invokes this. */

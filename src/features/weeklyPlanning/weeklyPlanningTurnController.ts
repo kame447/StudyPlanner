@@ -1,4 +1,5 @@
 import { assertWeeklyPlanningTurnCommitShape } from './application/weeklyPlanningTurnSideEffects';
+import { WeeklyPlanningDurableWorkerUnavailableError } from './application/weeklyPlanningDurableWorkerUnavailableError';
 import { createDialogueTurnEnvelope } from './dialogue/weeklyPlanningDialogueOrchestrator';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import { bindWeeklyPlanningQuestionPresentation, resolveWeeklyPlanningQuestionPresentationFreshness } from './intake/weeklyPlanningQuestionPresentation';
@@ -460,7 +461,8 @@ export async function submitWeeklyPlanningControlledTurn(
       preparedCommit = undefined;
     }
     const failedResult = result;
-    const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;
+    const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure
+      || error instanceof WeeklyPlanningDurableWorkerUnavailableError;
     const stagedPresentation = controlledFailure && failedResult?.recoveryPresentation?.commitStagedPresentation === true;
     if (failedResult && !stagedPresentation) {
       await runBestEffort(() => params.discardExecutionResult?.({
