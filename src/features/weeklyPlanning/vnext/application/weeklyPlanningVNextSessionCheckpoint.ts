@@ -12,13 +12,15 @@ import type { WeeklyPlanningGroundingRecord } from '../../intake/weeklyPlanningI
 import { adaptWeeklyPlanningV5GraphToVNext, type WeeklyPlanningVNextAdapterNote } from '../projection/weeklyPlanningVNextV5Adapter';
 import {
   WEEKLY_PLANNING_VNEXT_STATE_VERSION,
+  VNEXT_RECENT_MESSAGE_LIMIT,
+  VNEXT_STUDY_RECORD_QUESTION_REASONS,
   type VNextEffortEstimateFact,
   type WeeklyPlanningVNextState,
 } from '../weeklyPlanningVNextTypes';
 import type { WeeklyPlanDraftBlock } from '../../types';
-import { VNEXT_STUDY_RECORD_QUESTION_REASONS, type VNextActualRecord, type VNextStudyRecordQuestion } from '../weeklyPlanningVNextStudyRecords';
+import type { VNextActualRecord, VNextStudyRecordQuestion } from '../weeklyPlanningVNextStudyRecords';
 import type { WeeklyPlanningVNextPresentedQuestion } from './weeklyPlanningVNextAnswerBinding';
-import { VNEXT_RECENT_MESSAGE_LIMIT, type WeeklyPlanningVNextMessage } from './weeklyPlanningVNextDialogue';
+import type { WeeklyPlanningVNextMessage } from './weeklyPlanningVNextDialogue';
 import type { WeeklyPlanningVNextInterpretation } from '../weeklyPlanningVNextInterpretationContract';
 
 export const WEEKLY_PLANNING_VNEXT_SESSION_CAPABILITY = 'vnext-conversation-core-v1' as const;

@@ -3,7 +3,7 @@
 // identity, replacement, zero days, totals and wording. A record has no clock time and never becomes
 // one (DESIGN_CONSTRAINT): only a date, a subject and a duration. Nothing here saves; saving is the
 // confirmation UI's explicit action (DESIGN-DECISION 4).
-import type { VNextTurnError } from './weeklyPlanningVNextTypes';
+import { VNEXT_STUDY_RECORD_QUESTION_REASONS, type VNextTurnError } from './weeklyPlanningVNextTypes';
 // The display format has one owner (fix-01 B); this file only phrases the conversation around it.
 import { ACTUAL_RECORDS_REFLECTION_QUESTION, SAVE_ACTUAL_RECORDS_BUTTON_LABEL, formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, formatRestDaysReply, sumActualRecordMinutes } from '../application/weeklyPlanningActualRecords';
 
@@ -15,7 +15,7 @@ export interface VNextStudyRecordReading {
 }
 
 /** The single thing still unclear, in the user's own words (`label`), or null when nothing is unclear. */
-export const VNEXT_STUDY_RECORD_QUESTION_REASONS = ['missing_minutes', 'missing_date', 'missing_subject', 'split_needed'] as const;
+export { VNEXT_STUDY_RECORD_QUESTION_REASONS } from './weeklyPlanningVNextTypes';
 export interface VNextStudyRecordQuestion {
   reason: (typeof VNEXT_STUDY_RECORD_QUESTION_REASONS)[number];
   label: string | null;

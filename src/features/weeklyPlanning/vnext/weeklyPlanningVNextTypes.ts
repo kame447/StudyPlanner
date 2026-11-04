@@ -22,6 +22,10 @@ import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanni
 
 export const WEEKLY_PLANNING_VNEXT_STATE_VERSION = 'weekly-planning-vnext-state-v1' as const;
 
+/** Checkpoint validation shares these values without loading the renderer or record interpreter. */
+export const VNEXT_RECENT_MESSAGE_LIMIT = 4;
+export const VNEXT_STUDY_RECORD_QUESTION_REASONS = ['missing_minutes', 'missing_date', 'missing_subject', 'split_needed'] as const;
+
 // ---- state: stated facts and user decisions only -----------------------------
 // The graph keeps the V5 shape and lifecycle so that lineage (root of the
 // supersede chain) comes from the existing `supersededByFactId` record. VNext

@@ -10,7 +10,7 @@
 // as a fact. Breaks if the reply text is parsed back into facts or a failed render
 // still presents its question. Tests: ExperimentalSession integration "explains each
 // result through the Stable V5 renderer…", OptionChoice "offers Jev the displayed text…".
-import type { VNextQuestion, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
+import { VNEXT_RECENT_MESSAGE_LIMIT, type VNextQuestion, type WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import {
   createWeeklyPlanningStableV5CurrentTurnGrounding,
   createWeeklyPlanningStableV5DialogueProjection,
@@ -30,7 +30,7 @@ import { VNEXT_STUDY_RECORD_SAVE_GUIDE } from '../weeklyPlanningVNextStudyRecord
 import type { WeeklyPlanningVNextShownPreview } from './weeklyPlanningVNextSessionCheckpoint';
 
 /** As many recent messages as the Stable V5 renderer reads. */
-export const VNEXT_RECENT_MESSAGE_LIMIT = 4;
+export { VNEXT_RECENT_MESSAGE_LIMIT } from '../weeklyPlanningVNextTypes';
 
 export interface WeeklyPlanningVNextMessage {
   role: 'user' | 'assistant';
