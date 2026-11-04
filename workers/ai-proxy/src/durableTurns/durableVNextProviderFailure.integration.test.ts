@@ -80,6 +80,52 @@ function harness(focusedDecision = { decision: 'effort_answer', effortTarget: 'q
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
+it('does not publish P1 recovery after a failure receipt storage error, and replays only the committed journal', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(STARTED);
+  for (const commitBeforeThrow of [false, true]) {
+    let record: DurableTurnRecord | undefined;
+    let interrupted = false;
+    const job = () => new DurableTurnJob({ read: async () => structuredClone(record), write: async next => {
+      if (!interrupted && next.journal?.[0]?.status === 'completed') {
+        interrupted = true;
+        if (commitBeforeThrow) record = structuredClone(next);
+        throw new Error('synthetic failure receipt storage interruption');
+      }
+      record = structuredClone(next);
+    }, alarmAt: async () => {} }, () => Date.parse(STARTED));
+    const provider = vi.fn(async () => Response.json({ error: { message: 'synthetic unavailable' } }, { status: 500 }));
+    vi.stubGlobal('fetch', provider);
+    const input: WeeklyPlanningVNextDurableTurnInput = { core: 'vnext', weekStartDate: WEEK, checkpoint: null, legacyV5Checkpoint: null,
+      input: { userId: 'alice', conversationId: 'chat', traceRequestId: 'storage', inputStateRevision: 0,
+        messages: [], userText: '数学を60分勉強したいです', selectedDate: WEEK, plans: [], scheduleTemplates: [],
+        requestContext: createWeeklyPlanningTurnRequestContext({ startedAtIso: STARTED, timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' }) } };
+    const first = job();
+    await first.accept({ ownerId: 'alice', conversationId: 'chat', requestId: 'storage', baseRevision: 0,
+      startedAt: Date.parse(STARTED), payload: JSON.stringify(input) });
+    const execute = async (raw: string, dispatch: Parameters<Parameters<DurableTurnJob['run']>[0]>[1], ip?: string, deadline?: number) =>
+      serializeWeeklyPlanningTurnResult(await executeDurableVNextTurn(env, JSON.parse(raw), dispatch, ip, deadline));
+
+    await expect(first.run(execute)).rejects.toThrow('Durable turn storage operation failed.');
+    expect(interrupted).toBe(true);
+    expect(record?.status).toBe('running');
+    expect(record?.result).toBeUndefined();
+    expect(record?.journal?.[0]?.status).toBe(commitBeforeThrow ? 'completed' : 'started');
+    expect(provider).toHaveBeenCalledOnce();
+
+    await job().run(execute);
+    expect(provider).toHaveBeenCalledOnce();
+    if (commitBeforeThrow) {
+      expect(record?.status).toBe('completed');
+      const result = JSON.parse(record!.result!) as WeeklyPlanningVNextDurableTurnResult;
+      expect(result.result.message).toContain('今回の内容は計画に反映していません。');
+    } else {
+      expect(record).toMatchObject({ status: 'failed', failure: 'provider_completion_unknown' });
+      expect(record?.result).toBeUndefined();
+    }
+  }
+});
+
 it.each(['500', 'timeout'] as const)('retains an unsaved VNext preview or shown question through provider %s, changes method on repeated failure, and handles the next utterance', async failure => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(STARTED);
