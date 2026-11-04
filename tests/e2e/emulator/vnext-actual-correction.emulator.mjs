@@ -4,7 +4,7 @@ import { scriptedActualReading, WEEK_RECORDS, WEEK_TOTAL_AFTER_TUESDAY_FIX, WEEK
 import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
 import { openAiPlanning } from '../support/vnext-production-flows.mjs';
-import { formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL, PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL, formatActualRecordRow, formatActualRecordsTotal } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // A single durable conversation: 395 minutes are pending, Tuesday is corrected to 50 before the only save,
 // and reload plus an identical correction must leave exactly the six 400-minute server documents.
@@ -106,8 +106,8 @@ const rows = (week, tuesdayMinutes) => WEEK_RECORDS.map(({ day, subject, minutes
 async function confirmation(page, expectedRows, totalMinutes) {
   const card = page.locator('.ai-planning-actual-card');
   await expect(card).toBeVisible();
-  await card.getByRole('button', { name: '実績を確認' }).click();
-  const dialog = page.getByRole('dialog', { name: '実績の確認' });
+  await card.getByRole('button', { name: REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL }).click();
+  const dialog = page.getByRole('dialog', { name: PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('.ai-planning-actual-records-list li')).toHaveCount(6);
   for (const row of expectedRows) {

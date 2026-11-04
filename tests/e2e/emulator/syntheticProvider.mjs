@@ -28,6 +28,7 @@ function readBody(request) {
 }
 
 function send(response, status, body) {
+  if (response.destroyed || response.writableEnded) return;
   response.writeHead(status, { 'Content-Type': 'application/json' });
   response.end(JSON.stringify(body));
 }
@@ -58,7 +59,14 @@ http.createServer(async (request, response) => {
       held[index].taken = true;
       return send(response, 200, { id: held[index].id, route, body: held[index].body });
     }
-    return waiters.push({ route, response });
+    const waiter = { route, response };
+    // A timed-out reader must not claim the next test's provider call after its connection closed.
+    response.once('close', () => {
+      const index = waiters.indexOf(waiter);
+      if (index >= 0) waiters.splice(index, 1);
+    });
+    if (!response.destroyed && !response.writableEnded) waiters.push(waiter);
+    return;
   }
   if (url.pathname === '/__synthetic/respond' && request.method === 'POST') {
     const { id, status, body: answer } = JSON.parse(body);
@@ -74,6 +82,12 @@ http.createServer(async (request, response) => {
     scripts.chat.length = 0;
     scripts.decision.length = 0;
     received.length = 0;
+    // Settle pending connections as well as dropping references; no old hold or timer crosses a reset.
+    for (const entry of held.splice(0)) {
+      clearTimeout(entry.timer);
+      send(entry.response, 503, { error: 'synthetic provider reset' });
+    }
+    for (const waiter of waiters.splice(0)) send(waiter.response, 503, { error: 'synthetic provider reset' });
     return send(response, 200, { status: 'reset' });
   }
   const route = ROUTES[url.pathname];

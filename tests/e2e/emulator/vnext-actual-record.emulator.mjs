@@ -8,11 +8,11 @@ import { RECORD_ONLY_KINDS, scriptedActualReading, WEEK_RECORDS, WEEK_TOTAL_AFTE
 import { actualsCommitProblems, attachWriteLedger, protectedWritesIn } from '../support/vnext-firestore-writes.mjs';
 import { expectDurableVNext, observeDurableTurns } from '../support/vnext-durable-observation.mjs';
 import { emulatorUserId } from '../support/schedule-event-ledger.mjs';
-import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextStudyRecords.ts';
+import { VNEXT_STUDY_RECORD_PENDING_PREFIX, VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextStudyRecords.ts';
 import { goToTargetPlannerWeek, openAiPlanning } from '../support/vnext-production-flows.mjs';
 // The wording and arithmetic of the records belong to ONE owner (fix-01 B): expected texts are built from its functions, never from a
 // second format kept in this spec.
-import { formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
+import { REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL, PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL, RETRY_ACTUAL_RECORDS_BUTTON_LABEL, formatActualRecordMinutes, formatActualRecordRow, formatAlreadySavedActualRecordsReply, formatRestDaysReply, formatActualRecordsTotal, sumActualRecordMinutes } from '../../../src/features/weeklyPlanning/application/weeklyPlanningActualRecords.ts';
 
 // #973 I4: the examinee's week of study records by CONVERSATION, on the durable emulator stack (production build with durable
 // turns, production Worker, Auth + Firestore emulators, synthetic provider answering from scripted readings; no model call).
@@ -35,14 +35,14 @@ const OWNER = { Authorization: 'Bearer owner' };
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
-const rowText = ({ date, subject, minutes }) => formatActualRecordRow({ occurrenceDate: date, subject, minutes });
+const rowText = ({ date, subject, minutes, previousMinutes }) => formatActualRecordRow({ occurrenceDate: date, subject, minutes, previousMinutes });
 // Before the click the chat only organises records for confirmation: it must not say they were recorded or saved (fix-01 A).
-const PENDING_PREFIX = '確認用に整理しました（まだ保存していません）：';
+const PENDING_PREFIX = VNEXT_STUDY_RECORD_PENDING_PREFIX;
 const pendingReply = (rows, minutes) => `${PENDING_PREFIX}${rows.map(rowText).join('、')}。ここまでの合計は${formatActualRecordsTotal(minutes)}です。`;
 
 const CONFIRM = {
-  open: page => page.locator('.ai-planning-actual-card').getByRole('button', { name: '実績を確認' }),
-  dialog: page => page.getByRole('dialog', { name: '実績の確認' }),
+  open: page => page.locator('.ai-planning-actual-card').getByRole('button', { name: REVIEW_PROVISIONAL_ACTUAL_RECORDS_LABEL }),
+  dialog: page => page.getByRole('dialog', { name: PROVISIONAL_ACTUAL_RECORDS_CONFIRMATION_LABEL }),
   section: dialog => dialog,
   save: dialog => dialog.locator('button.ai-planning-actual-records-save'),
   total: dialog => dialog.locator('[aria-label="実績の合計"]'),
@@ -364,7 +364,7 @@ test.describe('examinee week of study records by conversation (durable emulator 
     // Before the correction the confirmation shows 395; the correction replaces Tuesday (it is not added to 45).
     await actualTurn(page, request, week, 'あ、火曜は50分でした。', 'actual_tue_fix');
     await expectDurableVNext(durable, { turns: 5 });
-    await expectPendingReply(page, [{ date: week[1], subject: '英語', minutes: 50 }], WEEK_TOTAL_AFTER_TUESDAY_FIX);
+    await expectPendingReply(page, [{ date: week[1], subject: '英語', minutes: 50, previousMinutes: 45 }], WEEK_TOTAL_AFTER_TUESDAY_FIX);
     expect(await lastReply(page).innerText(), 'the corrected Tuesday replaces 45, the sum is recomputed').toContain(formatActualRecordsTotal(WEEK_TOTAL_AFTER_TUESDAY_FIX));
     expect(await actualDocuments(request, userId), 'a correction saves nothing').toEqual([]);
     expectNothingWrittenYet(firestore);
@@ -569,7 +569,7 @@ test.describe('examinee week of study records by conversation (durable emulator 
     try {
       await firestore.during('save-actuals', async () => { await CONFIRM.save(dialog).click(); });
       await expect(dialog.getByRole('alert'), 'the failure is shown, not swallowed').toBeVisible({ timeout: 30_000 });
-      await expect(CONFIRM.save(dialog), 'the same button offers the retry').toHaveText('実績の保存を再試行');
+      await expect(CONFIRM.save(dialog), 'the same button offers the retry').toHaveText(RETRY_ACTUAL_RECORDS_BUTTON_LABEL);
       expect(await actualDocuments(request, userId), 'all or nothing: a rejected batch saves no record').toEqual([]);
       await expect(dialog, 'the confirmation stays open for a retry').toBeVisible();
     } finally {
