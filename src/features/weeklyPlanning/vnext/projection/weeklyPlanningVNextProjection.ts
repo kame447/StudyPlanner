@@ -541,16 +541,19 @@ export function projectWeeklyPlanningVNext(
   }
 
   const deferredKeys = new Set(state.deferrals.map((deferral) => deferral.questionKey));
+  const questions: VNextQuestion[] = [];
+  const deferredQuestions: VNextQuestion[] = [];
   // A period ambiguity affects every placement; it cannot be bypassed by deferring one task.
-  const periodQuestions: VNextQuestion[] = filterActiveWeeklyPlanningFactsV5(graph, graph.uncertainties)
-    .filter(uncertainty => (uncertainty.field === 'planning_window' || uncertainty.field === 'planningWindow')
-      && graph.planningWindows.some(window => window.id === uncertainty.targetFactId))
-    .map(uncertainty => ({ code: 'semantic_uncertainty', key: `semantic_uncertainty:${uncertainty.id}`,
+  for (const uncertainty of filterActiveWeeklyPlanningFactsV5(graph, graph.uncertainties)) {
+    if ((uncertainty.field === 'planning_window' || uncertainty.field === 'planningWindow')
+      && graph.planningWindows.some(window => window.id === uncertainty.targetFactId)) questions.push({
+      code: 'semantic_uncertainty', key: `semantic_uncertainty:${uncertainty.id}`,
       ownerKey: 'planning_window', taskId: null, componentId: null, subjectLineageIds: [uncertainty.id],
-      targetFactId: uncertainty.id, forWork: null, options: [] }));
-  const allQuestions: VNextQuestion[] = [...periodQuestions, ...owners.flatMap((owner) => (owner.question ? [owner.question] : []))];
-  const questions = allQuestions.filter((question) => question.code === 'semantic_uncertainty' || !deferredKeys.has(question.key));
-  const deferredQuestions = allQuestions.filter((question) => question.code !== 'semantic_uncertainty' && deferredKeys.has(question.key));
+      targetFactId: uncertainty.id, forWork: null, options: [] });
+  }
+  for (const { question } of owners) {
+    if (question) (deferredKeys.has(question.key) ? deferredQuestions : questions).push(question);
+  }
   const hasWork = owners.some((owner) => owner.work.length > 0 || owner.calibration);
   return {
     graphRevision: graph.revision,
