@@ -10,7 +10,7 @@
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
 import { evaluateVNextLearningStrategy } from '../weeklyPlanningVNextLearningStrategy';
 import { WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5 } from '../../intake/weeklyPlanningProvisionalTimeboxStateV5';
-import type { WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
+import { weeklyPlanningTemporalConstraintAppliesToTargetV5, type WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
 import type {
   VNextEffortEstimateFact,
   VNextEstimateBasis,
@@ -74,6 +74,7 @@ interface ProjectionContext {
   resolver: VNextLineageResolver;
   workloadsById: Map<string, WorkloadFactV5>;
   activeWorkloads: WorkloadFactV5[];
+  fixedBounds: WeeklyPlanningVNextState['graph']['temporalConstraints'];
   efforts: VNextEffortEstimateFact[];
   /** Task lineages whose stated study activity is memorization. */
   memorizationTasks: Set<string>;
@@ -351,6 +352,13 @@ function estimateOwnerWork(
         work.push(workItem(unit, { minutes: unit.amount * minutesPerUnit, basis: 'observed_memory_pace', effortIds: [] }));
         continue;
       }
+      // V5 suppresses movable work inside its own fixed scope. Registering that interval
+      // needs no work estimate; the scheduler still validates its date/time before any preview.
+      const lineage = context.resolver.lineageOf;
+      if (context.fixedBounds.some(bound => weeklyPlanningTemporalConstraintAppliesToTargetV5({
+        constraintTaskId: lineage(bound.taskId), constraintTargetFactId: lineage(bound.targetFactId),
+        taskId: lineage(owner.taskId), targetFactId: lineage(owner.componentId ?? owner.taskId),
+      }))) continue;
       const missing = ownerQuestion(owner, 'missing_effort_estimate', [unit.workLineageId], { forWork, values: [unit.amount] });
       // As in Stable V5, a provisional timebox places Stable V5's fixed block for the asked work; a stated estimate wins.
       if (context.provisionalKeys.has(missing.question!.key)) {
@@ -456,6 +464,8 @@ export function projectWeeklyPlanningVNext(
     resolver,
     workloadsById: new Map(graph.workloads.map((workload) => [workload.id, workload])),
     activeWorkloads,
+    fixedBounds: filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints)
+      .filter(bound => bound.kind === 'fixed_interval' && bound.constraintLevel === 'hard'),
     efforts: filterActiveWeeklyPlanningFactsV5(graph, graph.effortEstimates),
     memorizationTasks: new Set(filterActiveWeeklyPlanningFactsV5(graph, graph.studyContexts)
       .filter((study) => study.activityKind === 'memorization_retrieval')
