@@ -90,15 +90,15 @@ describe('expanded checkpoint value contract', () => {
     ['failureRecovery', { ...failureRecovery, reason: 'unknown' }],
     ['failureRecovery', { reason: 'provider_error' }],
     ['failureRecovery', { ...failureRecovery, extra: true }],
-    ...[0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1].map(consecutiveCount =>
+    ...[0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1].map<[string, unknown]>(consecutiveCount =>
       ['failureRecovery', { ...failureRecovery, consecutiveCount }]),
     ['unansweredQuestionStreak', null],
     ['unansweredQuestionStreak', { ...unansweredQuestionStreak, questionKey: '' }],
     ['unansweredQuestionStreak', { questionKey: 'question', count: 1 }],
     ['unansweredQuestionStreak', { ...unansweredQuestionStreak, extra: true }],
-    ...[-1, 0.5, '0', Number.MAX_SAFE_INTEGER + 1].map(graphRevision =>
+    ...[-1, 0.5, '0', Number.MAX_SAFE_INTEGER + 1].map<[string, unknown]>(graphRevision =>
       ['unansweredQuestionStreak', { ...unansweredQuestionStreak, graphRevision }]),
-    ...[0, -1, 1.5, '1', Number.MAX_SAFE_INTEGER + 1].map(count =>
+    ...[0, -1, 1.5, '1', Number.MAX_SAFE_INTEGER + 1].map<[string, unknown]>(count =>
       ['unansweredQuestionStreak', { ...unansweredQuestionStreak, count }]),
     ['futureField', {}],
   ])('rejects the whole checkpoint for an invalid %s', (field, value) => {
