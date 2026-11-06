@@ -38,7 +38,7 @@ process.exit(${runnerStatus});
 
 describe('manual targeted WebKit execution contract', () => {
   it('keeps the normal PR/main matrix and gate names while distinguishing the manual target', () => {
-    expect(workflow).toContain(`name: \${{ ${focused} && 'targeted-webkit' || 'cross-browser-projects' }} (\${{ matrix.project }})\${{ matrix.shard && format(' (shard {0}/2)', matrix.shard) || '' }}`);
+    expect(workflow).toContain(`name: \${{ ${focused} && 'targeted-webkit' || 'cross-browser-projects' }} (\${{ matrix.project }})\${{ matrix.shard && format(' (shard {0}/3)', matrix.shard) || '' }}`);
     expect(workflow).toContain(`name: \${{ ${focused} && 'targeted-webkit-summary' || 'cross-browser-smoke' }}`);
     expect(workflow).toContain(`name: \${{ ${focused} && 'ui-targeted-webkit' || 'ui-cross-browser' }}-diagnostics-`);
     expect(workflow).toContain('timeout-minutes: 35');
@@ -51,7 +51,7 @@ describe('manual targeted WebKit execution contract', () => {
     expect(workflow).not.toMatch(/--pass-with-no-tests|continue-on-error|--timeout/);
   });
   it('runs one exact escaped spec only for a manual request', () => {
-    const r = invoke('workflow_dispatch', 'yearly-quick-entry.spec.mjs', { shard: '2/2', listing: { suites: [], errors: [] } });
+    const r = invoke('workflow_dispatch', 'yearly-quick-entry.spec.mjs', { shard: '2/3', listing: { suites: [], errors: [] } });
     expect(r.status, r.stderr).toBe(0);
     expect(r.listed).toBe(null);
     expect(r.stdout).toContain('Playwright execution: unsharded');
@@ -132,6 +132,7 @@ describe('cross-browser mobile shard workflow contract', () => {
     { project: 'webkit-desktop', shard: '' },
     { project: 'webkit-mobile', shard: 1 },
     { project: 'webkit-mobile', shard: 2 },
+    { project: 'webkit-mobile', shard: 3 },
   ];
   it.each(['push', 'pull_request', 'workflow_dispatch'])('splits only mobile for a full %s run', event => {
     expect(matrixLegs(event, '')).toEqual(full);
@@ -146,10 +147,16 @@ describe('cross-browser mobile shard workflow contract', () => {
     const projects = workflow.split('  cross-browser-projects:\n')[1].split('  cross-browser-smoke:')[0];
     expect(projects).toContain('timeout-minutes: 35');
     expect(projects).toContain('fail-fast: false');
-    expect(projects).toContain("UI_REGRESSION_SHARD: ${{ matrix.shard && format('{0}/2', matrix.shard) || '' }}");
+    expect(projects).toContain("UI_REGRESSION_SHARD: ${{ matrix.shard && format('{0}/3', matrix.shard) || '' }}");
     const artifacts = [...projects.matchAll(/          name: (.+)/g)].map(match => match[1]);
     expect(artifacts).toHaveLength(3);
     for (const artifact of artifacts) expect(artifact).toContain("${{ matrix.shard && format('-shard-{0}', matrix.shard) || '' }}");
+    for (const artifact of artifacts) {
+      const names = full.map(({ project, shard }) => artifact.replace('${{ matrix.project }}', project)
+        .replace('${{ github.sha }}', 'test-sha')
+        .replace("${{ matrix.shard && format('-shard-{0}', matrix.shard) || '' }}", shard ? `-shard-${shard}` : ''));
+      expect(new Set(names).size, 'all six matrix legs have distinct artifact names').toBe(full.length);
+    }
     expect(projects.match(/retention-days: 14/g)).toHaveLength(3);
     expect(projects).toContain('run: npm ci');
     expect(projects).toContain('run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0');
@@ -157,7 +164,7 @@ describe('cross-browser mobile shard workflow contract', () => {
     expect(projects).toContain('run: sha256sum -c /tmp/studyplanner-manifests.sha256');
     expect(projects).toContain('run: npm run build');
   });
-  it.each(['1/2', '2/2'])('preflights a nonempty full mobile shard %s before running it', shard => {
+  it.each(['1/3', '2/3', '3/3'])('preflights a nonempty full mobile shard %s before running it', shard => {
     const r = invoke('push', '', { shard, runnerStatus: 17 });
     expect(r.status).toBe(17);
     expect(r.args.at(-1)).toBe(`--shard=${shard}`);
@@ -165,25 +172,25 @@ describe('cross-browser mobile shard workflow contract', () => {
     expect(r.stdout).toContain(`Playwright execution: sharded ${shard}`);
   });
   it('also shards blank-spec manual mobile runs', () => {
-    const r = invoke('workflow_dispatch', '', { shard: '2/2' });
+    const r = invoke('workflow_dispatch', '', { shard: '2/3' });
     expect(r.status).toBe(0);
-    expect(r.args.at(-1)).toBe('--shard=2/2');
+    expect(r.args.at(-1)).toBe('--shard=2/3');
     expect(r.listed).not.toBe(null);
   });
   it('fails an empty mobile shard without starting the actual run', () => {
-    const r = invoke('push', '', { shard: '2/2', listing: { suites: [], errors: [] } });
+    const r = invoke('push', '', { shard: '2/3', listing: { suites: [], errors: [] } });
     expect(r.status).toBe(1);
     expect(r.args).toBe(null);
     expect(r.listed).not.toBe(null);
   });
   it('rejects a malformed shard before invoking Playwright', () => {
-    const r = invoke('push', '', { shard: '3/2' });
+    const r = invoke('push', '', { shard: '4/3' });
     expect(r.status).toBe(1);
     expect(r.args).toBe(null);
     expect(r.listed).toBe(null);
   });
   it('propagates listing failure without starting the actual run', () => {
-    const r = invoke('push', '', { shard: '1/2', listingStatus: 23 });
+    const r = invoke('push', '', { shard: '1/3', listingStatus: 23 });
     expect(r.status).toBe(23);
     expect(r.args).toBe(null);
   });
@@ -193,7 +200,7 @@ describe('cross-browser mobile shard workflow contract', () => {
     expect(r.listed).toBe(null);
     expect(r.args).toEqual(['test', '--config=tests/e2e/playwright.cross-browser.config.mjs', `--project=${project}`]);
   });
-  it('requires success from the complete matrix, including both mobile shards', () => {
+  it('requires success from the complete matrix, including all three mobile shards', () => {
     const gate = workflow.split('  cross-browser-smoke:\n')[1];
     expect(gate).toContain('if: ${{ always() &&');
     expect(gate).toContain('needs: cross-browser-projects');

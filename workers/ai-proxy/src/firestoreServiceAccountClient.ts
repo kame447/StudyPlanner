@@ -826,11 +826,11 @@ export class FirestoreServiceAccountClient {
     });
   }
 
-  async queryDocumentsByNameAfter(params: {
+  private async fetchNameOrderedPage(params: {
     collection: string;
     cursorDocumentName?: string | null;
     limit?: number;
-  }): Promise<FirestoreOrderedDocument[]> {
+  }): Promise<FirestoreRunQueryResult[]> {
     const response = await this.request(`${this.documentsBase()}:runQuery`, {
       method: 'POST',
       body: JSON.stringify({
@@ -852,6 +852,15 @@ export class FirestoreServiceAccountClient {
       throw new Error(`Firestore name-ordered query failed: ${response.status}`);
     }
     const payload = await response.json() as FirestoreRunQueryResult[];
+    return payload;
+  }
+
+  async queryDocumentsByNameAfter(params: {
+    collection: string;
+    cursorDocumentName?: string | null;
+    limit?: number;
+  }): Promise<FirestoreOrderedDocument[]> {
+    const payload = await this.fetchNameOrderedPage(params);
     return payload.flatMap((result) => {
       const document = result.document;
       if (!document?.name) return [];
@@ -868,27 +877,7 @@ export class FirestoreServiceAccountClient {
     cursorDocumentName?: string | null;
     limit?: number;
   }): Promise<FirestoreDocumentSnapshot[]> {
-    const response = await this.request(`${this.documentsBase()}:runQuery`, {
-      method: 'POST',
-      body: JSON.stringify({
-        structuredQuery: {
-          from: [{ collectionId: params.collection }],
-          orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
-          ...(params.cursorDocumentName ? {
-            startAt: {
-              values: [{ referenceValue: params.cursorDocumentName }],
-              before: false,
-            },
-          } : {}),
-          limit: boundedQueryLimit(params.limit ?? 100),
-        },
-      }),
-    });
-    if (!response.ok) {
-      await discardResponseBody(response);
-      throw new Error(`Firestore name-ordered query failed: ${response.status}`);
-    }
-    const payload = await response.json() as FirestoreRunQueryResult[];
+    const payload = await this.fetchNameOrderedPage(params);
     return payload.flatMap((result) => {
       const document = result.document;
       if (!document?.name) return [];

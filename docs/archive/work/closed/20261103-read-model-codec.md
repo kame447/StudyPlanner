@@ -1,6 +1,6 @@
 # Stored read-model decoding boundary
 
-Status: implementation and local integration verified; native CI pending
+Status: completed; PR #963 merged 2026-11-04 JST
 Publication base: `cc1cbce6bc5bd307478de9fdd0180d18ef68edf8`
 Original audit base: `7643adc58354f36d03dc1801469db327a27e491c`
 Branch: `refactor/observability-read-model-codec`
@@ -45,8 +45,6 @@ are outside scope.
   and build (18.39 seconds); all 3,198 tracked inputs stayed unchanged. This
   aggregate result is not a standalone full-suite or native-browser result.
 
-## Next step and completion criteria
+## Completion evidence
 
-The required native CI must pass before merge is considered complete. No production or
-real-device behavior has been verified by these local checks. Keep this change
-on the same branch/PR and record the final release evidence here.
+[PR #963](https://github.com/kame447/StudyPlanner/pull/963) was squash-merged as `f61c3c6931a8ab0c6d781443a89c672a5d793a59`. All native checks on that PR head succeeded before merge. The following aggregate `main` HEAD `022a09e0d8cafd8fd86ad10783e731ec5d6984c8` passed the main CI verification, while the separate UI Regression Matrix reported a WebKit Mobile appearance click-target flaky test; that UI result is not represented as a pass. No production rollout or physical-device verification is claimed for this refactor. The historical branch has been deleted; further changes belong to Issue #213, not this completed record.

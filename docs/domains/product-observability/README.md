@@ -81,6 +81,8 @@ telemetryはbest-effort observationであり、planner dataやshared stateのaut
 
 ## Current implementation status
 
+[PR #963](https://github.com/kame447/StudyPlanner/pull/963) は2026-11-04にマージ済み。保存済みread modelの検証・復号は `workers/ai-proxy/src/productObservabilityReadModelCodec.ts` が所有し、`productObservabilityReadModelService.ts` はFirestoreの読み取り順序、cursor、bounded集計の構築を所有する。公開サービスAPIと診断の責務は変更していない。検証・採用経緯は [完了済み作業記録](../../archive/work/closed/20261103-read-model-codec.md) に移動した。
+
 管理consoleはOverview / Users / AI・API / Planning / Logs・Debug Bundle / Systemを実装している。初期Phaseの完了根拠・実行履歴は [canonical roadmap](roadmap/current.md)、追加要件の追跡先は [Issue #213](https://github.com/kame447/StudyPlanner/issues/213) とその関連Issueを参照する。入口文書に別のPhase待ち行列を持たせない。
 
 UIは `src/services/adminObservabilityService.ts` のtyped query boundaryを通じて、Workerのbounded read model / restricted diagnostic projectionを読む。UI component自身で再集計せず、planner collectionのbrowser-side full scanを通常のadmin read pathへ戻さない。
