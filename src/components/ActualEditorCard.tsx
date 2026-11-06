@@ -17,6 +17,7 @@ import {
 import {
   validateWeeklyPlanningMemoryPaceObservationResultV5,
 } from '../features/weeklyPlanning/personalization/weeklyPlanningMemoryPaceObservationsV5';
+import { isTimedActual } from '../lib/actualDuration';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
 
 interface ActualEditorCardProps {
@@ -40,7 +41,7 @@ export function ActualEditorCard({
   plan,
   plans,
   actuals,
-  actual,
+  actual: editedActual,
   onEditPlan,
   onDeletePlan,
   onSaveActual,
@@ -52,6 +53,8 @@ export function ActualEditorCard({
   hideToggleButton = false,
   hidePlanActions = false,
 }: ActualEditorCardProps) {
+  // A record linked to a plan always has clock times; a duration actual is never linked, so it is not edited here.
+  const actual = editedActual && isTimedActual(editedActual) ? editedActual : undefined;
   const [draft, setDraft] = useState<ActualDraft>(() => createActualDraftForPlan(plan, actual));
   const [isOpen, setIsOpen] = useState(forceOpen || !actual);
   const [error, setError] = useState('');

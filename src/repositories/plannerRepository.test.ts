@@ -11,10 +11,9 @@ import type {
   StudySubject,
   TimetablePeriod,
   TimetableTerm,
-  TodoTask,
-} from '../types/domain';
+  TodoTask, TimedActual } from '../types/domain';
 
-function actual(overrides: Partial<Actual> = {}): Actual {
+function actual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1',
     userId: 'user-1',

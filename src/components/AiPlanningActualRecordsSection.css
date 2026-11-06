@@ -1,0 +1,35 @@
+.ai-planning-actual-records {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border, rgba(127, 127, 127, 0.3));
+}
+
+.ai-planning-actual-records h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.ai-planning-actual-records-note {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.ai-planning-actual-records-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-planning-actual-records-total {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ai-planning-actual-records-save {
+  justify-self: stretch;
+  min-height: 44px;
+}

@@ -46,5 +46,8 @@ relate records an explicit same/distinct decision between two workload facts. ${
     recentConversation: input.recentConversation ?? [],
     supplementalContext: input.supplementalContext ?? null }) as Record<string, unknown>),
     // External IDs are evidence, not aliases in the strict Fact Graph reference vocabulary.
-    selectedStarterTarget: input.selectedStarterTarget ?? null }) }];
+    selectedStarterTarget: input.selectedStarterTarget ?? null,
+    // Only when there is something to read against (#973): a plain planning turn's request stays as it was.
+    ...(input.studyRecords?.length ? { studyRecords: input.studyRecords.map(({ occurrenceDate, subject, minutes }) => ({ dateExpression: occurrenceDate, subject, minutes })) } : {}),
+    ...(input.pendingStudyRecordQuestion ? { pendingStudyRecordQuestion: input.pendingStudyRecordQuestion } : {}) }) }];
 }

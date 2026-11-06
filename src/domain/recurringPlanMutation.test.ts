@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Actual, Plan, PlanDraft, RecurrenceRule } from '../types/domain';
+import type { Plan, PlanDraft, RecurrenceRule, TimedActual } from '../types/domain';
 import {
   buildRecurringPlanDeleteMutation,
   buildRecurringPlanEditMutation,
@@ -61,7 +61,7 @@ function draft(overrides: Partial<PlanDraft> = {}): PlanDraft {
   };
 }
 
-function actual(overrides: Partial<Actual> = {}): Actual {
+function actual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1',
     userId: 'user-1',

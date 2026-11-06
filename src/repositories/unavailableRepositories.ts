@@ -99,6 +99,9 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async upsertActual() {
       throw createConfigurationError();
     },
+    async saveDurationActualsBatch() {
+      throw createConfigurationError();
+    },
     async deleteActual() {
       throw createConfigurationError();
     },

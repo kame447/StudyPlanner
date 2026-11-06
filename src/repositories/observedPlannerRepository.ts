@@ -112,6 +112,11 @@ export function createObservedPlannerRepository(
       mutation.materials.forEach(() => recordBestEffort(telemetry, 'material_updated'));
       return saved;
     },
+    async saveDurationActualsBatch(userId, records) {
+      const saved = await repository.saveDurationActualsBatch(userId, records);
+      saved.forEach(() => recordBestEffort(telemetry, 'actual_recorded'));
+      return saved;
+    },
     async deleteActual(userId, actualId) {
       await repository.deleteActual(userId, actualId);
       recordBestEffort(telemetry, 'actual_deleted');
