@@ -209,3 +209,31 @@ it('orders undated tasks by pin first then newest update, preserving equal order
   ]);
   expect(titles(section(root, 1))).toEqual(['pinned', 'equal-first', 'equal-second', 'older']);
 });
+
+it('keeps owner filtering, completed due ordering and equal-deadline update ties across directions', () => {
+  const todos = [
+    todo('other-owner', { userId: 'other', dueDate: '2026-10-01' }),
+    todo('archived', { status: 'archived', dueDate: '2026-10-01' }),
+    todo('older', { dueDate: '2026-10-10', dueTime: '12:00', updatedAt: '2026-10-01' }),
+    todo('newer', { dueDate: '2026-10-10', dueTime: '12:00', updatedAt: '2026-10-03' }),
+    todo('end-of-day', { dueDate: '2026-10-10' }),
+    todo('done-undated-pinned', { status: 'done', pinned: true }),
+    todo('done-dated', { status: 'done', dueDate: '2026-10-09' }),
+    todo('scheduled', { status: 'scheduled' }),
+  ];
+  const before = structuredClone(todos);
+  const { root, props } = mount(todos);
+  toggleCompleted(root);
+  expect(titles(section(root, 0))).toEqual(['newer', 'older', 'end-of-day']);
+  expect(titles(section(root, 1))).toEqual(['scheduled']);
+  expect(titles(section(root, 2))).toEqual(['done-dated', 'done-undated-pinned']);
+  act(() => {
+    root.findAllByType('button').find(button => button.children.join('') === '締切が遅い順')!.props.onClick();
+  });
+  expect(titles(section(root, 0))).toEqual(['end-of-day', 'newer', 'older']);
+  expect(titles(section(root, 2))).toEqual(['done-undated-pinned', 'done-dated']);
+  expect(todos).toEqual(before);
+  expect(props.onSaveTodo).not.toHaveBeenCalled();
+  expect(props.onScheduleTodo).not.toHaveBeenCalled();
+  expect(props.onDeleteTodo).not.toHaveBeenCalled();
+});
