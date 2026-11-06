@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
 import type { WeeklyPlanningVNextInterpretation } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
+import { parseWeeklyPlanningVNextSessionCheckpoint as parseOldCheckpoint } from './weeklyPlanningVNextSessionCheckpoint.f27b3a66.fixture';
+import { parseWeeklyPlanningVNextSessionCheckpoint as parseExpandCheckpoint } from './weeklyPlanningVNextSessionCheckpoint.8413f709.fixture';
 import {
   submitWeeklyPlanningVNextExperimentalTurn,
   readWeeklyPlanningVNextExperimentalSession,
@@ -19,36 +21,37 @@ const scope: WeeklyPlanningVNextExperimentalScope = {
   notBeforeTime: '09:00',
 };
 const empty: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
-const reading = (delta: VNextTurnDelta, planningIntent: 'discuss' | 'unknown' = 'unknown'): WeeklyPlanningVNextInterpretation => ({
+const reading = (delta: VNextTurnDelta, planningIntent: 'discuss' | 'unknown' | 'create_plan' = 'unknown'): WeeklyPlanningVNextInterpretation => ({
   status: 'interpreted', planningIntent, delta, answer: null,
   metrics: { calls: 1, repairs: 0, latencyMs: 1 },
 });
 
-// f27b3a66's Worker checkpoint parser requires exactly these four vnext keys.
-function oldWorkerAcceptsCheckpoint(raw: string): boolean {
-  const checkpoint: unknown = JSON.parse(raw);
-  if (typeof checkpoint !== 'object' || checkpoint === null || !('vnext' in checkpoint)) return false;
-  const vnext = checkpoint.vnext;
-  if (typeof vnext !== 'object' || vnext === null || Array.isArray(vnext)) return false;
-  const expected = ['state', 'presentedQuestion', 'preview', 'messages'];
-  const actual = Object.keys(vnext);
-  return actual.length === expected.length && actual.every((key) => expected.includes(key));
-}
-
 describe('Stage A scenario 3: repeated unanswered question (scripted, offline)', () => {
-  it('lets the next utterance reach an old Worker after a repeated question', () => {
-    const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
-      ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
-      vnext: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [],
-        unansweredQuestionStreak: { questionKey: 'unanswered-question', graphRevision: 0, count: 1 } },
-      savedAt: '2026-11-02T09:00:00.000Z',
-    })!;
-    expect(parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: scope.ownerId,
-      weekStartDate: scope.weekStartDate })).not.toBeNull();
-    expect(oldWorkerAcceptsCheckpoint(raw)).toBe(true);
+  describe('expand-first checkpoint compatibility after a repeated question', () => {
+    let raw: string;
+
+    beforeAll(() => {
+      raw = serializeWeeklyPlanningVNextSessionCheckpoint({
+        ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
+        vnext: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [],
+          unansweredQuestionStreak: { questionKey: 'unanswered-question', graphRevision: 0, count: 1 } },
+        savedAt: '2026-11-02T09:00:00.000Z',
+      })!;
+      expect(parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: scope.ownerId,
+        weekStartDate: scope.weekStartDate })).not.toBeNull();
+    });
+
+    it('records that the f27b3a66 parser rejects the extended checkpoint', () => {
+      expect(parseOldCheckpoint({ raw, ownerId: scope.ownerId, weekStartDate: scope.weekStartDate })).toBeNull();
+    });
+
+    it('accepts the same checkpoint with the expand parser shared by Pages and Worker', () => {
+      // Release gate: #991 must be live on both Pages and Worker before #985/#987 ship.
+      expect(parseExpandCheckpoint({ raw, ownerId: scope.ownerId, weekStartDate: scope.weekStartDate })).not.toBeNull();
+    });
   });
 
-  it('changes the visible method on the third short non-answer while retaining the unsaved facts', async () => {
+  it.each(['provisional_timebox', 'estimate_minutes'] as const)('changes the third unanswered question and continues via %s', async continuation => {
     const scripts = [reading({ ...empty, add: [
       { kind: 'task', localId: 'slides', category: 'study', title: 'ゼミ資料' },
       { kind: 'workload', localId: 'total', taskRef: { localId: 'slides' }, componentRef: null,
@@ -126,6 +129,7 @@ describe('Stage A scenario 3: repeated unanswered question (scripted, offline)',
     expect(shownLabels).toContain(provisionalChoice);
     expect(provisionalChoice).toContain('所要時間はまだ分からない');
     expect(provisionalChoice).toContain('仮置きで予定を組んで');
+    const selectedAnswer = continuation === 'provisional_timebox' ? provisionalChoice : '残りは全部で80分です';
     let providerCalls = 0;
     const providerPorts: WeeklyPlanningVNextExperimentalPorts = { ...ports,
       interpret: createWeeklyPlanningVNextProviderInterpreter(),
@@ -134,17 +138,42 @@ describe('Stage A scenario 3: repeated unanswered question (scripted, offline)',
         expect(JSON.stringify(request.responseFormat)).toContain('effort is unknown or must not become an estimate');
         expect(JSON.stringify(request.responseFormat)).toContain('provisionally placing the work anyway');
         const context = JSON.parse(request.messages[1].content);
-        expect(context.userText).toBe(provisionalChoice);
+        expect(context.userText).toBe(selectedAnswer);
         expect(context.presentedQuestion?.key).toBe(context.openQuestions[0].key);
+        if (continuation === 'estimate_minutes') return JSON.stringify({ planningIntent: 'unknown', conversationActs: [],
+          answer: { kind: 'estimate_minutes', optionId: null, minutes: 80, per: 'whole_work' }, delta: empty });
         return JSON.stringify({ planningIntent: 'unknown', conversationActs: [], answer: null,
           delta: { ...empty, defer: [{ questionKey: context.openQuestions[0].key,
             allocation: 'provisional_timebox' }] } });
       } },
     };
     const provisional = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports: providerPorts,
-      turnId: `turn-${++sequence}`, userText: provisionalChoice,
+      turnId: `turn-${++sequence}`, userText: selectedAnswer,
       shownRevision: JSON.parse(raw!).vnext.presentedQuestion?.graphRevision ?? null });
     expect(providerCalls).toBe(1);
+    if (continuation === 'estimate_minutes') {
+      expect(provisional.interpretation).toMatchObject({ status: 'interpreted', metrics: { calls: 1, repairs: 0 } });
+      expect(provisional.outcome).toBe('applied');
+      expect(provisional.question).toBeNull();
+      expect(provisional.preview).toBeNull();
+      const checkpoint = JSON.parse(raw!).vnext;
+      expect(checkpoint.unansweredQuestionStreak).toBeUndefined();
+      expect(checkpoint.state.deferrals).toEqual([]);
+      expect(checkpoint.state.graph.workloads).toEqual(retainedState.graph.workloads);
+      expect(checkpoint.state.graph.effortEstimates).toEqual([expect.objectContaining({ kind: 'total_duration', minutes: 80 })]);
+      const planned = await submitWeeklyPlanningVNextExperimentalTurn({ scope,
+        ports: { ...ports, interpret: async () => reading(empty, 'create_plan') },
+        turnId: `turn-${++sequence}`, userText: 'この条件で今週の予定を作って', shownRevision: null });
+      expect(planned.preview).not.toBeNull();
+      const clockMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+      // Scheduling policy retains the stated 80-minute estimate and allocates 90 minutes
+      // after the ordinary estimate margin and upward rounding (SchedulingParity).
+      expect(planned.preview!.blocks.reduce((total, block) => total + clockMinutes(block.endTime) - clockMinutes(block.startTime), 0)).toBe(90);
+      expect(planned.preview!.blocks.reduce((total, block) => total + block.allocationBreakdown!.estimatedMinutes, 0)).toBeCloseTo(80);
+      expect(planned.preview!.blocks.every(block => block.date >= '2026-11-02' && block.date <= '2026-11-08')).toBe(true);
+      expect(saveCalls).toBe(0);
+      return;
+    }
     expect(provisional.interpretation).toMatchObject({ status: 'interpreted', metrics: { calls: 1, repairs: 0 },
       delta: { defer: [{ questionKey: asked.question!.key, allocation: 'provisional_timebox' }] } });
     expect(provisional.outcome).toBe('applied');
