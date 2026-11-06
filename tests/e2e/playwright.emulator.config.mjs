@@ -98,7 +98,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-emulator-vnext',
-      testMatch: 'emulator/vnext-conversation.emulator.mjs',
+      testMatch: ['emulator/vnext-conversation.emulator.mjs', 'emulator/vnext-v5-draft-migration.emulator.mjs'],
       dependencies: ['emulator-vnext-setup'],
       metadata: { email: 'e2e-vnext@example.test' },
       use: { ...devices['Desktop Chrome'], storageState: VNEXT_STATE },
