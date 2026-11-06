@@ -100,6 +100,97 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
 const diagnosticEntries = () => writes.flatMap(write => write.entries).filter(entry => entry.kind === 'turn_diagnostic');
 
 describe('VNext session → gateway → existing controller and trace owner', () => {
+  it.each([
+    { code: 'missing_effort_estimate', large: false }, { code: 'missing_effort_estimate', large: true },
+    { code: 'missing_schedulable_work', large: false }, { code: 'missing_schedulable_work', large: true },
+  ])('persists the third unanswered $code explanation through outbox reload and Worker (large=$large)', async ({ code, large }) => {
+    const initial = { planningIntent: 'discuss', conversationActs: [], answer: null,
+      delta: { ...EMPTY, add: code === 'missing_effort_estimate' ? [task, work('work', 'remaining', 8)] : [task] } };
+    const unanswered = { planningIntent: 'unknown', conversationActs: [], answer: null, delta: EMPTY };
+    const contexts: unknown[] = [];
+    const h = harness({ nativeReadings: [initial, unanswered, unanswered, unanswered], createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+        const response = JSON.parse(await successfulWeeklyPlanningRendererCompletion(request));
+        const prompt = JSON.parse(request.messages[1].content);
+        response.text += (prompt.applicationDecision.relevantLabels ?? []).join(' / ');
+        return JSON.stringify(response);
+      } });
+      return { render(input) {
+        if (input.communication?.goal === 'explain_question') {
+          Object.assign(input.communication, { futureRepeatedQuestionSentinel: 'keep-repeated-question-evidence',
+            ...(large ? { futureRepeatedQuestionDetails: 'x'.repeat(48 * 1024) } : {}) });
+          contexts.push(structuredClone(input));
+        }
+        return renderer.render(input);
+      } };
+    } });
+    await h.submit(code === 'missing_effort_estimate' ? '数学を残り8枚やりたいです' : '今週は数学をやりたいです');
+    const retained = h.local.readCheckpoint()!.vnext.state;
+    await h.submit('わかりません');
+    await h.submit('まだ決めていません');
+    failAppend = true;
+    expect(await h.submit('今は答えられません')).toEqual({ accepted: true, draftCandidates: [] });
+    expect(h.local.readCheckpoint()!.vnext.state).toEqual(retained);
+    expect(h.local.readCheckpoint()!.vnext.unansweredQuestionStreak?.count).toBe(3);
+    expect(h.local.readCheckpoint()!.vnext.preview).toBeNull();
+    const result = h.results[3];
+    const choice = '所要時間はまだ分からないので、仮置きで予定を組んで見せて';
+    expect(contexts).toHaveLength(1);
+    expect(result.dialogueRendererTrace?.request?.promptContext).toMatchObject({
+      questionCode: code, communication: { goal: 'explain_question', askQuestion: true },
+      requiredLabels: expect.arrayContaining(['何分くらい', choice, '後で決める']),
+    });
+    const messages = h.getState().messages;
+    expect(messages[messages.length - 1]?.content).toContain(choice);
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    expect(queued.input.debugTraceEvents).toEqual(result.debugTraceEvents);
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    expect(attempted.entries).toHaveLength(1);
+    expect(measureWeeklyPlanningTraceJsonBytes(attempted.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'repeated-question-retry', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const replayed = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(replayed.entries).toEqual(attempted.entries);
+    const entry = replayed.entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing repeated-question diagnostic');
+    const sent = h.requests[3] as { messages: { role: string; content: string }[] };
+    const requestBytes = new TextEncoder().encode(JSON.stringify(sent)).byteLength;
+    expect(result.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes,
+    });
+    // Recent dialogue makes this native input exceed the per-message trace limit. Preserve
+    // exact sent-request evidence above and explicit clipping in the persisted projection.
+    const recorded = entry.aiInterpreter.input.requests[0];
+    expect(recorded.requestBytes).toBe(requestBytes);
+    const recordedContext = recorded.messages.find(message => message.role === 'user')!.content;
+    expect(recordedContext).toContain(`"code":"${code}"`);
+    expect(recordedContext).toContain('[trace truncated]');
+    expect(entry.aiInterpreter.rawResponses[0].text).toBe(JSON.stringify(unanswered));
+    expect(JSON.stringify(entry)).toContain('keep-repeated-question-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: replayed.session as unknown as Record<string, unknown>,
+      entries: replayed.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-repeated-question-evidence');
+    expect(saved).toContain('explain_question');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) {
+      const renderer = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(renderer.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+        originalBytes: new TextEncoder().encode(JSON.stringify(contexts[0])).byteLength,
+        jsonHead: expect.any(String), jsonTail: expect.any(String) });
+      expect(saved).not.toContain('x'.repeat(48 * 1024));
+    }
+  });
+
   it('keeps successful placement and records the actual native request and renderer evidence', async () => {
     const h = harness();
     const submitted = await h.submit('数学を30分');

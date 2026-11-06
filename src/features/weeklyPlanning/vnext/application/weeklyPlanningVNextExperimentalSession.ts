@@ -16,7 +16,8 @@ import {
 } from '../../preview/weeklyPlanningPreviewBlocksCore';
 import type { WeeklyPlanDraftBlock } from '../../types';
 import type { WeeklyDraftCandidate } from '../../scheduling/weeklyDraftCandidateGenerator';
-import { projectWeeklyPlanningVNext, type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
+import { projectWeeklyPlanningVNext, vnextQuestionKeyAllowsProvisionalTimebox,
+  type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
   fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts, decideWeeklyPlanningStableDialogueV5,
   type SemanticConversationActV5, type WeeklyPlanningFixedEventCommunicationFacts } from '../weeklyPlanningVNextV5Boundary';
@@ -59,6 +60,7 @@ import { createWeeklyPlanningVNextRenderInput, VNEXT_RECENT_MESSAGE_LIMIT } from
 import {
   serializeWeeklyPlanningVNextSessionCheckpoint,
   type WeeklyPlanningVNextFailureRecovery,
+  type WeeklyPlanningVNextUnansweredQuestionStreak,
   type WeeklyPlanningVNextShownPreview,
 } from './weeklyPlanningVNextSessionCheckpoint';
 
@@ -494,6 +496,15 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   // Mirrors V5 CompatibilityState's needs_scope/no-question closure at the application layer,
   // like draftGenerationIntent: one state, one checkpoint commit, no mutation on a rejected turn.
   if (accepted) state = { ...state, optionalInvitationClosed: !question && !preview };
+  const previousStreak = read.checkpoint.unansweredQuestionStreak;
+  const matchingStreak = question !== null && previousStreak?.questionKey === question.key
+    && previousStreak.graphRevision === projection.graphRevision ? previousStreak : undefined;
+  const unansweredQuestionStreak: WeeklyPlanningVNextUnansweredQuestionStreak | undefined = question
+    && presentedQuestion?.key === question.key && before.graphRevision === projection.graphRevision
+    && interpretation.status === 'interpreted' && outcome === 'noop' && delta !== null && isEmpty(delta)
+    ? { questionKey: question.key, graphRevision: projection.graphRevision,
+      count: Math.min((matchingStreak?.count ?? 0) + 1, Number.MAX_SAFE_INTEGER) }
+    : outcome === 'interpretation_failed' || outcome === 'rejected' ? matchingStreak : undefined;
   // Everything the user is told about the plan comes from the renderer; only a blocked preview and a
   // failed turn the renderer could not verify are notices. What the reply shows decides, once, which
   // question the user's next words answer (it is not the question the state still asks): a question it
@@ -508,6 +519,9 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
+      repeatedQuestionGuidance: question !== null && question.optionalInvitation === undefined
+        && vnextQuestionKeyAllowsProvisionalTimebox(question.key)
+        && unansweredQuestionStreak !== undefined && unansweredQuestionStreak.count >= 3,
       registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
     });
   // The renderer is a model call: it may run only while this turn is still current.
@@ -579,6 +593,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       presentedQuestion: presentedQuestionRecord,
       preview,
       ...(failureRecovery ? { failureRecovery } : {}),
+      ...(unansweredQuestionStreak ? { unansweredQuestionStreak } : {}),
       messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
         { role: 'assistant' as const, content: reply }].slice(-VNEXT_RECENT_MESSAGE_LIMIT),
     },

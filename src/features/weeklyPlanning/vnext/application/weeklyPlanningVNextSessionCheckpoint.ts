@@ -57,6 +57,7 @@ export interface WeeklyPlanningVNextSessionCheckpoint {
     messages: WeeklyPlanningVNextMessage[];
     /** Absent after an accepted interpretation; old checkpoints have no failure history. */
     failureRecovery?: WeeklyPlanningVNextFailureRecovery;
+    /** Absent in older checkpoints; only accepted empty readings advance this count. */
     unansweredQuestionStreak?: WeeklyPlanningVNextUnansweredQuestionStreak;
   };
   savedAt: string;
