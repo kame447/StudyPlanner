@@ -1,0 +1,345 @@
+// #973 I3: the VNext application offers the conversation's pending study records for confirmation and saves
+// them only through approveActualRecords(). The records are seeded by a real session turn (scripted typed
+// reading, no model call), so the checkpoint the hook reads is the one I2 writes. Expected values come from the
+// fixed ARGON-FIRST week (2026-10-26..11-01, 395 minutes; Thursday is a rest day) and from no output.
+import { forwardRef, createRef, useImperativeHandle } from 'react';
+import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../../testUtils/weeklyPlanningApplicationTestHarness';
+import { createReadyPlannerDataAvailability } from '../../testUtils/plannerDataAvailabilityTest';
+import type { DurationActual } from '../../../../types/domain';
+import type { WeeklyPlanningApplication, UseWeeklyPlanningApplicationInput } from '../../application/useWeeklyPlanningApplication';
+import { useWeeklyPlanningVNextApplication, type WeeklyPlanningVNextLocalApplicationServices } from './useWeeklyPlanningVNextApplication';
+import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../../application/weeklyPlanningStableV5RuntimeSession';
+import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
+import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
+import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts,
+  type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
+import { formatActualRecordRow, formatActualRecordsTotal, formatAlreadySavedActualRecordsReply, sumActualRecordMinutes,
+  type PendingWeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
+import { VNEXT_STUDY_RECORD_SAVE_GUIDE, VNEXT_STUDY_RECORD_UNCHANGED } from '../weeklyPlanningVNextStudyRecords';
+
+const OWNER = 'exam-owner'; const WEEK = '2026-11-02'; const TODAY = '2026-11-03'; const NOW = `${TODAY}T00:00:00.000Z`;
+const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartDate: WEEK, conversationId: 'exam-conversation',
+  notBeforeTime: '09:00', clock: { currentDate: TODAY, weekStartsOn: 'monday', timeZone: 'Asia/Tokyo', planningStartDate: WEEK, planningEndDate: '2026-11-08' } };
+const rec = (dateExpression: string, subject: string, minutes: number) => ({ dateExpression, subject, minutes });
+const WEEK_RECORDS = [rec('2026-10-26', '数学', 60), rec('2026-10-27', '英語', 45), rec('2026-10-28', '現代文', 30),
+  rec('2026-10-30', '英語', 50), rec('2026-10-31', '数学', 120), rec('2026-11-01', '化学', 90)];
+const reading = ({ add: [], patch: [], remove: [], relate: [], defer: [] });
+
+/** Writes the conversation's checkpoint by one real turn, as the chat would before the confirmation. */
+async function seedRecords(storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>) {
+  const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage });
+  const responses = [{ planningIntent: 'discuss', conversationActs: [], delta: reading, studyRecords: WEEK_RECORDS, studyRecordQuestion: null, answer: null }];
+  const ports: WeeklyPlanningVNextExperimentalPorts = { checkpoint: local.checkpoint, legacyV5Checkpoint: { read: () => null },
+    interpret: createWeeklyPlanningVNextProviderInterpreter(), client: { async createChatCompletion() { return JSON.stringify(responses.shift()); } },
+    approvalLedger: { read: () => null, write: () => undefined },
+    plans: { findExistingPlanId: async () => undefined, async saveBlock(block) { return { planId: `plan:${block.id}` }; } },
+    calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }), now: () => NOW,
+    createRenderer: () => ({ async render() { return { status: 'rendered', text: '合成の返信', rawResponse: '' }; } }) };
+  const result = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, userText: '先週の勉強を記録したい', turnId: 'seed-1', shownRevision: null });
+  expect(result.actualRecords).toHaveLength(6);
+  return local;
+}
+
+const Harness = forwardRef<WeeklyPlanningApplication, { input: UseWeeklyPlanningApplicationInput; services: WeeklyPlanningVNextLocalApplicationServices }>((props, ref) => {
+  const app = useWeeklyPlanningVNextApplication(props.input, props.services);
+  useImperativeHandle(ref, () => app, [app]);
+  return null;
+});
+
+describe('VNext application: study records waiting for confirmation (#973)', () => {
+  let storage: ReturnType<typeof createMemoryStorageHarness>;
+  let restore: () => void;
+  let renderer: ReactTestRenderer | undefined;
+  beforeEach(() => {
+    storage = createMemoryStorageHarness(); restore = installWeeklyPlanningTestStorage(storage.storage);
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+  });
+  afterEach(async () => {
+    if (renderer) await act(async () => renderer!.unmount());
+    renderer = undefined; resetWeeklyPlanningStableV5RuntimeSessionsForTest(); restore();
+  });
+
+  const services = (): WeeklyPlanningVNextLocalApplicationServices => ({ storage: storage.storage, client: () => ({} as never),
+    interpret: () => async () => { throw new Error('no provider turn in this test'); }, now: () => NOW,
+    createRenderer: () => ({ render: async () => ({ status: 'rendered', text: '', rawResponse: '' }) }) });
+  const inputWith = (saveWeeklyActualRecords?: UseWeeklyPlanningApplicationInput['saveWeeklyActualRecords'], userId: string | null = OWNER): UseWeeklyPlanningApplicationInput =>
+    ({ userId, selectedDate: WEEK, plans: [], scheduleTemplates: [], plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
+      isPlannerDataSnapshotCurrent: () => true, saveWeeklyApprovedPlan: vi.fn(), saveWeeklyActualRecords });
+  async function mount(input: UseWeeklyPlanningApplicationInput) {
+    const ref = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<Harness ref={ref} input={input} services={services()} />); });
+    return ref;
+  }
+  // The chat owns its own checkpoint slot (the seeded week slot is copied into it on first load).
+  const storedStatuses = (ref: { current: WeeklyPlanningApplication | null }) =>
+    createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId })
+      .readCheckpoint()!.vnext.actualRecords!.map(record => record.status);
+
+
+  it('offers no records and never calls the save port when the conversation proposed none', async () => {
+    const save = vi.fn(() => Promise.resolve());
+    const ref = await mount(inputWith(save));
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('lists the six pending records with the 395-minute total and saves nothing before approval', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const ref = await mount(inputWith(save));
+    const pending = ref.current!.pendingActualRecords!;
+    expect(pending.map(formatActualRecordRow)).toEqual(['月 10/26 数学 60分（1時間）', '火 10/27 英語 45分', '水 10/28 現代文 30分',
+      '金 10/30 英語 50分', '土 10/31 数学 120分（2時間）', '日 11/1 化学 90分（1時間30分）']);
+    expect(formatActualRecordsTotal(sumActualRecordMinutes(pending))).toBe('6時間35分（395分）');
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('saves the whole batch once for the owner, marks it saved and does not offer it again after a reload', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const ref = await mount(inputWith(save));
+    await act(async () => { await Promise.all([ref.current!.approveActualRecords!(), ref.current!.approveActualRecords!()]); });
+    expect(save).toHaveBeenCalledOnce();
+    const [userId, records] = save.mock.calls[0] as unknown as [string, Array<Record<string, unknown>>];
+    expect(userId).toBe(OWNER);
+    expect(records).toHaveLength(6);
+    // A record is exactly an id, a date, a subject and minutes: no clock time and no status leaves the application.
+    expect(records.map(record => Object.keys(record).sort())).toEqual(Array(6).fill(['id', 'minutes', 'occurrenceDate', 'subject']));
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('saved'));
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const reloaded = await mount(inputWith(save));
+    expect(reloaded.current!.pendingActualRecords).toEqual([]);
+    await act(async () => { await reloaded.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it('offers a changed minute value for replacement in the same mount and saves it under the same document id', async () => {
+    await seedRecords(storage.storage);
+    const documents = new Map<string, PendingWeeklyPlanningActualRecord>();
+    const save = vi.fn(async (_ownerId: string, records: PendingWeeklyPlanningActualRecord[]) => {
+      for (const record of records) documents.set(record.id, record);
+    });
+    const sharedServices: WeeklyPlanningVNextLocalApplicationServices = { ...services(), interpret: () => async () => ({
+      status: 'interpreted' as const, planningIntent: 'discuss' as const, answer: null, conversationActs: [],
+      studyRecords: [rec('2026-10-27', '英語', 50)], studyRecordQuestion: null,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 },
+    }) };
+    const ref = createRef<WeeklyPlanningApplication>();
+    const initial = inputWith(save);
+    await act(async () => { renderer = create(<Harness ref={ref} input={initial} services={sharedServices} />); });
+    const firstIds = ref.current!.pendingActualRecords!.map(record => record.id);
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(documents.size).toBe(6);
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+
+    // The planner publishes the saved documents without remounting the conversation.
+    const loaded = { ...initial, actuals: [...documents.values()].map(record =>
+      savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
+    await act(async () => { renderer!.update(<Harness ref={ref} input={loaded} services={sharedServices} />); });
+    await act(async () => { await ref.current!.submitTurn('火曜の英語は50分でした。'); });
+    const correction = ref.current!.pendingActualRecords!;
+    expect(correction).toHaveLength(1);
+    expect(correction[0]).toMatchObject({ id: firstIds[1], minutes: 50, replacesMinutes: 45 });
+    expect(formatActualRecordRow(correction[0])).toBe('火 10/27 英語 50分 ※保存済みの45分を置き換えます');
+    expect(storedStatuses(ref)[1]).toBe('pending');
+
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][1]).toEqual([{ id: firstIds[1], occurrenceDate: '2026-10-27', subject: '英語', minutes: 50 }]);
+    expect(documents.size).toBe(6);
+    expect(documents.get(firstIds[1])?.minutes).toBe(50);
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+  });
+
+  it('keeps every record pending after a failed save and a retry saves the same batch', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn().mockRejectedValueOnce(new Error('学習実績を保存できませんでした。保存はされていません。')).mockResolvedValue(undefined);
+    const ref = await mount(inputWith(save));
+    await act(async () => { await expect(ref.current!.approveActualRecords!()).rejects.toThrow('保存はされていません'); });
+    expect(ref.current!.pendingActualRecords).toHaveLength(6);
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][1]).toEqual(save.mock.calls[0][1]);
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+  });
+
+  it('keeps an optimistic batch unconfirmed through a resend, then marks it saved only when the port resolves', async () => {
+    await seedRecords(storage.storage);
+    let resolveSave!: () => void;
+    const save = vi.fn(() => new Promise<void>(resolve => { resolveSave = resolve; }));
+    const resend: WeeklyPlanningVNextLocalApplicationServices = { ...services(), interpret: () => async () => ({ status: 'interpreted' as const,
+      planningIntent: 'discuss' as const, answer: null, conversationActs: [], studyRecords: WEEK_RECORDS, studyRecordQuestion: null,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }) };
+    const ref = createRef<WeeklyPlanningApplication>();
+    const initial = inputWith(save);
+    await act(async () => { renderer = create(<Harness ref={ref} input={initial} services={resend} />); });
+    const original = ref.current!.pendingActualRecords!;
+    const ids = original.map(record => record.id);
+    let saving!: Promise<void>;
+    act(() => { saving = ref.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledOnce();
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));
+
+    // usePlannerDataState has already published its optimistic rows, while its save port still waits.
+    const optimistic = { ...initial, actuals: original.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
+    await act(async () => { renderer!.update(<Harness ref={ref} input={optimistic} services={resend} />); });
+    expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(ids);
+    await act(async () => { await ref.current!.submitTurn('先週の同じ勉強を記録しました。'); });
+    const inFlightReply = ref.current!.state.messages[ref.current!.state.messages.length - 1]?.content;
+    expect(inFlightReply).toBe(`${VNEXT_STUDY_RECORD_UNCHANGED}ここまでの合計は6時間35分（395分）です。${VNEXT_STUDY_RECORD_SAVE_GUIDE}`);
+    expect(inFlightReply).not.toContain('すでに保存されています');
+    expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(ids);
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));
+
+    await act(async () => { resolveSave(); await saving; });
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('saved'));
+    await act(async () => { await ref.current!.submitTurn('先週の同じ勉強を記録しました。'); });
+    expect(ref.current!.state.messages[ref.current!.state.messages.length - 1]?.content).toBe(formatAlreadySavedActualRecordsReply(original));
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('saved'));
+    const finalRecords = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage,
+      chatId: ref.current!.chat.index.activeChatId }).readCheckpoint()!.vnext.actualRecords!;
+    expect(finalRecords.map(record => record.id)).toEqual(ids);
+    expect(new Set(finalRecords.map(record => record.id)).size).toBe(6);
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the same pending batch when an in-flight save rejects after optimistic rows appeared', async () => {
+    await seedRecords(storage.storage);
+    let rejectSave!: (error: Error) => void;
+    const save = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; })).mockResolvedValue(undefined);
+    const sharedServices = services();
+    const ref = createRef<WeeklyPlanningApplication>();
+    const initial = inputWith(save);
+    await act(async () => { renderer = create(<Harness ref={ref} input={initial} services={sharedServices} />); });
+    const original = ref.current!.pendingActualRecords!;
+    let saving!: Promise<void>;
+    act(() => { saving = ref.current!.approveActualRecords!(); });
+    const optimistic = { ...initial, actuals: original.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
+    await act(async () => { renderer!.update(<Harness ref={ref} input={optimistic} services={sharedServices} />); });
+    expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(original.map(record => record.id));
+    await act(async () => { rejectSave(new Error('保存はされていません')); await expect(saving).rejects.toThrow('保存はされていません'); });
+    await act(async () => { renderer!.update(<Harness ref={ref} input={initial} services={sharedServices} />); });
+    expect(storedStatuses(ref)).toEqual(Array(6).fill('pending'));
+    expect(ref.current!.pendingActualRecords!.map(record => record.id)).toEqual(original.map(record => record.id));
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][1]).toEqual(save.mock.calls[0][1]);
+  });
+
+  it('writes nothing without a signed-in owner or without a save port', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const signedOut = await mount(inputWith(save, null));
+    await act(async () => { await signedOut.current!.approveActualRecords!(); });
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const noPort = await mount(inputWith(undefined));
+    await act(async () => { await noPort.current!.approveActualRecords!(); });
+    expect(storedStatuses(noPort)).toEqual(Array(6).fill('pending'));
+  });
+  // The same statement sent again after the records were saved and the page reloaded.
+  it('a reload and the same statement again keep the saved records saved (same ids, nothing new to confirm)', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const resend: WeeklyPlanningVNextLocalApplicationServices = { ...services(), interpret: () => async () => ({ status: 'interpreted' as const,
+      planningIntent: 'discuss' as const, answer: null, conversationActs: [], studyRecords: WEEK_RECORDS, studyRecordQuestion: null,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }) };
+    const first = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<Harness ref={first} input={inputWith(save)} services={resend} />); });
+    const before = first.current!.pendingActualRecords!.map(record => record.id);
+    await act(async () => { await first.current!.approveActualRecords!(); });
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const second = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<Harness ref={second} input={inputWith(save)} services={resend} />); });
+    await act(async () => { await second.current!.submitTurn('月曜は数学60分、火曜は英語45分、…でした。'); });
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: second.current!.chat.index.activeChatId });
+    const stored = local.readCheckpoint()!;
+    expect(second.current!.pendingActualRecords).toEqual([]);
+    expect(stored.vnext.actualRecords!.map(record => record.id)).toEqual(before);
+    expect(stored.vnext.actualRecords!.map(record => record.status)).toEqual(Array(6).fill('saved'));
+    // fix-03: records saved before the reload are said to be saved (not "not saved yet" and not "already in the list").
+    const reply = second.current!.state.messages[second.current!.state.messages.length - 1]?.content;
+    expect(reply).toBe(formatAlreadySavedActualRecordsReply(stored.vnext.actualRecords!));
+    expect(reply).not.toContain('まだ保存していません');
+  });
+  // What is already saved decides, by document id, whether a record is new, a no-op or a replacement (#973 fix-02).
+  const savedDoc = (id: string, subject: string, occurrenceDate: string, minutes: number): DurationActual => ({
+    id, userId: OWNER, planId: null, occurrenceDate, subject, title: subject, note: '', updatedAt: NOW, actualDurationMinutes: minutes });
+
+  it('does not offer a record again when the same minutes are already saved under its id', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const probe = await mount(inputWith(save));
+    const pending = probe.current!.pendingActualRecords!;
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const input = { ...inputWith(save), actuals: pending.map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)) };
+    const ref = await mount(input);
+    expect(ref.current!.pendingActualRecords).toEqual([]);
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('shows a different saved value as a replacement, saves nothing before the click, and sends no note to the save port', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const probe = await mount(inputWith(save));
+    const pending = probe.current!.pendingActualRecords!;
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const tuesday = pending.find(record => record.occurrenceDate === '2026-10-27')!;
+    const ref = await mount({ ...inputWith(save), actuals: [savedDoc(tuesday.id, tuesday.subject, tuesday.occurrenceDate, 30)] });
+    const rows = ref.current!.pendingActualRecords!.map(formatActualRecordRow);
+    expect(rows).toHaveLength(6);
+    expect(rows[1]).toBe('火 10/27 英語 45分 ※保存済みの30分を置き換えます');
+    expect(rows.filter(row => row.includes('置き換えます'))).toHaveLength(1);
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => { await ref.current!.approveActualRecords!(); });
+    const sent = (save.mock.calls[0] as unknown as [string, Array<Record<string, unknown>>])[1];
+    expect(sent).toHaveLength(6);
+    expect(sent.every(record => !('replacesMinutes' in record))).toBe(true);
+  });
+  // Another week's conversation (a reload opens today's week) sends the same statement: same ids, so never a second document.
+  it('the same statement from another conversation yields the same ids: saved minutes are a no-op, changed minutes an announced replacement', async () => {
+    await seedRecords(storage.storage);
+    const save = vi.fn(() => Promise.resolve());
+    const first = await mount(inputWith(save));
+    const originalIds = first.current!.pendingActualRecords!.map(record => record.id);
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    const resend: WeeklyPlanningVNextLocalApplicationServices = { ...services(), interpret: () => async () => ({ status: 'interpreted' as const,
+      planningIntent: 'discuss' as const, answer: null, conversationActs: [], studyRecords: WEEK_RECORDS, studyRecordQuestion: null,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }) };
+    const otherWeek = (actuals: DurationActual[]) => ({ ...inputWith(save), selectedDate: '2026-11-09', actuals });
+    const mountOther = async (actuals: DurationActual[]) => {
+      const ref = createRef<WeeklyPlanningApplication>();
+      await act(async () => { renderer = create(<Harness ref={ref} input={otherWeek(actuals)} services={resend} />); });
+      await act(async () => { await ref.current!.submitTurn('月曜は数学60分、火曜は英語45分、…でした。'); });
+      return ref;
+    };
+    const rowsOf = (records: typeof WEEK_RECORDS) => records.map(record => `${record.dateExpression}|${record.subject}|${record.minutes}`);
+    const saved = (minutesByIndex: (index: number) => number) => originalIds.map((id, index) =>
+      savedDoc(id, WEEK_RECORDS[index].subject, WEEK_RECORDS[index].dateExpression, minutesByIndex(index)));
+    expect(rowsOf(WEEK_RECORDS)).toHaveLength(6);
+
+    // Nothing saved yet: a different conversation proposes the very same ids (not new documents).
+    const fresh = await mountOther([]);
+    expect(fresh.current!.pendingActualRecords!.map(record => record.id)).toEqual(originalIds);
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    // Everything already saved with the same minutes: nothing to confirm and nothing to save.
+    const same = await mountOther(saved(index => WEEK_RECORDS[index].minutes));
+    expect(same.current!.pendingActualRecords).toEqual([]);
+    await act(async () => { await same.current!.approveActualRecords!(); });
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => renderer!.unmount()); renderer = undefined;
+    // One saved value differs: that row says it replaces the saved minutes; no write before the click.
+    const changed = await mountOther(saved(index => (index === 1 ? 30 : WEEK_RECORDS[index].minutes)));
+    expect(changed.current!.pendingActualRecords!.map(formatActualRecordRow).filter(row => row.includes('置き換えます')))
+      .toEqual(['火 10/27 英語 45分 ※保存済みの30分を置き換えます']);
+    expect(changed.current!.pendingActualRecords).toHaveLength(1);
+    expect(save).not.toHaveBeenCalled();
+  });
+});

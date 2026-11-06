@@ -74,6 +74,8 @@ import { useScheduleOccurrenceActions } from '../hooks/useScheduleOccurrenceActi
 import { resolveScheduleActionPlan } from '../lib/scheduleItemActions';
 import type { ActualActionTarget } from '../hooks/useActualMutationAdmission';
 import { WeekSpanningEventsLane } from './WeekSpanningEventsLane';
+import { getActualDurationMinutes, isDurationActual } from '../lib/actualDuration';
+import { formatActualRecordsTotal } from '../features/weeklyPlanning/application/weeklyPlanningActualRecords';
 import '../styles/week-plan-drag.css';
 
 type WeekTimelineMode = 'plan' | 'actual';
@@ -301,6 +303,10 @@ export function WeekView({
   });
   useEffect(() => { setRecordSelection(null); scheduleAction.dismiss(); }, [recordContext]);
   const weekDates = getWeekDates(selectedDate);
+  // Records that state only a length have no time of day: they are summed per day beside the date, not drawn on the grid.
+  const durationActualMinutesOn = (date: string) => actuals
+    .filter((actual) => isDurationActual(actual) && actual.occurrenceDate === date)
+    .reduce((sum, actual) => sum + getActualDurationMinutes(actual), 0);
   const weekSectionRef = useRef<HTMLElement | null>(null);
   useDataChangeMotion(weekSectionRef, `${weekDates[0]}:${timelineMode}`, [plans, actuals, monthEvents, weeklyDraftBlocks]);
   useTimelineTouchMoveGuard(weekSectionRef);
@@ -957,6 +963,8 @@ export function WeekView({
                     type="button"
                   >
                     <strong>{formatWeekDate(date, 'compact')}</strong>
+                    {timelineMode === 'actual' && durationActualMinutesOn(date) > 0
+                      ? <small className="week-duration-actual-total">時刻なし {formatActualRecordsTotal(durationActualMinutesOn(date))}</small> : null}
                   </button>
                 ))}
               </div>
@@ -1004,6 +1012,7 @@ export function WeekView({
                     (occurrence) => !isScheduleOccurrenceOutsideHourlyGrid(occurrence),
                   );
                   const dayActuals = actuals.flatMap((actual) => {
+                    if (isDurationActual(actual)) return [];
                     const range = entryTimeRangeForDate(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, date);
                     if (!range) return [];
                     const source = actual.planId ? planById.get(actual.planId) : undefined;

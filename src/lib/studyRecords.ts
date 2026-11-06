@@ -1,4 +1,3 @@
-import { getEntryDurationMinutes } from './entryTimeRange';
 import { sortByDateTime } from './date';
 import {
   buildPlanOccurrenceKey,
@@ -19,6 +18,7 @@ import type {
   StudyMaterial,
   StudySubject,
 } from '../types/domain';
+import { getActualDurationMinutes } from './actualDuration';
 
 export type StudyRecordLinkKind = 'planned' | 'month-event' | 'standalone' | 'orphaned';
 
@@ -219,9 +219,10 @@ export function normalizeStudyRecordForDisplay({
     plan,
     ...(linkedMonthEvent ? { monthEvent: linkedMonthEvent } : {}),
     date: actual.occurrenceDate,
-    startTime: actual.actualStartTime,
-    endTime: actual.actualEndTime,
-    durationMinutes: getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime),
+    // A duration actual has no clock times: the display record carries none (empty), never an invented one.
+    startTime: actual.actualStartTime ?? '',
+    endTime: actual.actualEndTime ?? '',
+    durationMinutes: getActualDurationMinutes(actual),
     title,
     label: title,
     subject,

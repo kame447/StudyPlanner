@@ -17,6 +17,7 @@ import {
   sumStudyRecordMinutes,
 } from './studyRecords';
 import type { Actual, Plan } from '../types/domain';
+import { getActualDurationMinutes } from './actualDuration';
 
 export interface StudyDailyTotal {
   date: string;
@@ -58,7 +59,7 @@ export function buildActualByOccurrenceKey(actuals: Actual[]): Map<string, Actua
 }
 
 export function getActualMinutes(actual: Actual): number {
-  return getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime);
+  return getActualDurationMinutes(actual);
 }
 
 function buildStudyRecordsInRange(
