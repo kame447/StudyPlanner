@@ -16,7 +16,8 @@ import {
 } from '../../preview/weeklyPlanningPreviewBlocksCore';
 import type { WeeklyPlanDraftBlock } from '../../types';
 import type { WeeklyDraftCandidate } from '../../scheduling/weeklyDraftCandidateGenerator';
-import { projectWeeklyPlanningVNext, type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
+import { projectWeeklyPlanningVNext, vnextQuestionKeyAllowsProvisionalTimebox,
+  type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
   fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts, decideWeeklyPlanningStableDialogueV5,
   type SemanticConversationActV5, type WeeklyPlanningFixedEventCommunicationFacts } from '../weeklyPlanningVNextV5Boundary';
@@ -58,6 +59,8 @@ import { createVNextOptionalInvitation } from './weeklyPlanningVNextOptionalInvi
 import { createWeeklyPlanningVNextRenderInput, VNEXT_RECENT_MESSAGE_LIMIT } from './weeklyPlanningVNextDialogue';
 import {
   serializeWeeklyPlanningVNextSessionCheckpoint,
+  type WeeklyPlanningVNextFailureRecovery,
+  type WeeklyPlanningVNextUnansweredQuestionStreak,
   type WeeklyPlanningVNextShownPreview,
   type WeeklyPlanningVNextSessionCheckpoint,
 } from './weeklyPlanningVNextSessionCheckpoint';
@@ -302,6 +305,21 @@ function systemReply(outcome: WeeklyPlanningVNextExperimentalTurnOutcome, previe
   return `予定案を作れませんでした（${previewBlockedBy.join(', ')}）。`;
 }
 
+function interpretationFailureReply(failure: WeeklyPlanningVNextFailureRecovery,
+  preview: WeeklyPlanningVNextShownPreview | null): string {
+  const cause = failure.reason === 'provider_error'
+    ? 'AIへの接続でエラーが起きました。' : 'AIの返答を確認できませんでした。';
+  const retained = preview ? '表示済みの予定案は保持しています。' : 'これまでの条件は保持しています。';
+  const unapplied = '今回の内容は計画に反映していません。';
+  if (failure.consecutiveCount >= 2) {
+    const route = preview
+      ? '予定案を確認するか、復旧後に変更を再送できます。'
+      : 'これまでの会話を確認し、復旧後に今回の内容を再送できます。';
+    return `${cause}続けて失敗しています。${unapplied}${retained}${route}`;
+  }
+  return `${cause}${unapplied}${retained}復旧後にもう一度送ってください。`;
+}
+
 /** Study-record keys of a checkpoint body: written only when there is something, so a plain plan checkpoint is unchanged. */
 function studyRecordFields(records: readonly VNextActualRecord[], question: VNextStudyRecordQuestion | undefined):
   Pick<WeeklyPlanningVNextSessionCheckpoint['vnext'], 'actualRecords' | 'pendingStudyRecordQuestion'> {
@@ -411,6 +429,11 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     // The reply the question was shown in: what the user's words answer (e.g. an ordinal over its options).
     presentedText: presentedQuestion ? presented!.shownText : null,
   });
+  const previousFailure = read.checkpoint.failureRecovery;
+  const failureRecovery: WeeklyPlanningVNextFailureRecovery | undefined = interpretation.status === 'failed'
+    ? { reason: interpretation.reason, consecutiveCount: previousFailure?.reason === interpretation.reason
+      ? Math.min(previousFailure.consecutiveCount + 1, Number.MAX_SAFE_INTEGER) : 1 }
+    : undefined;
 
   // The turn was read against `rawBefore`; if another turn saved meanwhile, applying
   // this reading would overwrite it. Nothing is written; the user sends it again.
@@ -554,6 +577,15 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   // Mirrors V5 CompatibilityState's needs_scope/no-question closure at the application layer,
   // like draftGenerationIntent: one state, one checkpoint commit, no mutation on a rejected turn.
   if (accepted) state = { ...state, optionalInvitationClosed: !question && !preview };
+  const previousStreak = read.checkpoint.unansweredQuestionStreak;
+  const matchingStreak = question !== null && previousStreak?.questionKey === question.key
+    && previousStreak.graphRevision === projection.graphRevision ? previousStreak : undefined;
+  const unansweredQuestionStreak: WeeklyPlanningVNextUnansweredQuestionStreak | undefined = question
+    && presentedQuestion?.key === question.key && before.graphRevision === projection.graphRevision
+    && interpretation.status === 'interpreted' && outcome === 'noop' && delta !== null && isEmpty(delta)
+    ? { questionKey: question.key, graphRevision: projection.graphRevision,
+      count: Math.min((matchingStreak?.count ?? 0) + 1, Number.MAX_SAFE_INTEGER) }
+    : outcome === 'interpretation_failed' || outcome === 'rejected' ? matchingStreak : undefined;
   // Everything the user is told about the plan comes from the renderer; only a blocked preview and a
   // failed turn the renderer could not verify are notices. What the reply shows decides, once, which
   // question the user's next words answer (it is not the question the state still asks): a question it
@@ -568,6 +600,9 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
+      repeatedQuestionGuidance: question !== null && question.optionalInvitation === undefined
+        && vnextQuestionKeyAllowsProvisionalTimebox(question.key)
+        && unansweredQuestionStreak !== undefined && unansweredQuestionStreak.count >= 3,
       registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
     });
   // The renderer is a model call: it may run only while this turn is still current.
@@ -600,7 +635,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       replySource = 'renderer_recovery';
       shows = stillShown ? { question: stillShown } : 'unchanged';
     } else {
-      reply = systemReply(outcome, []);
+      reply = failureRecovery ? interpretationFailureReply(failureRecovery, preview) : systemReply(outcome, []);
       replySource = 'system';
       shows = 'unchanged';
     }
@@ -638,6 +673,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       state,
       presentedQuestion: presentedQuestionRecord,
       preview,
+      ...(failureRecovery ? { failureRecovery } : {}),
+      ...(unansweredQuestionStreak ? { unansweredQuestionStreak } : {}),
       ...studyRecordFields(nextRecords, nextRecordQuestion),
       messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
         { role: 'assistant' as const, content: reply }].slice(-VNEXT_RECENT_MESSAGE_LIMIT),

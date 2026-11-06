@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handleDurableTurnApi, type DurableTurnApiEnv } from './durableTurnApi';
 import { DurableTurnJob, type DurableTurnRecord } from './durableTurnJob';
-import { executeDurableVNextTurn } from './durableVNextTurn';
+import { executeDurableVNextJob, executeDurableVNextTurn } from './durableVNextTurn';
 import { serializeWeeklyPlanningTurnResult } from './weeklyPlanningTurnResult';
 import { createWeeklyPlanningTurnRequestContext } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningTemporalContext';
 import { parseWeeklyPlanningVNextSessionCheckpoint } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
@@ -181,6 +181,92 @@ describe('VNext durable execution', () => {
     expect(stored.core).toBe('vnext');
     expect(stored.checkpointAfter).toEqual(expect.any(String));
   });
+
+  it.each([false, true])('commits unsaved recovery, replays without dispatch, and accepts the next turn (quotaDenied=%s)', async quotaDenied => {
+    let record: DurableTurnRecord | undefined;
+    let turnEnv = providerEnv;
+    const startedAt = Date.parse(STARTED);
+    const job = new DurableTurnJob({ read: async () => structuredClone(record),
+      write: async next => { record = structuredClone(next); }, alarmAt: async () => {} }, () => startedAt);
+    const run = async (turn: WeeklyPlanningVNextDurableTurnInput) => {
+      await job.accept({ ownerId: 'alice', conversationId: 'chat', requestId: turn.input.traceRequestId!,
+        baseRevision: turn.input.inputStateRevision!, startedAt, payload: JSON.stringify(turn) });
+      await job.run((raw, dispatch, ip, deadline) => executeDurableVNextJob(turnEnv, JSON.parse(raw), dispatch, ip, deadline));
+      expect(record?.status).toBe('completed');
+      return JSON.parse(record!.result!) as WeeklyPlanningVNextDurableTurnResult;
+    };
+    const minuteWork = { ...addWork, amount: 60, unitCode: 'minute', unitLabel: '分' };
+    vi.stubGlobal('fetch', providerFetch(JSON.stringify({ ...JSON.parse(reading([addTask, minuteWork])), planningIntent: 'create_plan' })));
+    const first = await run(payload({ userText: '数学を60分、この条件で予定を作ってください。' }));
+    const parse = (raw: string) => parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: 'alice', weekStartDate: WEEK })!;
+    const before = parse(first.checkpointAfter!).vnext;
+    expect(before.preview).not.toBeNull();
+
+    const outage = vi.fn(async () => Response.json({ error: { message: 'synthetic provider unavailable' } }, { status: 500 }));
+    vi.stubGlobal('fetch', outage);
+    // A quota refusal can complete an unsaved consultation, while the provider remains uncalled.
+    if (quotaDenied) turnEnv = { ...providerEnv, AI_QUOTA: { getByName: () => ({
+      checkAndConsume: async () => ({ allowed: false, retryAfterSeconds: 10 }),
+    }) } } as unknown as AiProxyWorkerEnv;
+    const failedInput = payload({ requestId: 'chat:request:2', userText: '数学を90分に変更してください。', checkpoint: first.checkpointAfter });
+    failedInput.input.inputStateRevision = 2;
+    const failed = await run(failedInput);
+    expect(outage).toHaveBeenCalledTimes(quotaDenied ? 0 : 1);
+    expect(failed.result.message).toContain('今回の内容は計画に反映していません。');
+    expect(failed.result.draftCandidates).toEqual([]);
+    const retained = parse(failed.checkpointAfter!).vnext;
+    expect(retained.state.graph).toEqual(before.state.graph);
+    expect(retained.preview).toEqual(before.preview);
+    expect(retained.failureRecovery).toEqual({ reason: 'provider_error', consecutiveCount: 1 });
+    const replay = vi.fn(async () => { throw new Error('completed recovery must not execute again'); });
+    await job.run(replay);
+    expect(replay).not.toHaveBeenCalled();
+    expect(outage).toHaveBeenCalledTimes(quotaDenied ? 0 : 1);
+
+    turnEnv = providerEnv;
+    vi.stubGlobal('fetch', providerFetch(reading([
+      { ...addTask, localId: 'english', title: '英語' },
+      { ...minuteWork, localId: 'english-minutes', taskRef: { localId: 'english' }, amount: 30 },
+    ])));
+    const nextInput = payload({ requestId: 'chat:request:3', userText: '英語も30分あります。', checkpoint: failed.checkpointAfter });
+    nextInput.input.inputStateRevision = 4;
+    const next = await run(nextInput);
+    const resumed = parse(next.checkpointAfter!).vnext;
+    expect(resumed.state.graph.tasks.map(task => task.title)).toEqual(['数学', '英語']);
+    expect(resumed.state.graph.workloads.map(work => work.amount)).toEqual([60, 30]);
+    expect(resumed.failureRecovery).toBeUndefined();
+  });
+});
+
+it('commits the unsaved preview when its renderer provider fails inside the real job', async () => {
+  const semantic = JSON.stringify({ ...JSON.parse(reading([addTask,
+    { ...addWork, amount: 60, unitCode: 'minute', unitLabel: '分' }])), planningIntent: 'create_plan' });
+  const healthy = providerFetch(semantic);
+  const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+    const body = JSON.parse(init!.body as string) as { response_format?: { json_schema?: { name?: string } } };
+    return body.response_format?.json_schema?.name === VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name
+      ? healthy(url, init)
+      : Response.json({ error: { message: 'synthetic renderer unavailable' } }, { status: 500 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  let record: DurableTurnRecord | undefined;
+  const startedAt = Date.parse(STARTED);
+  const job = new DurableTurnJob({ read: async () => structuredClone(record),
+    write: async next => { record = structuredClone(next); }, alarmAt: async () => {} }, () => startedAt);
+  await job.accept({ ownerId: 'alice', conversationId: 'chat', requestId: 'chat:request:1',
+    baseRevision: 0, startedAt, payload: JSON.stringify(payload({ userText: '数学を60分、この条件で予定を作ってください。' })) });
+  await job.run((raw, dispatch, ip, deadline) => executeDurableVNextJob(providerEnv, JSON.parse(raw), dispatch, ip, deadline));
+  expect(record?.status).toBe('completed');
+  const result = JSON.parse(record!.result!) as WeeklyPlanningVNextDurableTurnResult;
+  expect(result.result.responseSource).toBe('deterministic_fallback');
+  expect(result.result.dialogueRendererTrace?.response).toMatchObject({ status: 'fallback' });
+  expect(result.result.draftCandidates.length).toBeGreaterThan(0);
+  expect(result.result.state.shouldSavePlan).toBe(false);
+  const kept = parseWeeklyPlanningVNextSessionCheckpoint({ raw: result.checkpointAfter!, ownerId: 'alice', weekStartDate: WEEK })!;
+  expect(kept.vnext.preview).not.toBeNull();
+  expect(kept.vnext.state.graph.tasks.map(task => task.title)).toEqual(['数学']);
+  expect(kept.vnext.state.graph.workloads.map(work => work.amount)).toEqual([60]);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
 describe('VNext durable envelope validation', () => {

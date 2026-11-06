@@ -3,6 +3,7 @@ import { getFirebaseAuth } from '../../../lib/firebaseClient';
 import type { PlanningState, WeeklyPlanningPendingTurn } from '../types';
 import type { IsolatedWeeklyPlanningTurnInput, IsolatedWeeklyPlanningTurnResult } from './weeklyPlanningIsolatedTurn';
 import type { DurableTurnResult } from '../../../../workers/ai-proxy/src/durableTurns/durableTurnJob';
+import { WeeklyPlanningDurableAccessDeniedError, WeeklyPlanningDurableOwnerMismatchError } from './weeklyPlanningDurableAccessDeniedError';
 
 export const durableWeeklyPlanningEnabled = () => import.meta.env.VITE_DURABLE_WEEKLY_TURNS === 'enabled';
 const RETENTION_MS = 24 * 60 * 60_000;
@@ -75,7 +76,7 @@ function defaultPorts(): DurableTurnClientPorts {
     fetch: (...args) => fetch(...args), endpoint: `${base}/weekly-planning/turns`, now: Date.now,
     token: async (ownerId) => {
       const user = getFirebaseAuth()?.currentUser;
-      if (!user || user.uid !== ownerId) throw new Error('会話の所有者が変わりました。');
+      if (!user || user.uid !== ownerId) throw new WeeklyPlanningDurableOwnerMismatchError();
       return user.getIdToken();
     },
     wait: (ms) => new Promise((resolve) => {
@@ -122,7 +123,7 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
         }
         throw new Error('保存された返信を確認できませんでした。新しいAI処理は開始していません。');
       }
-      if (response.status === 401 || response.status === 403) throw new Error('再ログインして会話を開き直してください。');
+      if (response.status === 401 || response.status === 403) throw new WeeklyPlanningDurableAccessDeniedError(response.status);
       if ((response.status >= 400 && response.status < 500) || response.status === 503) throw new Error('返信の継続を受け付けられませんでした。会話を開き直してください。');
       if (!response.ok) { needsReconcile = true; await ports.wait(Math.min(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.pollBaseMs + attempts++ * 1000)); continue; }
       const state = await response.json() as DurableTurnResult;

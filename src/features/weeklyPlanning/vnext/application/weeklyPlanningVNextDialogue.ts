@@ -72,6 +72,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   userText: string;
   recentConversation: readonly WeeklyPlanningVNextMessage[];
   authorizationRequired?: boolean;
+  repeatedQuestionGuidance?: boolean;
   registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts;
 }): VNextDialogueRenderInput {
   const { state, question, preview } = params;
@@ -85,7 +86,8 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   const optionLabels = question ? Object.values(presentWeeklyPlanningVNextQuestion(state, question).optionLabels) : [];
   return {
     communication: {
-      goal: actionKind === 'question' ? 'ask_question' : actionKind === 'preview_ready' ? 'present_preview' : 'acknowledge',
+      goal: actionKind === 'question' ? params.repeatedQuestionGuidance ? 'explain_question' : 'ask_question'
+        : actionKind === 'preview_ready' ? 'present_preview' : 'acknowledge',
       askQuestion: actionKind === 'question',
       ...params.registrationCommunication,
       ...(params.authorizationRequired ? { previewAuthorization: {
@@ -107,7 +109,10 @@ export function createWeeklyPlanningVNextRenderInput(params: {
       : question && targetFactId ? questionIntent(state, question, planningInformation, targetFactId) : null,
     previewPromotionControlLabel: preview ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL : null,
     requiredLabels: [...new Set([...requiredLabelsForStableV5Dialogue({ planningInformation, targetFactId,
-      includePreviewPromotionControl: preview !== null }), ...optionLabels])],
+      includePreviewPromotionControl: preview !== null }), ...optionLabels,
+      ...(params.repeatedQuestionGuidance && (question?.code === 'missing_effort_estimate'
+        || question?.code === 'missing_schedulable_work')
+        ? ['何分くらい', '所要時間はまだ分からないので、仮置きで予定を組んで見せて', '後で決める'] : [])])],
     fallbackText: params.authorizationRequired
       ? '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。'
       : RENDERER_TECHNICAL_STOP,
