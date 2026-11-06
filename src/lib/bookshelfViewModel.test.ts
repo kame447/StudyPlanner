@@ -9,7 +9,7 @@ import {
   getDefaultMaterialDetailPreferences,
   type MaterialDetailPreferences,
 } from './bookshelfMaterialDetails';
-import type { Actual, StudyMaterial } from '../types/domain';
+import type { StudyMaterial, TimedActual } from '../types/domain';
 
 function material(id: string, patch: Partial<StudyMaterial> = {}): StudyMaterial {
   return {
@@ -24,7 +24,7 @@ function material(id: string, patch: Partial<StudyMaterial> = {}): StudyMaterial
   };
 }
 
-function actual(patch: Partial<Actual>): Actual {
+function actual(patch: Partial<TimedActual>): TimedActual {
   return {
     id: 'actual-1',
     userId: 'user-1',

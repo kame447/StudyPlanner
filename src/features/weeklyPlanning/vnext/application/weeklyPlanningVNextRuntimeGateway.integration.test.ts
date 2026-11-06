@@ -21,7 +21,9 @@ import type { WeeklyPlanningVNextInterpretation, WeeklyPlanningVNextInterpreter 
 import type { VNextAddFact, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
-import { createWeeklyPlanningVNextRuntimeGateway } from './weeklyPlanningVNextRuntimeGateway';
+import { buildWeeklyPlanningVNextTurnPayload, createWeeklyPlanningVNextRuntimeGateway } from './weeklyPlanningVNextRuntimeGateway';
+import { createWeeklyPlanningTurnRequestContext } from '../../application/weeklyPlanningTemporalContext';
+import type { ExecuteWeeklyPlanningTurnRuntimeParams } from '../../application/weeklyPlanningTurnRuntimeGateway';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { createWeeklyPlanningVNextOptionChoiceInterpreter } from './weeklyPlanningVNextOptionChoice';
 import { createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoiceBrowserPort';
@@ -283,6 +285,19 @@ describe('VNext session → gateway → existing controller and trace owner', ()
         originalBytes: new TextEncoder().encode(JSON.stringify(rendererInputs[3])).byteLength });
       expect(saved).not.toContain('z'.repeat(48 * 1024));
     }
+  });
+
+  it('omits in-flight optimistic actuals from the shared local/durable payload without changing the wire shape', () => {
+    const actuals = [{ id: 'saving-one' }, { id: 'saved-one' }, { id: 'saving-two' }] as ExecuteWeeklyPlanningTurnRuntimeParams['actuals'];
+    const input = { snapshot: createInitialPlanningState(WEEK), pending: { conversationId: CONVERSATION,
+      requestId: 'request-1', baseRevision: 0 }, userText: '同じ週を再送', selectedDate: WEEK, userId: OWNER,
+      plans: [], actuals, scheduleTemplates: [] } as unknown as ExecuteWeeklyPlanningTurnRuntimeParams;
+    const clock = createWeeklyPlanningTurnRequestContext({ startedAtIso: NOW, timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' });
+    const payload = buildWeeklyPlanningVNextTurnPayload(input, null, null, clock, new Set(['saving-one', 'saving-two']));
+    expect(payload.input.actuals?.map(actual => actual.id)).toEqual(['saved-one']);
+    expect(input.actuals?.map(actual => actual.id)).toEqual(['saving-one', 'saved-one', 'saving-two']);
+    expect(payload.input).not.toHaveProperty('savingActualRecordIds');
+    expect(Object.keys(payload)).toEqual(['core', 'checkpoint', 'legacyV5Checkpoint', 'weekStartDate', 'input']);
   });
 
   it('keeps successful placement and records the actual native request and renderer evidence', async () => {

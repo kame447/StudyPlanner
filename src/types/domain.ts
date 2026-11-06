@@ -119,14 +119,12 @@ export interface ActualProgressSource {
   planType?: PlanType;
 }
 
-export interface Actual {
+interface ActualRecordBase {
   id: string;
   userId: string;
   planId: string | null;
   progressSource?: ActualProgressSource;
   occurrenceDate: string;
-  actualStartTime: string;
-  actualEndTime: string;
   title?: string;
   subject: string;
   isAlignedToPlan?: boolean;
@@ -137,6 +135,24 @@ export interface Actual {
   materialProgressUpdates?: ActualMaterialProgressUpdate[];
   weeklyPlanningObservationResult?: WeeklyPlanningMemoryPaceObservationResultV1;
 }
+
+/** An actual with the clock times the user entered; its duration is derived from them. */
+export interface TimedActual extends ActualRecordBase {
+  actualStartTime: string;
+  actualEndTime: string;
+  actualDurationMinutes?: undefined;
+}
+
+/** A standalone actual that states only how long (1..1439 minutes) on a date. It has no clock times:
+ *  none are ever invented for it, so it is never placed on a timeline. Read minutes with getActualDurationMinutes. */
+export interface DurationActual extends ActualRecordBase {
+  planId: null;
+  actualDurationMinutes: number;
+  actualStartTime?: undefined;
+  actualEndTime?: undefined;
+}
+
+export type Actual = TimedActual | DurationActual;
 
 export interface ActualMaterialProgressUpdate {
   materialId: string;

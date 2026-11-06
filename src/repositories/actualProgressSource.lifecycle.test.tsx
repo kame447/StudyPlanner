@@ -12,6 +12,7 @@ import { createLocalPlannerRepository } from './createLocalPlannerRepository';
 import { actual, event, plan, createLocalFixture } from './localPersistenceConcurrency.testUtils';
 import type { PlannerRepository } from './repositoryContracts';
 import { usePlannerDataState, type UsePlannerDataStateResult } from '../hooks/usePlannerDataState';
+import type { TimedActual } from '../types/domain';
 const boundary = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository }));
 vi.mock('../repositories', () => ({ plannerRepository: new Proxy({}, { get: (_target, key) => boundary.repository[key as keyof PlannerRepository] }) }));
 const date = '2026-10-15';
@@ -84,7 +85,7 @@ describe('Actual provenance through real persistence and UI lifecycles', () => {
     const f = createLocalFixture(); await f.repository.upsertMonthEvent(monthEvent()); await f.repository.upsertPlan(plan({ date }));
     const saved = await f.repository.upsertActual({ ...eventActual(), progressSource: { kind: 'study', sourceId: 'forged' } });
     expect(saved.progressSource?.kind).toBe('general-event');
-    const linked = await f.repository.upsertActual({ ...saved, planId: 'plan' });
+    const linked = await f.repository.upsertActual({ ...(saved as TimedActual), planId: 'plan' });
     expect(linked.progressSource).toEqual({ kind: 'study', sourceId: 'plan', planType: 'study' });
     const independent = await f.repository.upsertActual(actual({ id: 'independent', planId: null, progressSource: { kind: 'general-event', sourceId: 'event' } }));
     expect(independent.progressSource).toBeUndefined();
@@ -98,7 +99,7 @@ it('rejects new and explicit relink saves after the source disappears, retaining
   expect(await f.repository.getActuals('owner')).toEqual([]);
   const unknown = actual({ planId: null, title: '塾バイト' });
   await f.repository.upsertActual(unknown);
-  await expect(f.repository.upsertActual({ ...unknown, planId: 'event' })).rejects.toThrow('再読み込み');
+  await expect(f.repository.upsertActual({ ...(unknown as TimedActual), planId: 'event' })).rejects.toThrow('再読み込み');
   const edited = await f.repository.upsertActual({ ...unknown, note: 'Still editable' });
   expect(edited.progressSource).toBeUndefined(); expect(edited.planId).toBeNull();
 });
@@ -114,7 +115,7 @@ it('hook creation, date unlink, standalone edit and explicit relink preserve onl
   await act(async () => { await state.saveActual(eventPlan(), { ...createActualDraftForPlan(eventPlan(), state.actuals[0]),
     planId: null, occurrenceDate: '2026-10-14' }, id); });
   expect(state.actuals[0]).toMatchObject({ planId: null, progressSource: { kind: 'general-event' } });
-  await act(async () => { await state.saveStandaloneActual(createStandaloneActualDraft(state.actuals[0], {
+  await act(async () => { await state.saveStandaloneActual(createStandaloneActualDraft(state.actuals[0] as TimedActual, {
     occurrenceDate: date, startTime: '17:00', endTime: '21:30', title: 'Edited work', subject: '', note: 'Edited',
   }), id); });
   expect(state.actuals[0].progressSource?.kind).toBe('general-event');

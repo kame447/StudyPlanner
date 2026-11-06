@@ -69,6 +69,12 @@ export interface RealApiTurnOracle {
   workloadAlternatives?: readonly (readonly RealApiWorkloadOracle[])[];
   efforts: readonly RealApiEffortOracle[];
   temporal: readonly RealApiTemporalOracle[];
+  /**
+   * Duration-only study records the turn must read (#973): a past, dated study report is a record, never a workload.
+   * When present the VNext reading's studyRecords must equal this set exactly (date, subject, minutes); when absent
+   * nothing is checked about records. V5 has no study records, so a turn that sets this stays a V5 difference.
+   */
+  studyRecords?: readonly { date: string; subject: string; minutes: number }[];
   /** Stable machine question code after this turn; null means no open question. */
   questionCode: string | null;
   /** Work minutes from the typed projection, if ready. */
@@ -475,11 +481,12 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
     ],
   },
   {
-    id: 'yesterday-math-completed-30-minutes', source: 'real API run 41001146547 / scenario yesterday-completed',
-    description: 'Measure whether yesterday activity is interpreted as completed work; its occurrence date is outside the VNext fact contract.',
+    id: 'yesterday-math-completed-30-minutes', source: 'real API run 41001146547 / scenario yesterday-completed; oracle corrected by CONTRACT-CORRECTION-R2-yesterday.md (/Users/Shogo/.agentstack/reviews/20261103-examinee-weekly-actual-e2e/CONTRACT-CORRECTION-R2-yesterday.md, decided by PurplePasteur 2026-11-03 under USER-PRIORITIES-20261103.md)',
+    description: 'A past, dated study report is a study record, not a workload: yesterday (2026-10-29) math 30 minutes is read as one studyRecords entry, with no completed workload, no question and nothing saved. Previous oracle: ready(0, [completed 30 minute workload]) because "its occurrence date is outside the VNext fact contract" (bc73796c, #928 c4b0dfa8); that premise ended with #973 (VNext holds dated actuals), and run 41634010795 read studyRecords [{2026-10-29, 数学, 30}] with no workload (previous result d4c4a087: VNext pass on the old oracle). A completed workload here would double-count the same minutes and pull a record-only turn into planning.',
     clock: { currentDate: '2026-10-30', weekStartDate: '2026-10-26', planningEndDate: '2026-11-01' },
-    turns: [{ userText: '昨日は数学を30分勉強しました。', oracle: ready(0,
-      [workload('math', 'completed', 30, 'minute', '分')], [], [], { projectedMinutes: null }) }],
+    turns: [{ userText: '昨日は数学を30分勉強しました。', oracle: ready(0, [], [], [], {
+      projectedMinutes: null, studyRecords: [{ date: '2026-10-29', subject: '数学', minutes: 30 }],
+    }) }],
   },
   {
     id: 'recurrence-out-of-vnext-scope', source: 'implementation-contract.md VNext supported facts',

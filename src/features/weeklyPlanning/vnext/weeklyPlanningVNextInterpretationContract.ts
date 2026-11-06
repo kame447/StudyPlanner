@@ -16,6 +16,7 @@ import type {
   WeeklyPlanningVNextProjection,
   WeeklyPlanningVNextState,
 } from './weeklyPlanningVNextTypes';
+import type { VNextActualRecord, VNextStudyRecordQuestion, VNextStudyRecordReading } from './weeklyPlanningVNextStudyRecords';
 
 /** Supported additive V5 acts: optional-work decline or registration request, never permission to save. */
 export interface VNextEventRegistrationAct {
@@ -53,6 +54,9 @@ export interface WeeklyPlanningVNextInterpretationInput {
   /** UI-selected stored reference, with V5's provenance contract; never a Fact Graph reference or instruction. */
   selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
   clock: WeeklyPlanningVNextInterpretationClock;
+  /** The study records kept so far and the one open record question (#973); context for corrections and answers. */
+  studyRecords?: readonly VNextActualRecord[];
+  pendingStudyRecordQuestion?: VNextStudyRecordQuestion | null;
 }
 
 /** What the words say about the presented question, in the binder's vocabulary. */
@@ -106,6 +110,11 @@ export type WeeklyPlanningVNextInterpretation =
       conversationActs?: VNextEventRegistrationAct[];
       /** Applies cleanly to `state` (validated with the same pure transaction), or is empty. */
       delta: VNextTurnDelta;
+      /** What the user says they actually studied, apart from plan facts (#973); never saved by the interpreter. */
+      studyRecords?: VNextStudyRecordReading[];
+      studyRecordQuestion?: VNextStudyRecordQuestion | null;
+      /** Days the user says they did not study (absolute dates); never a record and never a plan fact. */
+      studyRestDays?: string[];
       answer: WeeklyPlanningVNextInterpretedAnswer | null;
       metrics: WeeklyPlanningVNextInterpretationMetrics;
     }

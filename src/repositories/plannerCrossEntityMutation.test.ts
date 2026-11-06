@@ -11,8 +11,7 @@ import type {
   StudySubject,
   TimetablePeriod,
   TimetableTerm,
-  TodoTask,
-} from '../types/domain';
+  TodoTask, TimedActual } from '../types/domain';
 
 type FailureKey =
   | 'plans'
@@ -46,7 +45,7 @@ function plan(overrides: Partial<Plan> = {}): Plan {
   };
 }
 
-function actual(overrides: Partial<Actual> = {}): Actual {
+function actual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1',
     userId: 'user-1',

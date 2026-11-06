@@ -8,6 +8,23 @@ import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRunti
 import type { WeeklyPlanningVNextDurableTurnInput, WeeklyPlanningVNextDurableTurnResult } from './weeklyPlanningVNextDurableTurn';
 import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 
+/** One turn payload for both local execution and the durable Worker. Optimistic actuals from a still-pending
+ * save cannot be used as evidence that the records are already saved. No new field crosses the wire. */
+export function buildWeeklyPlanningVNextTurnPayload(input: ExecuteWeeklyPlanningTurnRuntimeParams, before: string | null,
+  legacyV5Checkpoint: string | null, clock: ReturnType<typeof createWeeklyPlanningTurnRequestContext>,
+  savingActualRecordIds: ReadonlySet<string>): WeeklyPlanningVNextDurableTurnInput {
+  return { core: 'vnext', checkpoint: before, legacyV5Checkpoint, weekStartDate: input.snapshot.weekStartDate,
+    input: { previousState: input.snapshot.intakeState, messages: input.snapshot.messages,
+      userText: input.userText, supplementalContext: input.supplementalContext, selectedStarterTarget: input.selectedStarterTarget,
+      selectedDate: input.selectedDate, userId: input.userId, plans: input.plans,
+      actuals: input.actuals?.filter(actual => !savingActualRecordIds.has(actual.id)),
+      monthEvents: input.monthEvents, studyMaterials: input.studyMaterials, scheduleTemplates: input.scheduleTemplates,
+      timetableTermId: input.timetableTermId, timetableTerm: input.timetableTerm, timetableTerms: input.timetableTerms,
+      conversationId: input.pending.conversationId, traceRequestId: input.pending.requestId,
+      weekStartsOn: clock.weekStartsOn, requestContext: clock, inputStateRevision: input.pending.baseRevision,
+      retainedPreviewCount: input.snapshot.previewCandidates?.length ?? 0 } };
+}
+
 export function readWeeklyPlanningVNextDurableReceipt(ownerId: string) {
   const receipt = readDurableWeeklyTurnReceipt<WeeklyPlanningVNextDurableTurnInput>(ownerId, 'vnext');
   return receipt?.payload.core === 'vnext' ? receipt : null;
@@ -19,6 +36,7 @@ export function readWeeklyPlanningVNextDurableReceipt(ownerId: string) {
  */
 export function createWeeklyPlanningVNextRuntimeGateway(params: {
   session: Pick<WeeklyPlanningVNextLocalSession, 'checkpoint' | 'legacyV5Checkpoint'>;
+  savingActualRecordIds?: () => ReadonlySet<string>;
   /** Built only when the turn runs in this tab, so a lazy runtime loads after durable execution is ruled out. */
   ports(input: ExecuteWeeklyPlanningTurnRuntimeParams): WeeklyPlanningVNextExperimentalPorts | Promise<WeeklyPlanningVNextExperimentalPorts>;
 }): { runtimeGateway: WeeklyPlanningTurnRuntimeGateway; stagingLifecycle: WeeklyPlanningTurnStagingLifecycle } {
@@ -29,16 +47,8 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
       const clock = createWeeklyPlanningTurnRequestContext({ startedAtIso: input.pending.startedAt,
         timeZone: input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'Asia/Tokyo',
         weekStartsOn: input.weekStartsOn ?? 'monday' });
-      const payload: WeeklyPlanningVNextDurableTurnInput = { core: 'vnext', checkpoint: before,
-        legacyV5Checkpoint: params.session.legacyV5Checkpoint.read(), weekStartDate: input.snapshot.weekStartDate,
-        input: { previousState: input.snapshot.intakeState, messages: input.snapshot.messages,
-          userText: input.userText, supplementalContext: input.supplementalContext, selectedStarterTarget: input.selectedStarterTarget,
-          selectedDate: input.selectedDate, userId: input.userId, plans: input.plans, actuals: input.actuals,
-          monthEvents: input.monthEvents, studyMaterials: input.studyMaterials, scheduleTemplates: input.scheduleTemplates,
-          timetableTermId: input.timetableTermId, timetableTerm: input.timetableTerm, timetableTerms: input.timetableTerms,
-          conversationId: input.pending.conversationId, traceRequestId: input.pending.requestId,
-          weekStartsOn: clock.weekStartsOn, requestContext: clock, inputStateRevision: input.pending.baseRevision,
-          retainedPreviewCount: input.snapshot.previewCandidates?.length ?? 0 } };
+      const payload = buildWeeklyPlanningVNextTurnPayload(input, before, params.session.legacyV5Checkpoint.read(),
+        clock, params.savingActualRecordIds?.() ?? new Set());
       let completed: WeeklyPlanningVNextDurableTurnResult;
       if (durableWeeklyPlanningEnabled()) {
         const receipt = input.resumeDurable ? readWeeklyPlanningVNextDurableReceipt(input.userId) : {

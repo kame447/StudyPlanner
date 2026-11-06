@@ -62,7 +62,12 @@ import {
   type WeeklyPlanningVNextFailureRecovery,
   type WeeklyPlanningVNextUnansweredQuestionStreak,
   type WeeklyPlanningVNextShownPreview,
+  type WeeklyPlanningVNextSessionCheckpoint,
 } from './weeklyPlanningVNextSessionCheckpoint';
+import {
+  applyVNextStudyRecords, markVNextActualRecordsSaved, savedStudyRecordMinutes, vnextStudyRecordReply,
+  type VNextActualRecord, type VNextStudyRecordQuestion,
+} from '../weeklyPlanningVNextStudyRecords';
 
 export { readWeeklyPlanningVNextExperimentalSession, type WeeklyPlanningVNextExperimentalRead } from './weeklyPlanningVNextSessionRead';
 import { readWeeklyPlanningVNextExperimentalSession } from './weeklyPlanningVNextSessionRead';
@@ -171,6 +176,8 @@ export interface WeeklyPlanningVNextExperimentalTurn {
   interpretation: WeeklyPlanningVNextInterpretation | null;
   appliedDelta: VNextTurnDelta | null;
   errors: VNextTurnError[];
+  /** All study records kept so far, with whether each is already saved (#973). Absent on turns that never read the checkpoint. */
+  actualRecords?: VNextActualRecord[];
 }
 
 /** The scheduling context of a state: horizon from its planning window (or the selected week), by V5's resolvers. */
@@ -313,6 +320,38 @@ function interpretationFailureReply(failure: WeeklyPlanningVNextFailureRecovery,
   return `${cause}${unapplied}${retained}復旧後にもう一度送ってください。`;
 }
 
+/** Study-record keys of a checkpoint body: written only when there is something, so a plain plan checkpoint is unchanged. */
+function studyRecordFields(records: readonly VNextActualRecord[], question: VNextStudyRecordQuestion | undefined):
+  Pick<WeeklyPlanningVNextSessionCheckpoint['vnext'], 'actualRecords' | 'pendingStudyRecordQuestion'> {
+  return { ...(records.length ? { actualRecords: [...records] } : {}), ...(question ? { pendingStudyRecordQuestion: question } : {}) };
+}
+
+/**
+ * Marks records saved after the confirmation UI's explicit save succeeded (#973). Only their status changes; one
+ * checkpoint write; nothing is written when another turn saved meanwhile (the caller marks again from the fresh read).
+ */
+export function markWeeklyPlanningVNextActualRecordsSaved(
+  scope: Pick<WeeklyPlanningVNextExperimentalScope, 'ownerId' | 'weekStartDate' | 'conversationId'>,
+  ports: Pick<WeeklyPlanningVNextExperimentalPorts, 'checkpoint' | 'legacyV5Checkpoint' | 'now'>,
+  ids: readonly string[],
+): { status: 'marked'; actualRecords: VNextActualRecord[] } | { status: 'unreadable' | 'unchanged' } {
+  const read = readWeeklyPlanningVNextExperimentalSession(scope, ports);
+  if (read.status !== 'ready') return { status: 'unreadable' };
+  const records = read.checkpoint.actualRecords ?? [];
+  const marked = markVNextActualRecordsSaved(records, ids);
+  if (JSON.stringify(marked) === JSON.stringify(records)) return { status: 'unchanged' };
+  const raw = serializeWeeklyPlanningVNextSessionCheckpoint({ ownerId: scope.ownerId, weekStartDate: scope.weekStartDate,
+    conversationId: scope.conversationId, vnext: { ...withoutStudyRecords(read.checkpoint), ...studyRecordFields(marked, read.checkpoint.pendingStudyRecordQuestion) }, savedAt: ports.now() });
+  if (raw === null) return { status: 'unreadable' };
+  ports.checkpoint.write(raw);
+  return { status: 'marked', actualRecords: marked };
+}
+
+const withoutStudyRecords = (body: WeeklyPlanningVNextSessionCheckpoint['vnext']): WeeklyPlanningVNextSessionCheckpoint['vnext'] => {
+  const { actualRecords: _records, pendingStudyRecordQuestion: _question, ...rest } = body;
+  return rest;
+};
+
 const isEmpty = (delta: VNextTurnDelta) =>
   !delta.proposalDecision && delta.add.length + delta.patch.length + delta.remove.length + delta.relate.length + delta.defer.length === 0;
 
@@ -384,6 +423,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     ...(params.supplementalContext === undefined ? {} : { supplementalContext: params.supplementalContext }),
     ...(params.selectedStarterTarget === undefined ? {} : { selectedStarterTarget: params.selectedStarterTarget }),
     observedMemoryPace: pace,
+    studyRecords: read.checkpoint.actualRecords ?? [],
+    pendingStudyRecordQuestion: read.checkpoint.pendingStudyRecordQuestion ?? null,
     recentConversation: read.checkpoint.messages,
     // The reply the question was shown in: what the user's words answer (e.g. an ordinal over its options).
     presentedText: presentedQuestion ? presented!.shownText : null,
@@ -400,6 +441,46 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     readiness: before.readiness, question: presentedQuestion, preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [],
     reply: systemReply('stale', []), replySource: 'system', interpretation, appliedDelta: null, errors: [] });
   if (ports.checkpoint.read() !== rawBefore) return staleTurn();
+
+  // Study records (#973) are a separate output of the same reading: they never enter the plan transaction,
+  // the projection or a preview, and a turn that only states records is answered here with a fixed reply.
+  const priorRecords = read.checkpoint.actualRecords ?? [];
+  let nextRecords = priorRecords;
+  let nextRecordQuestion: VNextStudyRecordQuestion | undefined = read.checkpoint.pendingStudyRecordQuestion;
+  if (interpretation.status === 'interpreted') {
+    const readings = interpretation.studyRecords ?? [];
+    const question = interpretation.studyRecordQuestion ?? null;
+    const restDays = interpretation.studyRestDays ?? [];
+    const applied = applyVNextStudyRecords({ records: priorRecords, readings, restDays, acceptedDate: scope.clock.currentDate, ownerId: scope.ownerId,
+      saved: savedStudyRecordMinutes(calendar.actuals, scope.ownerId) });
+    if (applied.status === 'rejected') {
+      return { outcome: 'rejected', graphRevision: read.checkpoint.state.graph.revision, readiness: before.readiness, question: presentedQuestion,
+        preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [], reply: systemReply('rejected', []), replySource: 'system',
+        interpretation, appliedDelta: null, errors: applied.errors, actualRecords: priorRecords };
+    }
+    nextRecords = applied.records;
+    nextRecordQuestion = question ?? undefined;
+    const recordOnly = (readings.length > 0 || question !== null || restDays.length > 0) && isEmpty(interpretation.delta)
+      && !interpretation.conversationActs?.length && interpretation.answer === null;
+    if (recordOnly) {
+      const { changed, alreadySaved } = applied;
+      const removedCount = priorRecords.filter(record => !nextRecords.some(next => next.id === record.id)).length;
+      const reply = vnextStudyRecordReply({ alreadySaved, changed, removedCount, all: nextRecords, question, restDays: applied.restDays });
+      const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
+        ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
+        vnext: { ...withoutStudyRecords(read.checkpoint), ...studyRecordFields(nextRecords, nextRecordQuestion),
+          messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
+            { role: 'assistant' as const, content: reply }].slice(-VNEXT_RECENT_MESSAGE_LIMIT) },
+        savedAt: ports.now(),
+      });
+      if (raw === null) throw new Error('VNext checkpoint exceeds the storage limit');
+      ports.checkpoint.write(raw);
+      return { outcome: applied.status === 'applied' || removedCount || question !== null ? 'applied' : 'noop',
+        graphRevision: read.checkpoint.state.graph.revision, readiness: before.readiness, question: presentedQuestion,
+        preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [], reply, replySource: 'system',
+        interpretation, appliedDelta: null, errors: [], actualRecords: nextRecords };
+    }
+  }
 
   let outcome: WeeklyPlanningVNextExperimentalTurnOutcome;
   let delta: VNextTurnDelta | null = null;
@@ -599,6 +680,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       preview,
       ...(failureRecovery ? { failureRecovery } : {}),
       ...(unansweredQuestionStreak ? { unansweredQuestionStreak } : {}),
+      ...studyRecordFields(nextRecords, nextRecordQuestion),
       messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
         { role: 'assistant' as const, content: reply }].slice(-VNEXT_RECENT_MESSAGE_LIMIT),
     },
@@ -622,5 +704,6 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     interpretation,
     appliedDelta: outcome === 'applied' ? delta : null,
     errors,
+    actualRecords: nextRecords,
   };
 }
