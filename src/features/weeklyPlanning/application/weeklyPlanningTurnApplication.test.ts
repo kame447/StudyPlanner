@@ -370,7 +370,7 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     const getIdToken = vi.fn(async () => 'owner-token');
     const getAuth = vi.spyOn(firebaseClient, 'getFirebaseAuth').mockReturnValue(authState === 'signed_out' ? null : {
       currentUser: { uid: 'another-owner', getIdToken },
-    } as ReturnType<typeof firebaseClient.getFirebaseAuth>);
+    } as unknown as ReturnType<typeof firebaseClient.getFirebaseAuth>);
     const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('unexpected network request'));
     let failure: unknown;
     const execute: WeeklyPlanningTurnRuntimeGateway['execute'] = vi.fn(async (input) => {
@@ -405,7 +405,7 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
       expect(state.messages[1].content).not.toContain('保存しました');
       expect(failure).toMatchObject({ name: 'WeeklyPlanningDurableOwnerMismatchError' });
 
-      getAuth.mockReturnValue({ currentUser: { uid: params.ownerId, getIdToken } } as ReturnType<typeof firebaseClient.getFirebaseAuth>);
+      getAuth.mockReturnValue({ currentUser: { uid: params.ownerId, getIdToken } } as unknown as ReturnType<typeof firebaseClient.getFirebaseAuth>);
       fetch.mockImplementation(async (_url, init) => {
         const request = JSON.parse(String(init?.body));
         return Response.json({ status: 'completed', identity: { ownerId: params.ownerId,
