@@ -94,9 +94,9 @@ it('applies the same expanded checkpoint bytes at Worker admission and Pages res
 it.each([
   { order: 'Worker first: old Pages request → expanded Worker response', writeRequest: serializeOld, readResponse: parseOld },
   { order: 'Pages first: expanded Pages request → old Worker reader', writeRequest: serializeWeeklyPlanningVNextSessionCheckpoint, readResponse: parseExpand },
-])('$order keeps the four-key wire format through successful and failed turns', async ({ writeRequest, readResponse }) => {
-  // The pre-expand parser is frozen source, not a mock of current acceptance. Both deployment
-  // orders must remain possible until all readers expand; only later PRs may generate fields.
+])('$order keeps healthy turns compatible and requires expanded readers for P1 failure recovery', async ({ writeRequest, readResponse }) => {
+  // P1 is enabled only after both deployed readers expand. Healthy turns retain the legacy wire
+  // format; a failure activates the recovery field and must use expanded readers on both sides.
   const raw = writeRequest({ ownerId, weekStartDate, conversationId, savedAt: startedAt,
     vnext: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [] } });
   expect(raw).not.toBeNull();
@@ -125,10 +125,12 @@ it.each([
   const failed = await executeIsolatedWeeklyPlanningVNextTurn({ core: 'vnext', weekStartDate, checkpoint: first.checkpointAfter,
     legacyV5Checkpoint: null, input: { ...input, traceRequestId: `${requestId}:2`, userText: '続けて相談します',
       inputStateRevision: accepted!.vnext.state.graph.revision } }, provider);
-  const afterFailure = readResponse({ raw: failed.checkpointAfter!, ownerId, weekStartDate });
+  const afterFailure = parseExpand({ raw: failed.checkpointAfter!, ownerId, weekStartDate });
   expect(afterFailure?.vnext.state).toEqual(accepted!.vnext.state);
-  expect(parseOld({ raw: failed.checkpointAfter!, ownerId, weekStartDate })).not.toBeNull();
-  expect(Object.keys(JSON.parse(failed.checkpointAfter!).vnext)).toEqual(['state', 'presentedQuestion', 'preview', 'messages']);
+  expect(afterFailure?.vnext.failureRecovery).toEqual({ reason: 'provider_error', consecutiveCount: 1 });
+  expect(parseOld({ raw: failed.checkpointAfter!, ownerId, weekStartDate })).toBeNull();
+  expect(Object.keys(JSON.parse(failed.checkpointAfter!).vnext).sort())
+    .toEqual(['failureRecovery', 'messages', 'presentedQuestion', 'preview', 'state']);
   expect(afterFailure?.vnext.messages.filter(message => message.role === 'user').map(message => message.content))
     .toEqual(['数学の勉強をします', '続けて相談します']);
 });
