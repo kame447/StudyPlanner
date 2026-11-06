@@ -251,3 +251,41 @@ describe('daily user chart', () => {
     act(() => renderer.unmount());
   });
 });
+
+it('filters the loaded actor/profile list and preserves activity filters and sort tie rules without extra requests', async () => {
+  const users = [
+    { ...user(), profileSubjectId: 'profile-c', actorSubjectId: 'actor-c', productActivityCount: 0, aiRequestCount: 0, planningOutcomeCount: 1 },
+    { ...user(), profileSubjectId: 'profile-b', actorSubjectId: null, lastActivityAt: null, eventCount: 9, productActivityCount: 0, aiRequestCount: 1, planningOutcomeCount: 0 },
+    { ...user(), profileSubjectId: 'profile-a', actorSubjectId: 'actor-a', productActivityCount: 1, aiRequestCount: 0, planningOutcomeCount: 0 },
+  ];
+  const original = structuredClone(users);
+  fetchMock.mockResolvedValueOnce(response({ ok: true, users, nextCursor: null, enrichmentReady: true,
+    trend: { daily: [], activeUsers: activeUsers() } }));
+  const renderer = await renderPage();
+  const cards = () => renderer.root.findAllByProps({ className: 'admin-user-card panel' });
+  const ids = () => cards().map(card => card.findByType('code').children.join(''));
+  const controls = renderer.root.findAllByType('select');
+  const change = (index: number, value: string) => act(() => controls[index].props.onChange({ target: { value } }));
+  expect(ids()).toEqual(['actor-a', 'actor-c', 'profile-b']);
+  expect(cards()[2].props.disabled).toBe(true);
+  change(1, 'events');
+  expect(ids()).toEqual(['profile-b', 'actor-a', 'actor-c']);
+  change(1, 'actor');
+  expect(ids()).toEqual(['actor-a', 'actor-c', 'profile-b']);
+  for (const [filter, expected] of [['product', 'actor-a'], ['ai', 'profile-b'], ['planning', 'actor-c']]) {
+    change(0, filter);
+    expect(ids()).toEqual([expected]);
+  }
+  change(0, 'all');
+  const search = renderer.root.findByProps({ placeholder: 'actor / profile IDで絞り込み' });
+  act(() => search.props.onChange({ target: { value: '  PROFILE-B  ' } }));
+  expect(ids()).toEqual(['profile-b']);
+  act(() => search.props.onChange({ target: { value: 'ACTOR-C' } }));
+  expect(ids()).toEqual(['actor-c']);
+  act(() => search.props.onChange({ target: { value: 'missing' } }));
+  expect(ids()).toEqual([]);
+  expect(JSON.stringify(renderer.toJSON())).toContain('該当するユーザーがいません');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(users).toEqual(original);
+  act(() => renderer.unmount());
+});

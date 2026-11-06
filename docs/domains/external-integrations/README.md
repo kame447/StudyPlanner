@@ -14,6 +14,8 @@ Status: current domain entry point
 
 ## Active work
 
+- [Timetable OCR result boundary](work/20261103-timetable-ocr-result-boundary.md): local-only separation of candidate normalization/editing rules from Firebase/HTTP transport, preserving the public import path.
+
 - [Firestore wire codec boundary](work/20261020-firestore-codec-boundary.md): local-only separation of pure value conversion from Worker transport, preserving the existing client facade and wire representations.
 
 - [Material search detail reuse](work/material-search-detail-reuse-handoff.md): Issue #542 / #187 removes a repeated detail request when choosing a successfully enriched result in the same auth session; local-only verification.
