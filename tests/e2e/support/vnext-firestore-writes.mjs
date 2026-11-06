@@ -23,7 +23,11 @@ export const NO_WRITE_PHASE = 'none';
 //    (firebasePlannerRepository.ts:441). Exactly one update of one of those collections per removed block; no delete, actuals,
 //    todos or migration write (whole-plan deletePlanWithDependents is not reachable from the one-off dialog, DayView.tsx:544).
 const APPROVAL_DOCUMENTS = ['plans', 'schedule_events', 'weekly_planning_approval_operations', 'weekly_planning_approval_items'];
+//  save-actuals: the confirmed study-record save (#973, DESIGN-DECISION.md 5): ONE writeBatch of `actuals/{deterministic id}` documents, one
+//    `update` operation per record and nothing else (no plan, schedule event, approval or other collection). A transaction that reads the
+//    documents first may add `verify` operations of `actuals`.
 export const PHASE_ALLOWLISTS = {
+  'save-actuals': { update: ['actuals'], verify: ['actuals'] },
   save: { update: APPROVAL_DOCUMENTS, verify: [...APPROVAL_DOCUMENTS, 'schedule_event_migrations'] },
   sweep: { update: ['plans', 'schedule_events'] },
   cleanup: { update: ['plans', 'schedule_events'] },
@@ -88,6 +92,18 @@ export function cancellationCommitProblems(commits, removed) {
   if (commits.length !== removed) problems.push(`expected ${removed} cancellation commit(s), saw ${commits.length}`);
   commits.forEach((commit, index) => {
     if (commit.operations?.length !== 1) problems.push(`commit ${index} has ${commit.operations?.length ?? 'unknown'} operations, expected 1`);
+  });
+  return problems;
+}
+
+/** The confirmed record save is exactly one commit whose operations are `expected` updates of `actuals`. */
+export function actualsCommitProblems(commits, expected) {
+  const problems = [];
+  if (commits.length !== 1) problems.push(`expected 1 actuals commit, saw ${commits.length}`);
+  commits.forEach((commit, index) => {
+    const updates = (commit.operations ?? []).filter(({ kind }) => kind === 'update');
+    if (updates.length !== expected) problems.push(`commit ${index} has ${updates.length} update operation(s), expected ${expected}`);
+    if (updates.some(({ collection }) => collection !== 'actuals')) problems.push(`commit ${index} updates a collection other than actuals`);
   });
   return problems;
 }

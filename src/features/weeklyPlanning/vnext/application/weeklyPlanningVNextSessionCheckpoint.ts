@@ -16,8 +16,10 @@ import {
   type WeeklyPlanningVNextState,
 } from '../weeklyPlanningVNextTypes';
 import type { WeeklyPlanDraftBlock } from '../../types';
+import { VNEXT_STUDY_RECORD_QUESTION_REASONS, type VNextActualRecord, type VNextStudyRecordQuestion } from '../weeklyPlanningVNextStudyRecords';
 import type { WeeklyPlanningVNextPresentedQuestion } from './weeklyPlanningVNextAnswerBinding';
 import { VNEXT_RECENT_MESSAGE_LIMIT, type WeeklyPlanningVNextMessage } from './weeklyPlanningVNextDialogue';
+import type { WeeklyPlanningVNextInterpretation } from '../weeklyPlanningVNextInterpretationContract';
 
 export const WEEKLY_PLANNING_VNEXT_SESSION_CAPABILITY = 'vnext-conversation-core-v1' as const;
 const MAX_CHECKPOINT_BYTES = 2 * 1024 * 1024;
@@ -27,6 +29,18 @@ export interface WeeklyPlanningVNextShownPreview {
   previewId: string;
   graphRevision: number;
   blocks: WeeklyPlanDraftBlock[];
+}
+
+/** Machine state for choosing a bounded, state-aware notice after interpretation failures. */
+export interface WeeklyPlanningVNextFailureRecovery {
+  reason: Extract<WeeklyPlanningVNextInterpretation, { status: 'failed' }>['reason'];
+  consecutiveCount: number;
+}
+
+export interface WeeklyPlanningVNextUnansweredQuestionStreak {
+  questionKey: string;
+  graphRevision: number;
+  count: number;
 }
 
 export interface WeeklyPlanningVNextSessionCheckpoint {
@@ -42,6 +56,14 @@ export interface WeeklyPlanningVNextSessionCheckpoint {
     preview: WeeklyPlanningVNextShownPreview | null;
     /** The latest messages, for the renderer's conversational context only; never read as facts. */
     messages: WeeklyPlanningVNextMessage[];
+    /** Absent after an accepted interpretation; old checkpoints have no failure history. */
+    failureRecovery?: WeeklyPlanningVNextFailureRecovery;
+    /** Absent in older checkpoints; only accepted empty readings advance this count. */
+    unansweredQuestionStreak?: WeeklyPlanningVNextUnansweredQuestionStreak;
+    /** Study records the user stated (#973), independent of plan facts and previews; absent means none. */
+    actualRecords?: VNextActualRecord[];
+    /** The one record question still open, so the next answer is read against it; absent means none. */
+    pendingStudyRecordQuestion?: VNextStudyRecordQuestion;
   };
   savedAt: string;
 }
@@ -142,10 +164,46 @@ function validPreview(value: unknown): boolean {
   });
 }
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+function validActualRecords(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  const ids = new Set<string>();
+  return value.every((record) => {
+    const ok = isRecord(record) && hasExactKeys(record, ['id', 'occurrenceDate', 'subject', 'minutes', 'status'])
+      && typeof record.id === 'string' && record.id.length > 0 && !ids.has(record.id)
+      && typeof record.occurrenceDate === 'string' && ISO_DAY.test(record.occurrenceDate)
+      && typeof record.subject === 'string' && record.subject.trim().length > 0
+      && Number.isInteger(record.minutes) && (record.minutes as number) >= 1 && (record.minutes as number) <= 1439
+      && (record.status === 'pending' || record.status === 'saved');
+    if (ok) ids.add((record as { id: string }).id);
+    return ok;
+  });
+}
+function validStudyRecordQuestion(value: unknown): boolean {
+  return value === undefined || (isRecord(value) && hasExactKeys(value, ['reason', 'label'])
+    && (VNEXT_STUDY_RECORD_QUESTION_REASONS as readonly unknown[]).includes(value.reason)
+    && (value.label === null || typeof value.label === 'string'));
+}
+
 function validMessages(value: unknown): boolean {
   return Array.isArray(value) && value.length <= VNEXT_RECENT_MESSAGE_LIMIT && value.every((message) => isRecord(message)
     && hasExactKeys(message, ['role', 'content']) && (message.role === 'user' || message.role === 'assistant')
     && typeof message.content === 'string');
+}
+
+function validFailureRecovery(value: unknown): boolean {
+  return value === undefined || (isRecord(value) && hasExactKeys(value, ['reason', 'consecutiveCount'])
+    && ['provider_error', 'unparseable', 'rejected_after_repair'].includes(value.reason as string)
+    && Number.isSafeInteger(value.consecutiveCount) && (value.consecutiveCount as number) >= 1);
+}
+
+function validUnansweredQuestionStreak(value: unknown): boolean {
+  return value === undefined || (isRecord(value)
+    && hasExactKeys(value, ['questionKey', 'graphRevision', 'count'])
+    && typeof value.questionKey === 'string' && value.questionKey.length > 0
+    && Number.isSafeInteger(value.graphRevision) && (value.graphRevision as number) >= 0
+    && Number.isSafeInteger(value.count) && (value.count as number) >= 1);
 }
 
 export function serializeWeeklyPlanningVNextSessionCheckpoint(
@@ -176,7 +234,16 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
       || value.ownerId !== params.ownerId || value.weekStartDate !== params.weekStartDate
       || typeof value.conversationId !== 'string' || !value.conversationId.trim()
       || typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))
-      || !isRecord(value.vnext) || !hasExactKeys(value.vnext, ['state', 'presentedQuestion', 'preview', 'messages'])) return null;
+      || !isRecord(value.vnext) || !hasExactKeys(value.vnext, [
+        'state', 'presentedQuestion', 'preview', 'messages',
+        ...('failureRecovery' in value.vnext ? ['failureRecovery'] : []),
+        ...('unansweredQuestionStreak' in value.vnext ? ['unansweredQuestionStreak'] : []),
+        ...('actualRecords' in value.vnext ? ['actualRecords'] : []),
+        ...('pendingStudyRecordQuestion' in value.vnext ? ['pendingStudyRecordQuestion'] : []),
+      ]) || !validFailureRecovery(value.vnext.failureRecovery)
+      || !validUnansweredQuestionStreak(value.vnext.unansweredQuestionStreak)
+      || !validActualRecords(value.vnext.actualRecords)
+      || !validStudyRecordQuestion(value.vnext.pendingStudyRecordQuestion)) return null;
     // Earlier experimental previews were automatic and carry no evidence of permission. Keep
     // facts and raw storage, but invalidate that derived preview; only a new request can replace it.
     const missingAuthorization = isRecord(value.vnext.state) && !('draftGenerationIntent' in value.vnext.state);

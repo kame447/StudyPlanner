@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
-import type { Actual, Plan } from '../types/domain';
+import type { Actual, Plan, TimedActual } from '../types/domain';
 import { prepareRecurringPlanWrite, stripUndefinedDeep } from './plannerWritePreparation';
 
 function plan(id: string): Plan {
@@ -77,7 +77,7 @@ describe('recurring planner write preparation', () => {
     const removed = actual('removed');
 
     expect(prepareRecurringPlanWrite(mutation({
-      actualUpserts: [{ ...rebound, planId: 'replacement' }],
+      actualUpserts: [{ ...(rebound as TimedActual), planId: 'replacement' }],
       actualDeletes: [rebound, removed],
     }), {
       duplicateOccurrenceActuals: [rebound],

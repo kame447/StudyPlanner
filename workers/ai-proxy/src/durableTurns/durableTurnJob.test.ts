@@ -120,6 +120,34 @@ describe('durable execution and uncertain completion', () => {
     await job.run(async () => 'retry'); expect(send).toHaveBeenCalledTimes(1);
     expect(h.read()).toMatchObject({ status: 'failed', failure: 'provider_failure' });
   });
+  it('accepts explicit application recovery without resuming dispatch or replaying the failed provider', async () => {
+    const h = harness(); const job = h.create(); await job.accept(h.input);
+    const send = vi.fn(async () => { throw new Error('disconnect'); });
+    const renderer = vi.fn(async () => 'must not send');
+    await job.run(async (_, dispatch) => {
+      await expect(dispatch('semantic', send)).rejects.toThrow('provider_failure');
+      await expect(dispatch('renderer', renderer)).rejects.toThrow('provider_failure');
+      return { kind: 'provider_failure_recovered', result: 'unsaved consultation' };
+    });
+    expect(h.read()).toMatchObject({ status: 'completed', result: 'unsaved consultation' });
+    await job.run(async () => { throw new Error('must not execute completed recovery'); });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(renderer).not.toHaveBeenCalled();
+  });
+  it('cannot mark uncertain provider completion as an application recovery', async () => {
+    const h = harness(); await h.create().accept(h.input);
+    const original = h.storage.write;
+    h.storage.write = async record => { await original(record); if (record.journal?.[0]?.status === 'started') throw new Error('eviction'); };
+    const send = vi.fn(async () => 'reply');
+    await expect(h.create().run((_, dispatch) => dispatch('semantic', send))).rejects.toThrow();
+    h.storage.write = original;
+    await h.create().run(async (_, dispatch) => {
+      await expect(dispatch('semantic', send)).rejects.toThrow('provider_completion_unknown');
+      return { kind: 'provider_failure_recovered', result: 'must not commit' };
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(h.read()).toMatchObject({ status: 'failed', failure: 'provider_completion_unknown' });
+  });
   it('fails closed when replay code changes its provider request', async () => {
     const h = harness(); await h.create().accept(h.input);
     await h.storage.write({ ...h.read()!, status: 'running', journal: [{ fingerprint: 'different', status: 'completed', response: 'old' }] });

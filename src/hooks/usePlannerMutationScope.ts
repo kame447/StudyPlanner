@@ -1,4 +1,4 @@
-import { UserFacingError } from '../lib/userFacingError';
+import { PlannerMutationScopeExpiredError } from '../lib/plannerMutationScopeExpiredError';
 import {
   useCallback,
   useLayoutEffect,
@@ -10,12 +10,7 @@ import {
 } from 'react';
 import type { ShowNotice } from './useNoticeState';
 
-export class PlannerMutationScopeExpiredError extends UserFacingError {
-  constructor() {
-    super('操作中にアカウントまたはデータが切り替わりました。現在の画面を確認してください。');
-    this.name = 'PlannerMutationScopeExpiredError';
-  }
-}
+export { PlannerMutationScopeExpiredError };
 
 /** Only projects results into the UI that started the operation.
  * This does not cancel or roll back a repository write already in progress.

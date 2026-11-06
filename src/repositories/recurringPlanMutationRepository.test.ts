@@ -10,8 +10,7 @@ import type {
   StudySubject,
   TimetablePeriod,
   TimetableTerm,
-  TodoTask,
-} from '../types/domain';
+  TodoTask, TimedActual } from '../types/domain';
 import { createPlannerRepository } from './plannerRepository';
 import type { PlannerStorageGateway } from './repositoryContracts';
 
@@ -24,7 +23,7 @@ function plan(overrides: Partial<Plan> = {}): Plan {
   };
 }
 
-function actual(overrides: Partial<Actual> = {}): Actual {
+function actual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1', userId: 'user-1', planId: 'plan-1', occurrenceDate: '2026-09-01',
     actualStartTime: '09:00', actualEndTime: '10:00', subject: 'Math', note: '',

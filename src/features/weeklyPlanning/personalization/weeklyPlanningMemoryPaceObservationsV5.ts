@@ -4,6 +4,7 @@ import type {
   WeeklyPlanningMemoryPaceObservationResultV1,
   WeeklyPlanningMemoryPaceObservationSourceV1,
 } from '../../../types/domain';
+import { getActualDurationMinutes, isDurationActual } from '../../../lib/actualDuration';
 
 export interface WeeklyPlanningMemoryPaceObservationV5 {
   planId: string;
@@ -32,6 +33,7 @@ function timeToMinutes(value: string): number | null {
 }
 
 function actualDurationMinutes(actual: Actual): number | null {
+  if (isDurationActual(actual)) return getActualDurationMinutes(actual) || null;
   const start = timeToMinutes(actual.actualStartTime);
   const end = timeToMinutes(actual.actualEndTime);
   if (start === null || end === null) return null;

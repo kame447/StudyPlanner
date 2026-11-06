@@ -308,4 +308,56 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     expect(read.checkpoint.preview!.blocks[0]).toHaveProperty('behaviorMetadata.weeklyPlanningObservationSource');
     expect(call).toBe(4);
   });
+
+  it('does not offer provisional placement for an unanswered session-duration question', async () => {
+    const state = decide(seed(), 'accept');
+    const question = projectWeeklyPlanningVNext(state).questions[0];
+    expect(question).toMatchObject({ code: 'missing_effort_estimate', effortMeasurement: 'session_duration' });
+    expect(question.key.startsWith('memory_session_duration:')).toBe(true);
+    let raw = serializeWeeklyPlanningVNextSessionCheckpoint({ ownerId: 'owner', weekStartDate: context.currentDate,
+      conversationId: 'c', vnext: { state, presentedQuestion: {
+        questionKey: question.key, graphRevision: state.graph.revision, shownText: '1回の時間を教えてください。',
+      }, preview: null, messages: [] }, savedAt: '2026-11-02T09:00:00Z' })!;
+    const ports: WeeklyPlanningVNextExperimentalPorts = {
+      client: { async createChatCompletion() { throw new Error('unexpected provider call'); } },
+      interpret: async () => ({ status: 'interpreted', planningIntent: 'unknown', delta: empty(), answer: null,
+        metrics: { calls: 1, repairs: 0, latencyMs: 1 } }),
+      checkpoint: { read: () => raw, write: value => { raw = value; } },
+      legacyV5Checkpoint: { read: () => null },
+      approvalLedger: { read: () => null, write: () => { throw new Error('unexpected approval'); } },
+      plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { throw new Error('unexpected save'); } },
+      calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }),
+      createRenderer: () => ({ async render(input) { return { status: 'rendered', rawResponse: '',
+        text: JSON.stringify({ goal: input.communication?.goal, requiredLabels: input.requiredLabels }) }; } }),
+      now: () => '2026-11-02T09:00:00Z',
+    };
+    const scope = { ownerId: 'owner', conversationId: 'c', weekStartDate: context.currentDate, clock, notBeforeTime: '09:00' };
+    let third: Awaited<ReturnType<typeof submitWeeklyPlanningVNextExperimentalTurn>> | null = null;
+    for (let i = 1; i <= 3; i++) {
+      third = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: `unanswered-${i}`,
+        userText: 'まだ答えていません', shownRevision: JSON.parse(raw).vnext.presentedQuestion.graphRevision });
+      expect(third.outcome).toBe('noop');
+      expect(third.question?.key).toBe(question.key);
+    }
+    expect(JSON.parse(raw).vnext.unansweredQuestionStreak.count).toBe(3);
+    const presentation = JSON.parse(third!.reply);
+    expect(presentation.requiredLabels).not.toContain('所要時間はまだ分からないので、仮置きで予定を組んで見せて');
+    expect(presentation.goal).toBe('ask_question');
+
+    const providerPorts: WeeklyPlanningVNextExperimentalPorts = { ...ports,
+      interpret: createWeeklyPlanningVNextProviderInterpreter(),
+      client: { async createChatCompletion(request) {
+        const input = JSON.parse(request.messages[1].content);
+        expect(input.userText).toBe('後で決める');
+        return JSON.stringify({ planningIntent: 'unknown', conversationActs: [], answer: null,
+          delta: { ...empty(), defer: [{ questionKey: input.openQuestions[0].key, allocation: 'none' }] } });
+      } },
+    };
+    const deferred = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports: providerPorts, turnId: 'defer-session',
+      userText: '後で決める', shownRevision: JSON.parse(raw).vnext.presentedQuestion.graphRevision });
+    expect(deferred.interpretation).toMatchObject({ status: 'interpreted', metrics: { calls: 1, repairs: 0 } });
+    expect(deferred.outcome).toBe('applied');
+    expect(JSON.parse(raw).vnext.state.deferrals).toContainEqual(expect.objectContaining({ questionKey: question.key,
+      allocation: 'none' }));
+  });
 });

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { addDays } from './date';
 import { buildStudyStreakModel, nextAutomaticStudyRestDate, studyRestDayBlockReason, type StudyStreakInput } from './studyStreak';
 import { plan as makePlan } from '../repositories/localPersistenceConcurrency.testUtils';
-import type { Actual } from '../types/domain';
+import type { Actual, TimedActual } from '../types/domain';
 
 const { normalize } = vi.hoisted(() => ({ normalize: vi.fn() }));
 vi.mock('./studyRecords', async (importOriginal) => {
@@ -10,7 +10,7 @@ vi.mock('./studyRecords', async (importOriginal) => {
   return { ...original, normalizeStudyRecordsForDisplay: normalize.mockImplementation(original.normalizeStudyRecordsForDisplay) };
 });
 
-const actual = (date: string, overrides: Partial<Actual> = {}): Actual => ({
+const actual = (date: string, overrides: Partial<TimedActual> = {}): TimedActual => ({
   id: date, userId: 'owner', planId: null, occurrenceDate: date,
   actualStartTime: '09:00', actualEndTime: '09:10', subject: '数学', note: '',
   updatedAt: '2026-10-16T00:00:00Z', ...overrides,
@@ -62,7 +62,7 @@ describe('automatic rest calculation work and equivalence', () => {
   it('matches every 10-day study pattern with empty, duplicate, and historical manual rest records', () => {
     for (let pattern = 0; pattern < 1024; pattern++) {
       const actuals = Array.from({ length: 10 }, (_, day) => (pattern & (1 << day)) ? actual(addDays('2024-02-23', day)) : null)
-        .filter((row): row is Actual => row !== null);
+        .filter((row): row is TimedActual => row !== null);
       for (const restDays of [[], [{ date: '2024-02-29' }, { date: '2024-03-02' }, { date: '2024-02-29' }]]) {
         const source = input({ actuals, restDays, today: '2024-03-06' });
         expect(nextAutomaticStudyRestDate(source), JSON.stringify({ pattern, restDays })).toBe(referenceNext(source));
