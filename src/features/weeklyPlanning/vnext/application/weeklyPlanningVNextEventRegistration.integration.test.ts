@@ -198,6 +198,28 @@ describe('VNext native fixed-event registration through the unchanged V5 project
       eventRegistration: { workAwaitingAuthorization: ['数学 60分'] }, previewAuthorization: { status: 'authorization_required' } } });
   });
 
+  it.each([
+    { reading: 'event-local date only', window: false, mathDate: null, expectedMathDate: WEEK },
+    { reading: 'shared planning day', window: true, mathDate: null, expectedMathDate: '2026-11-03' },
+    { reading: 'separate explicit math day', window: false, mathDate: 'day_after_tomorrow', expectedMathDate: '2026-11-04' },
+  ])('#868-6 characterizes $reading without interpreting the compound utterance again', async ({ window, mathDate, expectedMathDate }) => {
+    const add: VNextAddFact[] = [...event('seminar'), ...work];
+    if (window) add.push({ kind: 'planning_window', localId: 'shared-day', windowKind: 'relative_day',
+      value: 'tomorrow', start: null, end: null });
+    if (mathDate) for (const constraintKind of ['earliest_start', 'latest_end'] as const) add.push({
+      kind: 'temporal_constraint', localId: `math-${constraintKind}`, taskRef: { localId: 'math' },
+      targetRef: { localId: 'math' }, constraintKind, constraintLevel: 'hard', dateExpression: mathDate,
+      namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' });
+    const h = harness([wire(add, [request({ localId: 'seminar' })], 'create_plan')]);
+    // Typed readings characterize the existing placement boundary; they do not evaluate the model.
+    const result = await h.turn(`明日の16時から17時半のゼミを入れて。あと数学を${mathDate ? '明後日に' : ''}1時間、予定を作って`);
+    const math = result.draftCandidates?.filter(candidate => candidate.title.includes('数学')) ?? [];
+    expect(math.length).toBeGreaterThan(0);
+    expect(math.every(candidate => candidate.date === expectedMathDate)).toBe(true);
+    expect(result.draftCandidates?.find(candidate => candidate.title === 'seminar')?.date).toBe('2026-11-03');
+    expect(h.saves()).toBe(0);
+  });
+
   it('selects only the new task named by its local reference', async () => {
     const h = harness([wire([...event('club'), ...event('seminar', 'non_study', '17:00', '21:00')], [request({ localId: 'seminar' })])]);
     const result = await h.turn('部活は16時から17時半。ゼミは17時から21時で、ゼミだけ登録して');
