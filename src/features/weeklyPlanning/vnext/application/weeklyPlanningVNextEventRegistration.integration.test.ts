@@ -74,6 +74,22 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>, fa
 }
 
 describe('VNext native fixed-event registration through the unchanged V5 projection and approval', () => {
+  it.each([false, true])('asks for fixed clock bounds only when the timeless task is requested as a registration (requested=%s)', async requested => {
+    const task: VNextAddFact = { kind: 'task', localId: 'conference', title: 'カンファレンス', category: 'non_study' };
+    const date: VNextAddFact = { kind: 'task_date_rule', localId: 'conference-date',
+      taskRef: { localId: 'conference' }, targetRef: { localId: 'conference' }, ruleKind: 'allowed_date',
+      dateExpression: '2026-11-03', constraintLevel: 'hard' };
+    const h = harness([wire([task, date], requested ? [request({ localId: 'conference' })] : [])]);
+    const result = await h.turn(`明日カンファレンスがあります。${requested ? '予定に入れてください。' : ''}`);
+    expect(result.outcome).toBe('applied');
+    expect(h.state().graph.tasks).toHaveLength(1);
+    expect(result.preview).toBeNull();
+    expect(h.saves()).toBe(0);
+    expect(h.rendererInputs[0]).toMatchObject({ questionIntent: requested
+      ? { kind: 'resolution_question', resolutionKind: 'commitment_time_bounds', requestedInformation: ['commitment_start_and_end_time'] }
+      : { kind: 'schedulable_work_detail', mode: 'open_ended_session', requestedInformation: ['session_allocation'] } });
+  });
+
   it.each([
     { name: 'busy non-study', category: 'non_study' as const, requested: false, movable: false, expected: 'fixed_event_manual_entry' },
     { name: 'registration priority', category: 'non_study' as const, requested: true, movable: false, expected: 'fixed_event_registration_preview' },
