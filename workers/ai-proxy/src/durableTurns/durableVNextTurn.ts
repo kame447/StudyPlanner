@@ -29,13 +29,14 @@ export function executeDurableVNextTurn(
     createRenderer: options => createWeeklyPlanningStableV5DialogueRendererCore(client, options) });
 }
 
-/** Only the core's typed provider-failure recovery may commit after dispatch stopped. */
+/** The core owns both interpretation recovery and the renderer's unsaved-preview fallback. */
 export async function executeDurableVNextJob(
   ...args: Parameters<typeof executeDurableVNextTurn>
 ): Promise<DurableTurnExecutionResult> {
   const output = await executeDurableVNextTurn(...args);
   const result = serializeWeeklyPlanningTurnResult(output);
   return output.result.failure?.code === 'stable_v5_provider_failure'
+    || output.result.responseSource === 'deterministic_fallback'
     ? { kind: 'provider_failure_recovered', result }
     : result;
 }

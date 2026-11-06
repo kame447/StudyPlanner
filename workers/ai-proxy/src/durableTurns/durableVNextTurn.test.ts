@@ -238,6 +238,37 @@ describe('VNext durable execution', () => {
   });
 });
 
+it('commits the unsaved preview when its renderer provider fails inside the real job', async () => {
+  const semantic = JSON.stringify({ ...JSON.parse(reading([addTask,
+    { ...addWork, amount: 60, unitCode: 'minute', unitLabel: '分' }])), planningIntent: 'create_plan' });
+  const healthy = providerFetch(semantic);
+  const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+    const body = JSON.parse(init!.body as string) as { response_format?: { json_schema?: { name?: string } } };
+    return body.response_format?.json_schema?.name === VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name
+      ? healthy(url, init)
+      : Response.json({ error: { message: 'synthetic renderer unavailable' } }, { status: 500 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  let record: DurableTurnRecord | undefined;
+  const startedAt = Date.parse(STARTED);
+  const job = new DurableTurnJob({ read: async () => structuredClone(record),
+    write: async next => { record = structuredClone(next); }, alarmAt: async () => {} }, () => startedAt);
+  await job.accept({ ownerId: 'alice', conversationId: 'chat', requestId: 'chat:request:1',
+    baseRevision: 0, startedAt, payload: JSON.stringify(payload({ userText: '数学を60分、この条件で予定を作ってください。' })) });
+  await job.run((raw, dispatch, ip, deadline) => executeDurableVNextJob(providerEnv, JSON.parse(raw), dispatch, ip, deadline));
+  expect(record?.status).toBe('completed');
+  const result = JSON.parse(record!.result!) as WeeklyPlanningVNextDurableTurnResult;
+  expect(result.result.responseSource).toBe('deterministic_fallback');
+  expect(result.result.dialogueRendererTrace?.response).toMatchObject({ status: 'fallback' });
+  expect(result.result.draftCandidates.length).toBeGreaterThan(0);
+  expect(result.result.state.shouldSavePlan).toBe(false);
+  const kept = parseWeeklyPlanningVNextSessionCheckpoint({ raw: result.checkpointAfter!, ownerId: 'alice', weekStartDate: WEEK })!;
+  expect(kept.vnext.preview).not.toBeNull();
+  expect(kept.vnext.state.graph.tasks.map(task => task.title)).toEqual(['数学']);
+  expect(kept.vnext.state.graph.workloads.map(work => work.amount)).toEqual([60]);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
 describe('VNext durable envelope validation', () => {
   function api() {
     const accepted: Array<{ payload: string }> = [];
