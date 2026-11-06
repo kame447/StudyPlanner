@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as firebaseClient from '../../../lib/firebaseClient';
 import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { WeeklyPlanningAction } from '../types';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
+import { createWeeklyPlanningTestDraftBlock } from '../testUtils/weeklyPlanningApplicationTestHarness';
+import { executeDurableWeeklyTurn, type DurableTurnClientPorts } from './weeklyPlanningDurableTurnClient';
+import type { WeeklyPlanningTurnRuntimeGateway } from './weeklyPlanningTurnRuntimeGateway';
 import {
   createWeeklyPlanningControllerSession,
   submitWeeklyPlanningControlledTurn,
@@ -295,6 +299,134 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
       }),
     }));
     expect(store.getState().pendingTurn).toBeUndefined();
+  });
+
+  it.each([401, 403] as const)('keeps a %i durable denial as an unsaved consultation and accepts the next turn', async (status) => {
+    const { store, params } = baseParams();
+    const draft = createWeeklyPlanningTestDraftBlock({ id: 'existing-draft', overrides: { date: '2026-07-27' } });
+    const preview = { stableKey: 'existing-preview', date: '2026-07-28', startTime: '18:00', endTime: '19:00',
+      durationMinutes: 60, title: '英語', field: '英語', year: 1, estimatedMinutes: 60,
+      source: 'weekly_exam_prep' as const, approvalStatus: 'unapproved' as const, workItemKey: 'english:preview' };
+    store.dispatch({ type: 'load_state', state: { ...store.getState(), mode: 'awaiting_approval',
+      draftBlocks: [draft], previewCandidates: [preview] } });
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(null, { status }));
+    const token = vi.fn(async () => 'owner-token');
+    const wait = vi.fn(async () => { throw new Error('unexpected retry'); });
+    let failure: unknown;
+    let attempts = 0;
+    const execute: WeeklyPlanningTurnRuntimeGateway['execute'] = vi.fn(async (input) => {
+      if (++attempts === 1) {
+        const ports: DurableTurnClientPorts = { fetch, token, wait,
+          endpoint: 'https://proxy.test/weekly-planning/turns', now: () => Date.parse(input.pending.startedAt) };
+        const receipt = { version: 1 as const, ownerId: input.userId, snapshot: input.snapshot,
+          pending: input.pending, payload: { input: { userId: input.userId,
+            conversationId: input.pending.conversationId, traceRequestId: input.pending.requestId } } };
+        try { await executeDurableWeeklyTurn(receipt, { ports }); }
+        catch (error) { failure = error; throw error; }
+        throw new Error('unexpected durable completion');
+      }
+      return { state: createInitialPlanningIntakeState(), message: '相談を続けます。', draftCandidates: [] };
+    });
+    const services = createServices({ runtimeGateway: { execute } });
+
+    await submitWeeklyPlanningApplicationTurn(params, services).catch(() => undefined);
+    const state = store.getState();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1]?.method).toBe('POST');
+    expect(token).toHaveBeenCalledTimes(1);
+    expect(wait).not.toHaveBeenCalled();
+    expect(services.stagingLifecycle.prepare).not.toHaveBeenCalled();
+    expect(services.outcomeLifecycle.committed).not.toHaveBeenCalled();
+    expect(state.pendingTurn).toBeUndefined();
+    expect(state.draftBlocks).toEqual([draft]);
+    expect(state.previewCandidates).toEqual([preview]);
+    expect(state.messages).toHaveLength(2);
+    expect(state.messages[0]).toMatchObject({ role: 'user', content: params.userText });
+    expect(state.messages[1].role).toBe('assistant');
+    expect(state.messages[1].content).toContain(status === 401 ? '認証' : '権限');
+    expect(state.messages[1].content).toContain('保存');
+    expect(state.messages[1].content).toContain('承認');
+    expect(state.messages[1].content).toContain('再ログイン');
+    expect(state.messages[1].content).toContain('相談');
+    expect(state.messages[1].content).not.toContain('保存しました');
+    expect(failure).toMatchObject({ name: 'WeeklyPlanningDurableAccessDeniedError', status });
+
+    const next = await submitWeeklyPlanningApplicationTurn({ ...params, userText: '続けて相談したい' }, services);
+    expect(next.accepted).toBe(true);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const messages = store.getState().messages;
+    expect(messages[messages.length - 1]).toMatchObject({ role: 'assistant', content: '相談を続けます。' });
+  });
+
+  it.each(['signed_out', 'different_owner'] as const)('keeps %s unsaved and resumes transport only after the same owner logs in', async (authState) => {
+    const { store, params } = baseParams();
+    const draft = createWeeklyPlanningTestDraftBlock({ id: 'owner-draft', overrides: { date: '2026-07-27' } });
+    const preview = { stableKey: 'owner-preview', date: '2026-07-28', startTime: '18:00', endTime: '19:00',
+      durationMinutes: 60, title: '英語', field: '英語', year: 1, estimatedMinutes: 60,
+      source: 'weekly_exam_prep' as const, approvalStatus: 'unapproved' as const, workItemKey: 'english:owner-preview' };
+    store.dispatch({ type: 'load_state', state: { ...store.getState(), mode: 'awaiting_approval',
+      draftBlocks: [draft], previewCandidates: [preview] } });
+    const getIdToken = vi.fn(async () => 'owner-token');
+    const getAuth = vi.spyOn(firebaseClient, 'getFirebaseAuth').mockReturnValue(authState === 'signed_out' ? null : {
+      currentUser: { uid: 'another-owner', getIdToken },
+    } as unknown as ReturnType<typeof firebaseClient.getFirebaseAuth>);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('unexpected network request'));
+    let failure: unknown;
+    const execute: WeeklyPlanningTurnRuntimeGateway['execute'] = vi.fn(async (input) => {
+      const receipt = { version: 1 as const, ownerId: input.userId, snapshot: input.snapshot,
+        pending: input.pending, payload: { input: { userId: input.userId,
+          conversationId: input.pending.conversationId, traceRequestId: input.pending.requestId } } };
+      try {
+        const completed = await executeDurableWeeklyTurn(receipt, { isCurrent: input.isCurrentTurn });
+        return completed.result;
+      } catch (error) { failure = error; throw error; }
+    });
+    const services = createServices({ runtimeGateway: { execute } });
+    try {
+      await submitWeeklyPlanningApplicationTurn(params, services).catch(() => undefined);
+      const state = store.getState();
+      expect(getAuth).toHaveBeenCalledTimes(1);
+      expect(getIdToken).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(services.stagingLifecycle.prepare).not.toHaveBeenCalled();
+      expect(services.outcomeLifecycle.committed).not.toHaveBeenCalled();
+      expect(state.pendingTurn).toBeUndefined();
+      expect(state.draftBlocks).toEqual([draft]);
+      expect(state.previewCandidates).toEqual([preview]);
+      expect(state.messages).toHaveLength(2);
+      expect(state.messages[0]).toMatchObject({ role: 'user', content: params.userText });
+      expect(state.messages[1].role).toBe('assistant');
+      expect(state.messages[1].content).toContain('ログイン状態');
+      expect(state.messages[1].content).toContain('保存');
+      expect(state.messages[1].content).toContain('承認');
+      expect(state.messages[1].content).toContain('同じアカウント');
+      expect(state.messages[1].content).toContain('相談');
+      expect(state.messages[1].content).not.toContain('保存しました');
+      expect(failure).toMatchObject({ name: 'WeeklyPlanningDurableOwnerMismatchError' });
+
+      getAuth.mockReturnValue({ currentUser: { uid: params.ownerId, getIdToken } } as unknown as ReturnType<typeof firebaseClient.getFirebaseAuth>);
+      fetch.mockImplementation(async (_url, init) => {
+        const request = JSON.parse(String(init?.body));
+        return Response.json({ status: 'completed', identity: { ownerId: params.ownerId,
+          conversationId: request.conversationId, requestId: request.requestId,
+          baseRevision: request.baseRevision, startedAt: request.startedAt }, result: JSON.stringify({
+          result: { state: createInitialPlanningIntakeState(), message: '同じ会話で相談を続けます。', draftCandidates: [] },
+          stagedContextFacts: [], observedDate: '2026-07-27',
+        }) });
+      });
+      const next = await submitWeeklyPlanningApplicationTurn({ ...params, userText: '相談を続けたい' }, services);
+      expect(next.accepted).toBe(true);
+      expect(execute).toHaveBeenCalledTimes(2);
+      expect(getIdToken).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer owner-token' } });
+      const messages = store.getState().messages;
+      expect(messages[messages.length - 1]).toMatchObject({ role: 'assistant', content: '同じ会話で相談を続けます。' });
+    } finally {
+      fetch.mockRestore();
+      getAuth.mockRestore();
+    }
   });
 
   it.each(['cancel', 'owner_change', 'revision_change'])('passes a live recovery guard that closes after %s', async (change) => {

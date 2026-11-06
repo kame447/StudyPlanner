@@ -101,6 +101,8 @@ export function createWeeklyPlanningVNextLocalSession(params: {
       // Old previews/questions used a different revision. Keep the conversation visible,
       // while the migrated core derives a fresh question or preview on the next turn.
       state.messages = legacy.planningState.messages;
+      state.draftBlocks = legacy.planningState.draftBlocks.filter(block => block.status === 'draft');
+      save(legacy.conversationId, state);
       return { conversationId: legacy.conversationId, state };
       }
     return { conversationId: createWeeklyPlanningApplicationRequestId('vnext-conversation'), state };
