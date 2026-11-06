@@ -7,7 +7,7 @@ import {
   type TimetableOcrItemCandidate,
   type TimetableOcrPeriodCandidate,
   type TimetableOcrResult,
-} from '../lib/timetableOcrImport';
+} from '../domain/timetableOcrResult';
 import type {
   RecurrenceWeekday,
   ScheduleTemplate,

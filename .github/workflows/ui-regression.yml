@@ -114,7 +114,7 @@ jobs:
           retention-days: 14
 
   cross-browser-projects:
-    name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit' || 'cross-browser-projects' }} (${{ matrix.project }})${{ matrix.shard && format(' (shard {0}/2)', matrix.shard) || '' }}
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit' || 'cross-browser-projects' }} (${{ matrix.project }})${{ matrix.shard && format(' (shard {0}/3)', matrix.shard) || '' }}
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.spec != '') || github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
     runs-on: ubuntu-latest
     # Keep the preinstalled browser versions aligned with @playwright/test below.
@@ -127,7 +127,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && fromJSON('[{"project":"webkit-mobile","shard":""}]') || fromJSON('[{"project":"chromium-desktop","shard":""},{"project":"firefox-desktop","shard":""},{"project":"webkit-desktop","shard":""},{"project":"webkit-mobile","shard":1},{"project":"webkit-mobile","shard":2}]') }}
+        include: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && fromJSON('[{"project":"webkit-mobile","shard":""}]') || fromJSON('[{"project":"chromium-desktop","shard":""},{"project":"firefox-desktop","shard":""},{"project":"webkit-desktop","shard":""},{"project":"webkit-mobile","shard":1},{"project":"webkit-mobile","shard":2},{"project":"webkit-mobile","shard":3}]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -163,7 +163,7 @@ jobs:
           UI_SPEC: ${{ inputs.spec }}
           UI_PROJECT: ${{ matrix.project }}
           UI_RETRY_CAPTURE: ${{ matrix.project == 'webkit-mobile' && '1' || '0' }}
-          UI_REGRESSION_SHARD: ${{ matrix.shard && format('{0}/2', matrix.shard) || '' }}
+          UI_REGRESSION_SHARD: ${{ matrix.shard && format('{0}/3', matrix.shard) || '' }}
         run: |
           set -euo pipefail
           args=(test --config=tests/e2e/playwright.cross-browser.config.mjs "--project=$UI_PROJECT")
