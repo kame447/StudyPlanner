@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
 import {
   parseWeeklyPlanningVNextSessionCheckpoint as parseOld,
@@ -66,4 +66,45 @@ it('accepts only validated optional fields in the expand parser while fixed hist
       }
     }
   }
+});
+
+describe('expanded checkpoint value contract', () => {
+  const base = () => JSON.parse(serializeWeeklyPlanningVNextSessionCheckpoint({
+    ...scope, conversationId: 'expand-conversation', savedAt: '2026-11-02T09:00:00.000Z',
+    vnext: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [] },
+  })!);
+  const failureRecovery = { reason: 'provider_error', consecutiveCount: 1 };
+  const unansweredQuestionStreak = { questionKey: 'missing_effort_estimate:work', graphRevision: 0, count: 1 };
+
+  it.each(['provider_error', 'unparseable', 'rejected_after_repair'])('retains the supported failure reason %s', reason => {
+    const checkpoint = base();
+    checkpoint.vnext.failureRecovery = { reason, consecutiveCount: Number.MAX_SAFE_INTEGER };
+    checkpoint.vnext.unansweredQuestionStreak = { ...unansweredQuestionStreak, count: Number.MAX_SAFE_INTEGER };
+    const parsed = parseExpand({ raw: JSON.stringify(checkpoint), ...scope });
+    expect(parsed?.vnext.failureRecovery).toEqual(checkpoint.vnext.failureRecovery);
+    expect(parsed?.vnext.unansweredQuestionStreak).toEqual(checkpoint.vnext.unansweredQuestionStreak);
+  });
+
+  it.each([
+    ['failureRecovery', null],
+    ['failureRecovery', { ...failureRecovery, reason: 'unknown' }],
+    ['failureRecovery', { reason: 'provider_error' }],
+    ['failureRecovery', { ...failureRecovery, extra: true }],
+    ...[0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1].map(consecutiveCount =>
+      ['failureRecovery', { ...failureRecovery, consecutiveCount }]),
+    ['unansweredQuestionStreak', null],
+    ['unansweredQuestionStreak', { ...unansweredQuestionStreak, questionKey: '' }],
+    ['unansweredQuestionStreak', { questionKey: 'question', count: 1 }],
+    ['unansweredQuestionStreak', { ...unansweredQuestionStreak, extra: true }],
+    ...[-1, 0.5, '0', Number.MAX_SAFE_INTEGER + 1].map(graphRevision =>
+      ['unansweredQuestionStreak', { ...unansweredQuestionStreak, graphRevision }]),
+    ...[0, -1, 1.5, '1', Number.MAX_SAFE_INTEGER + 1].map(count =>
+      ['unansweredQuestionStreak', { ...unansweredQuestionStreak, count }]),
+    ['futureField', {}],
+  ])('rejects the whole checkpoint for an invalid %s', (field, value) => {
+    const checkpoint = base();
+    checkpoint.vnext[field as string] = value;
+    const raw = JSON.stringify(checkpoint);
+    expect(parseExpand({ raw, ...scope })).toBeNull();
+  });
 });

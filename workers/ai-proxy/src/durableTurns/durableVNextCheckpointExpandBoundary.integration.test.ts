@@ -2,8 +2,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createInitialPlanningState } from '../../../../src/features/weeklyPlanning/weeklyPlanningReducer';
 import { createWeeklyPlanningTurnRequestContext } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningTemporalContext';
 import { createEmptyWeeklyPlanningVNextState } from '../../../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextTransaction';
-import { serializeWeeklyPlanningVNextSessionCheckpoint } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
-import { parseWeeklyPlanningVNextSessionCheckpoint as parseOld } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint.f27b3a66.fixture';
+import { parseWeeklyPlanningVNextSessionCheckpoint as parseExpand, serializeWeeklyPlanningVNextSessionCheckpoint } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
+import { parseWeeklyPlanningVNextSessionCheckpoint as parseOld, serializeWeeklyPlanningVNextSessionCheckpoint as serializeOld } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint.f27b3a66.fixture';
+import { executeIsolatedWeeklyPlanningVNextTurn } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextIsolatedTurn';
+import type { WeeklyPlanningVNextExperimentalPorts } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalSession';
 import { createWeeklyPlanningVNextRuntimeGateway } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway';
 import { decodeDurableTurnInput } from './durableTurnInput';
 import { handleDurableTurnApi, type DurableTurnApiEnv } from './durableTurnApi';
@@ -87,4 +89,46 @@ it('applies the same expanded checkpoint bytes at Worker admission and Pages res
       expect(stored).toBeNull();
     }
   }
+});
+
+it.each([
+  { order: 'Worker first: old Pages request → expanded Worker response', writeRequest: serializeOld, readResponse: parseOld },
+  { order: 'Pages first: expanded Pages request → old Worker reader', writeRequest: serializeWeeklyPlanningVNextSessionCheckpoint, readResponse: parseExpand },
+])('$order keeps the four-key wire format through successful and failed turns', async ({ writeRequest, readResponse }) => {
+  // The pre-expand parser is frozen source, not a mock of current acceptance. Both deployment
+  // orders must remain possible until all readers expand; only later PRs may generate fields.
+  const raw = writeRequest({ ownerId, weekStartDate, conversationId, savedAt: startedAt,
+    vnext: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [] } });
+  expect(raw).not.toBeNull();
+  expect(parseOld({ raw: raw!, ownerId, weekStartDate })).not.toBeNull();
+  const input = { userId: ownerId, conversationId, traceRequestId: requestId, inputStateRevision: 0,
+    messages: [], userText: '数学の勉強をします', selectedDate: weekStartDate, plans: [], scheduleTemplates: [],
+    requestContext: createWeeklyPlanningTurnRequestContext({ startedAtIso: startedAt, timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' }) };
+  const provider: Parameters<typeof executeIsolatedWeeklyPlanningVNextTurn>[1] = {
+    client: {} as WeeklyPlanningVNextExperimentalPorts['client'],
+    interpret: async () => ({ status: 'interpreted', planningIntent: 'discuss', answer: null,
+      delta: { add: [{ kind: 'task', localId: 'math', category: 'study', title: '数学' }], patch: [], remove: [], relate: [], defer: [] },
+      metrics: { calls: 1, repairs: 0, latencyMs: 1 } }),
+    createRenderer: () => ({ render: async () => ({ status: 'rendered', text: '数学の勉強ですね。', rawResponse: '' }) }),
+  };
+  // This is the actual producer shared by the Pages session and durable Worker, with only AI ports scripted.
+  const first = await executeIsolatedWeeklyPlanningVNextTurn({ core: 'vnext', input, weekStartDate,
+    checkpoint: raw, legacyV5Checkpoint: null }, provider);
+  expect(first.checkpointAfter).not.toBeNull();
+  const accepted = readResponse({ raw: first.checkpointAfter!, ownerId, weekStartDate });
+  expect(accepted?.vnext.state.graph.tasks.map(task => task.title)).toEqual(['数学']);
+  expect(parseOld({ raw: first.checkpointAfter!, ownerId, weekStartDate })).not.toBeNull();
+  expect(Object.keys(JSON.parse(first.checkpointAfter!).vnext)).toEqual(['state', 'presentedQuestion', 'preview', 'messages']);
+
+  provider.interpret = async () => ({ status: 'failed', reason: 'provider_error', errors: [],
+    metrics: { calls: 1, repairs: 0, latencyMs: 1 } });
+  const failed = await executeIsolatedWeeklyPlanningVNextTurn({ core: 'vnext', weekStartDate, checkpoint: first.checkpointAfter,
+    legacyV5Checkpoint: null, input: { ...input, traceRequestId: `${requestId}:2`, userText: '続けて相談します',
+      inputStateRevision: accepted!.vnext.state.graph.revision } }, provider);
+  const afterFailure = readResponse({ raw: failed.checkpointAfter!, ownerId, weekStartDate });
+  expect(afterFailure?.vnext.state).toEqual(accepted!.vnext.state);
+  expect(parseOld({ raw: failed.checkpointAfter!, ownerId, weekStartDate })).not.toBeNull();
+  expect(Object.keys(JSON.parse(failed.checkpointAfter!).vnext)).toEqual(['state', 'presentedQuestion', 'preview', 'messages']);
+  expect(afterFailure?.vnext.messages.filter(message => message.role === 'user').map(message => message.content))
+    .toEqual(['数学の勉強をします', '続けて相談します']);
 });
