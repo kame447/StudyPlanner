@@ -455,7 +455,7 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
     const again = await mount(inputWith(save), { readActualSave });
     await act(async () => { await vi.waitFor(() => expect(again.current!.state.messages.some(message =>
       message.content.includes(committed ? '保存を確認しました' : 'サーバー上に保存されていません'))).toBe(true)); });
-    expect(readActualSave.mock.calls.at(-1)![1]).toEqual(corrected);
+    expect(readActualSave.mock.calls[readActualSave.mock.calls.length - 1][1]).toEqual(corrected);
     expect(again.current!.pendingActualRecords).toHaveLength(committed ? 0 : 6);
     expect(save, 'another readback cannot resend on its own').toHaveBeenCalledTimes(2);
     await act(async () => { await Promise.all([again.current!.approveActualRecords!(), again.current!.approveActualRecords!()]); });
