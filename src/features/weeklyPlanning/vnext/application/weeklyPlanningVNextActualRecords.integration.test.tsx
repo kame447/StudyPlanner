@@ -417,6 +417,55 @@ describe('VNext application: study records waiting for confirmation (#973)', () 
       expect(save).toHaveBeenCalledTimes(2);
     });
 
+  it.each([true, false])('retains corrected retry values when its acknowledgement is lost (committed=%s)', async committed => {
+    const server = new Map<string, PendingWeeklyPlanningActualRecord>();
+    const save = vi.fn(async (_owner: string, records: readonly PendingWeeklyPlanningActualRecord[]) => {
+      if (save.mock.calls.length === 1) return new Promise<void>(() => undefined);
+      if (committed || save.mock.calls.length > 2) for (const record of records) server.set(record.id, record);
+      if (save.mock.calls.length === 2) throw new PlannerMutationScopeExpiredError();
+    });
+    const { records: original, chatId } = await reloadUnansweredSave(save);
+    const offline = await mount(inputWith(save), {
+      readActualSave: async () => { throw new ActualSaveReadbackUnknownError('unavailable'); },
+      interpret: () => async () => ({ status: 'interpreted' as const, planningIntent: 'discuss' as const,
+        answer: null, conversationActs: [], studyRecords: [rec('2026-10-27', '英語', 50)], studyRecordQuestion: null,
+        delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } }),
+    });
+    await act(async () => { await vi.waitFor(() => expect(offline.current!.state.messages.some(message =>
+      message.content.includes('サーバーに接続できないため'))).toBe(true)); });
+    await act(async () => { await offline.current!.submitTurn('火曜の英語は50分でした。'); });
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+
+    const readActualSave = vi.fn((ownerId: string, attempted: Parameters<typeof readAndClassifyActualSave>[0]['attempted']) =>
+      readAndClassifyActualSave({ ownerId, attempted, readConfirmed: async () => ({ fromCache: false, hasPendingWrites: false,
+        records: [...server.values()].map(record => savedDoc(record.id, record.subject, record.occurrenceDate, record.minutes)),
+      }) }));
+    const retry = await mount(inputWith(save), { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(retry.current!.state.messages.some(message =>
+      message.content.includes('サーバー上に保存されていません'))).toBe(true)); });
+    const corrected = original.map(({ id, occurrenceDate, subject, minutes }) => ({ id, occurrenceDate, subject,
+      minutes: id === original[1].id ? 50 : minutes }));
+    await act(async () => { await expect(retry.current!.approveActualRecords!()).rejects.toThrow(PlannerMutationScopeExpiredError); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][1]).toEqual(corrected);
+    expect(attemptInUi(chatId).records).toEqual(corrected.map(({ id, minutes }) => ({ id, minutes })));
+    expect(storedStatuses(retry)).toEqual(Array(6).fill('pending'));
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+
+    const again = await mount(inputWith(save), { readActualSave });
+    await act(async () => { await vi.waitFor(() => expect(again.current!.state.messages.some(message =>
+      message.content.includes(committed ? '保存を確認しました' : 'サーバー上に保存されていません'))).toBe(true)); });
+    expect(readActualSave.mock.calls.at(-1)![1]).toEqual(corrected);
+    expect(again.current!.pendingActualRecords).toHaveLength(committed ? 0 : 6);
+    expect(save, 'another readback cannot resend on its own').toHaveBeenCalledTimes(2);
+    await act(async () => { await Promise.all([again.current!.approveActualRecords!(), again.current!.approveActualRecords!()]); });
+    expect(save).toHaveBeenCalledTimes(committed ? 2 : 3);
+    expect(server.size).toBe(6);
+    expect([...server.keys()].sort()).toEqual(original.map(record => record.id).sort());
+    expect([...server.values()].reduce((sum, record) => sum + record.minutes, 0)).toBe(400);
+    expect(again.current!.pendingActualRecords).toEqual([]);
+  });
+
   it.each([
     { kind: 'saved', expected: '保存を確認しました', statuses: ['saved', 'saved', 'saved', 'saved', 'saved', 'saved'] },
     { kind: 'not_saved', expected: 'サーバー上に保存されていません', statuses: ['pending', 'pending', 'pending', 'pending', 'pending', 'pending'] },
