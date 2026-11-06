@@ -30,6 +30,7 @@ export interface WeeklyPlanningVNextShownPreview {
   blocks: WeeklyPlanDraftBlock[];
 }
 
+/** Machine state for choosing a bounded, state-aware notice after interpretation failures. */
 export interface WeeklyPlanningVNextFailureRecovery {
   reason: Extract<WeeklyPlanningVNextInterpretation, { status: 'failed' }>['reason'];
   consecutiveCount: number;
@@ -54,6 +55,7 @@ export interface WeeklyPlanningVNextSessionCheckpoint {
     preview: WeeklyPlanningVNextShownPreview | null;
     /** The latest messages, for the renderer's conversational context only; never read as facts. */
     messages: WeeklyPlanningVNextMessage[];
+    /** Absent after an accepted interpretation; old checkpoints have no failure history. */
     failureRecovery?: WeeklyPlanningVNextFailureRecovery;
     unansweredQuestionStreak?: WeeklyPlanningVNextUnansweredQuestionStreak;
   };
