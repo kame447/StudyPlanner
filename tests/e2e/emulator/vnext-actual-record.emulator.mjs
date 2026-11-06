@@ -37,12 +37,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
 const rowText = ({ date, subject, minutes }) => formatActualRecordRow({ occurrenceDate: date, subject, minutes });
 // Before the click the chat only organises records for confirmation: it must not say they were recorded or saved (fix-01 A).
-const PENDING_PREFIX = '確認用に整理しました（まだ保存していません）：';
+const PENDING_PREFIX = '仮実績として整理しました（まだ保存していません）：';
 const pendingReply = (rows, minutes) => `${PENDING_PREFIX}${rows.map(rowText).join('、')}。ここまでの合計は${formatActualRecordsTotal(minutes)}です。`;
 
 const CONFIRM = {
   open: page => page.locator('.ai-planning-actual-card').getByRole('button', { name: '実績を確認' }),
-  dialog: page => page.getByRole('dialog', { name: '実績の確認' }),
+  dialog: page => page.getByRole('dialog', { name: '仮実績の確認' }),
   section: dialog => dialog,
   save: dialog => dialog.locator('button.ai-planning-actual-records-save'),
   total: dialog => dialog.locator('[aria-label="実績の合計"]'),

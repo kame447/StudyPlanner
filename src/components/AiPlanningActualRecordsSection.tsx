@@ -24,7 +24,7 @@ export function AiPlanningActualRecordsSection({ records, isSaving, disabled, er
   if (records.length === 0) return null;
   return (
     <section className="ai-planning-actual-records" aria-label="学習実績の確認">
-      <h3>実績</h3>
+      <h3>仮実績</h3>
       <p className="ai-planning-actual-records-note">{isSaving ? SAVING_ACTUAL_RECORDS_LABEL : '時刻なしで、日ごとの勉強時間だけを記録します。'}</p>
       <ul className="ai-planning-actual-records-list">
         {records.map(record => <li key={record.id}>{formatActualRecordRow(record)}</li>)}
@@ -32,6 +32,7 @@ export function AiPlanningActualRecordsSection({ records, isSaving, disabled, er
       <p className="ai-planning-actual-records-total" aria-label="実績の合計">
         合計 {formatActualRecordsTotal(sumActualRecordMinutes(records))}
       </p>
+      {!isSaving ? <p>この内容を学習実績に反映してよいですか？</p> : null}
       {error ? <p className="ai-planning-preview-error" role="alert">{error}</p> : null}
       <button
         className="ai-planning-primary-action ai-planning-actual-records-save"

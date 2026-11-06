@@ -1032,7 +1032,7 @@ export function AiPlanningView({
             <div className="ai-planning-plan-card ai-planning-actual-card">
               <div className="ai-planning-plan-card-head">
                 <div>
-                  <span>実績</span>
+                  <span>仮実績</span>
                   <strong>{application.pendingActualRecords?.length}件の勉強記録</strong>
                 </div>
                 <b>{application.pendingActualRecords?.length}件</b>
