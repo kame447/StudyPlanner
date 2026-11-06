@@ -58,6 +58,7 @@ import { createVNextOptionalInvitation } from './weeklyPlanningVNextOptionalInvi
 import { createWeeklyPlanningVNextRenderInput, VNEXT_RECENT_MESSAGE_LIMIT } from './weeklyPlanningVNextDialogue';
 import {
   serializeWeeklyPlanningVNextSessionCheckpoint,
+  type WeeklyPlanningVNextFailureRecovery,
   type WeeklyPlanningVNextShownPreview,
 } from './weeklyPlanningVNextSessionCheckpoint';
 
@@ -295,6 +296,21 @@ function systemReply(outcome: WeeklyPlanningVNextExperimentalTurnOutcome, previe
   return `予定案を作れませんでした（${previewBlockedBy.join(', ')}）。`;
 }
 
+function interpretationFailureReply(failure: WeeklyPlanningVNextFailureRecovery,
+  preview: WeeklyPlanningVNextShownPreview | null): string {
+  const cause = failure.reason === 'provider_error'
+    ? 'AIへの接続でエラーが起きました。' : 'AIの返答を確認できませんでした。';
+  const retained = preview ? '表示済みの予定案は保持しています。' : 'これまでの条件は保持しています。';
+  const unapplied = '今回の内容は計画に反映していません。';
+  if (failure.consecutiveCount >= 2) {
+    const route = preview
+      ? '予定案を確認するか、復旧後に変更を再送できます。'
+      : 'これまでの会話を確認し、復旧後に今回の内容を再送できます。';
+    return `${cause}続けて失敗しています。${unapplied}${retained}${route}`;
+  }
+  return `${cause}${unapplied}${retained}復旧後にもう一度送ってください。`;
+}
+
 const isEmpty = (delta: VNextTurnDelta) =>
   !delta.proposalDecision && delta.add.length + delta.patch.length + delta.remove.length + delta.relate.length + delta.defer.length === 0;
 
@@ -370,6 +386,11 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     // The reply the question was shown in: what the user's words answer (e.g. an ordinal over its options).
     presentedText: presentedQuestion ? presented!.shownText : null,
   });
+  const previousFailure = read.checkpoint.failureRecovery;
+  const failureRecovery: WeeklyPlanningVNextFailureRecovery | undefined = interpretation.status === 'failed'
+    ? { reason: interpretation.reason, consecutiveCount: previousFailure?.reason === interpretation.reason
+      ? Math.min(previousFailure.consecutiveCount + 1, Number.MAX_SAFE_INTEGER) : 1 }
+    : undefined;
 
   // The turn was read against `rawBefore`; if another turn saved meanwhile, applying
   // this reading would overwrite it. Nothing is written; the user sends it again.
@@ -519,7 +540,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       replySource = 'renderer_recovery';
       shows = stillShown ? { question: stillShown } : 'unchanged';
     } else {
-      reply = systemReply(outcome, []);
+      reply = failureRecovery ? interpretationFailureReply(failureRecovery, preview) : systemReply(outcome, []);
       replySource = 'system';
       shows = 'unchanged';
     }
@@ -557,6 +578,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       state,
       presentedQuestion: presentedQuestionRecord,
       preview,
+      ...(failureRecovery ? { failureRecovery } : {}),
       messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
         { role: 'assistant' as const, content: reply }].slice(-VNEXT_RECENT_MESSAGE_LIMIT),
     },
