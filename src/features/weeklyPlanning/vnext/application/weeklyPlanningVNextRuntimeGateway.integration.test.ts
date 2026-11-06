@@ -100,6 +100,55 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
 const diagnosticEntries = () => writes.flatMap(write => write.entries).filter(entry => entry.kind === 'turn_diagnostic');
 
 describe('VNext session → gateway → existing controller and trace owner', () => {
+  it.each([false, true])('persists the actual ambiguous-period request and required question through outbox and Worker (large=%s)', async large => {
+    const reason = 'The omitted end year may mean a much longer period ending next year';
+    const native = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [
+      { kind: 'planning_window', localId: 'period', windowKind: 'absolute',
+        value: '2026-11-03/2027-09-07', start: '2026-11-03', end: '2027-09-07' },
+      task, work('daily-work', 'remaining', 45, 'minute'),
+      { kind: 'uncertainty', localId: 'year-question', targetRef: { localId: 'period' }, field: 'planning_window', reason },
+    ] } };
+    const h = harness({ nativeReading: native, createRenderer: () => {
+      const delegate = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        expect(input.questionCode).toBe('semantic_uncertainty');
+        expect(input.questionIntent).toMatchObject({ resolutionKind: 'semantic_clarification',
+          ambiguityField: 'planning_window', ambiguityReason: reason });
+        Object.assign(input.communication!, { futureWindowSentinel: 'keep-future-window-confirmation',
+          ...(large ? { futureLargeWindowMetadata: 'x'.repeat(48 * 1024) } : {}) });
+        return delegate.render(input);
+      } };
+    } });
+    failAppend = true;
+    expect(await h.submit('明日から9/7までの数学の予定を作って')).toEqual({ accepted: true, draftCandidates: [] });
+    expect(h.local.readCheckpoint()!.vnext.state.graph.uncertainties[0]).toMatchObject({ field: 'planning_window', reason });
+    expect(h.local.readCheckpoint()!.vnext.presentedQuestion?.questionKey).toContain('semantic_uncertainty');
+    expect(h.results[0].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: (h.requests[0] as { messages: unknown[] }).messages },
+    });
+    const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toHaveLength(1);
+    expect(JSON.stringify(queued[0].input)).toContain(reason);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'window-confirmation-retry', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued[0].input.requestId))!;
+    const entry = write.entries.find(entry => entry.kind === 'turn_diagnostic' && entry.requestId === queued[0].input.requestId)!;
+    const serialized = JSON.stringify(entry);
+    expect(serialized).toContain(reason);
+    expect(serialized).toContain('semantic_uncertainty');
+    expect(serialized).toContain('keep-future-window-confirmation');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(JSON.stringify(server.entries[0])).toContain(reason);
+    expect(JSON.stringify(server.entries[0])).toContain('keep-future-window-confirmation');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
+  });
+
   it('keeps successful placement and records the actual native request and renderer evidence', async () => {
     const h = harness();
     const submitted = await h.submit('数学を30分');

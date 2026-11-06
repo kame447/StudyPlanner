@@ -80,7 +80,8 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   const graph = withCurrentVNextReferences(state.graph, (id) => leafOf(id) ?? id);
   const planningInformation = createWeeklyPlanningStableV5DialogueProjection(graph);
   const actionKind = question ? 'question' : preview ? 'preview_ready' : 'status';
-  const asked = question ? question.forWork?.definingFactId ?? question.taskId : null;
+  const asked = question ? question.code === 'semantic_uncertainty' ? question.targetFactId
+    : question.forWork?.definingFactId ?? question.taskId : null;
   const targetFactId = asked === null ? null : leafOf(asked) ?? asked;
   const optionLabels = question ? Object.values(presentWeeklyPlanningVNextQuestion(state, question).optionLabels) : [];
   return {

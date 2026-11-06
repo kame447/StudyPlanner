@@ -187,6 +187,10 @@ export type VNextAddStudyContext = Omit<StatedPayload<VNextStudyContextFact>, 't
 export type VNextAddPlanningWindow = Omit<PlanningWindowPayload, 'kind'> & {
   kind: 'planning_window'; localId: string; windowKind: PlanningWindowPayload['kind'];
 };
+/** Reuses the stored V5 uncertainty; semantic interpretation alone identifies an ambiguous period. */
+export interface VNextAddPlanningWindowUncertainty {
+  kind: 'uncertainty'; localId: string; targetRef: VNextFactRef; field: 'planning_window'; reason: string;
+}
 export type VNextAddRecurrence = Omit<RecurrencePayload, 'kind' | 'taskId' | 'targetFactId'> & {
   kind: 'recurrence'; localId: string; recurrenceKind: RecurrencePayload['kind']; taskRef: VNextFactRef; targetRef: VNextFactRef;
 };
@@ -212,6 +216,7 @@ export type VNextAddFact =
   | VNextAddEffort
   | VNextAddTemporal
   | VNextAddPlanningWindow
+  | VNextAddPlanningWindowUncertainty
   | VNextAddRecurrence
   | VNextAddTaskDateRule
   | VNextAddAvailability
@@ -381,6 +386,7 @@ export type VNextTurnResult =
 // ---- projection: recomputed every turn, never stored --------------------------
 
 export type VNextQuestionCode =
+  | 'semantic_uncertainty'
   | 'learning_strategy_proposal'
   | 'quantity_role_unresolved'
   | 'quantity_basis_invalid'
@@ -402,7 +408,7 @@ export interface VNextQuestionOption {
 }
 
 export interface VNextTaskQuestion {
-  code: VNextQuestionCode;
+  code: Exclude<VNextQuestionCode, 'semantic_uncertainty'>;
   /** Owner-bound questions are required; the conversation invitation is the separate union arm. */
   optionalInvitation?: undefined;
   proposal?: WeeklyPlanningLearningStrategyProposalRecord;
@@ -430,6 +436,12 @@ export type VNextQuestion = VNextTaskQuestion | (Omit<VNextTaskQuestion, 'taskId
   taskId: null;
   forWork: null;
   optionalInvitation: { message: string; intent: string };
+}) | (Omit<VNextTaskQuestion, 'taskId' | 'code' | 'forWork'> & {
+  code: 'semantic_uncertainty';
+  taskId: null;
+  forWork: null;
+  /** The existing stored uncertainty, not a task or the tentative window itself. */
+  targetFactId: string;
 });
 
 export type VNextEstimateBasis =

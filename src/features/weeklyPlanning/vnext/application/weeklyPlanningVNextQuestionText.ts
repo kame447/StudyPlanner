@@ -15,6 +15,9 @@ export function presentWeeklyPlanningVNextQuestion(
   question: VNextQuestion,
 ): WeeklyPlanningVNextQuestionPresentation {
   if (question.optionalInvitation) return { text: question.optionalInvitation.message, optionLabels: {} };
+  if (question.code === 'semantic_uncertainty') return {
+    text: '計画する期間は、何年何月何日から何年何月何日までですか？', optionLabels: {},
+  };
   const { graph } = state;
   const resolver = createVNextLineageResolver(graph);
   const factOf = (factId: string) => graph.workloads.find((workload) => workload.id === resolver.leafOf(factId));

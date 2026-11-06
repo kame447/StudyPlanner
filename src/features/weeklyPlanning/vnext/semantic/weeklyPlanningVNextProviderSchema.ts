@@ -72,6 +72,8 @@ const {
     object({ kind: enumeration(['planning_window']), localId: text,
       windowKind: { ...enumeration(VNEXT_PLANNING_WINDOW_KINDS), description: VNEXT_PLANNING_WINDOW_REQUIREMENT },
       value: { ...text, description: VNEXT_PLANNING_WINDOW_REQUIREMENT }, start: nullable(text), end: nullable(text) }),
+    object({ kind: enumeration(['uncertainty']), localId: text, targetRef: ref,
+      field: enumeration(['planning_window']), reason: text }),
     object({ kind: enumeration(['recurrence']), localId: text, taskRef: ref, targetRef: ref,
       recurrenceKind: { ...enumeration(SEMANTIC_RECURRENCE_KINDS_V5), description: VNEXT_RECURRENCE_REQUIREMENT },
       count: { ...nullable(number), description: VNEXT_RECURRENCE_REQUIREMENT },

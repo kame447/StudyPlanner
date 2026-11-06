@@ -248,6 +248,13 @@ export function applyWeeklyPlanningVNextTurn(
         constraintLevel: fact.constraintLevel, dateExpression: fixDate(fact.dateExpression, dateMeaning(fact.kind), `${path}.dateExpression`, fact.localId), namedTimePeriod: fact.namedTimePeriod,
         startTime: fact.startTime, endTime: fact.endTime, precision: fact.precision };
       case 'planning_window': return freezeWindow({ kind: fact.windowKind, value: fact.value, start: fact.start, end: fact.end }, path, fact.localId);
+      case 'uncertainty': {
+        const targetFactId = ref(fact.targetRef, `${path}.targetRef`);
+        if (fact.field !== 'planning_window' || !graph.planningWindows.some(window => window.id === targetFactId)) {
+          error('invalid_value', `${path}.targetRef`, targetFactId, fact.localId);
+        }
+        return { targetFactId, field: fact.field, reason: fact.reason };
+      }
       case 'recurrence': return { taskId: ref(fact.taskRef, `${path}.taskRef`), targetFactId: ref(fact.targetRef, `${path}.targetRef`),
         kind: fact.recurrenceKind, count: fact.count, days: fact.days };
       case 'task_date_rule': return { taskId: ref(fact.taskRef, `${path}.taskRef`), targetFactId: ref(fact.targetRef, `${path}.targetRef`),

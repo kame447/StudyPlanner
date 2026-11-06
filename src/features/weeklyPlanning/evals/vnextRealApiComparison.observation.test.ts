@@ -1057,7 +1057,7 @@ async function runVNextConversation(
       const workQuestion = observedQuestion ?? (fixtureTurn.oracle.allowQuestionDeferral
         ? projection.deferredQuestions.find(({ code }) => code === fixtureTurn.oracle.questionCode) : undefined);
       const askedWork = workQuestion?.forWork;
-      questionForWork = askedWork ? {
+      questionForWork = workQuestion?.taskId && askedWork ? {
         taskId: workQuestion!.taskId,
         amount: askedWork.amount,
         unitCode: askedWork.unitCode,
