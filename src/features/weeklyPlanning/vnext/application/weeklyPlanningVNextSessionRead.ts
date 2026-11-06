@@ -1,6 +1,6 @@
 // Checkpoint read and V5 migration, kept apart from the turn session so the entry chunk (the hook's
 // local session) does not carry the session's projection, authorization and scheduling code.
-import { createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
+import { createEmptyWeeklyPlanningVNextState } from '../weeklyPlanningVNextState';
 import { parseWeeklyPlanningStableV5PersistedSession } from '../weeklyPlanningVNextV5Boundary';
 import { migrateWeeklyPlanningV5GraphToVNextSession, parseWeeklyPlanningVNextSessionCheckpoint,
   type WeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
