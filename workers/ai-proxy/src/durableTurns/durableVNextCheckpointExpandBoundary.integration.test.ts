@@ -4,6 +4,7 @@ import { createWeeklyPlanningTurnRequestContext } from '../../../../src/features
 import { createEmptyWeeklyPlanningVNextState } from '../../../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextTransaction';
 import { parseWeeklyPlanningVNextSessionCheckpoint as parseExpand, serializeWeeklyPlanningVNextSessionCheckpoint } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
 import { parseWeeklyPlanningVNextSessionCheckpoint as parseOld, serializeWeeklyPlanningVNextSessionCheckpoint as serializeOld } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint.f27b3a66.fixture';
+import { parseWeeklyPlanningVNextSessionCheckpoint as parseStageA } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint.8413f709.fixture';
 import { executeIsolatedWeeklyPlanningVNextTurn } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextIsolatedTurn';
 import type { WeeklyPlanningVNextExperimentalPorts } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalSession';
 import { createWeeklyPlanningVNextRuntimeGateway } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway';
@@ -36,15 +37,27 @@ it('applies the same expanded checkpoint bytes at Worker admission and Pages res
   const base = JSON.parse(baseRaw!);
   const failureRecovery = { reason: 'provider_error', consecutiveCount: 1 };
   const unansweredQuestionStreak = { questionKey: 'missing_effort_estimate:work', graphRevision: 0, count: 1 };
+  const actualRecords = [{ id: 'record-1', occurrenceDate: '2026-10-26', subject: '数学', minutes: 30, status: 'pending' }];
+  const pendingStudyRecordQuestion = { reason: 'missing_minutes', label: '英語' };
   const withFields = (fields: Record<string, unknown>) => JSON.stringify({ ...base, vnext: { ...base.vnext, ...fields } });
   const rows = [
     { name: 'four keys', raw: baseRaw!, accepted: true, oldAccepted: true },
     { name: 'failureRecovery', raw: withFields({ failureRecovery }), accepted: true, oldAccepted: false },
     { name: 'unansweredQuestionStreak', raw: withFields({ unansweredQuestionStreak }), accepted: true, oldAccepted: false },
     { name: 'both fields', raw: withFields({ failureRecovery, unansweredQuestionStreak }), accepted: true, oldAccepted: false },
+    { name: 'actualRecords', raw: withFields({ actualRecords }), accepted: true, oldAccepted: false },
+    { name: 'pendingStudyRecordQuestion', raw: withFields({ pendingStudyRecordQuestion }), accepted: true, oldAccepted: false },
+    { name: 'all four optional fields', raw: withFields({ failureRecovery, unansweredQuestionStreak, actualRecords, pendingStudyRecordQuestion }), accepted: true, oldAccepted: false },
+    { name: 'invalid actualRecords', raw: withFields({ actualRecords: [{ ...actualRecords[0], minutes: 0 }] }), accepted: false, oldAccepted: false },
+    { name: 'invalid pendingStudyRecordQuestion', raw: withFields({ pendingStudyRecordQuestion: { ...pendingStudyRecordQuestion, reason: 'unknown' } }), accepted: false, oldAccepted: false },
     { name: 'invalid failureRecovery', raw: withFields({ failureRecovery: { ...failureRecovery, consecutiveCount: '1' } }), accepted: false, oldAccepted: false },
     { name: 'invalid unansweredQuestionStreak', raw: withFields({ unansweredQuestionStreak: { ...unansweredQuestionStreak, count: 0 } }), accepted: false, oldAccepted: false },
   ];
+  // The already-expanded Stage A codec still rejects #974 record keys in either direction.
+  // This fixture is the exact c30e1978 parser blob deployed by #991.
+  for (const fields of [{ actualRecords }, { pendingStudyRecordQuestion }, { failureRecovery, unansweredQuestionStreak, actualRecords, pendingStudyRecordQuestion }]) {
+    expect(parseStageA({ raw: withFields(fields), ownerId, weekStartDate })).toBeNull();
+  }
   const acceptedTurn = vi.fn(async () => ({ accepted: true as const, value: { status: 'queued' } }));
   const env = { FIREBASE_WEB_API_KEY: 'test-web-key', OPENAI_API_KEY: 'test-provider-key', ALLOWED_ORIGIN: 'https://app.test',
     DURABLE_WEEKLY_TURNS: 'enabled', AI_TURNS: { getByName: () => ({ accept: acceptedTurn }) },
