@@ -1,12 +1,10 @@
 import {
-  createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactDiffV5,
   type WeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactKindV5,
 } from '../weeklyPlanningVNextV5Boundary';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPlanningFactGraphValidatorV5';
 import {
-  WEEKLY_PLANNING_VNEXT_STATE_VERSION,
   type VNextAddFact,
   type VNextEffortWorkBinding,
   type VNextFactRef,
@@ -93,11 +91,7 @@ function terminalize(graph: WeeklyPlanningVNextGraph, factId: string, replacemen
   lifecycle.supersededByFactId = replacementId;
 }
 
-export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState {
-  return { version: WEEKLY_PLANNING_VNEXT_STATE_VERSION,
-    graph: { ...createEmptyWeeklyPlanningFactGraphV5(), effortEstimates: [], studyContexts: [] },
-    workRelations: [], deferrals: [], learningStrategyProposalRecords: [], draftGenerationIntent: 'not_requested', optionalInvitationClosed: false };
-}
+export { createEmptyWeeklyPlanningVNextState } from '../weeklyPlanningVNextState';
 
 /**
  * The sole fact writer: settle window add/patch/remove, choose one final horizon,

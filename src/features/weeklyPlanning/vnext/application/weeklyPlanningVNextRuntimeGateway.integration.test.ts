@@ -154,9 +154,15 @@ describe('VNext session → gateway → existing controller and trace owner', ()
   it.each([
     { code: 'missing_effort_estimate', large: false }, { code: 'missing_effort_estimate', large: true },
     { code: 'missing_schedulable_work', large: false }, { code: 'missing_schedulable_work', large: true },
+    { code: 'remaining_inconsistent', large: false }, { code: 'remaining_inconsistent', large: true },
+    { code: 'same_or_distinct_work', large: false }, { code: 'same_or_distinct_work', large: true },
   ])('persists the third unanswered $code explanation through outbox reload and Worker (large=$large)', async ({ code, large }) => {
+    const add: VNextAddFact[] = code === 'remaining_inconsistent'
+      ? [task, work('total', 'scope_total', 20), work('done', 'completed', 12), work('left', 'remaining', 7)]
+      : code === 'same_or_distinct_work' ? [task, work('pages', 'remaining', 10), work('minutes', 'remaining', 45, 'minute')]
+        : code === 'missing_effort_estimate' ? [task, work('work', 'remaining', 8)] : [task];
     const initial = { planningIntent: 'discuss', conversationActs: [], answer: null,
-      delta: { ...EMPTY, add: code === 'missing_effort_estimate' ? [task, work('work', 'remaining', 8)] : [task] } };
+      delta: { ...EMPTY, add } };
     const unanswered = { planningIntent: 'unknown', conversationActs: [], answer: null, delta: EMPTY };
     const contexts: unknown[] = [];
     const h = harness({ nativeReadings: [initial, unanswered, unanswered, unanswered], createRenderer: () => {
@@ -175,7 +181,10 @@ describe('VNext session → gateway → existing controller and trace owner', ()
         return renderer.render(input);
       } };
     } });
-    await h.submit(code === 'missing_effort_estimate' ? '数学を残り8枚やりたいです' : '今週は数学をやりたいです');
+    const initialText = code === 'remaining_inconsistent' ? '数学は全体20枚、完了12枚、残り7枚です。'
+      : code === 'same_or_distinct_work' ? '数学は残り10枚、残り45分です。'
+        : code === 'missing_effort_estimate' ? '数学を残り8枚やりたいです' : '今週は数学をやりたいです';
+    await h.submit(initialText);
     const retained = h.local.readCheckpoint()!.vnext.state;
     await h.submit('わかりません');
     await h.submit('まだ決めていません');
@@ -185,11 +194,16 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(h.local.readCheckpoint()!.vnext.unansweredQuestionStreak?.count).toBe(3);
     expect(h.local.readCheckpoint()!.vnext.preview).toBeNull();
     const result = h.results[3];
-    const choice = '所要時間はまだ分からないので、仮置きで予定を組んで見せて';
+    const choice = code === 'remaining_inconsistent'
+      ? '全体から完了量を引いた残りと、入力された残量が一致しません。どの値を直すか選んでください。'
+      : code === 'same_or_distinct_work'
+        ? '複数の量や時間が、別々に行う作業なのか、同じ作業を表しているのかが未確定です。予定に含める作業を、表示した選択肢から選んでください。'
+        : '所要時間はまだ分からないので、仮置きで予定を組んで見せて';
     expect(contexts).toHaveLength(1);
     expect(result.dialogueRendererTrace?.request?.promptContext).toMatchObject({
       questionCode: code, communication: { goal: 'explain_question', askQuestion: true },
-      requiredLabels: expect.arrayContaining(['何分くらい', choice, '後で決める']),
+      requiredLabels: expect.arrayContaining(code === 'remaining_inconsistent' || code === 'same_or_distinct_work'
+        ? [choice] : ['何分くらい', choice, '後で決める']),
     });
     const messages = h.getState().messages;
     expect(messages[messages.length - 1]?.content).toContain(choice);
@@ -239,6 +253,86 @@ describe('VNext session → gateway → existing controller and trace owner', ()
         originalBytes: new TextEncoder().encode(JSON.stringify(contexts[0])).byteLength,
         jsonHead: expect.any(String), jsonTail: expect.any(String) });
       expect(saved).not.toContain('x'.repeat(48 * 1024));
+    }
+  });
+
+  it.each([
+    { code: 'effort_inconsistent', large: false }, { code: 'effort_inconsistent', large: true },
+    { code: 'completed_exceeds_total', large: false }, { code: 'completed_exceeds_total', large: true },
+  ])('persists the third $code explanation through actual renderer, outbox reload and Worker (large=$large)', async ({ code, large }) => {
+    const rendererRequests: { messages: readonly { content: string }[] }[] = [];
+    const rendererInputs: unknown[] = [];
+    const add: VNextAddFact[] = code === 'completed_exceeds_total'
+      ? [task, work('total', 'scope_total', 10), work('done', 'completed', 12)]
+      : [task, work('pages', 'remaining', 8),
+      { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'task' }, targetRef: { localId: 'pages' },
+        effortKind: 'duration_per_unit', minutes: 5, unitCode: 'page', unitLabel: '枚', precision: 'exact' },
+      { kind: 'effort_estimate', localId: 'total', taskRef: { localId: 'task' }, targetRef: { localId: 'pages' },
+        effortKind: 'total_duration', minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' }];
+    const h = harness({ nativeReadings: [add, [], [], []].map(add => ({ planningIntent: 'discuss',
+      conversationActs: [], delta: { ...EMPTY, add }, answer: null })), createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+        rendererRequests.push(structuredClone(request));
+        const response = JSON.parse(await successfulWeeklyPlanningRendererCompletion(request));
+        const prompt = JSON.parse(request.messages[1].content);
+        response.text += prompt.applicationDecision.relevantLabels.join(' / ');
+        return JSON.stringify(response);
+      } });
+      return { render(input) {
+        Object.assign(input.communication!, { futureEffortConflictSentinel: 'keep-effort-conflict-guidance',
+          ...(large ? { futureLargeEffortConflictField: 'z'.repeat(48 * 1024) } : {}) });
+        rendererInputs.push(structuredClone(input));
+        return renderer.render(input);
+      } };
+    } });
+    await h.submit(code === 'completed_exceeds_total'
+      ? '数学プリントは全体10枚、12枚完了です。' : '数学プリントは残り8枚、1枚5分、全体60分です。');
+    expect(h.results[0].dialogueRendererTrace?.response?.status,
+      JSON.stringify(h.results[0].dialogueRendererTrace?.response)).toBe('rendered');
+    await h.submit('うーん'); await h.submit('まだ分からない');
+    failAppend = true;
+    await h.submit('そうですね');
+    const result = h.results[3];
+    const sent = rendererRequests[rendererRequests.length - 1];
+    const prompt = JSON.parse(sent.messages[1].content);
+    expect(prompt.applicationDecision).toMatchObject({ questionCode: code,
+      communication: { goal: 'explain_question' }, relevantLabels: expect.arrayContaining(code === 'completed_exceeds_total'
+        ? ['全体10枚', '完了12枚'] : ['1枚あたり5分', '全体60分']) });
+    expect(result.dialogueRendererTrace?.response?.status).toBe('rendered');
+    const actualInput = rendererInputs[3] as Parameters<typeof createWeeklyPlanningStableV5DialoguePrompt>[0];
+    const actualPrompt = createWeeklyPlanningStableV5DialoguePrompt(actualInput);
+    expect(sent.messages).toEqual([{ role: 'system', content: actualPrompt.systemPrompt },
+      { role: 'user', content: actualPrompt.userPrompt }]);
+    expect(result.dialogueRendererTrace?.request?.promptContext).toEqual(actualInput);
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const failedWrite = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(failedWrite.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-effort-conflict', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(failedWrite.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    if (!large) {
+      const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(actualInput);
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-effort-conflict-guidance');
+    expect(saved).toContain('explain_question');
+    expect(saved).toContain(code);
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) {
+      const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+        originalBytes: new TextEncoder().encode(JSON.stringify(rendererInputs[3])).byteLength });
+      expect(saved).not.toContain('z'.repeat(48 * 1024));
     }
   });
 
