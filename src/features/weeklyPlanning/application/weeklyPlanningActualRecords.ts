@@ -89,6 +89,35 @@ export function formatActualRecordRow(record: PendingWeeklyPlanningActualRecord)
 /** What the chat says about a restated record that is already saved with the same minutes (never "not saved yet"). */
 export const ALREADY_SAVED_ACTUAL_RECORDS_PREFIX = 'その内容はすでに保存されています：';
 export const SAVING_ACTUAL_RECORDS_LABEL = '保存中（まだ確定していません）';
+export const UNKNOWN_ACTUAL_SAVE_RESULT_REPLY = '保存結果を確認できていません。記録は保存済みと扱わず、確認待ちです。';
+export const ACTUAL_SAVE_RETRY_SAVED_REPLY = '勉強記録を保存しました。';
+export const ACTUAL_SAVE_RETRY_FAILED_REPLY = '勉強記録の保存処理が失敗しました。保存結果を確認できていません。';
+export const ACTUAL_SAVE_RETRY_BLOCKED_REPLY = '保存状態が変わったため再送していません。再読み込みして確認してください。';
+
+export function formatActualSaveReadbackReply(
+  attempted: readonly PendingWeeklyPlanningActualRecord[],
+  confirmedIds: readonly string[],
+  conflictingIds: readonly string[],
+): string {
+  const confirmed = attempted.filter(record => confirmedIds.includes(record.id));
+  const conflicting = attempted.filter(record => conflictingIds.includes(record.id));
+  const missing = attempted.filter(record => !confirmedIds.includes(record.id) && !conflictingIds.includes(record.id));
+  if (confirmed.length === attempted.length) return `保存を確認しました：${confirmed.map(formatActualRecordRow).join('、')}。`;
+  if (confirmed.length === 0 && conflicting.length === 0 && missing.length === attempted.length) {
+    return 'サーバー上に保存されていません。記録は未保存のままです。保存する場合は保存ボタンから確認してください。';
+  }
+  return [confirmed.length ? `保存を確認した記録：${confirmed.map(formatActualRecordRow).join('、')}。` : '',
+    missing.length ? `未保存の記録：${missing.map(formatActualRecordRow).join('、')}。` : '',
+    conflicting.length ? `保存済みの値が異なる記録：${conflicting.map(formatActualRecordRow).join('、')}。自動では上書きしません。` : '']
+    .filter(Boolean).join('');
+}
+
+export function formatUnknownActualSaveReadbackReply(reason: string): string {
+  const cause = reason === 'auth_mismatch' ? '認証された利用者が一致しないため、'
+    : reason === 'permission_denied' ? '読取権限がないため、'
+      : reason === 'unavailable' ? 'サーバーに接続できないため、' : '';
+  return `${cause}${UNKNOWN_ACTUAL_SAVE_RESULT_REPLY}`;
+}
 
 /** 「その内容はすでに保存されています：月 10/26 数学 60分（1時間）、…。」 */
 export function formatAlreadySavedActualRecordsReply(records: readonly PendingWeeklyPlanningActualRecord[]): string {
