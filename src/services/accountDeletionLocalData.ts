@@ -70,7 +70,10 @@ export function clearAccountBrowserStorage(uid: string, local: Storage, session:
 export async function clearAccountLocalData(uid: string): Promise<void> {
   clearAccountBrowserStorage(uid, window.localStorage, window.sessionStorage);
   clearUserPlanningContextForOwnerV1(uid);
-  // Firestore uses memory cache; no application IndexedDB database or persistent
-  // Firestore cache is enabled. SDK sign-out clears the auth session, then the
-  // caller reloads to dispose Firestore/React drafts and module memory.
+  if (typeof indexedDB !== 'undefined') {
+    const { createIndexedDbConversationStore } = await import('../features/weeklyPlanning/vnext/sync/weeklyPlanningConversationIndexedDb');
+    const conversations = createIndexedDbConversationStore();
+    try { await conversations.removeOwner(uid); } finally { await conversations.close(); }
+  }
+  // The caller signs out and reloads to dispose the memory-only Firestore cache and live drafts.
 }
