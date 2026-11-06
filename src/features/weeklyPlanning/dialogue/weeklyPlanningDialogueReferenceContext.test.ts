@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Actual, MonthEvent, Plan, ScheduleTemplate, TimetableTerm } from '../../../types/domain';
+import type { MonthEvent, Plan, ScheduleTemplate, TimetableTerm, TimedActual } from '../../../types/domain';
 import { selectWeeklyPlanningDialogueReferenceContext } from './weeklyPlanningDialogueReferenceContext';
 
 const DATE = '2026-10-15';
@@ -17,7 +17,7 @@ function plan(overrides: Partial<Plan> = {}): Plan {
   };
 }
 
-function actual(overrides: Partial<Actual> = {}): Actual {
+function actual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1', userId: OWNER, planId: 'plan-1', occurrenceDate: '2026-10-13',
     actualStartTime: '17:00', actualEndTime: '18:00',

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
-import type { Actual, Plan, StudyMaterial } from '../types/domain';
+import type { Plan, StudyMaterial, TimedActual } from '../types/domain';
 
 const mocks = vi.hoisted(() => ({
   batchSet: vi.fn(),
@@ -35,7 +35,7 @@ function plan(overrides: Partial<Plan> = {}): Plan {
   };
 }
 
-function actual(overrides: Partial<Actual> = {}): Actual {
+function actual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1', userId: 'user-1', planId: 'plan-1', occurrenceDate: '2026-09-01',
     actualStartTime: '09:00', actualEndTime: '10:00', subject: 'Math', note: '',

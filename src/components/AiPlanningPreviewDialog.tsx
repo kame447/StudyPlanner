@@ -37,6 +37,8 @@ interface AiPlanningPreviewDialogProps {
   onRemove: (blockId: string) => void;
   onPromote: (blocks: WeeklyPlanDraftBlock[]) => void;
   onSave: (blocks: WeeklyPlanDraftBlock[]) => void;
+  /** Study records to confirm, a section of their own that never shares the plan's save button (#973). */
+  actualRecordsSection?: ReactNode;
 }
 
 interface PreviewGroup {
@@ -142,6 +144,7 @@ export function AiPlanningPreviewDialog({
   onRemove,
   onPromote,
   onSave,
+  actualRecordsSection,
 }: AiPlanningPreviewDialogProps) {
   const [mode, setMode] = useState<'overview' | 'day'>('overview');
   const [pageIndex, setPageIndex] = useState(0);
@@ -921,6 +924,8 @@ export function AiPlanningPreviewDialog({
               </div>
             </div>
           )}
+
+          {actualRecordsSection}
 
           <div className="ai-planning-preview-total" aria-label="計画全体の集計">
             <span>全{editableBlocks.length}件</span>

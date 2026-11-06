@@ -20,6 +20,7 @@ import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../applic
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
 import { prepareWeeklyPlanningTurn, admitPreparedWeeklyPlanningTurn } from '../../application/weeklyPlanningTurnPreparation';
+import { resolvePendingActualRecordsAgainstSaved, selectPendingActualRecords, toActualRecordsToSave, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -62,6 +63,11 @@ export function useWeeklyPlanningVNextApplication(
   const services = useMemo(() => providedServices ?? localServices(), [providedServices]);
   const [revision, redraw] = useState(0);
   const recoveringDurableRequest = useRef<string | null>(null);
+  // A confirmation click is the only save authority for study records; the in-flight flag prevents a
+  // second click while the first batch is still running (#973).
+  const actualRecordsInFlight = useRef(false);
+  const savingActualRecordIds = useRef<ReadonlySet<string>>(new Set());
+  const [savedActualMinutes, setSavedActualMinutes] = useState<ReadonlyMap<string, number>>(() => new Map());
   const runtime = useMemo(() => {
     const local = createWeeklyPlanningVNextLocalSession({ ownerId, weekStartDate: week, storage: services.storage });
     let loaded: ReturnType<typeof local.load>;
@@ -187,6 +193,7 @@ export function useWeeklyPlanningVNextApplication(
   const liveSession = useMemo(() => ({ get checkpoint() { return runtime.local.checkpoint; },
     get legacyV5Checkpoint() { return runtime.local.legacyV5Checkpoint; } }), [runtime]);
   const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: liveSession,
+    savingActualRecordIds: () => savingActualRecordIds.current,
     ports: async turn => {
       await services.preload?.();
       const local = runtime.local;
@@ -238,6 +245,54 @@ export function useWeeklyPlanningVNextApplication(
     });
   }, [chat, runtime, revision, runtime.state, runtime.session.conversationId, input.userId, input.plannerDataAvailability]);
   const pendingDraftBlocks = runtime.state.draftBlocks.filter(block => block.status === 'draft');
+  // The study records live in the conversation's checkpoint (I2), next to the facts they were read apart from. An
+  // unreadable checkpoint offers none here; the chat's own retry state already reports that condition.
+  const pendingActualRecords = useMemo(() => {
+    let stored: WeeklyPlanningActualRecord[] | undefined;
+    try { stored = runtime.local.readCheckpoint()?.vnext.actualRecords; } catch { stored = undefined; }
+    // Already-saved documents (the planner's loaded actuals, by id) decide whether a record is a new save, a no-op or a replacement.
+    const savedMinutes = new Map<string, number>();
+    for (const actual of input.actuals ?? []) if (!savingActualRecordIds.current.has(actual.id) && 'actualDurationMinutes' in actual && actual.actualDurationMinutes) savedMinutes.set(actual.id, actual.actualDurationMinutes);
+    return resolvePendingActualRecordsAgainstSaved(selectPendingActualRecords(stored)
+      .filter(record => savedActualMinutes.get(record.id) !== record.minutes), savedMinutes);
+    // `revision` changes after every committed turn and every mark.
+  }, [runtime, runtime.state, revision, savedActualMinutes, input.actuals]);
+  const approveActualRecords = async () => {
+    const records = pendingActualRecords;
+    // Nothing to save, an owner that is not signed in, or a save already running: never write (no owner mismatch writes).
+    if (records.length === 0 || actualRecordsInFlight.current || !input.userId || !input.saveWeeklyActualRecords || !current()) return;
+    actualRecordsInFlight.current = true;
+    savingActualRecordIds.current = new Set(records.map(record => record.id));
+    redraw(value => value + 1);
+    try {
+      await input.saveWeeklyActualRecords(ownerId, toActualRecordsToSave(records));
+      // A turn may have corrected a value while the batch was in flight. Only the values that this
+      // batch actually wrote may acquire the saved mark; a correction remains pending.
+      let latest: WeeklyPlanningActualRecord[] = [];
+      try { latest = runtime.local.readCheckpoint()?.vnext.actualRecords ?? []; } catch { /* a committed batch remains committed */ }
+      const ids = records.filter(record => latest.some(item => item.id === record.id && item.minutes === record.minutes)).map(record => record.id);
+      setSavedActualMinutes(previous => new Map([...previous, ...records.filter(record => ids.includes(record.id))
+        .map(record => [record.id, record.minutes] as const)]));
+      // The persisted mark (I2) keeps a reload from offering the same records again. The saved batch is already
+      // committed, so a mark that cannot be written is not reported as a failed save: the in-memory minutes above hide
+      // the records for this session and their deterministic ids make any later re-save an overwrite, not a duplicate.
+      // Loaded lazily: the session code is not part of the entry chunk. A mark that cannot be written (module load or storage)
+      // is not a failed save, so it never reaches the user as one.
+      try {
+        const { markWeeklyPlanningVNextActualRecordsSaved } = await loadWeeklyPlanningVNextRuntimeModule();
+        markWeeklyPlanningVNextActualRecordsSaved(
+          { ownerId, weekStartDate: week, conversationId: runtime.session.conversationId },
+          { checkpoint: runtime.local.checkpoint, legacyV5Checkpoint: runtime.local.legacyV5Checkpoint, now: services.now },
+          ids,
+        );
+      } catch { /* the in-memory minutes above hide the saved values for this session */ }
+      chat.checkpoint();
+    } finally {
+      actualRecordsInFlight.current = false;
+      savingActualRecordIds.current = new Set();
+      redraw(value => value + 1);
+    }
+  };
   // The preparation sequence is shared with the V5 hook; only these accessors are this core's.
   const preparationPorts = {
     isPlannerDataCurrent: () => Boolean(input.userId && isPlannerDataReadyForOwner(input.plannerDataAvailability, input.userId)
@@ -297,6 +352,8 @@ export function useWeeklyPlanningVNextApplication(
     removePreviewCandidate: candidateId => { dispatch({ type: 'remove_preview_candidate', candidateId }); },
     removeDraftBlock: blockId => { dispatch({ type: 'remove_draft_block', blockId }); },
     clearDraftBlocks: () => { dispatch({ type: 'clear_draft_blocks' }); },
+    pendingActualRecords,
+    approveActualRecords,
     approveDraftBlocks: () => approveWeeklyPlanningDraftBlocks({ ...input, userId: ownerId,
       featureSessionId: runtime.session.conversationId, plans: input.plans, getState, dispatch,
       resolveRuntime: runtime.local.resolveRuntime, approvalOperations: runtime.operations,

@@ -32,6 +32,7 @@ Object.assign(process.env, {
 });
 
 const VNEXT_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-vnext-state.json');
+const ACTUAL_WEEK_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-actual-week-state.json');
 
 // The durable-turn target (#926): the production durable job on, the model still the synthetic provider. It is
 // a second Worker and a second production build beside the default pair, on their own ports, so every project
@@ -44,6 +45,7 @@ const DURABLE = {
 };
 const DURABLE_APP = `http://127.0.0.1:${DURABLE.STUDYPLANNER_E2E_APP_PORT}`;
 const DURABLE_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-vnext-production-state.json');
+const ACTUAL_CHAT_STATE = path.join(repoRoot, 'artifacts/playwright-emulator-actual-chat-state.json');
 
 export default defineConfig({
   testDir: configDir,
@@ -103,6 +105,20 @@ export default defineConfig({
       metadata: { email: 'e2e-vnext@example.test' },
       use: { ...devices['Desktop Chrome'], storageState: VNEXT_STATE },
     },
+    // The examinee's week of study records through the existing record UI (no model, no Worker call), own account.
+    {
+      name: 'emulator-actual-week-setup',
+      testMatch: 'emulator/account.setup.mjs',
+      metadata: { email: 'e2e-actual-week@example.test', statePath: ACTUAL_WEEK_STATE },
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'chromium-emulator-actual-week',
+      testMatch: 'emulator/actual-week.emulator.mjs',
+      dependencies: ['emulator-actual-week-setup'],
+      metadata: { email: 'e2e-actual-week@example.test' },
+      use: { ...devices['Desktop Chrome'], storageState: ACTUAL_WEEK_STATE },
+    },
     {
       name: 'emulator-vnext-production-setup',
       testMatch: 'emulator/account.setup.mjs',
@@ -115,6 +131,20 @@ export default defineConfig({
       dependencies: ['emulator-vnext-production-setup'],
       metadata: { email: 'e2e-vnext-production@example.test' },
       use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: DURABLE_STATE },
+    },
+    // The examinee's study-record conversation (#973): the durable target, scripted readings, its own account.
+    {
+      name: 'emulator-actual-chat-setup',
+      testMatch: 'emulator/account.setup.mjs',
+      metadata: { email: 'e2e-actual-chat@example.test', statePath: ACTUAL_CHAT_STATE },
+      use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP },
+    },
+    {
+      name: 'chromium-emulator-actual-chat',
+      testMatch: ['emulator/vnext-actual-record.emulator.mjs', 'emulator/vnext-actual-correction.emulator.mjs'],
+      dependencies: ['emulator-actual-chat-setup'],
+      metadata: { email: 'e2e-actual-chat@example.test' },
+      use: { ...devices['Desktop Chrome'], baseURL: DURABLE_APP, storageState: ACTUAL_CHAT_STATE },
     },
   ],
   webServer: [
