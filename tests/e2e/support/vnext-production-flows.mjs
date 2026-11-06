@@ -2,6 +2,7 @@ import { expect } from '@playwright/test';
 import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStorage } from './vnext-chat-storage.mjs';
 import { expectDurableVNext, observeDurableTurns } from './vnext-durable-observation.mjs';
 import { openScheduleDay, removeSavedPlansByTitle, sweepLeftoverPlans } from './schedule-plan-cleanup.mjs';
+import { isSavedPlanTitle } from './schedule-plan-title.mjs';
 import { attachWriteLedger, cancellationCommitProblems, protectedWritesIn } from './vnext-firestore-writes.mjs';
 import { assertKnownFlowOptions } from './vnext-flow-options.mjs';
 import { addDays, chooseTargetDay, isoDay, keyForWeek, onlyWeek, weeksOf } from './vnext-planner-week.mjs';
@@ -158,9 +159,12 @@ async function selectDayOfPreviousWeek(page, expectedPlannerWeek) {
   }, { message: 'the planner moved to the previous week', timeout: 30_000 }).toBe(true);
 }
 
-// Saved plan blocks of this title on the open schedule day (titles render as '<title> <n>分', DayTimeline.tsx).
-const countSavedBlocks = (page, title) => page.locator('.timeline-plan-block:not(.timeline-draft-block)').evaluateAll(
-  (nodes, name) => nodes.filter(node => (node.getAttribute('title') ?? '').startsWith(`${name} `)).length, title);
+// Observe the same saved-only, run-specific title identity that cleanup will remove.
+const countSavedBlocks = async (page, title) => {
+  const titles = await page.locator('.timeline-plan-block:not(.timeline-draft-block)').evaluateAll(
+    nodes => nodes.map(node => (node.getAttribute('title') ?? '').split(' / ')[0]));
+  return titles.filter(blockTitle => isSavedPlanTitle(blockTitle, title)).length;
+};
 
 // Only visible nodes: the hidden AI view still holds the same title in its messages.
 const visibleEntries = (page, title) => page.getByText(title).locator('visible=true');
@@ -322,6 +326,7 @@ export function defineVNextProductionFlows(options) {
         await openScheduleDay(page, target.date);
         await expect.poll(() => visibleEntries(page, title).count(), { timeout: 30_000 }).toBeGreaterThan(0);
         savedBlocks = await countSavedBlocks(page, title);
+        expect(savedBlocks, 'the corrected plan must be visible as saved blocks, not only a draft').toBeGreaterThan(0);
         const savedMinutes = await shownMinutes(page.locator(`[title*="${title}"]`).locator('visible=true'), title,
           /^(.*?) \/ (\d{2}:\d{2})-(\d{2}:\d{2})(?: \/ .*)?$/u);
         expect(savedMinutes, 'saved entries for the title must total the corrected 60 minutes').toBe(60);

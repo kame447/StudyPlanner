@@ -7,6 +7,7 @@
 //    has 'この日だけ削除' / 'この回だけ削除' (+ whole-series '削除'). A series is never deleted here.
 // Nothing sleeps: every step waits on a count or visibility.
 import { expect } from '@playwright/test';
+import { isSavedPlanTitle } from './schedule-plan-title.mjs';
 
 export const ONE_OFF_DELETE_LABEL = '予定を削除';
 const SAVED_PLAN_BLOCK = '.timeline-plan-block:not(.timeline-draft-block)';
@@ -31,16 +32,15 @@ export async function openScheduleDay(page, date) {
   if (!(await shown())) throw new Error(`The day view never showed ${label}.`);
 }
 
-// The day view titles a saved AI plan block `<title> <minutes>分 / HH:mm-HH:mm / <subject>` and names its
-// action dialog after that full block title (measured on the emulator stack), so a plan titled `T` is the
-// block whose title is `T` or `T <n>分`. Entries are matched on that exact shape, never by a loose prefix.
+// The scheduler can append whole or fractional minutes/hours to the unique title.
+// The day view uses that full title for its action dialog. Only the exact title or
+// that title plus a duration matches; a neighboring run/task never matches by prefix alone.
 const blockTitleOf = text => text.split(' / ')[0];
-const isTitled = (blockTitle, title) => blockTitle === title || new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')} \\d+分$`, 'u').test(blockTitle);
 
 async function titledBlocks(page, title) {
   const candidates = page.locator(`${SAVED_PLAN_BLOCK}[title^="${attributeValue(title)}"]`);
   const raw = await candidates.evaluateAll(nodes => nodes.map(node => node.getAttribute('title') ?? ''));
-  return raw.map((text, index) => ({ index, blockTitle: blockTitleOf(text) })).filter(entry => isTitled(entry.blockTitle, title))
+  return raw.map((text, index) => ({ index, blockTitle: blockTitleOf(text) })).filter(entry => isSavedPlanTitle(entry.blockTitle, title))
     .map(entry => ({ ...entry, locator: candidates.nth(entry.index) }));
 }
 const countTitled = async (page, title) => (await titledBlocks(page, title)).length;
