@@ -1,3 +1,4 @@
+import { groupTodoTasks, type TodoSortDirection } from '../lib/todoViewModel';
 import { useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   CalendarDays,
@@ -24,7 +25,6 @@ import type {
   TodoTaskDraft,
 } from '../types/domain';
 
-type TodoSortDirection = 'asc' | 'desc';
 type TodoSectionKey = 'due' | 'unset' | 'done';
 type DurationOptionValue = number | null | 'custom';
 
@@ -90,40 +90,6 @@ function todayIsoDate(): string {
   const month = `${now.getMonth() + 1}`.padStart(2, '0');
   const day = `${now.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function getDueSortValue(todo: TodoTask): string {
-  return `${todo.dueDate ?? '9999-12-31'}T${todo.dueTime ?? '23:59'}`;
-}
-
-function compareDueTodos(
-  left: TodoTask,
-  right: TodoTask,
-  direction: TodoSortDirection,
-): number {
-  const dueDelta = getDueSortValue(left).localeCompare(getDueSortValue(right));
-
-  if (dueDelta !== 0) {
-    return direction === 'asc' ? dueDelta : -dueDelta;
-  }
-
-  return right.updatedAt.localeCompare(left.updatedAt);
-}
-
-
-function comparePinnedTodos(
-  left: TodoTask,
-  right: TodoTask,
-  compareRest: (leftTodo: TodoTask, rightTodo: TodoTask) => number,
-): number {
-  const leftPinned = left.pinned === true;
-  const rightPinned = right.pinned === true;
-
-  if (leftPinned !== rightPinned) {
-    return leftPinned ? -1 : 1;
-  }
-
-  return compareRest(left, right);
 }
 
 function getTodoStatusClass(status: TodoStatus): string {
@@ -233,32 +199,10 @@ function TodoViewSession({
     return true;
   }
 
-  const groupedTodos = useMemo(() => {
-    const visibleTodos = todos.filter((todo) =>
-      todo.userId === userId && todo.status !== 'archived',
-    );
-    const activeTodos = visibleTodos.filter((todo) => todo.status !== 'done');
-
-    return {
-      due: activeTodos
-        .filter((todo) => Boolean(todo.dueDate))
-        .sort((left, right) =>
-          comparePinnedTodos(left, right, (leftTodo, rightTodo) =>
-            compareDueTodos(leftTodo, rightTodo, sortDirection),
-          ),
-        ),
-      unset: activeTodos
-        .filter((todo) => !todo.dueDate)
-        .sort((left, right) =>
-          comparePinnedTodos(left, right, (leftTodo, rightTodo) =>
-            rightTodo.updatedAt.localeCompare(leftTodo.updatedAt),
-          ),
-        ),
-      done: visibleTodos
-        .filter((todo) => todo.status === 'done')
-        .sort((left, right) => compareDueTodos(left, right, sortDirection)),
-    };
-  }, [sortDirection, todos, userId]);
+  const groupedTodos = useMemo(
+    () => groupTodoTasks(todos, userId, sortDirection),
+    [sortDirection, todos, userId],
+  );
 
   function updateEditDraft<K extends keyof TodoTaskDraft>(
     key: K,

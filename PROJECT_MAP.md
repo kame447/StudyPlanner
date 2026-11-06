@@ -1,7 +1,7 @@
 # Laplance Project Map
 
 Status: canonical repository navigation map
-Updated: 2026-10-07
+Updated: 2026-11-04
 
 この文書は「変更したい責務の正しい入口」を短時間で見つけるための地図である。詳細仕様や実行queueを複製しない。Markdown の配置規則は `docs/DOCUMENT_DICTIONARY.md` が正本である。
 
@@ -27,13 +27,14 @@ Scheduling / scheduled-event work:
 Weekly planning:
 
 1. `docs/domains/weekly-planning/README.md`
-2. `docs/domains/weekly-planning/architecture/current-contract-v5.md`
-3. `docs/domains/weekly-planning/spec/product-intent.md`
-4. `docs/domains/weekly-planning/spec/learning-consultation-and-advice.md` for Issue #246 pre-scheduling consultation requirements
-5. `docs/domains/weekly-planning/architecture/weekly-planning-semantic-ownership-boundary-v5.md`
-6. `docs/domains/weekly-planning/quality/test-philosophy.md`
-7. `docs/domains/weekly-planning/roadmap/current.md`
-8. `docs/domains/weekly-planning/work/README.md` / owning Issue
+2. `docs/domains/weekly-planning/architecture/vnext-conversation-core.md` (production conversation contract; Issue #926 completed)
+3. `docs/domains/weekly-planning/architecture/current-contract-v5.md` (local comparison and pure responsibilities reused by VNext)
+4. `docs/domains/weekly-planning/spec/product-intent.md`
+5. `docs/domains/weekly-planning/spec/learning-consultation-and-advice.md` for Issue #246 pre-scheduling consultation requirements
+6. `docs/domains/weekly-planning/architecture/weekly-planning-semantic-ownership-boundary-v5.md` (V5 reference)
+7. `docs/domains/weekly-planning/quality/test-philosophy.md`
+8. `docs/domains/weekly-planning/roadmap/current.md`
+9. `docs/domains/weekly-planning/work/README.md` / owning Issue (Issue #973 tracks unshipped weekly study-record conversation)
 
 User context / long-term memory work:
 

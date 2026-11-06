@@ -1,3 +1,4 @@
+import { selectVisibleAdminUsers, type UserFilter, type UserSort } from '../lib/adminUserListViewModel';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Bot,
@@ -52,8 +53,6 @@ function recentErrorLabel(user: ObservabilityAdminUserListItem): string {
   return `${formatTimestamp(user.recentErrorAt)}${category}`;
 }
 
-type UserFilter = 'all' | 'product' | 'ai' | 'planning';
-type UserSort = 'recent' | 'events' | 'actor';
 
 interface UsersPageData {
   page: AdminObservabilityUserPage;
@@ -197,27 +196,10 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
 
   const resolvedCursor = nextCursor === undefined ? data.page.nextCursor : nextCursor;
   const users = useMemo(() => [...data.page.users, ...extraUsers], [data.page.users, extraUsers]);
-  const visibleUsers = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    const filtered = users.filter((user) => {
-      const actor = user.actorSubjectId?.toLowerCase() ?? '';
-      if (query && !actor.includes(query) && !user.profileSubjectId.toLowerCase().includes(query)) return false;
-      if (filter === 'product') return user.productActivityCount > 0;
-      if (filter === 'ai') return user.aiRequestCount > 0;
-      if (filter === 'planning') return user.planningOutcomeCount > 0;
-      return true;
-    });
-    return [...filtered].sort((left, right) => {
-      const leftId = left.actorSubjectId ?? left.profileSubjectId;
-      const rightId = right.actorSubjectId ?? right.profileSubjectId;
-      if (sort === 'events') {
-        return right.eventCount - left.eventCount || leftId.localeCompare(rightId);
-      }
-      if (sort === 'actor') return leftId.localeCompare(rightId);
-      const recency = (right.lastActivityAt ?? '').localeCompare(left.lastActivityAt ?? '');
-      return recency || leftId.localeCompare(rightId);
-    });
-  }, [filter, searchQuery, sort, users]);
+  const visibleUsers = useMemo(
+    () => selectVisibleAdminUsers(users, searchQuery, filter, sort),
+    [filter, searchQuery, sort, users],
+  );
 
   function changeIdentityQuery(value: string) {
     const owner = identitySearch.current;
