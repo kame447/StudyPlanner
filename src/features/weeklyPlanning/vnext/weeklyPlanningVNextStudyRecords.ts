@@ -157,9 +157,10 @@ export function vnextStudyRecordQuestionText(question: VNextStudyRecordQuestion)
  * Replies for a turn that only changed records. The records are an unsaved list for confirmation: nothing is
  * saved until the user presses the confirmation screen's save button, so no wording here may say "recorded".
  */
-export const VNEXT_STUDY_RECORD_PENDING_PREFIX = '確認用に整理しました（まだ保存していません）：';
+export const VNEXT_STUDY_RECORD_PENDING_PREFIX = '仮実績として整理しました（まだ保存していません）：';
 export const VNEXT_STUDY_RECORD_UNCHANGED = 'その内容はすでに確認リストにあります。';
 export const VNEXT_STUDY_RECORD_REMOVED = 'その日を確認リストから外しました。';
+export const VNEXT_STUDY_RECORD_CONFIRMATION_QUESTION = 'この内容を学習実績に反映してよいですか？';
 export const VNEXT_STUDY_RECORD_SAVE_GUIDE = 'ほかの日があれば続けて教えてください。そろったら、確認画面の「この内容で実績を保存」を押すと保存されます。';
 
 export function vnextStudyRecordReply(params: {
@@ -185,6 +186,9 @@ export function vnextStudyRecordReply(params: {
   // Only saved records were stated: nothing is waiting, so no total and no "press save" guidance.
   if (waiting.length || params.changed.length) lines.push(`ここまでの合計は${formatActualRecordsTotal(sumActualRecordMinutes(params.all))}です。`);
   if (params.question) lines.push(vnextStudyRecordQuestionText(params.question));
-  else if (waiting.length) lines.push(VNEXT_STUDY_RECORD_SAVE_GUIDE);
+  else if (waiting.length) {
+    if (params.changed.length) lines.push(VNEXT_STUDY_RECORD_CONFIRMATION_QUESTION);
+    lines.push(VNEXT_STUDY_RECORD_SAVE_GUIDE);
+  }
   return lines.join('');
 }

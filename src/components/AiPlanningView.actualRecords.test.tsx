@@ -45,7 +45,7 @@ function openConfirmation() {
     });
   });
 }
-const dialogs = () => renderer!.root.findAll(node => node.props.role === 'dialog' && node.props['aria-label'] === '実績の確認');
+const dialogs = () => renderer!.root.findAll(node => node.props.role === 'dialog' && node.props['aria-label'] === '仮実績の確認');
 const saveButton = (): ReactTestInstance => renderer!.root.find(node =>
   node.type === 'button' && String(node.props.className ?? '').includes('ai-planning-actual-records-save'));
 const text = (node: ReactTestInstance): string =>
@@ -71,6 +71,8 @@ it('shows one row per day, no row for the rest day, the code-made total and no c
   expect(week.reduce((sum, record) => sum + record.minutes, 0)).toBe(395);
   openConfirmation();
   expect(dialogs()).toHaveLength(1);
+  expect(text(dialogs()[0])).toContain('仮実績');
+  expect(text(dialogs()[0])).toContain('この内容を学習実績に反映してよいですか？');
   expect(rows()).toEqual([
     '月 10/26 数学 60分（1時間）',
     '火 10/27 英語 45分',

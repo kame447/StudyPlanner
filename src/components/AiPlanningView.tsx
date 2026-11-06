@@ -308,12 +308,12 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
                 className="ai-planning-preview-modal ai-planning-preview-dialog-v2"
                 role="dialog"
                 aria-modal="true"
-                aria-label="実績の確認"
+                aria-label="仮実績の確認"
                 onClick={(event) => event.stopPropagation()}
               >
                 <header className="ai-planning-preview-header">
                   <button type="button" onClick={() => requestClosePreview()}>閉じる</button>
-                  <div><h2>実績の確認</h2></div>
+                  <div><h2>仮実績の確認</h2></div>
                 </header>
                 {actualRecordsSection}
               </section>

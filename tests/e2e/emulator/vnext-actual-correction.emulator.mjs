@@ -106,9 +106,12 @@ const rows = (week, tuesdayMinutes) => WEEK_RECORDS.map(({ day, subject, minutes
 async function confirmation(page, expectedRows, totalMinutes) {
   const card = page.locator('.ai-planning-actual-card');
   await expect(card).toBeVisible();
+  await expect(card).toContainText('仮実績');
   await card.getByRole('button', { name: '実績を確認' }).click();
-  const dialog = page.getByRole('dialog', { name: '実績の確認' });
+  const dialog = page.getByRole('dialog', { name: '仮実績の確認' });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('この内容を学習実績に反映してよいですか？', { exact: true })).toBeVisible();
+  await expect(bubbles(page).last()).toContainText('仮実績として整理しました（まだ保存していません）');
   await expect(dialog.locator('.ai-planning-actual-records-list li')).toHaveCount(6);
   for (const row of expectedRows) {
     await expect(dialog.getByText(formatActualRecordRow({
