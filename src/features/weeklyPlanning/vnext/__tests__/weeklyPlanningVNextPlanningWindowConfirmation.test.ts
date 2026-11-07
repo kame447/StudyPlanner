@@ -84,7 +84,7 @@ describe('planning-window year confirmation (#914)', () => {
   });
 
   it.each([{ end: '2026-11-07', count: 9 }, { end: END, count: 313 }])(
-    'reloads the question, accepts an explicit period ending $end, and approves its $count plans once', async ({ end, count }) => {
+    'reloads the question, blocks deferred preview, accepts a period ending $end, and approves its $count plans once', async ({ end, count }) => {
       const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: 'owner', weekStartDate: '2026-10-26',
         conversationId: 'period-question-session', notBeforeTime: '09:00', clock: { currentDate: CURRENT,
           planningStartDate: '2026-10-26', planningEndDate: '2026-11-01', weekStartsOn: 'monday', timeZone: 'Asia/Tokyo' } };
@@ -98,7 +98,9 @@ describe('planning-window year confirmation (#914)', () => {
         interpret: async input => {
           turns++;
           const changes = turns === 1 ? delta([...facts(), { kind: 'uncertainty', localId: 'year-question',
-            targetRef: { localId: 'period' }, field: 'planning_window', reason: '対象期間の年を確認' }]) : {
+            targetRef: { localId: 'period' }, field: 'planning_window', reason: '対象期間の年を確認' }]) : turns === 2 ? {
+            ...delta([]), defer: [{ questionKey: input.presentedQuestion!.key, allocation: 'none' as const }],
+          } : {
             ...delta([]), patch: [{ kind: 'planning_window' as const, localId: 'confirmed-period',
               targetFactId: input.state.graph.planningWindows[0].id,
               changes: { windowKind: 'absolute' as const, value: `${START}/${end}`, start: START, end } }],
@@ -124,8 +126,13 @@ describe('planning-window year confirmation (#914)', () => {
       if (restored.status !== 'ready') throw new Error('Expected the saved period question');
       expect(restored.checkpoint.presentedQuestion?.questionKey).toBe(first.question!.key);
       expect(restored.checkpoint.state.graph.workloads[0]).toMatchObject({ amount: 45, perOccurrence: true });
+      const deferred = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'deferred',
+        userText: '年は後で確認するので、今の情報で予定を作って', shownRevision: first.graphRevision });
+      expect(deferred).toMatchObject({ readiness: 'needs_resolution', preview: null });
+      expect(saveCalls).toBe(0);
+      expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports })).toEqual({ status: 'rejected', reason: 'no-shown-preview' });
       const confirmed = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'confirmed',
-        userText: `${START}から${end}です`, shownRevision: first.graphRevision });
+        userText: `${START}から${end}です`, shownRevision: deferred.graphRevision });
       expect(confirmed).toMatchObject({ readiness: 'ready', question: null, previewBlockedBy: [] });
       expect(confirmed.preview?.blocks).toHaveLength(count);
       expect(saveCalls).toBe(0);

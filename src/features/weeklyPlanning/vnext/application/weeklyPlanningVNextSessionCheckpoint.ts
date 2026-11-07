@@ -114,7 +114,8 @@ function withLearningStrategyRecords(value: unknown): unknown {
 }
 
 function validState(value: unknown, conversationId: string): value is WeeklyPlanningVNextState {
-  if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals', 'learningStrategyProposalRecords', 'draftGenerationIntent', 'optionalInvitationClosed'])
+  if (!isRecord(value) || !hasExactKeys(value, ['version', 'graph', 'workRelations', 'deferrals', 'learningStrategyProposalRecords', 'draftGenerationIntent', 'optionalInvitationClosed',
+    ...('pendingEventRegistrationTargetIds' in value ? ['pendingEventRegistrationTargetIds'] : [])])
     || typeof value.optionalInvitationClosed !== 'boolean'
     || typeof value.draftGenerationIntent !== 'string'
     || !['not_requested', 'assistant_suggested', 'user_authorized'].includes(value.draftGenerationIntent)
@@ -122,6 +123,14 @@ function validState(value: unknown, conversationId: string): value is WeeklyPlan
     || !Array.isArray(value.workRelations) || !Array.isArray(value.deferrals)) return false;
   const graph = value.graph as unknown as WeeklyPlanningVNextState['graph'];
   if (!validateWeeklyPlanningFactGraphValueV5(graph).graph) return false;
+  // Expand the reader before any producer emits this state (#868). Local/unknown/wrong-kind
+  // references cannot become registration authority; the graph retains superseded fact identity.
+  const pendingTargets = value.pendingEventRegistrationTargetIds;
+  if (pendingTargets !== undefined) {
+    const knownTargets = new Set([...graph.tasks, ...graph.components].map(fact => fact.id));
+    if (!Array.isArray(pendingTargets) || new Set(pendingTargets).size !== pendingTargets.length
+      || !pendingTargets.every(id => typeof id === 'string' && knownTargets.has(id))) return false;
+  }
   if (!Array.isArray(graph.effortEstimates) || !graph.effortEstimates.every(validEffortExtension)) return false;
   if (!graph.studyContexts.every((context) => (SEMANTIC_STUDY_ACTIVITY_KINDS_V5 as readonly unknown[]).includes(context.activityKind))) return false;
   const sources = [graph.tasks, graph.components, graph.workloads, graph.effortEstimates, graph.temporalConstraints,

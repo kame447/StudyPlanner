@@ -203,6 +203,8 @@ Resolved busy-only evidence without a task identity remains outside the registra
 
 The Stable checkpoint candidate codec accepts the new source explicitly and rejects learning-only fields on registration candidates. Existing clients that predate that codec reject the new candidate source before turn publication and save; they display the ordinary conversation-state update failure, clear the pending turn and permit another input. Reloading is required to use registration previews on such a tab. New clients continue to accept older Worker responses and their manual-entry handoff; no request capability field is added to the old Worker's strict input allowlist.
 
+In VNext, a workload already covered by its own hard fixed temporal scope does not need a movable-work effort estimate to register that interval. The projector reuses V5's target-scope rule and retains the stated quantity without inventing an estimate. Other tasks' questions and structural or effort conflicts remain unresolved; the existing commitment compiler must still resolve the date and complete clock interval before any preview.
+
 ## Proposal / readiness / scheduler
 
 A proposal is not a command.
