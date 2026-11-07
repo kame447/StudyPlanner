@@ -174,9 +174,8 @@ describe('#926 no-cost integration gates', () => {
     expect(parseWeeklyPlanningStableV5PersistedSession({ raw, ownerId: OWNER, weekStartDate: WEEK })?.graph).toEqual(graph);
   });
 
-  it('B: a question answer reaches the existing V5 preview, and a later correction makes that preview stale before approval', () => {
+  it('B: a question answer reaches the existing V5 preview, and a later correction moves the revision so that preview no longer matches the state and the old total is asked again', () => {
     let state = migrateWeeklyPlanningV5GraphToVNextSession(v5Graph()).state;
-    const writesBefore = new Map(harness.values);
     const asked = projectWeeklyPlanningVNext(state);
     const context = { ownerId: OWNER, currentDate: '2026-11-02', planningStartDate: '2026-11-02', planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' };
     expect(compileWeeklyPlanningVNextSchedulerInput({ state, projection: asked, context })).toEqual({ status: 'not_ready' });
@@ -219,15 +218,18 @@ describe('#926 no-cost integration gates', () => {
     expect(preview.candidates.reduce((sum, candidate) => sum + candidate.durationMinutes, 0))
       .toBe(compiled.input!.movableWorkItems[0].estimatedMinutes);
 
-    // Before approval: a quantity correction moves the revision; the preview's revision no longer matches,
-    // and the old total no longer applies to 6 pages, so the projection asks again.
+    // A quantity correction moves the revision; the revision the preview was compiled from (what the shown
+    // preview carries) no longer matches the state, and the old total no longer applies to 6 pages, so the
+    // projection asks again. Approval/save refusal itself is exercised in the ExperimentalSession test
+    // 'a correction before approval replaces the shown preview'; this pure pipeline never touches storage.
+    const previewRevision = compiled.input!.graphRevision;
+    expect(previewRevision).toBe(state.graph.revision);
     state = applyTurn(state, { add: [], remove: [], relate: [], defer: [], patch: [{
       kind: 'workload', localId: 'r6', targetFactId: 'completed', amountDelta: null,
       changes: { amount: 14, unitCode: null, unitLabel: null, quantityRole: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null },
     }] }, 'correction', '14枚できた');
-    expect(state.graph.revision).not.toBe(compiled.input!.graphRevision);
+    expect(state.graph.revision).toBeGreaterThan(previewRevision);
     expect(projectWeeklyPlanningVNext(state).questions[0]).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 6 } });
     expect(compileWeeklyPlanningVNextSchedulerInput({ state, projection: projectWeeklyPlanningVNext(state), context }).status).toBe('not_ready');
-    expect(harness.values).toEqual(writesBefore); // nothing was saved or approved
   });
 });
