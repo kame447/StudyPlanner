@@ -152,3 +152,59 @@ describe('#915 VNext state correctness and renderer text fidelity are independen
     expect(state).toEqual(before);
   });
 });
+
+// Unit / target / period correspondence: the same independent-oracle shape, over typed workload facts.
+// The typed snapshot is read from the real Fact Graph; a verdict applies only to this exact snapshot + reply.
+const WORKLOAD_GOLD = '英語|remaining|45|ページ|今週';
+function workloadState(amount = 45, unitLabel = 'ページ', title = '英語', period = '今週') {
+  return seed([
+    { kind: 'task', localId: 'task', category: 'non_study', title },
+    { kind: 'workload', localId: 'work', taskRef: { localId: 'task' }, componentRef: null, quantityRole: 'remaining',
+      amount, unitCode: 'page', unitLabel, rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: period },
+  ]);
+}
+function statedWorkload(state: WeeklyPlanningVNextState) {
+  const active = new Set(state.graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+  return state.graph.workloads.filter(fact => active.has(fact.id)).map(fact => [
+    state.graph.tasks.find(task => task.id === fact.taskId)!.title, fact.quantityRole, fact.amount, fact.unitLabel, fact.periodExpression,
+  ].join('|')).join(';');
+}
+const workloadReviews = [
+  { given: WORKLOAD_GOLD, text: '英語は今週、残り45ページですね。', verdict: 'faithful' },
+  { given: WORKLOAD_GOLD, text: '英語は今週、残り45分ですね。', verdict: 'unfaithful' }, // unit swapped
+  { given: WORKLOAD_GOLD, text: '数学は今週、残り45ページですね。', verdict: 'unfaithful' }, // target swapped
+  { given: WORKLOAD_GOLD, text: '英語は来週、残り45ページですね。', verdict: 'unfaithful' }, // period swapped
+] as const;
+function evaluateWorkload(state: WeeklyPlanningVNextState, result: RenderResult) {
+  const actual = statedWorkload(state);
+  const stateCorrect = actual === WORKLOAD_GOLD;
+  const review = result.status === 'rendered' ? workloadReviews.find(item => item.given === actual && item.text === result.text) : undefined;
+  const textFidelity = result.status === 'rendered' ? review?.verdict ?? 'unreviewed' : 'unavailable';
+  return { stateCorrect, textFidelity, passed: stateCorrect && textFidelity === 'faithful' };
+}
+
+describe('#915 unit, target and period correspondence under the same independent oracle', () => {
+  it.each([
+    ['英語は今週、残り45ページですね。', 'faithful', true],
+    ['英語は今週、残り45分ですね。', 'unfaithful', false],
+    ['数学は今週、残り45ページですね。', 'unfaithful', false],
+    ['英語は来週、残り45ページですね。', 'unfaithful', false],
+  ])('correct state, reply "%s" is %s', async (text, textFidelity, passed) => {
+    const state = workloadState();
+    const before = structuredClone(state);
+    const { result, request } = await render(state, text);
+    expect(result).toMatchObject({ status: 'rendered', text });
+    expect(evaluateWorkload(state, result)).toEqual({ stateCorrect: true, textFidelity, passed });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(state).toEqual(before);
+  });
+
+  it.each([
+    ['unit', workloadState(45, '分')],
+    ['target', workloadState(45, 'ページ', '数学')],
+    ['period', workloadState(45, 'ページ', '英語', '来週')],
+  ])('wrong typed %s fails even with a fluent reply, and a verdict is not reused across states', async (_name, state) => {
+    const { result } = await render(state, '英語は今週、残り45ページですね。');
+    expect(evaluateWorkload(state, result)).toEqual({ stateCorrect: false, textFidelity: 'unreviewed', passed: false });
+  });
+});
