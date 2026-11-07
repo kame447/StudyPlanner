@@ -11,6 +11,7 @@ import type {
   WeeklyPlanningVNextState,
 } from '../weeklyPlanningVNextTypes';
 import { projectWeeklyPlanningVNext } from './weeklyPlanningVNextProjection';
+import { resolveWeeklyPlanningWorkItemSessionDurationV5 } from '../weeklyPlanningVNextV5Boundary';
 
 let turnCounter = 0;
 function turn(state: WeeklyPlanningVNextState, partial: Partial<VNextTurnDelta>): WeeklyPlanningVNextState {
@@ -69,6 +70,49 @@ const amountPatch = (localId: string, targetFactId: string, amount: number) => (
 });
 
 describe('projectWeeklyPlanningVNext', () => {
+  it.each([
+    { detailTarget: 'component', conflict: false },
+    { detailTarget: 'workload', conflict: false },
+    { detailTarget: 'component', conflict: true },
+  ] as const)('honors specific session duration without losing the inherited duration ($detailTarget, conflict=$conflict)', ({ detailTarget, conflict }) => {
+    const detailRef = { localId: detailTarget === 'component' ? 'chapter-a' : 'a-work' };
+    const state = withTask([
+      { kind: 'component', localId: 'chapter-a', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '第1章' },
+      { kind: 'component', localId: 'chapter-b', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '第2章' },
+      { ...W('a-work', 'target', 2, 'session', '回'), componentRef: { localId: 'chapter-a' } },
+      { ...W('b-work', 'target', 2, 'session', '回'), componentRef: { localId: 'chapter-b' } },
+      { kind: 'effort_estimate', localId: 'default', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+        effortKind: 'session_duration', minutes: 20, unitCode: null, unitLabel: null, precision: 'exact' },
+      { kind: 'effort_estimate', localId: 'detail', taskRef: { localId: 'task' }, targetRef: detailRef,
+        effortKind: 'session_duration', minutes: 30, unitCode: null, unitLabel: null, precision: 'exact' },
+      ...(detailTarget === 'workload' ? [{ kind: 'effort_estimate' as const, localId: 'component-default', taskRef: { localId: 'task' },
+        targetRef: { localId: 'chapter-a' }, effortKind: 'session_duration' as const, minutes: 25,
+        unitCode: null, unitLabel: null, precision: 'exact' as const }] : []),
+      ...(conflict ? [{ kind: 'effort_estimate' as const, localId: 'conflict', taskRef: { localId: 'task' }, targetRef: detailRef,
+        effortKind: 'session_duration' as const, minutes: 40, unitCode: null, unitLabel: null, precision: 'exact' as const }] : []),
+    ]);
+    const before = structuredClone(state);
+    expect(resolveWeeklyPlanningWorkItemSessionDurationV5({
+      item: { taskId: state.graph.tasks[0].id, componentId: state.graph.workloads[0].componentId,
+        workloadFactId: state.graph.workloads[0].id }, estimates: state.graph.effortEstimates,
+    })).toMatchObject({ minutes: conflict ? null : 30, ambiguous: conflict });
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection.owners[1]).toMatchObject({ status: 'ready', work: [{ minutes: 40 }] });
+    if (conflict) expect(projection.questions[0].code).toBe('effort_inconsistent');
+    else {
+      expect(projection.questions).toEqual([]);
+      expect(projection.owners[0]).toMatchObject({ status: 'ready', work: [{ minutes: 60,
+        estimateFactIds: [state.graph.effortEstimates[1].id] }] });
+      expect(projection.owners[1].work[0].estimateFactIds).toEqual([state.graph.effortEstimates[0].id]);
+      const updated = turn(state, { patch: [amountPatch('three-sessions', state.graph.workloads[0].id, 3)] });
+      const next = projectWeeklyPlanningVNext(updated);
+      expect(next.questions).toEqual([]);
+      expect(next.owners.find(owner => owner.componentId === state.graph.workloads[0].componentId)!.work[0].minutes).toBe(90);
+      expect(next.owners.find(owner => owner.componentId === state.graph.workloads[1].componentId)!.work[0].minutes).toBe(40);
+    }
+    expect(state).toEqual(before);
+  });
+
   it('derives remaining from total and completed and asks an estimate bound to that amount', () => {
     const state = withTask([W('t', 'scope_total', 20), W('c', 'completed', 10)]);
     const projection = projectWeeklyPlanningVNext(state);
