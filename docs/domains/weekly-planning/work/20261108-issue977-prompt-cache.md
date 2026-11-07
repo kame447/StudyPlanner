@@ -1,10 +1,10 @@
 # #977 Provider prompt cache measurement
 
-Status: active measurement checkpoint; cache effectiveness not yet established
+Status: baseline measured; renderer key-order experiment awaiting after run
 
 - Owner: SlateHopper; integration/push/paid run dispatch: PluckyTuring.
-- Clone: `s1-991/.prompt977`; branch `perf/issue977-prompt-cache`.
-- Base/HEAD: `856dbe11fd4a34c24fbe3d6f79d07b109152e176`.
+- Clone: `s1-991/.prompt977`; current branch `perf/issue977-renderer-prefix`.
+- Current base/HEAD: `022931a899b3dc4c106c6b17cfd7d31932aec357` plus the renderer experiment diff. Initial instrumentation base was `856dbe11fd4a34c24fbe3d6f79d07b109152e176`; shipped as PR #1041 (merge `5e4df591`).
 - Scope: actual provider usage, grouped native/focused/renderer. Do not change prompt semantics, schemas or request bodies before a demonstrated cause. No inference-result cache.
 
 ## Existing evidence and competing explanations
@@ -27,7 +27,7 @@ The provider's [official prompt caching documentation](https://developers.openai
 - Request hit rate = requests with reported cached tokens > 0 / requests with a known cached counter. Report input-zero/failed/unknown counts separately.
 - native/focused grouping derives only from fixed typed response-schema families; renderer derives from its typed purpose. Other semantic calls remain `other`, so V5 comparison calls are not silently labelled native. Renderer totals may include both V5 comparison and VNext unless the artifact context distinguishes them.
 
-## Current table
+## Historical table before instrumentation
 
 | Group | Requests | Input tokens | Cached tokens | Cache-write tokens | Hit rate |
 | --- | ---: | ---: | --- | --- | --- |
@@ -58,9 +58,43 @@ Comparison uses UTF-8 JSON with compact separators and preserves message orderin
 ## Next / done
 
 - Add eval-only scalar counters and finite request-kind grouping, with mocked direct/proxy responses covering zero, absence, invalid counters and disabled capture. Verify identical outbound request bodies and returned content with capture on/off.
-- Parent approved this instrumentation and will push/dispatch `profile=vnext`, repetitions=1 as the baseline. Await actual artifact usage before deciding on a prefix change.
+- Parent approved the instrumentation, merged #1041, and completed baseline run 42401574682. Parent Mail16016 approves only moving the renderer `request` key first, with unchanged values/directives/schema; parent will dispatch the same profile/repetition after the patch.
 - If a cause is demonstrated, preserve schema/instruction meaning, fix only ordering, prove stable prefix bytes and same deterministic fixtures, then request the same real profile for after comparison.
 - Ready requires measured table/coverage, exact changed-state verification, actual-run comparison for any prompt optimization, and a patch/short summary to the parent. A metrics-only checkpoint is not proof of cache improvement or completion of umbrella #977.
+
+## Instrumented actual baseline
+
+Run [42401574682](https://github.com/kame447/StudyPlanner/actions/runs/42401574682), exact head `e46b9c39dc5eda1daa4e045effae1189285a036f`, `profile=vnext`, repetition 1, direct OpenAI `gpt-6-luna`. Artifact `weekly-planning-real-api-1` (ID13585888687). Aggregation reads all `[AI Eval Metric]` lines from `run.log`, not the client's last-100 in-memory window.
+
+| Kind | Requests / known cache | Input | Cached | Cache write | Token reuse | Requests with a hit |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| native (including repair) | 106 / 106 | 1,823,378 | 1,766,989 | 56,071 | 96.91% | 105/106 = 99.06% |
+| focused | 16 / 16 | 12,811 | 0 | 0 | 0% | 0/16 |
+| renderer (V5 comparison + VNext) | 115 / 115 | 232,547 | 8,451 | 219,875 | 3.63% | 5/115 = 4.35% |
+| other semantic/V5 | 67 / 64 | 282,190 | 258,367 | 23,161 | 91.56% | 62/64 = 96.88% |
+
+Three other-semantic client failures have unknown usage and are excluded from token/hit denominators. Focused requests contain 660–987 input tokens (all below 1,024), so low reuse is not evidence of unstable prefix and padding is not proposed. Renderer input ranges 473–2,988 tokens (6 below 1,024). Its five hits reuse almost the whole prompt (1,486–2,061 tokens); reuse of a newly stable partial prefix remains an experiment. No caching/model/API/retention setting is changed, and no dollar-cost reduction is inferred.
+
+Quality scope: the baseline workflow failed `compound-date-shared` in the native provider observation suite; 95 tests passed / 1 failed in that step. This is not a passing quality gate. The failing native date-reading scenario is recorded independently from these cache counter observations; the renderer experiment cannot be declared successful from the counters alone.
+
+### Chosen experiment and falsification
+
+1. Unstable renderer leading context is demonstrated: changing action IDs precede a long repeated `request` directive. Move that single JSON key first, preserving every JSON value and the complete system string. Do not touch the native prompt (already 96.91% reuse), schema, message roles/count, interpreter, saved state, approval or persistence.
+2. Unsupported caching as a blanket explanation is contradicted by actual renderer cache reads/writes on the same route/model. Short focused input is a separate eligibility explanation, not a reason to enlarge its prompt.
+3. **Message-boundary caching can defeat a key-order-only change.** The official guide describes GPT-5.6+ implicit lookup at eligible message endings. A longer common byte prefix inside one user message may still yield no reuse. The guide's API examples use Responses, while this experiment preserves Chat Completions. Do not claim a supported internal breakpoint or extrapolate cache behavior from byte equality. After run is required; if no useful improvement is measured, recommend withdrawing the production reorder rather than expanding to role/API/message changes without parent judgment.
+
+The four pre-change fixture digests cover question, real recorded preview, recovery and reference context. They canonicalize object-key order only, leaving all strings, values, arrays and the system prompt intact. The prefix regression varies IDs, user text, history and accepted facts while requiring the same leading directive bytes. Actual renderer → failed append → persistent outbox/reload → Worker privacy preparation regressions preserve the reordered request prefix, current user input, future sentinel, client/server size limits and large-input truncation.
+
+Replaying only this key-order transform over the baseline's 53 VNext comparison renderer requests changes their common compact messages-JSON prefix from **975 to 1,835 UTF-8 bytes**, preserving every individual message byte length. The common directive substring itself is 876 bytes; longer identical-directive groups can share more. These numbers describe the wire representation, not cacheable token count or a server-side breakpoint.
+
+The experiment base 022931a8 differs from the paid baseline head e46b9c39 only in the Firestore-load work document, conversation-index tooling and a local renderer-fidelity integration test. The native/focused/renderer production implementations and real-API scenario sources match before this reorder. Coral's separately prepared X0 native-recurrence explanation (+2 system bytes) is not part of this experiment base. Reconfirm these inputs at the actual after head; do not silently combine their effects.
+
+## Renderer experiment verification checkpoint
+
+- Before the production edit: the new canonical-digest check passed, while the new prefix check failed exactly because the first key was `actionId` instead of `request` (1 passed / 1 failed). The four digest constants were captured on unmodified 022931a8, then fixed in the regression.
+- After the production edit: renderer prefix + existing prompt + prompt-trace + durable renderer trace persistence regressions: 28 passed / 4 files (`--configLoader runner --maxWorkers=2`). No assertion weakening.
+- The current complete VNext/Worker directory integration and app/Worker typecheck are running. Pending is not pass; append their terminal results before sending the experiment patch.
+- After-model results are still missing. This checkpoint proves value preservation and a stable wire prefix, not lower cost/latency, better semantic quality or a measurable cache improvement.
 
 ## Instrumentation verification (base 856dbe11 + current diff)
 

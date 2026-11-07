@@ -511,6 +511,7 @@ describe('Stable V5 renderer trace persistence', () => {
     expect(rendered.status, JSON.stringify({ rendered, calls: calls.length })).toBe('rendered');
     expect(calls).toHaveLength(1);
     expect(calls[0].messages[1].content).toContain('open_ended_session');
+    expect(Object.keys(JSON.parse(calls[0].messages[1].content))[0]).toBe('request');
     const trace = boundWeeklyPlanningDialogueRendererTraceForTransport({ ...rendererTrace('rendered'),
       actionId: input.actionId, questionCode: input.questionCode,
       response: { status: 'rendered', reason: null, rawResponse: raw, renderedText: text },
@@ -520,7 +521,8 @@ describe('Stable V5 renderer trace persistence', () => {
     trace.request!.promptContext = { futureSessionSentinel: { retained: true }, ...context,
       ...(large ? { futureLargeSessionField: 'session-data'.repeat(30_000) } : {}) };
     const harness = createRepositoryHarness(); harness.failNext(); setWeeklyPlanningTraceRepositoryForTests(harness.repository);
-    const first = traceInput({ requestId: 'session-gate', dialogueRendererTrace: boundWeeklyPlanningDialogueRendererTraceForTransport(trace), assistantMessage: text });
+    const first = traceInput({ requestId: 'session-gate', userText: input.currentUserMessage,
+      dialogueRendererTrace: boundWeeklyPlanningDialogueRendererTraceForTransport(trace), assistantMessage: text });
     await recordWeeklyPlanningStableV5TurnTrace(first);
     expect(listWeeklyPlanningTraceOutboxItems({ userId: first.userId, conversationId: first.conversationId })).toHaveLength(1);
     resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
@@ -528,6 +530,8 @@ describe('Stable V5 renderer trace persistence', () => {
     const retried = harness.writes[0];
     const serialized = JSON.stringify(retried.entries[0]);
     expect(serialized).toContain('futureSessionSentinel');
+    expect(serialized).toContain('applicationDecisionに従い自然な日本語を返す');
+    expect(serialized).toContain(input.currentUserMessage);
     if (large) expect(serialized).toContain('traceTruncated');
     expect(measureWeeklyPlanningTraceJsonBytes(retried.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
     const prepared = prepareWeeklyPlanningTraceServerWrite({ session: retried.session as unknown as Record<string, unknown>,
@@ -536,6 +540,8 @@ describe('Stable V5 renderer trace persistence', () => {
       '2026-10-15T00:00:00.000Z');
     expect(prepared.entries).toHaveLength(1);
     expect(JSON.stringify(prepared.entries[0])).toContain('futureSessionSentinel');
+    expect(JSON.stringify(prepared.entries[0])).toContain('applicationDecisionに従い自然な日本語を返す');
+    expect(JSON.stringify(prepared.entries[0])).toContain(input.currentUserMessage);
     expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
   });
 

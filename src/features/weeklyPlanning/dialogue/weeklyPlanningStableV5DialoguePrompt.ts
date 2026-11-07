@@ -84,7 +84,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     '決まった挨拶や回答例に固定せず、相手の言葉遣いと既に共有された事実に合わせて表現してください。',
   ].join('\n');
 
-  const userPrompt = JSON.stringify({
+  const payload = {
     actionId: input.actionId,
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
@@ -161,7 +161,11 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
           : '安全に引き継げる質問はありません。新しい対象や条件を決めつけず、今回伝えたいことを一つだけ言い換えてもらう確認をしてください。',
       ] : []),
     ].join(''),
-  });
+  };
+  // Turn IDs/text change every call; keep shared directives ahead of that suffix.
+  // Only object-key order changes. Provider cache reuse is measured separately.
+  const { request, ...context } = payload;
+  const userPrompt = JSON.stringify({ request, ...context });
 
   return { systemPrompt, userPrompt };
 }
