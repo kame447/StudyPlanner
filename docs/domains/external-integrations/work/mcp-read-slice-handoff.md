@@ -62,3 +62,26 @@ Branch `feat/issue355-commit-slice`, base `d3ca395a`. Status: locally verified; 
 Worker: scope `schedule:commit` を新設。scope が無ければ 403、`MCP_COMMIT_ENABLED=true` でなければ tools/list に出さず呼出しは unknown tool（既定は無効）。認証未構成は従来どおり 401。read/prepare scope だけでは呼べない。
 
 限界: ScheduleEvent に revision field は無く、`setDoc` による保存のため、別 key の同時 commit 同士の重なりを transaction では防げない（同じ key の並行は同じ doc なので二重にならない）。実際の authority admission / 認証 composition は後続。
+
+### commit を有効化する前の前提（PR #1066 の独立レビュー R1・R2）
+
+この slice は既定で無効で、OAuth も認証 composition も無いため、現状では保存に到達しない。**次の前提がすべて満たされるまで `MCP_COMMIT_ENABLED` を有効にしない。** 有効化は承認境界であり、親/所有者の明示承認を要する。
+
+**R1: サーバーは「ユーザーの承認」を検証できない（F3×S6=18）**
+- `commit_schedule_event` の説明は「ユーザーが preview を承認した後」と述べるが、サーバー側に承認の証拠は無い。prepare は token を返さない設計のため、commit は prepare を経由せず直接呼べる。`acceptOverlaps: true` もモデルが自分で付けられる。
+- 実際の防御は、(a) `schedule:commit` scope、(b) flag、(c) MCP ホストの同意 UI の3つだけである。
+- 有効化前の条件:
+  1. OAuth の同意画面が「予定の書き込み」を明示する。
+  2. ホストが write tool ごとに利用者へ確認することを、利用条件として確認する（tool には `readOnlyHint: false` を付けてある）。確認できないホストには `schedule:commit` を発行しない。
+  3. 実 authority の admission / composition と実認証が完成するまで、flag を有効にしない。
+- サーバー側で承認を検証する案（承認 token の発行など）は、persistence と承認権限を新設するため、今回は採らない。必要になった時点で別 Issue で設計する。
+
+**R2: 書込みの上限と監査が無い（F2×S5=10、#992 の候補）**
+- 重複と重なりは止めるが、別 key で時刻やタイトルを変えた event は回数の制限なく作れる。scope を持つ agent が暴走または prompt injection を受けると、owner の calendar を埋め得る。保存した event の目印は ID の `mcp-` 接頭辞だけで、監査ログは無い。
+- 有効化前の条件: owner ごとの日次上限と、保存の構造化ログ（event ID と時刻のみ。title・メモ・資格情報は記録しない）を追加する。実装は有効化の承認と同じ段階で行い、この slice には含めない。
+
+**再送の意味（レビューの補足、F×S<10）**
+- 同じ key の再送が `already_saved` になるのは、title・日時が保存時のままの場合。UI で title や時刻を編集した後は `idempotency_conflict`（安全側）。UI で削除した後の再送は再作成する。メモなど比較対象外の項目を編集しても `already_saved`。
+- 同じ key で内容の異なる同時リクエストは後勝ちになり、片方は `save_outcome_unknown` を受ける。
+- title の長さの上限は無い（UI にも無く、新規のギャップではない）。1 MiB を超えれば保存は失敗し `save_outcome_unknown` になる。
+- flag 無効で `schedule:commit` scope も無い呼び出しは、unknown tool ではなく 403 になる。
