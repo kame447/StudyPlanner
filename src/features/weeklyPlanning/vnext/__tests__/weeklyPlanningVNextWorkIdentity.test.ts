@@ -67,6 +67,24 @@ function graphWithWorkloads(workloads: WorkloadFactV5[]): WeeklyPlanningVNextGra
 
 describe('VNext work identity kernel', () => {
   it.each([
+    { firstRole: 'remaining', declaredDistinct: false },
+    { firstRole: 'target', declaredDistinct: false },
+    { firstRole: 'scope_total', declaredDistinct: true },
+  ] as const)('does not turn independent time work into one quantity basis ($firstRole, distinct=$declaredDistinct)', ({ firstRole, declaredDistinct }) => {
+    const hours = workload({ id: 'hours', role: firstRole, amount: 1, unitCode: 'hour' });
+    const minutes = workload({ id: 'minutes', role: 'remaining', amount: 45, unitCode: 'minute' });
+    const graph = graphWithWorkloads([hours, minutes]);
+    const relations = declaredDistinct ? [{ kind: 'distinct' as const, lineageIds: ['hours', 'minutes'] as const, createdRevision: 1 }] : [];
+    const [owner] = computeVNextWorkUnits(graph, relations);
+    expect(owner.issue).toBeNull();
+    expect(owner.units).toMatchObject([
+      { workLineageId: 'hours', amount: 1, workload: hours, basisKey: vnextQuantityBasisKey(hours) },
+      { workLineageId: 'minutes', amount: 45, workload: minutes, basisKey: vnextQuantityBasisKey(minutes) },
+    ]);
+    expect(graph.workloads).toEqual([hours, minutes]);
+  });
+
+  it.each([
     { totalUnit: 'hour', total: 1, doneUnit: 'minute', done: 30, remaining: 0.5 },
     { totalUnit: 'minute', total: 60, doneUnit: 'hour', done: 0.5, remaining: 30 },
   ] as const)('derives mixed time progress without changing facts or binding units ($totalUnit)', ({ totalUnit, total, doneUnit, done, remaining }) => {
