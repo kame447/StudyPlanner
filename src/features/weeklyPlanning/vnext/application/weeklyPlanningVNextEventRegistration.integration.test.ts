@@ -463,7 +463,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     { reading: 'separate explicit math day', window: false, mathDate: 'day_after_tomorrow', expectedMathDate: '2026-11-04' },
   ])('#868-6 characterizes $reading without interpreting the compound utterance again', async ({ window, mathDate, expectedMathDate }) => {
     const add: VNextAddFact[] = [...event('seminar'), ...work];
-    if (window) add.push({ kind: 'planning_window', localId: 'shared-day', windowKind: 'relative_day',
+    if (window) add.push({ kind: 'planning_window', localId: 'shared-day', yearBasis: null, windowKind: 'relative_day',
       value: 'tomorrow', start: null, end: null });
     if (mathDate) for (const constraintKind of ['earliest_start', 'latest_end'] as const) add.push({
       kind: 'temporal_constraint', localId: `math-${constraintKind}`, taskRef: { localId: 'math' },

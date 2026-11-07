@@ -3,6 +3,7 @@ import type { JsonSchemaResponseFormat } from '../../../../services/ai/openAiCom
 import { WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5 } from '../../semantic/weeklyPlanningSemanticSchemaV5';
 import { SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { VNEXT_CONSTRAINT_SOURCE_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
+import { VNEXT_PLANNING_YEAR_BASIS_SCHEMA } from './weeklyPlanningVNextCorrectionSchema';
 export { VNEXT_CONSTRAINT_SOURCE_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
 import { SEMANTIC_BASE_TEMPORAL_CONSTRAINT_KINDS_V5, SEMANTIC_COMPONENT_ROLES_V5,
   SEMANTIC_CONSTRAINT_LEVELS_V5, SEMANTIC_NAMED_TIME_PERIODS_V5, SEMANTIC_QUANTITY_ROLES_V5, SEMANTIC_TASK_CATEGORIES_V5,
@@ -73,7 +74,10 @@ const {
       startTime: nullable(text), endTime: nullable(text), precision }),
     object({ kind: enumeration(['planning_window']), localId: text,
       windowKind: { ...enumeration(VNEXT_PLANNING_WINDOW_KINDS), description: VNEXT_PLANNING_WINDOW_REQUIREMENT },
-      value: { ...text, description: VNEXT_PLANNING_WINDOW_REQUIREMENT }, start: nullable(text), end: nullable(text) }),
+      value: { ...text, description: VNEXT_PLANNING_WINDOW_REQUIREMENT }, start: nullable(text), end: nullable(text),
+      yearBasis: { ...VNEXT_PLANNING_YEAR_BASIS_SCHEMA, description: VNEXT_PLANNING_WINDOW_REQUIREMENT } }),
+    object({ kind: enumeration(['uncertainty']), localId: text, targetRef: ref,
+      field: enumeration(['planning_window']), reason: text }),
     object({ kind: enumeration(['recurrence']), localId: text, taskRef: ref, targetRef: ref,
       recurrenceKind: { ...enumeration(SEMANTIC_RECURRENCE_KINDS_V5), description: VNEXT_RECURRENCE_REQUIREMENT },
       count: { ...nullable(number), description: VNEXT_RECURRENCE_REQUIREMENT },
@@ -209,9 +213,18 @@ function validate(schema: Schema, value: unknown, path: string, localId: string 
 export function decodeVNextProviderOutput(value: unknown):
   | { status: 'decoded'; reading: VNextProviderReading }
   | { status: 'rejected'; errors: VNextTurnError[] } {
-  // The strict model schema states all fields. Older readings have no records or independent-request
-  // evidence; keep accepting them without granting the answer-plus-request permission.
-  const complete = record(value) ? { studyRecords: [], studyRecordQuestion: null, studyRestDays: [], planningRequestEvidence: null, ...value } : value;
+  // The model must state both study-record fields (strict schema); a reading recorded before they existed has
+  // none, which means no records and no record question, so absence decodes as that rather than as an error.
+  // Older readings also lack independent-request evidence; keep accepting them without granting the
+  // answer-plus-request permission. Earlier readings lack year provenance. Preserve their data as unverified, never infer proof.
+  const withBasis = (items: unknown, patch: boolean) => Array.isArray(items) ? items.map(item => {
+    if (!record(item) || item.kind !== 'planning_window') return item;
+    if (patch) return record(item.changes) ? { ...item, changes: { yearBasis: null, ...item.changes } } : item;
+    return { yearBasis: null, ...item };
+  }) : items;
+  const complete = record(value) ? { studyRecords: [], studyRecordQuestion: null, studyRestDays: [], planningRequestEvidence: null, ...value,
+    ...(record(value.delta) ? { delta: { ...value.delta, add: withBasis(value.delta.add, false), patch: withBasis(value.delta.patch, true) } } : {}),
+  } : value;
   const errors = validate(root, complete, '', null);
   if (errors.length) return { status: 'rejected', errors };
   const wire = structuredClone(complete) as { planningIntent: VNextPlanningIntent; planningRequestEvidence: VNextPlanningRequestEvidence | null; conversationActs: VNextEventRegistrationAct[]; delta: VNextTurnDelta; studyRecords: VNextStudyRecordReading[]; studyRecordQuestion: VNextStudyRecordQuestion | null; studyRestDays: string[]; answer: Record<string, unknown> | null };

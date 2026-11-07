@@ -60,6 +60,11 @@ function questionIntent(state: WeeklyPlanningVNextState, question: VNextQuestion
       targetFactId, amount: question.forWork.amount, unitCode: null, unitLabel: question.forWork.unitLabel };
   }
   const questionTarget = questionTargetForStableV5Dialogue({ planningInformation, targetFactId });
+  if (question.code === 'semantic_uncertainty' && state.graph.planningWindows.some(window => window.id === targetFactId)) {
+    return { kind: 'resolution_question', resolutionKind: 'semantic_clarification', targetFactId,
+      requestedInformation: ['clarify_ambiguous_meaning'], allowedChoices: [], knownAmount: null, knownUnitLabel: null,
+      ambiguityField: 'planning_window', ambiguityReason: '計画期間の開始年・終了年の根拠が未確認です。' };
+  }
   return questionIntentForStableV5Dialogue({ questionCode: question.code, questionTarget, planningInformation })
     ?? { kind: 'resolution_question', resolutionKind: 'semantic_clarification', targetFactId,
       requestedInformation: ['clarify_ambiguous_meaning'], allowedChoices: [], knownAmount: null, knownUnitLabel: null,
@@ -86,7 +91,8 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   const graph = withCurrentVNextReferences(state.graph, (id) => leafOf(id) ?? id);
   const planningInformation = createWeeklyPlanningStableV5DialogueProjection(graph);
   const actionKind = question ? 'question' : preview ? 'preview_ready' : 'status';
-  const asked = question ? question.forWork?.definingFactId ?? question.taskId : null;
+  const asked = question ? question.code === 'semantic_uncertainty' ? question.targetFactId
+    : question.forWork?.definingFactId ?? question.taskId : null;
   const targetFactId = asked === null ? null : leafOf(asked) ?? asked;
   const optionLabels = question ? Object.values(presentWeeklyPlanningVNextQuestion(state, question).optionLabels) : [];
   // A conflict has no option binding: show the retained estimates and request an explicit correction or deferral.
