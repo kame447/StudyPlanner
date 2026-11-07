@@ -155,8 +155,16 @@ test('real UI opts in, restores across independent devices and reloads, with no 
 test('pending edits reach the other device exactly once after reconnect without a competing edit', async ({ page, browser, request }) => {
   const firstMessage = '再接続確認の数学を60分予定にしてください。';
   const edit = '地理も30分あります。';
-  await signIn(page); await goToTargetPlannerWeek(page);
+  await signIn(page);
   await expect(sync(page)).toHaveAttribute('data-sync-state', /disabled|synced/);
+  // Synced sessions live in IndexedDB, so a fresh device has no legacy .ui
+  // localStorage key for the week helper. Use the hydrated chat index instead.
+  let plannerWeek = null;
+  if (await sync(page).getAttribute('data-sync-state') === 'synced') {
+    const { index } = await inspect(page);
+    plannerWeek = index.chats.find(chat => chat.id === index.activeChatId)?.weekStartDate;
+  }
+  await goToTargetPlannerWeek(page, { plannerWeek });
   // A separate chat keeps this case independent of the preceding conflict case.
   await page.getByLabel('チャット一覧を開く').click();
   await page.getByRole('button', { name: '新しいチャット', exact: true }).click();
