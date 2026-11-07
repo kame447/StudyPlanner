@@ -11,6 +11,7 @@ import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPl
 import { presentWeeklyPlanningVNextQuestion } from '../application/weeklyPlanningVNextQuestionText';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts } from '../application/weeklyPlanningVNextExperimentalSession';
+import { createWeeklyPlanningVNextFocusedInterpreter } from '../application/weeklyPlanningVNextFocusedInterpreter';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const run = shouldRun ? describe : describe.skip;
@@ -23,6 +24,69 @@ function requiredEnv(name: string): string {
   if (!value) throw new Error(`${name} is required for the workflow-only native provider observation`);
   return value;
 }
+
+run('#1005 answer and independent request through real focused/native interpretation', () => {
+  it.each([
+    { id: 'answer-only', text: '全部で40分です', preview: false },
+    { id: 'answer-plus-request', text: '全部で40分です。この条件で今週の予定案を作って', preview: true },
+    { id: 'answer-negated-request', text: '全部で40分です。予定案はまだ作らないで', preview: false },
+    { id: 'answer-withdrawn-request', text: '全部で40分です。予定案を作って。やっぱり依頼は取り消します', preview: false },
+  ])('$id', async ({ id, text, preview }) => {
+    const receipts: Array<{ request: unknown; response?: string; transportFailure?: boolean }> = [];
+    const artifact: Record<string, unknown> = { id, syntheticOnly: true, text, expectedPreview: preview, receipts, completed: false };
+    let raw: string | null = null;
+    let saves = 0;
+    let approvals = 0;
+    try {
+      if (requiredEnv('VITE_AI_PROVIDER') !== 'openai') throw new Error('Authorized provider required');
+      const actual = createOpenAiCompatibleClient({ provider: 'openai', baseUrl: requiredEnv('VITE_AI_BASE_URL'),
+        model: requiredEnv('VITE_AI_MODEL'), apiKey: requiredEnv('VITE_AI_API_KEY'), requestTimeoutMs: 90_000 });
+      const client: OpenAiCompatibleClient = { async createChatCompletion(request) {
+        const receipt: typeof receipts[number] = { request: structuredClone(request) }; receipts.push(receipt);
+        try { const response = await actual.createChatCompletion(request); receipt.response = response; return response; }
+        catch { receipt.transportFailure = true; throw new Error('Synthetic #1005 observation transport failed'); }
+      } };
+      const ports: WeeklyPlanningVNextExperimentalPorts = { client,
+        interpret: createWeeklyPlanningVNextFocusedInterpreter({ fullReading: createWeeklyPlanningVNextProviderInterpreter(),
+          requestId: () => `synthetic-1005:${id}` }),
+        checkpoint: { read: () => raw, write: value => { raw = value; } }, legacyV5Checkpoint: { read: () => null },
+        approvalLedger: { read: () => null, write: () => { approvals++; throw new Error('No approval in observation'); } },
+        plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { saves++; throw new Error('No save in observation'); } },
+        calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }),
+        now: () => '2026-11-02T00:00:00.000Z',
+        // Fixed presentation isolates semantic interpretation, without buying renderer calls.
+        createRenderer: () => ({ render: async input => ({ status: 'rendered', rawResponse: '',
+          text: input.questionCode === 'missing_effort_estimate'
+            ? '数学プリントの残り8枚は、全部で何分かかりそうですか？' : '保存前の合成プレビューです。' }) }),
+      };
+      const scope = { ownerId: 'synthetic-1005', conversationId: id, weekStartDate: '2026-11-02', notBeforeTime: '09:00',
+        clock: { ...defaultClock, currentDate: '2026-11-02' } };
+      const first = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'facts', userText: '数学プリントは残り8枚です', shownRevision: null });
+      artifact.first = first;
+      expect(first.question?.code).toBe('missing_effort_estimate');
+      const result = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'answer', userText: text, shownRevision: first.graphRevision });
+      artifact.result = result;
+      const checkpoint = raw ? JSON.parse(raw) : null;
+      artifact.checkpoint = checkpoint;
+      expect(result.interpretation?.status).toBe('interpreted');
+      expect(result.question).toBeNull();
+      expect(result.preview !== null).toBe(preview);
+      expect(checkpoint.vnext.state.graph.effortEstimates).toEqual([expect.objectContaining({ minutes: 40 })]);
+      expect(checkpoint.vnext.state.draftGenerationIntent).toBe(preview ? 'user_authorized' : 'not_requested');
+      expect(JSON.stringify(checkpoint.vnext)).not.toContain('"planningRequestEvidence"');
+      if (preview) {
+        expect(result.interpretation).toMatchObject({ planningIntent: 'create_plan',
+          planningRequestEvidence: { quote: expect.any(String), questionKey: first.question!.key } });
+      }
+      expect({ saves, approvals }).toEqual({ saves: 0, approvals: 0 });
+      artifact.completed = true;
+    } finally {
+      Object.assign(artifact, { saves, approvals });
+      mkdirSync(outputDir, { recursive: true });
+      writeFileSync(join(outputDir, `1005-${id}.json`), JSON.stringify(artifact, null, 2), 'utf8');
+    }
+  }, Number(process.env.WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS ?? 420_000));
+});
 
 run('VNext native provider synthetic real API observations', () => {
   for (const scenario of VNEXT_PROVIDER_SCENARIOS) {

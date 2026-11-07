@@ -556,15 +556,19 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
 
   const accepted = outcome === 'applied' || outcome === 'noop';
   let projection: WeeklyPlanningVNextProjection = projectWeeklyPlanningVNext(state, observedMemoryPace(state, calendar));
-  // A required question actually deferred by this accepted turn no longer blocks an independent
-  // explicit preview request once all work is ready. Bare answers and unresolved questions retain
-  // the turn-start guard (StageBEarlyPreview / PlanningAuthorization integration).
+  // Once accepted work is ready, a deferred question or an answered question with a validated
+  // independent request no longer blocks that request. Bare answers and unresolved questions
+  // retain the shared gate's turn-start guard (StageBEarlyPreview / PlanningAuthorization).
   const requiredQuestionDeferred = accepted && projection.readiness === 'ready'
     && delta?.defer.some(item => before.questions.some(question => !question.optionalInvitation && question.key === item.questionKey));
+  const answeredWithPlanningRequest = accepted && projection.readiness === 'ready'
+    && !projection.questions.some(question => !question.optionalInvitation)
+    && interpretation.status === 'interpreted' && interpretation.answer !== null
+    && presentedQuestion !== null && interpretation.planningRequestEvidence?.questionKey === presentedQuestion.key;
   const authorization = resolveVNextPlanningAuthorization({ state, accepted,
     previousStatus: read.checkpoint.preview ? 'draft_ready' : before.questions.length ? 'revision_pending' : 'needs_scope',
     planningIntent: interpretation.status === 'interpreted' ? interpretation.planningIntent : null,
-    hadMachinePendingQuestion: hadRequiredQuestion && !requiredQuestionDeferred, semanticChanged,
+    hadMachinePendingQuestion: hadRequiredQuestion && !requiredQuestionDeferred && !answeredWithPlanningRequest, semanticChanged,
     provisionalTimeboxRequested: delta?.defer.some(item => item.allocation === 'provisional_timebox') ?? false });
   state = authorization.state;
   let question = projection.questions[0] ?? null;
