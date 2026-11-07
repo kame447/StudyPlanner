@@ -594,11 +594,15 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     failAppend = true;
     expect(await h.submit('火曜16時から17時半の部活を予定に登録して')).toMatchObject({ accepted: true,
       draftCandidates: [expect.objectContaining({ source: 'fixed_event_registration', startTime: '16:00', endTime: '17:30' })] });
+    const providerMessages = (h.requests[0] as { messages: { role: string; content: string }[] }).messages;
+    expect(providerMessages[0].content).toContain('Distinguish a shared planning day from a date limited to one task.');
     expect(h.results[0].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
       request: { messages: (h.requests[0] as { messages: unknown[] }).messages },
     });
     const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
     expect(queued).toHaveLength(1); expect(queued[0].input.debugTraceEvents).toEqual(h.results[0].debugTraceEvents);
+    const queuedRequest = queued[0].input.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!;
+    expect(queuedRequest.data).toMatchObject({ request: { messages: providerMessages } });
     resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
     await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'registration-retry-after-reload', debugTraceEvents: [] });
     expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
@@ -618,6 +622,16 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     }) })] });
     expect(JSON.stringify(server.entries[0])).toContain('keep-future-registration');
     expect(JSON.stringify(server.entries[0])).toContain('fixed_event_registration');
+    // Full requests remain in the persistent outbox; diagnostics retain bounded evidence with explicit truncation.
+    const storedInterpreter = server.entries[0].aiInterpreter as typeof entry.aiInterpreter;
+    const storedPrompt = storedInterpreter.input.requests[0].messages[0].content;
+    expect(storedPrompt).toContain('…[trace truncated]');
+    const keptPrefix = storedPrompt.slice(0, storedPrompt.indexOf('…[trace truncated]'));
+    expect(keptPrefix).not.toBe('');
+    expect(providerMessages[0].content.startsWith(keptPrefix)).toBe(true);
+    expect(storedInterpreter.input.requests[0].messages[1]).toEqual(providerMessages[1]);
+    expect(server.entries[0].diagnostics).toMatchObject({ truncation: { applied: true,
+      fields: expect.arrayContaining(['aiInterpreter.input.requests[0].messages[0].content']) } });
     expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
   });
