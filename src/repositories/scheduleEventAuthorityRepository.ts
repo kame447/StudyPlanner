@@ -42,6 +42,7 @@ export interface ScheduleEventAuthorityRepository {
   deletePlanWithDependents(
     mutation: PlanDeleteWithDependentsMutation,
   ): Promise<void>;
+  deletePlanRetainingActuals(mutation: PlanDeleteWithDependentsMutation): Promise<import('../domain/actualProgressSource').PlanActualDetachment>;
   restorePlanWithDependents(
     mutation: PlanRestoreWithDependentsMutation,
   ): Promise<void>;
@@ -165,6 +166,12 @@ export function createScheduleEventBackedPlannerRepository(
         return;
       }
       await legacyRepository.applyRecurringPlanMutation(userId, mutation);
+    },
+    async deletePlanRetainingActuals(mutation) {
+      const mode = await resolveSchedulePersistenceMode(mutation.userId);
+      return mode === 'canonical'
+        ? authorityRepository.deletePlanRetainingActuals(mutation)
+        : legacyRepository.deletePlanRetainingActuals(mutation);
     },
     async deletePlanWithDependents(mutation) {
       const mode = await resolveSchedulePersistenceMode(mutation.userId);

@@ -2,7 +2,7 @@ import { UserFacingError } from '../lib/userFacingError';
 import { prepareStudyMaterialRecord } from '../domain/studyMaterialRecord';
 import { createDuplicatePlanDraft } from '../lib/scheduleItemActions';
 import { getEntryDurationMinutes, isValidPlanEntryTimeRange } from '../lib/entryTimeRange';
-import { prepareActualProgressSource, preserveMonthEventActualSources } from '../domain/actualProgressSource';
+import { prepareActualProgressSource, preserveMonthEventActualSources, type PlanActualDetachment } from '../domain/actualProgressSource';
 import { buildRecurringMonthEventEdit, type MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import { buildDayTimetableTimeEdit, type DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import { buildDayOccurrenceCancellation } from '../domain/dayOccurrenceCancellation';
@@ -300,9 +300,9 @@ export function usePlannerDataState({
   const [scheduleTemplates, setScheduleTemplates, rawSetScheduleTemplates] = useScopedPlannerState<ScheduleTemplate[]>([], mutationScope);
   const [timetableTerms, setTimetableTerms, rawSetTimetableTerms] = useScopedPlannerState<TimetableTerm[]>([], mutationScope);
   const [timetablePeriods, setTimetablePeriods, rawSetTimetablePeriods] = useScopedPlannerState<TimetablePeriod[]>([], mutationScope);
-  const dayMutationData = useRef({ plans, monthEvents, scheduleTemplates, timetableTerms });
-  useLayoutEffect(() => { dayMutationData.current = { plans, monthEvents, scheduleTemplates, timetableTerms }; },
-    [plans, monthEvents, scheduleTemplates, timetableTerms]);
+  const dayMutationData = useRef({ plans, monthEvents, scheduleTemplates, timetableTerms, todos });
+  useLayoutEffect(() => { dayMutationData.current = { plans, monthEvents, scheduleTemplates, timetableTerms, todos }; },
+    [plans, monthEvents, scheduleTemplates, timetableTerms, todos]);
   const pendingDayOccurrenceChanges = useMemo(() => new Set<string>(), [mutationScope]);
   const pendingDaySourceWrites = useMemo(() => new Map<string, number>(), [mutationScope]);
   const uncertainDaySources = useMemo(() => new Map<string, NonNullable<ReturnType<PlannerDataReadAuthority['captureProjectionLease']>>>(), [mutationScope]);
@@ -1061,6 +1061,11 @@ export function usePlannerDataState({
     requireDayOccurrenceProjection();
     if (!userId || occurrence.ownerId !== userId) throw new PlannerMutationScopeExpiredError();
     const cancellation = buildDayOccurrenceCancellation({ ownerId: userId, occurrence, ...dayMutationData.current });
+    // Imported classes remain exceptions to their live timetable, not independent one-off sources.
+    if (cancellation.kind === 'plan' && cancellation.before.repeat === 'none'
+      && cancellation.before.recurrenceRules.length === 0 && cancellation.before.sourceType !== 'timetable') {
+      return withDayOccurrenceSourceWrite(`plan:${cancellation.before.id}`, () => deletePlan(cancellation.before, 'retain'));
+    }
     const keys = cancellation.kind === 'timetable'
       ? cancellation.before.map(row => `timetable-template:${row.id}`)
       : [`${occurrence.source.backingKind}:${occurrence.source.backingId}`];
@@ -1132,7 +1137,7 @@ export function usePlannerDataState({
     } finally { clearPending(); }
   }
 
-  async function deletePlan(plan: Plan) {
+  async function deletePlan(plan: Plan, actualPolicy: 'delete' | 'retain' = 'delete') {
     if (!userId) {
       throw new UserFacingError('ログイン状態を確認できませんでした。');
     }
@@ -1156,7 +1161,8 @@ export function usePlannerDataState({
         }
       }
       const linkedTodo = todoReservation?.todo ?? null;
-      const linkedActuals = actualAdmission.current().filter((actual) => actual.planId === plan.id);
+      let linkedActuals = actualAdmission.current().filter((actual) => actual.planId === plan.id);
+      let detachment: PlanActualDetachment | null = null;
       const nextLinkedTodo = linkedTodo
         ? {
             ...linkedTodo,
@@ -1166,19 +1172,29 @@ export function usePlannerDataState({
           }
         : null;
 
-      const planOperation = planState.begin(current => removeByKey(current, plan.id, item => item.id));
-      const actualOperation = actualState.begin(current => current.filter(actual => actual.planId !== plan.id));
+      // The day-occurrence menu owns no retained optimistic target. Keep it alive until acknowledgement.
+      const planOperation = actualPolicy === 'retain' ? null
+        : planState.begin(current => removeByKey(current, plan.id, item => item.id));
+      const actualOperation = actualPolicy === 'retain' ? null
+        : actualState.begin(current => current.filter(actual => actual.planId !== plan.id));
       const todoOperation = todoState.begin(current => nextLinkedTodo
         ? upsertByKey(current, nextLinkedTodo, todo => todo.id) : current);
       try {
         closePlanEditor();
-        await plannerRepository.deletePlanWithDependents({
-          userId,
-          plan,
-          todo: nextLinkedTodo,
-        });
-        planState.commit(planOperation);
-        actualState.commit(actualOperation);
+        if (actualPolicy === 'retain') {
+          detachment = await plannerRepository.deletePlanRetainingActuals({ userId, plan, todo: nextLinkedTodo });
+          linkedActuals = detachment.beforeActuals;
+          if (acknowledgedProjection && plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)) {
+            if (!plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+              setPlans(current => removeByKey(current, plan.id, item => item.id));
+              setActuals(current => upsertActualsById(current, detachment!.afterActuals));
+            } else reconciliation.request(acknowledgedProjection, ['actual-material', 'plans-todos']);
+          }
+        } else {
+          await plannerRepository.deletePlanWithDependents({ userId, plan, todo: nextLinkedTodo });
+        }
+        if (planOperation) planState.commit(planOperation);
+        if (actualOperation) actualState.commit(actualOperation);
         todoState.commit(todoOperation);
         showDeleteUndoNotice(async () => {
           const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
@@ -1187,6 +1203,15 @@ export function usePlannerDataState({
           if (!mutationScope.isCurrent() || !acknowledgedProjection
             || acknowledgedProjection.ownerId !== userId || plan.userId !== userId) {
             throw new PlannerMutationScopeExpiredError();
+          }
+          if (detachment) {
+            const expectedActuals = detachment.afterActuals;
+            const currentActuals = actualAdmission.current();
+            if (actualAdmission.plans().some(row => row.id === plan.id && row.userId === userId)
+              || expectedActuals.some(row => JSON.stringify(currentActuals.find(current => current.id === row.id && current.userId === userId)) !== JSON.stringify(row))
+              || (nextLinkedTodo && JSON.stringify(dayMutationData.current.todos.find(row => row.id === nextLinkedTodo.id && row.userId === userId)) !== JSON.stringify(nextLinkedTodo))) {
+              throw new UserFacingError('予定または記録が更新されたため復元できません。現在の内容を確認してください。');
+            }
           }
           const releaseRestoreAdmission = admitActualMutation(linkedActuals, [plan.id]);
           const restore = reconciliation.beginPlanRestore();
@@ -1219,8 +1244,8 @@ export function usePlannerDataState({
           }
         });
       } catch (error) {
-        planState.reject(planOperation);
-        actualState.reject(actualOperation);
+        if (planOperation) planState.reject(planOperation);
+        if (actualOperation) actualState.reject(actualOperation);
         todoState.reject(todoOperation);
         const userFacingError = resolveUserFacingError(error, '予定を削除できませんでした。');
         showNotice(userFacingError.message, 'error');
@@ -2510,7 +2535,7 @@ export function usePlannerDataState({
     projectPlanSave: trackMutation(projectPlanSave, ['plans-todos']),
     movePlanOccurrence: trackMutation((plan: Plan, target: WeekPlanMoveTarget) =>
       withDayOccurrenceSourceWrite(`plan:${plan.id}`, () => movePlanOccurrence(plan, target)), ['plans-todos']),
-    deleteDayOccurrence: trackMutation(deleteDayOccurrence, ['timetable', 'plans-todos', 'month-events']),
+    deleteDayOccurrence: trackMutation(deleteDayOccurrence, ['timetable', 'plans-todos', 'month-events', 'actual-material']),
     changeDayTimetableTime: trackMutation(changeDayTimetableTime, ['plans-todos']),
     prepareDayTimetableRecord: trackMutation(prepareDayTimetableRecord, ['plans-todos']),
     deletePlan: trackMutation(deletePlan, ['actual-material', 'plans-todos']),

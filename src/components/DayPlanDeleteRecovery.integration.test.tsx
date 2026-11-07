@@ -8,7 +8,7 @@ import type { Actual, Plan } from '../types/domain';
 const repository = vi.hoisted(() => ({
   getScheduleSnapshot: vi.fn(), getPlans: vi.fn(), getActuals: vi.fn(), getDayNotes: vi.fn(), getMonthEvents: vi.fn(), getTodos: vi.fn(),
   getStudySubjects: vi.fn(), getStudyMaterials: vi.fn(), getScheduleTemplates: vi.fn(), getTimetableTerms: vi.fn(), getTimetablePeriods: vi.fn(),
-  applyTimetableMutation: vi.fn(), deletePlanWithDependents: vi.fn(), applyRecurringPlanMutation: vi.fn(),
+  applyTimetableMutation: vi.fn(), deletePlanWithDependents: vi.fn(), deletePlanRetainingActuals: vi.fn(), applyRecurringPlanMutation: vi.fn(),
   upsertActualWithMaterialProgress: vi.fn(), upsertActual: vi.fn(), deleteActual: vi.fn(),
 }));
 vi.mock('../repositories', () => ({ plannerRepository: repository }));
@@ -20,13 +20,14 @@ const plan: Plan = { id: 'plan-a', seriesId: 'plan-a', userId: 'owner-a', title:
   createdAt: actual.updatedAt, updatedAt: actual.updatedAt };
 let state: UsePlannerDataStateResult; let renderer: ReactTestRenderer | undefined;
 const showNotice = vi.fn(); const noop = () => undefined; const noopAsync = async () => undefined;
-function Harness({ owner = 'owner-a', date = DATE }: { owner?: string; date?: string }) {
+function Harness({ owner = 'owner-a', date = DATE, occurrenceDeletion = false }: { owner?: string; date?: string; occurrenceDeletion?: boolean }) {
   state = usePlannerDataState({ userId: owner, showNotice });
   return <DayView userId={owner} selectedDate={date} plans={state.plans} actuals={state.actuals} monthEvents={[]}
     studySubjects={[]} studyMaterials={[]} scheduleTemplates={[]} timetableTermId="" onChangeDay={noop} onEditPlan={noop}
     onMovePlan={noopAsync} onDeletePlan={state.deletePlan} onDeleteMonthEvent={noopAsync} onSavePlan={noopAsync} onSaveActual={state.saveActual}
     onSaveStandaloneActual={state.saveStandaloneActual} onLinkStandaloneActualToPlan={state.linkStandaloneActualToPlan}
-    onDeleteActual={state.deleteActual} onOpenBookshelf={noop} onOpenAddMaterial={noop} />;
+    onDeleteActual={state.deleteActual} onOpenBookshelf={noop} onOpenAddMaterial={noop}
+    onDeleteOccurrence={occurrenceDeletion ? state.deleteDayOccurrence : undefined} />;
 }
 function deferred<T>() {
   let resolve!: (value: T) => void; let reject!: (reason: Error) => void;
@@ -55,6 +56,8 @@ beforeEach(() => {
   repository.deleteActual.mockReset().mockResolvedValue(undefined);
   repository.applyTimetableMutation.mockReset().mockResolvedValue(undefined);
   repository.deletePlanWithDependents.mockReset().mockResolvedValue(undefined);
+  repository.deletePlanRetainingActuals.mockReset().mockResolvedValue({ beforeActuals: [actual], afterActuals: [{ ...actual,
+    planId: null, isAlignedToPlan: false, progressSource: { kind: 'study', sourceId: plan.id, planType: 'study' } }] });
   repository.applyRecurringPlanMutation.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.unstubAllGlobals(); });
@@ -62,6 +65,39 @@ afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.unstu
 
 function deleteButton() { return renderer!.root.findAllByType('button').find(b => b.findAllByType('strong').some(label => label.children.join('') === '削除'))!; }
 function dialogs() { return renderer!.root.findAllByProps({ role: 'dialog' }); }
+it.each([false, true])('keeps the one-off occurrence menu during save and permits explicit retry (recorded=%s)', async recorded => {
+  const records = recorded ? [actual] : [];
+  const independent = recorded ? [{ ...actual, planId: null, isAlignedToPlan: false,
+    progressSource: { kind: 'study' as const, sourceId: plan.id, planType: 'study' as const } }] : [];
+  repository.getActuals.mockResolvedValue(records);
+  repository.deletePlanRetainingActuals.mockResolvedValue({ beforeActuals: records, afterActuals: independent });
+  await act(async () => { renderer = create(<Harness occurrenceDeletion />); });
+  await act(async () => { await state.loadPlannerData('owner-a'); });
+  await select(plan.id);
+  const pending = deferred<{ beforeActuals: Actual[]; afterActuals: Actual[] }>();
+  repository.deletePlanRetainingActuals.mockReturnValueOnce(pending.promise);
+  const remove = () => renderer!.root.findAllByType('button').find(button =>
+    button.findAllByType('strong').some(label => label.children.join('') === '予定を削除'))!;
+  await act(async () => { remove().props.onClick(); remove().props.onClick(); });
+  try {
+    expect(repository.deletePlanRetainingActuals).toHaveBeenCalledTimes(1);
+    expect(dialogs()).toHaveLength(1);
+    expect(state.actuals).toEqual(records);
+    expect(remove().props.disabled).toBe(true);
+  } finally {
+    await act(async () => { pending.reject(new Error('offline')); });
+  }
+  expect(dialogs()).toHaveLength(1);
+  expect(state.plans).toEqual([plan]);
+  expect(renderer!.root.findByProps({ role: 'alert' }).children.join('')).toContain('もう一度');
+  expect(remove().props.disabled).toBe(false);
+  await act(async () => { remove().props.onClick(); });
+  expect(repository.deletePlanRetainingActuals).toHaveBeenCalledTimes(2);
+  expect(repository.deletePlanWithDependents).not.toHaveBeenCalled();
+  expect(state.plans).toEqual([]);
+  expect(state.actuals).toEqual(independent);
+  expect(dialogs()).toHaveLength(0);
+});
 it.each(['same-day', 'overnight'] as const)('retains a %s deletion menu through failure and retry', async mode => {
   const source = mode === 'overnight' ? { ...plan, date: '2026-08-13', startTime: '23:00', endTime: '01:00' }
     : plan;
