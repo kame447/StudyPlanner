@@ -9,6 +9,9 @@ import { conversationSyncFakeServer, conversationSyncMemoryStore, SYNC_TEST_NOW 
 import { createInMemoryWeeklyPlanningTraceRepository } from '../../trace/weeklyPlanningTraceInMemoryRepository';
 import { setWeeklyPlanningTraceRepositoryForTests } from '../../trace/weeklyPlanningTraceRepository';
 import { resetWeeklyPlanningStableV5TraceRuntimeForTest } from '../../trace/weeklyPlanningStableV5TraceRuntime';
+import { createWeeklyPlanningApprovalMemoryState, createMemoryWeeklyPlanningApprovalPlanRepository } from '../../application/weeklyPlanningApprovalMemoryRepository';
+import { createWeeklyDraftBlocksFromPreviewCandidates } from '../../preview/weeklyPlanningPreviewBlocks';
+import { validateConversationPayload, validateLocalConversationPayload } from '../sync/weeklyPlanningConversationPayload';
 
 const OWNER = 'sync-app-owner', WEEK = '2026-11-02';
 const Harness = forwardRef<WeeklyPlanningApplication, { input: UseWeeklyPlanningApplicationInput; services: WeeklyPlanningVNextLocalApplicationServices }>((props, ref) => {
@@ -57,6 +60,45 @@ afterEach(async () => {
 });
 
 describe('VNext actual application with shared conversation storage', () => {
+  it.each(['not_committed', 'response_lost'] as const)('persists approval recovery locally, withholds it from cloud, and reconciles after reload (%s)', async failure => {
+    const a = device();
+    const memory = createWeeklyPlanningApprovalMemoryState();
+    const repository = createMemoryWeeklyPlanningApprovalPlanRepository(memory);
+    const save = vi.fn(repository.saveApprovedPlan).mockImplementationOnce(async draft => {
+      if (failure === 'response_lost') await repository.saveApprovedPlan(draft);
+      throw new Error('synthetic approval response unavailable');
+    });
+    a.input.saveWeeklyApprovedPlan = save;
+    a.input.completeWeeklyApprovalOperation = repository.completeOperation;
+    const ref = await mount(a);
+    await act(async () => { await ref.current!.submitTurn('数学60分の計画'); });
+    await act(async () => { ref.current!.createDraftBlocks(createWeeklyDraftBlocksFromPreviewCandidates({
+      candidates: ref.current!.state.previewCandidates!, userId: OWNER, createdAt: SYNC_TEST_NOW })); });
+    await act(async () => { await ref.current!.conversationSync!.enable(); }); await waitSynced(ref);
+    expect(ref.current!.pendingDraftBlocks).toHaveLength(1);
+    const writes = a.server.writes;
+    await act(async () => { await expect(ref.current!.approveDraftBlocks()).rejects.toThrow(); });
+    const recovery = ref.current!.state.approvalRecovery;
+    expect(recovery).toBeDefined(); expect(memory.metrics.planWrites).toBe(failure === 'response_lost' ? 1 : 0);
+    const row = (await a.local.listOwner(OWNER))[0];
+    expect(JSON.parse(row.working!.ui).payload.state.approvalRecovery).toEqual(recovery);
+    expect(validateLocalConversationPayload(row.scope, row.working!)).toBe(true);
+    expect(validateConversationPayload(row.scope, row.working!)).toBe(false);
+    expect(a.server.writes).toBe(writes);
+    expect(JSON.parse(row.confirmed!.payload!.ui).payload.state.approvalRecovery).toBeUndefined();
+    const reloaded = await mount(a);
+    expect(reloaded.current!.state.approvalRecovery).toEqual(recovery);
+    await act(async () => { await reloaded.current!.approveDraftBlocks(); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[0][0].sourceId).toEqual(expect.any(String));
+    expect(save.mock.calls[1][0].sourceId).toBe(save.mock.calls[0][0].sourceId);
+    expect(memory.metrics.planWrites).toBe(1); expect(memory.plans.size).toBe(1);
+    expect(reloaded.current!.state.approvalRecovery).toBeUndefined();
+    const completed = (await a.local.listOwner(OWNER))[0];
+    expect(JSON.parse(completed.working!.ui).payload.state.approvalRecovery).toBeUndefined();
+    expect(validateConversationPayload(completed.scope, completed.working!)).toBe(true);
+    await waitSynced(reloaded);
+  });
   it('requires explicit sync consent, migrates a real turn, and restores the same facts/preview on another device', async () => {
     const a = device(); const first = await mount(a);
     expect(first.current!.conversationSync?.status).toBe('disabled');
