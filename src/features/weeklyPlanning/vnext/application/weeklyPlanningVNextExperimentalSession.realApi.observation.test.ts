@@ -273,7 +273,9 @@ async function observeMemoryTurn(ports: WeeklyPlanningVNextExperimentalPorts, id
       tasks: filterActiveWeeklyPlanningFactsV5(graph, graph.tasks).length,
       workloads: filterActiveWeeklyPlanningFactsV5(graph, graph.workloads).map(work => [work.amount, work.unitCode]).sort(),
       efforts: filterActiveWeeklyPlanningFactsV5(graph, graph.effortEstimates).map(effort => [effort.minutes, effort.kind]).sort(),
-      temporal: filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints).length } : null,
+      // Soft preferences ("今週は") are optional readings the model may or may not emit; they are recorded, not compared.
+      temporalHard: filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints).filter(constraint => constraint.constraintLevel === 'hard').length,
+      temporalSoft: filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints).filter(constraint => constraint.constraintLevel !== 'hard').length } : null,
     previewShown: turn.preview !== null, saves: harness.saved.size, approvals: harness.slots.has('ledger') ? 1 : 0 };
 }
 
@@ -291,9 +293,12 @@ function expectMemoryIsBackgroundOnly(withMemory: Awaited<ReturnType<typeof obse
   // And it adds no quantity, time or effort: what the turn stated alone is what stays, with or without the background.
   expect(withMemory.facts?.workloads).toEqual(control.facts?.workloads);
   expect(withMemory.facts?.efforts).toEqual(control.facts?.efforts);
-  expect(withMemory.facts?.temporal).toBe(control.facts?.temporal);
+  // Hard constraints are facts the words state: identical with and without the background. A soft preference may differ by
+  // the model's own variation, but the background must never add one.
+  expect(withMemory.facts?.temporalHard).toBe(control.facts?.temporalHard);
+  expect(withMemory.facts?.temporalSoft ?? 0).toBeLessThanOrEqual(control.facts?.temporalSoft ?? 0);
   if (!scenario.mayCreateWork) {
-    expect(withMemory.facts).toEqual({ tasks: 0, workloads: [], efforts: [], temporal: 0 });
+    expect(withMemory.facts).toEqual({ tasks: 0, workloads: [], efforts: [], temporalHard: 0, temporalSoft: 0 });
     expect(withMemory.previewShown).toBe(false);
   }
 }
@@ -352,7 +357,7 @@ describe('#294 memory observation oracle (scripted model, no API)', () => {
   it('keeps a task named only by the memory out of the state through the existing label evidence', async () => {
     // The title 数学 is in the memory but not in the user\'s words, so the session rejects it before it becomes a fact.
     const [withMemory, control] = await run2(memoryPresent => reading(memoryPresent ? memoryTask('数学') : []));
-    expect(withMemory.facts).toEqual({ tasks: 0, workloads: [], efforts: [], temporal: 0 });
+    expect(withMemory.facts).toEqual({ tasks: 0, workloads: [], efforts: [], temporalHard: 0, temporalSoft: 0 });
     expect(() => expectMemoryIsBackgroundOnly(withMemory, control, scenario)).not.toThrow();
   });
 
@@ -365,4 +370,42 @@ describe('#294 memory observation oracle (scripted model, no API)', () => {
     expect(() => expectMemoryIsBackgroundOnly(withMemory, control, scenario)).toThrow();
   });
 
+  describe('temporal constraints (soft preferences vary with the model; hard ones are stated facts)', () => {
+    const referenceCase = MEMORY_CASES[0];
+    const base = [{ kind: 'task', localId: 't', category: 'study', title: '志望校の過去問' },
+      { kind: 'workload', localId: 'w', taskRef: { localId: 't' }, componentRef: null, quantityRole: 'remaining', amount: 5, unitCode: 'custom',
+        unitLabel: '年分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null }];
+    const window = (level: 'hard' | 'soft') => ({ kind: 'temporal_constraint', localId: 'c', taskRef: { localId: 't' }, targetRef: { localId: 't' },
+      constraintKind: level === 'hard' ? 'deadline' : 'preferred_window', constraintLevel: level, dateExpression: 'this_week', namedTimePeriod: null,
+      startTime: null, endTime: null, precision: 'exact' });
+    const observe = async (respond: (memoryPresent: boolean) => unknown[]) => {
+      const control = scripted(memoryPresent => reading(respond(memoryPresent))); const withMemory = scripted(memoryPresent => reading(respond(memoryPresent)));
+      return [await observeMemoryTurn(withMemory.ports, referenceCase.id, referenceCase.text, referenceCase.records, withMemory),
+        await observeMemoryTurn(control.ports, `${referenceCase.id}-control`, referenceCase.text, null, control)] as const;
+    };
+
+    it('accepts the recorded rep-2 shape: only the control emitted a soft preferred_window', async () => {
+      const [withMemory, control] = await observe(memoryPresent => memoryPresent ? base : [...base, window('soft')]);
+      expect(control.facts).toMatchObject({ temporalSoft: 1, temporalHard: 0 });
+      expect(withMemory.facts).toMatchObject({ temporalSoft: 0, temporalHard: 0 });
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, referenceCase)).not.toThrow();
+    });
+
+    it('accepts the same soft preference with and without the memory', async () => {
+      const [withMemory, control] = await observe(() => [...base, window('soft')]);
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, referenceCase)).not.toThrow();
+    });
+
+    it('fails when only the memory run has a soft preference the control did not state', async () => {
+      const [withMemory, control] = await observe(memoryPresent => memoryPresent ? [...base, window('soft')] : base);
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, referenceCase)).toThrow();
+    });
+
+    it('fails when the memory run has a hard constraint the control did not, or lacks one the control had', async () => {
+      const [added, control] = await observe(memoryPresent => memoryPresent ? [...base, window('hard')] : base);
+      expect(() => expectMemoryIsBackgroundOnly(added, control, referenceCase)).toThrow();
+      const [missing, stated] = await observe(memoryPresent => memoryPresent ? base : [...base, window('hard')]);
+      expect(() => expectMemoryIsBackgroundOnly(missing, stated, referenceCase)).toThrow();
+    });
+  });
 });
