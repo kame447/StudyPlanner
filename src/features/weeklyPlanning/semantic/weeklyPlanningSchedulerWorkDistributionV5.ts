@@ -52,7 +52,7 @@ export interface WeeklyPlanningSchedulerDistributionGraphViewV5 {
 
 /** Scoped accepted session size, separate from the effort needed for the whole workload. */
 export function resolveWeeklyPlanningWorkItemSessionDurationV5(params: {
-  item: GenericPlanningWorkItem;
+  item: Pick<GenericPlanningWorkItem, 'taskId' | 'componentId' | 'workloadFactId'>;
   estimates: readonly EffortEstimateFact[];
 }): { minutes: number | null; sourceFactIds: string[]; ambiguous: boolean } {
   const matching = params.estimates.filter((estimate) =>

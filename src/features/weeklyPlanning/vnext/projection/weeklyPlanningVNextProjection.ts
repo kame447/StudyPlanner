@@ -10,7 +10,8 @@
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
 import { evaluateVNextLearningStrategy } from '../weeklyPlanningVNextLearningStrategy';
 import { WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5 } from '../../intake/weeklyPlanningProvisionalTimeboxStateV5';
-import { weeklyPlanningTemporalConstraintAppliesToTargetV5, type WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
+import { weeklyPlanningTemporalConstraintAppliesToTargetV5, resolveWeeklyPlanningWorkItemSessionDurationV5,
+  type WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
 import type {
   VNextEffortEstimateFact,
   VNextEstimateBasis,
@@ -550,10 +551,15 @@ export function projectWeeklyPlanningVNext(
     const spaced = records.find(record => record.id === learning.acceptedSpacedProposal?.id);
     if (spaced) {
       const id = resolver.leafOf(spaced.workloadFactId)!;
-      const sessions = context.efforts.filter(effort => effort.kind === 'session_duration'
-        && resolver.lineageOf(effort.targetFactId) === resolver.lineageOf(id) && effort.minutes > 0);
-      if (sessions.length === 0) {
-        const workload = graph.workloads.find(fact => fact.id === id)!;
+      const workload = graph.workloads.find(fact => fact.id === id)!;
+      // Questions and placement share scope precedence; a stated owner duration is not missing.
+      const session = resolveWeeklyPlanningWorkItemSessionDurationV5({
+        item: { workloadFactId: resolver.lineageOf(id), taskId: resolver.lineageOf(workload.taskId),
+          componentId: workload.componentId === null ? null : resolver.lineageOf(workload.componentId) },
+        estimates: context.efforts.map(effort => ({ ...effort, taskId: resolver.lineageOf(effort.taskId),
+          targetFactId: resolver.lineageOf(effort.targetFactId) })),
+      });
+      if (session.minutes === null) {
         owner.status = 'question'; owner.work = [];
         owner.question = { code: 'missing_effort_estimate', key: `memory_session_duration:${spaced.id}`,
           ownerKey: owner.ownerKey, taskId: owner.taskId, componentId: owner.componentId,

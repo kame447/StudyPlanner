@@ -1,4 +1,5 @@
 import { workloadUnitDisplayV5 } from './weeklyPlanningWorkloadQuantityLabelV5';
+import { resolveWeeklyPlanningWorkItemSessionDurationV5 } from './weeklyPlanningSchedulerWorkDistributionV5';
 import type { WeeklyPlanningLearningStrategyProposalRecord } from '../intake/weeklyPlanningIntakeTypes';
 import type {
   GenericSchedulerInputCompilationResult,
@@ -172,22 +173,18 @@ export function applyAcceptedMemorySessionProjectionV5(params: {
   ) return params.compilation;
 
   const workloadFactId = params.acceptedSpacedProposal.workloadFactId;
-  const sessionEfforts = params.graph.effortEstimates.filter((estimate) =>
-    estimate.targetFactId === workloadFactId
-    && estimate.kind === 'session_duration'
-    && Number.isFinite(estimate.minutes)
-    && estimate.minutes > 0);
-  if (sessionEfforts.length !== 1) return params.compilation;
-
   const matchingItems = params.compilation.input.movableWorkItems.filter(
     (item) => item.workloadFactId === workloadFactId,
   );
   const aggregate = aggregateDistributedItems(matchingItems);
   if (!aggregate) return params.compilation;
+  // Use the same inherited session policy that admitted this work to placement.
+  const session = resolveWeeklyPlanningWorkItemSessionDurationV5({ item: aggregate, estimates: params.graph.effortEstimates });
+  if (session.minutes === null) return params.compilation;
   const sessions = sessionizeItem({
     graph: params.graph,
     item: aggregate,
-    sessionMinutes: sessionEfforts[0].minutes,
+    sessionMinutes: session.minutes,
   });
 
   const firstIndex = params.compilation.input.movableWorkItems.findIndex(
