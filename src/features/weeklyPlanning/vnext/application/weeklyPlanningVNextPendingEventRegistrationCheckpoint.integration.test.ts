@@ -35,7 +35,7 @@ const optionalFields = {
   pendingStudyRecordQuestion: { reason: 'missing_minutes', label: '数学' },
 } satisfies Partial<WeeklyPlanningVNextSessionCheckpoint['vnext']>;
 
-describe('pending fixed-event registration checkpoint expansion (reader only)', () => {
+describe('pending fixed-event registration checkpoint compatibility', () => {
   it.each([
     {},
     { failureRecovery: optionalFields.failureRecovery },
@@ -56,8 +56,9 @@ describe('pending fixed-event registration checkpoint expansion (reader only)', 
     const parsed = parseWeeklyPlanningVNextSessionCheckpoint({ raw: JSON.stringify(future), ...scope });
     expect(parsed?.vnext.state.pendingEventRegistrationTargetIds).toEqual(expectedTargets);
     expect(parsed?.vnext).toMatchObject(fields);
-    // Acceptance neither changes question selection nor supplies preview/save permission in PR1.
-    expect(projectWeeklyPlanningVNext(parsed!.vnext.state)).toEqual(projectWeeklyPlanningVNext(base.vnext.state));
+    // After reader expansion, the consumer asks the task's clocks without granting plan permission.
+    expect(projectWeeklyPlanningVNext(parsed!.vnext.state).questions[0]).toMatchObject({
+      code: 'invalid_commitment_interval', taskId: expectedTargets[0] });
     expect(parsed!.vnext.state.draftGenerationIntent).toBe('not_requested');
     expect(parsed!.vnext.preview).toBeNull();
     const restoredRaw = serializeWeeklyPlanningVNextSessionCheckpoint(parsed!);
