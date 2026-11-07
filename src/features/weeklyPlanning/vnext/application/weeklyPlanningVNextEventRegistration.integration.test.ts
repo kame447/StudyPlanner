@@ -74,6 +74,62 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>, fa
 }
 
 describe('VNext native fixed-event registration through the unchanged V5 projection and approval', () => {
+  it('retains one requested event through unknown answers, reload and another question, then consumes only its captured preview', async () => {
+    const conference: VNextAddFact[] = [
+      { kind: 'task', localId: 'conference', title: 'カンファレンス', category: 'non_study' },
+      { kind: 'task_date_rule', localId: 'conference-date', taskRef: { localId: 'conference' }, targetRef: { localId: 'conference' },
+        ruleKind: 'allowed_date', dateExpression: '2026-11-03', constraintLevel: 'hard' },
+    ];
+    const h = harness([
+      wire([...conference, { kind: 'task', localId: 'math', title: '数学', category: 'study' }], [request({ localId: 'conference' })]),
+      wire(),
+      (context: Context) => { const id = context.activeFacts.tasks.find(task => task.title === 'カンファレンス')!.id;
+        return wire([{ kind: 'temporal_constraint', localId: 'conference-time', taskRef: { factId: id }, targetRef: { factId: id },
+          constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+          startTime: '14:00', endTime: '15:00', precision: 'exact' }]); },
+      (context: Context) => { const id = context.activeFacts.tasks.find(task => task.title === '数学')!.id;
+        return wire([{ ...work.find(fact => fact.kind === 'workload')!, taskRef: { factId: id } }]); },
+      wire(event('later-busy')),
+    ]);
+    const first = await h.turn('明日のカンファレンスを登録して。数学もやりたいです');
+    const targetId = h.state().graph.tasks.find(task => task.title === 'カンファレンス')!.id;
+    expect(first.question).toMatchObject({ code: 'invalid_commitment_interval', taskId: targetId });
+    expect(h.state().pendingEventRegistrationTargetIds).toEqual([targetId]);
+    const unknown = await h.turn('まだ時刻は分かりません');
+    expect(unknown.question?.key).toBe(first.question!.key);
+    const reloaded = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: h.memory.storage });
+    expect(reloaded.readCheckpoint()!.vnext.state.pendingEventRegistrationTargetIds).toEqual([targetId]);
+    expect(reloaded.readCheckpoint()!.vnext.preview).toBeNull();
+    const timed = await h.turn('カンファレンスは14時から15時です');
+    expect(timed.question).toMatchObject({ code: 'missing_schedulable_work', taskId: h.state().graph.tasks.find(task => task.title === '数学')!.id });
+    expect(timed.preview).toBeNull();
+    expect(h.state().pendingEventRegistrationTargetIds).toEqual([targetId]);
+    expect(h.saves()).toBe(0);
+    const ready = await h.turn('数学は60分やります');
+    expect(ready.draftCandidates?.map(candidate => [candidate.title, candidate.date, candidate.startTime, candidate.endTime]))
+      .toEqual([['カンファレンス', '2026-11-03', '14:00', '15:00']]);
+    expect(h.state()).not.toHaveProperty('pendingEventRegistrationTargetIds');
+    expect(h.state().draftGenerationIntent).toBe('not_requested');
+    expect(h.saves()).toBe(0);
+    expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
+    expect(h.saves()).toBe(1);
+    const later = await h.turn('別の固定予定も分かりました');
+    expect(later.preview).toBeNull();
+    expect(later.draftCandidates?.filter(candidate => candidate.source === 'fixed_event_registration') ?? []).toEqual([]);
+    await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports });
+    expect(h.saves()).toBe(1);
+  });
+
+  it.each([true, false])('keeps null registration limited to tasks stated in its own turn (sameTurn=%s)', async sameTurn => {
+    const task: VNextAddFact = { kind: 'task', localId: 'conference', title: 'カンファレンス', category: 'non_study' };
+    const h = harness(sameTurn ? [wire([task], [request()])] : [wire([task]), wire([], [request()])]);
+    let result = await h.turn('カンファレンスがあります');
+    if (!sameTurn) result = await h.turn('今回の予定を登録して');
+    expect(result.question?.code).toBe(sameTurn ? 'invalid_commitment_interval' : 'missing_schedulable_work');
+    expect(h.state().pendingEventRegistrationTargetIds ?? []).toEqual(sameTurn ? [h.state().graph.tasks[0].id] : []);
+    expect(result.preview).toBeNull(); expect(h.saves()).toBe(0);
+  });
+
   it.each([false, true])('asks for fixed clock bounds only when the timeless task is requested as a registration (requested=%s)', async requested => {
     const task: VNextAddFact = { kind: 'task', localId: 'conference', title: 'カンファレンス', category: 'non_study' };
     const date: VNextAddFact = { kind: 'task_date_rule', localId: 'conference-date',

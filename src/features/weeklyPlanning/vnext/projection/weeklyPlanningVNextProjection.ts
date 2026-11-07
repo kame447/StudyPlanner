@@ -465,17 +465,32 @@ export function projectWeeklyPlanningVNext(
       .filter((deferral) => deferral.allocation === 'provisional_timebox').map((deferral) => deferral.questionKey)),
   };
 
-  // Settle which work is scheduled first, so scope-wide totals see the final work set.
-  const resolved = computeVNextWorkUnits(graph, state.workRelations).map((owner) => ({ owner, resolution: resolveOwnerWork(context, owner) }));
+  const tasks = filterActiveWeeklyPlanningFactsV5(graph, graph.tasks);
+  const activeBounds = filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints);
+  const pendingClockTasks = new Set((state.pendingEventRegistrationTargetIds ?? []).map(id => resolver.leafOf(id))
+    .filter((id): id is string => id !== null && tasks.some(task => task.id === id)
+      && !activeBounds.some(bound => bound.kind === 'fixed_interval' && bound.constraintLevel === 'hard'
+        && resolver.leafOf(bound.taskId) === id)));
+  // Requested fixed events cannot turn into movable work while their clocks are unknown.
+  // Facts remain intact; the existing V5 question intent asks for the missing start/end pair.
+  const resolved = computeVNextWorkUnits(graph, state.workRelations)
+    .filter(owner => !pendingClockTasks.has(resolver.leafOf(owner.taskId) ?? owner.taskId))
+    .map((owner) => ({ owner, resolution: resolveOwnerWork(context, owner) }));
   const allScheduled = resolved.flatMap(({ resolution }) => ('scheduled' in resolution ? resolution.scheduled : []));
   const owners = resolved.map(({ owner, resolution }) => ('projection' in resolution
     ? resolution.projection
     : estimateOwnerWork(context, owner, resolution.scheduled, allScheduled)));
 
-  const tasks = filterActiveWeeklyPlanningFactsV5(graph, graph.tasks);
-  const activeBounds = filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints);
   for (const task of tasks) {
     const taskLineage = resolver.lineageOf(task.id);
+    if (pendingClockTasks.has(task.id)) {
+      const ownerKey = resolver.ownerKeyOf({ taskId: task.id, componentId: null });
+      owners.push({ ownerKey, taskId: task.id, componentId: null, status: 'question', work: [],
+        question: { code: 'invalid_commitment_interval',
+          key: questionKey({ code: 'invalid_commitment_interval', ownerKey, lineageIds: [taskLineage], values: [] }),
+          ownerKey, taskId: task.id, componentId: null, subjectLineageIds: [taskLineage], forWork: null, options: [] } });
+      continue;
+    }
     if (activeWorkloads.some((workload) => resolver.lineageOf(workload.taskId) === taskLineage)) continue;
     const totals = context.efforts.filter((effort) => effort.kind === 'total_duration'
       && resolver.lineageOf(effort.taskId) === taskLineage && resolver.lineageOf(effort.targetFactId) === taskLineage);

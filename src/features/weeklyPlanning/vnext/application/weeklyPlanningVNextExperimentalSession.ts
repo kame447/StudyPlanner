@@ -16,6 +16,7 @@ import {
 } from '../../preview/weeklyPlanningPreviewBlocksCore';
 import type { WeeklyPlanDraftBlock } from '../../types';
 import type { WeeklyDraftCandidate } from '../../scheduling/weeklyDraftCandidateGenerator';
+import type { WeeklyPlanningStableV5PreviewProvenance } from '../../weeklyPlanningPreviewProvenance';
 import { projectWeeklyPlanningVNext, vnextQuestionKeyAllowsProvisionalTimebox,
   type WeeklyPlanningVNextObservedMemoryPace } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
@@ -245,16 +246,21 @@ function shownPreview(
   // EventRegistration integration prevent registration from becoming work or granting study consent.
   const resolver = createVNextLineageResolver(state.graph);
   const currentGraph = withCurrentVNextReferences(state.graph, id => resolver.leafOf(id) ?? id);
+  const requestedActs: SemanticConversationActV5[] = [...registrationActs,
+    ...(state.pendingEventRegistrationTargetIds ?? []).flatMap(id => {
+      const targetPublicId = resolver.leafOf(id);
+      return targetPublicId ? [{ kind: 'request_event_registration' as const, targetPublicId }] : [];
+    })];
   const registration = projectWeeklyPlanningFixedEventRegistration({
     graph: currentGraph,
-    compilation: compiled.compilation, registrationActs, currentTurnId,
+    compilation: compiled.compilation, registrationActs: requestedActs, currentTurnId,
   });
   // V5 owns invitation closure and manual-entry guidance. Registration/omission has priority;
   // the compilation guards required questions and movable work before an optional invitation.
   const handoff = registration.candidates.length || registration.unregistered.length ? null : fixedEventOnlyInteractionStatus({
     graph: currentGraph, compilation: compiled.compilation, semanticChanged, previousQuestionSlot,
     declinedAdditionalWork, previousOptionalInvitationClosed: state.optionalInvitationClosed,
-    requestedEventRegistration: registrationActs.some(act => act.kind === 'request_event_registration'),
+    requestedEventRegistration: requestedActs.some(act => act.kind === 'request_event_registration'),
   });
   // V5 ResponseRouting:239 uses this pure dialogue decision after registration/closure routing.
   // V5 owns both eligibility and wording; a required task question never becomes optional here.
@@ -576,7 +582,20 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     : made;
   // Mirrors V5 CompatibilityState's needs_scope/no-question closure at the application layer,
   // like draftGenerationIntent: one state, one checkpoint commit, no mutation on a rejected turn.
-  if (accepted) state = { ...state, optionalInvitationClosed: !question && !preview };
+  if (accepted) {
+    state = { ...state, optionalInvitationClosed: !question && !preview };
+    // Consume a retained request only with its actual preview in this same checkpoint commit.
+    // A time answer may still leave other questions; keeping it until capture prevents loss,
+    // while clearing captured targets prevents a later revision from re-registering the event.
+    if (preview && state.pendingEventRegistrationTargetIds && 'draftCandidates' in made) {
+      const captured = new Set(made.draftCandidates?.filter(candidate => candidate.source === 'fixed_event_registration')
+        .map(candidate => (candidate as WeeklyDraftCandidate & { stableV5Metadata?: WeeklyPlanningStableV5PreviewProvenance }).stableV5Metadata?.taskId));
+      const { leafOf } = createVNextLineageResolver(state.graph);
+      const pending = state.pendingEventRegistrationTargetIds.filter(id => !captured.has(leafOf(id) ?? id));
+      if (pending.length) state.pendingEventRegistrationTargetIds = pending;
+      else delete state.pendingEventRegistrationTargetIds;
+    }
+  }
   const previousStreak = read.checkpoint.unansweredQuestionStreak;
   const matchingStreak = question !== null && previousStreak?.questionKey === question.key
     && previousStreak.graphRevision === projection.graphRevision ? previousStreak : undefined;
