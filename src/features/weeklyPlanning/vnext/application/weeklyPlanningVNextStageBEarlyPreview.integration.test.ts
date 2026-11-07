@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStorageHarness } from '../../testUtils/weeklyPlanningApplicationTestHarness';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
+import { createWeeklyPlanningVNextFocusedInterpreter } from './weeklyPlanningVNextFocusedInterpreter';
 import type { VNextAddFact, VNextPlanningIntent, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { submitWeeklyPlanningVNextExperimentalTurn } from './weeklyPlanningVNextExperimentalSession';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
@@ -22,12 +23,14 @@ const wire = (planningIntent: VNextPlanningIntent, delta: Partial<VNextTurnDelta
 });
 type Context = { userText: string; openQuestions: { key: string }[]; presentedQuestion: { key: string } | null };
 
-function harness(responses: Array<unknown | ((context: Context) => unknown)>) {
+function harness(responses: Array<unknown | ((context: Context) => unknown)>, useFocused = false) {
   const memory = createMemoryStorageHarness();
   const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: memory.storage });
   const saveBlock = vi.fn(async () => { throw new Error('no save before explicit preview approval'); });
   const approvalWrite = vi.fn(() => { throw new Error('no preview approval in this characterization'); });
   let sequence = 0;
+  const requests: string[] = [];
+  const native = createWeeklyPlanningVNextProviderInterpreter();
   const turn = (userText: string) => submitWeeklyPlanningVNextExperimentalTurn({
     userText, turnId: `turn-${++sequence}`,
     shownRevision: local.readCheckpoint()?.vnext.presentedQuestion?.graphRevision ?? null,
@@ -36,8 +39,9 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>) {
         planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } },
     ports: {
       checkpoint: local.checkpoint, legacyV5Checkpoint: local.legacyV5Checkpoint,
-      interpret: createWeeklyPlanningVNextProviderInterpreter(),
+      interpret: useFocused ? createWeeklyPlanningVNextFocusedInterpreter({ fullReading: native }) : native,
       client: { async createChatCompletion(request) {
+        requests.push(request.responseFormat!.json_schema.name);
         const context = JSON.parse(request.messages[1].content) as Context;
         if (!responses.length) throw new Error('synthetic response script exhausted');
         const response = responses.shift();
@@ -56,10 +60,37 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>) {
     expect(saveBlock).not.toHaveBeenCalled();
     expect(approvalWrite).not.toHaveBeenCalled();
   };
-  return { turn, local, assertUnsaved };
+  return { turn, local, assertUnsaved, requests };
 }
 
 describe('Stage B: early preview after an independent explicit request (synthetic provider)', () => {
+  it.each([
+    { id: 'answer-only', text: '全部で40分です', extra: false },
+    { id: 'answer-plus-request', text: '全部で40分です。この条件で今週の予定案を作って', extra: true },
+    { id: 'answer-negated-request', text: '全部で40分です。予定案はまだ作らないで', extra: false },
+    { id: 'answer-withdrawn-request', text: '全部で40分です。予定案を作って。やっぱり依頼は取り消します', extra: false },
+  ])('#1005 focused/native minimal pair: $id', async ({ text, extra }) => {
+    const h = harness([wire('discuss', { add: MATH }),
+      { decision: 'effort_answer', hasAdditionalRequest: extra, effortTarget: 'question_target', effortMeasurement: 'total_duration',
+        minutes: 40, precision: 'exact', quantityRole: null },
+      ...(extra ? [(context: Context) => ({ ...wire('create_plan', {},
+        { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' }),
+        planningRequestEvidence: { quote: 'この条件で今週の予定案を作って', questionKey: context.presentedQuestion!.key } })] : []),
+    ], true);
+    expect((await h.turn('数学プリントは残り8枚です')).question?.code).toBe('missing_effort_estimate');
+    const result = await h.turn(text);
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'ready', question: null });
+    expect(result.preview !== null).toBe(extra);
+    expect(result.interpretation).toMatchObject({ metrics: { calls: extra ? 2 : 1, repairs: 0 } });
+    expect(h.requests.slice(1)).toEqual(['weekly_planning_focused_contextual_answer_v5',
+      ...(extra ? ['weekly_planning_vnext_native_v1'] : [])]);
+    const checkpoint = h.local.readCheckpoint()!.vnext;
+    expect(checkpoint.state.graph.effortEstimates).toEqual([expect.objectContaining({ minutes: 40 })]);
+    expect(checkpoint.state.draftGenerationIntent).toBe(extra ? 'user_authorized' : 'not_requested');
+    expect(JSON.stringify(checkpoint)).not.toContain('hasAdditionalRequest');
+    h.assertUnsaved();
+  });
+
   it('control: an explicit request with complete work produces an unsaved preview', async () => {
     const h = harness([wire('create_plan', { add: ENGLISH })]);
     const result = await h.turn('英語を60分、この条件で今週の予定案を作って');

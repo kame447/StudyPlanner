@@ -64,11 +64,16 @@ run('#1005 answer and independent request through real focused/native interpreta
       const first = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'facts', userText: '数学プリントは残り8枚です', shownRevision: null });
       artifact.first = first;
       expect(first.question?.code).toBe('missing_effort_estimate');
+      const beforeAnswer = receipts.length;
       const result = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: 'answer', userText: text, shownRevision: first.graphRevision });
       artifact.result = result;
       const checkpoint = raw ? JSON.parse(raw) : null;
       artifact.checkpoint = checkpoint;
+      const [focused] = receipts.slice(beforeAnswer);
+      expect(focused.request).toMatchObject({ responseFormat: { json_schema: { name: 'weekly_planning_focused_contextual_answer_v5' } } });
+      expect(JSON.parse(focused.response ?? '{}')).toMatchObject({ hasAdditionalRequest: preview });
       expect(result.interpretation?.status).toBe('interpreted');
+      expect(result.interpretation?.metrics).toMatchObject({ calls: preview ? 2 : 1, repairs: 0 });
       expect(result.question).toBeNull();
       expect(result.preview !== null).toBe(preview);
       expect(checkpoint.vnext.state.graph.effortEstimates).toEqual([expect.objectContaining({ minutes: 40 })]);

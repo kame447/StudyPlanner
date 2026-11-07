@@ -23,6 +23,7 @@ import { createInitialPlanningIntakeState, createWeeklyPlanningStableV5DialogueR
 import type { WeeklyPlanningVNextInterpretation, WeeklyPlanningVNextInterpreter } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextAddFact, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
+import { createWeeklyPlanningVNextFocusedInterpreter } from './weeklyPlanningVNextFocusedInterpreter';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
 import { buildWeeklyPlanningVNextTurnPayload, createWeeklyPlanningVNextRuntimeGateway } from './weeklyPlanningVNextRuntimeGateway';
 import { createWeeklyPlanningTurnRequestContext } from '../../application/weeklyPlanningTemporalContext';
@@ -174,9 +175,12 @@ describe('VNext session → gateway → existing controller and trace owner', ()
 
   it.each([false, true])('#1005 persists answer-plus-request evidence through outbox reload and Worker (large=%s)', async large => {
     const quote = 'この条件で今週の予定案を作って';
+    const focused = { decision: 'effort_answer', hasAdditionalRequest: true, effortTarget: 'question_target',
+      effortMeasurement: 'total_duration', minutes: 40, precision: 'exact', quantityRole: null };
     let wire: unknown;
-    const h = harness({ nativeReadings: [
+    const h = harness({ interpret: createWeeklyPlanningVNextFocusedInterpreter({ fullReading: createWeeklyPlanningVNextProviderInterpreter() }), nativeReadings: [
       { planningIntent: 'discuss', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 8)] }, answer: null },
+      focused,
       (request: { messages: { content: string }[] }) => {
         const context = JSON.parse(request.messages[1].content);
         wire = { planningIntent: 'create_plan', conversationActs: [], delta: EMPTY,
@@ -198,7 +202,8 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(await h.submit(`全部で40分です。${quote}`)).toMatchObject({ accepted: true,
       draftCandidates: [expect.objectContaining({ approvalStatus: 'unapproved' })] });
     const result = h.results[1];
-    const sent = h.requests[1] as { messages: { role: string; content: string }[] };
+    const sent = h.requests[1] as { messages: { role: string; content: string }[]; responseFormat: { json_schema: { schema: { required: string[] } } } };
+    expect(sent.responseFormat.json_schema.schema.required).toContain('hasAdditionalRequest');
     expect(result.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
       request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
     const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
@@ -213,7 +218,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     const entry = write.entries[0];
     if (entry.kind !== 'turn_diagnostic') throw new Error('missing planning request diagnostic');
     expect(entry.diagnostics.outcome).toBe('preview_ready');
-    expect(entry.aiInterpreter.rawResponses[0].text).toBe(JSON.stringify(wire));
+    expect(entry.aiInterpreter.rawResponses.map(response => response.text)).toEqual([JSON.stringify(focused), JSON.stringify(wire)]);
     expect(entry.aiInterpreter.structuredResults[0].structuredResult).toMatchObject({ planningIntent: 'create_plan',
       planningRequestEvidence: { quote, questionKey }, authorizationDecision: { authorized: true } });
     expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
@@ -223,7 +228,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(server.entries).toHaveLength(1);
     expect(server.entries[0].aiInterpreter).toMatchObject({ structuredResults: [expect.objectContaining({
       structuredResult: expect.objectContaining({ planningRequestEvidence: { quote, questionKey } }),
-    })] });
+    })], rawResponses: [expect.objectContaining({ text: JSON.stringify(focused) }), expect.objectContaining({ text: JSON.stringify(wire) })] });
     expect(JSON.stringify(server.entries[0])).toContain('keep-planning-request');
     expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     if (large) {

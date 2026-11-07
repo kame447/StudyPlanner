@@ -22,7 +22,7 @@ const semantic = JSON.stringify({ planningIntent: 'discuss', conversationActs: [
       quantityRole: 'remaining', amount: 7, unitCode: 'page', unitLabel: 'ページ',
       rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
   ], patch: [], remove: [], relate: [], defer: [] } });
-const focused = JSON.stringify({ decision: 'effort_answer', effortTarget: 'question_target',
+const focused = JSON.stringify({ decision: 'effort_answer', hasAdditionalRequest: false, effortTarget: 'question_target',
   effortMeasurement: 'duration_per_unit', minutes: 5, precision: 'approximate', quantityRole: null });
 const env = { OPENAI_API_KEY: 'synthetic-only-key', ALLOWED_CHAT_MODELS: 'gpt-6-luna',
   AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 0 }) }) } } as unknown as AiProxyWorkerEnv;
