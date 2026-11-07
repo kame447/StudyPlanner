@@ -75,9 +75,12 @@ class ExecutionStop extends Error {
   constructor(readonly code: DurableTurnFailure) { super(code); }
 }
 
+/** An application may complete an unsaved consultation after a caught provider failure. */
+export type DurableTurnExecutionResult = string | { kind: 'provider_failure_recovered'; result: string };
+
 export type DurableTurnExecute = (payload: string, dispatch: (
   request: string, send: () => Promise<string>,
-) => Promise<string>, sourceIp?: string, deadlineAt?: number) => Promise<string>;
+) => Promise<string>, sourceIp?: string, deadlineAt?: number) => Promise<DurableTurnExecutionResult>;
 
 const bytes = (value: string) => new TextEncoder().encode(value).byteLength;
 async function fingerprint(value: string): Promise<string> {
@@ -250,7 +253,7 @@ export class DurableTurnJob {
       return latest;
     };
     try {
-      const result = await execute(record.payload!, async (request, send) => {
+      const completion = await execute(record.payload!, async (request, send) => {
         if (stopped) throw new ExecutionStop(stopped);
         const index = step++;
         let digest = '';
@@ -284,7 +287,11 @@ export class DurableTurnJob {
         });
         return response;
       }, record.sourceIp, record.acceptedAt + DURABLE_TURN_LIMITS.executionMs);
-      if (stopped) throw new ExecutionStop(stopped);
+      // Recovery completes the conversation, not the failed provider operation. Dispatch
+      // stays stopped, and uncertain completion/ownership/limits cannot use this result.
+      const recovered = typeof completion !== 'string' && completion.kind === 'provider_failure_recovered';
+      if (stopped && !(stopped === 'provider_failure' && recovered)) throw new ExecutionStop(stopped);
+      const result = typeof completion === 'string' ? completion : completion.result;
       await this.serialized(async () => {
         const latest = await stillCurrent();
         if (step !== latest.journal?.length) throw new ExecutionStop('execution_changed');

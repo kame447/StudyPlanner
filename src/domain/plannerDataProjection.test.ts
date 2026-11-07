@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Actual, Plan } from '../types/domain';
+import type { Plan, TimedActual } from '../types/domain';
 import type { RecurringPlanMutation } from './recurringPlanMutation';
 import {
   applyRecurringActualProjection,
@@ -16,7 +16,7 @@ function plan(id: string, overrides: Partial<Plan> = {}): Plan {
     repeatUntil: null, excludedDates: [], recurrenceRules: [],
     createdAt: timestamp, updatedAt: timestamp, ...overrides };
 }
-function actual(id: string, overrides: Partial<Actual> = {}): Actual {
+function actual(id: string, overrides: Partial<TimedActual> = {}): TimedActual {
   return { id, userId: 'owner', planId: null, occurrenceDate: '2026-10-20',
     actualStartTime: '09:00', actualEndTime: '10:00', title: id, subject: '',
     isAlignedToPlan: false, note: '', updatedAt: timestamp, ...overrides };

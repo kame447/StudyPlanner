@@ -1,4 +1,5 @@
 import type { MonthEventEditRequest } from '../domain/recurringMonthEvent';
+import type { DurationActualInput } from '../domain/durationActuals';
 import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import type { MaterialEditBaseline } from './useActualMutationAdmission';
@@ -102,6 +103,8 @@ interface PlannerAppState {
   getActualActionBlockReason: (target: ActualActionTarget) => string | null;
   saveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   saveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
+  /** Saves a confirmed week of time-only study records for the signed-in owner (one batch, all or none; #973). */
+  saveWeeklyActualRecords?: (owner: string, records: readonly DurationActualInput[]) => Promise<void>;
   linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
@@ -205,6 +208,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     getActualActionBlockReason,
     saveActual,
     saveStandaloneActual,
+    saveDurationActualsBatch,
     linkStandaloneActualToPlan,
     deleteActual,
     saveDayNote,
@@ -308,6 +312,12 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     resetPlannerData();
   }
 
+  async function saveWeeklyActualRecords(owner: string, records: readonly DurationActualInput[]): Promise<void> {
+    // Only the signed-in owner's confirmation may write: a record set for anyone else is refused before the repository.
+    if (!user?.id || owner !== user.id) throw new Error('実績の所有者が一致しません。保存はされていません。');
+    await saveDurationActualsBatch(records);
+  }
+
   async function saveWeeklyApprovedPlan(draft: PlanDraft): Promise<Plan> {
     if (!user?.id) {
       throw new Error('ログイン状態を確認できませんでした。');
@@ -407,6 +417,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     getActualActionBlockReason,
     saveActual,
     saveStandaloneActual,
+    saveWeeklyActualRecords: approvalScope.bindMutation(saveWeeklyActualRecords),
     linkStandaloneActualToPlan,
     deleteActual,
     saveDayNote,

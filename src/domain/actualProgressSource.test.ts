@@ -17,7 +17,7 @@ describe('confirmed Actual progress provenance', () => {
     expect(saved.progressSource).toEqual(source);
     const detached = prepareActualProgressSource({ ...saved, planId: null, occurrenceDate: '2026-10-06' }, sources, saved);
     expect(detached.progressSource).toEqual(source);
-    expect(prepareActualProgressSource({ ...detached, planId: 'plan' }, sources, detached).progressSource)
+    expect(prepareActualProgressSource({ ...(detached as TimedActual), planId: 'plan' }, sources, detached).progressSource)
       .toEqual({ kind: 'study', sourceId: 'plan', planType: 'study' });
   });
   it('backfills legacy unlinking only while its original same-owner source is known', () => {
@@ -36,6 +36,7 @@ describe('confirmed Actual progress provenance', () => {
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
 import { collectStudyDates } from '../lib/studyStreak';
 import { normalizeStudyRecordsForDisplay } from '../lib/studyRecords';
+import type { TimedActual } from '../types/domain';
 
 it('preserves an occurrence-specific type through unlinking', () => {
   const date = '2026-10-15';

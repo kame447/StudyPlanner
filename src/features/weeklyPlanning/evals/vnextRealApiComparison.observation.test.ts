@@ -456,6 +456,19 @@ interface OracleObservationContext {
   questionForWork?: ObservedQuestionWork | null;
   deferredQuestionCodes?: readonly string[];
   checkQuestionForWork?: boolean;
+  /** The VNext reading's study records (dateExpression is the absolute date); absent means none were read. */
+  studyRecords?: readonly { dateExpression: string; subject: string; minutes: number }[];
+}
+
+function compareStudyRecords(
+  expected: NonNullable<RealApiTurnOracle['studyRecords']>,
+  observed: NonNullable<OracleObservationContext['studyRecords']>,
+): string[] {
+  const key = (date: string, subject: string, minutes: number) => `${date}|${subject}|${minutes}`;
+  const wanted = expected.map(record => key(record.date, record.subject, record.minutes)).sort();
+  const seen = observed.map(record => key(record.dateExpression, record.subject, record.minutes)).sort();
+  return JSON.stringify(wanted) === JSON.stringify(seen)
+    ? [] : [`study records differ expected=${wanted.join(',') || 'none'} observed=${seen.join(',') || 'none'}`];
 }
 
 function isExpectedQuestionDeferred(
@@ -511,6 +524,7 @@ function compareTypedOracle(observed: ReturnType<typeof observedFacts>, question
   const differences: string[] = [];
   const workloads = matchOracleWorkloads(observed.workloads, oracle);
   if (!workloads.matched) differences.push('workloads differ');
+  if (oracle.studyRecords) differences.push(...compareStudyRecords(oracle.studyRecords, observationContext.studyRecords ?? []));
   if (oracle.expectedTaskCount !== undefined && observed.taskIds.length !== oracle.expectedTaskCount) {
     differences.push(`task count expected=${oracle.expectedTaskCount} observed=${observed.taskIds.length}`);
   }
@@ -1079,7 +1093,10 @@ async function runVNextConversation(
       })));
       const differences = error ? [error] : compareTypedOracle(
         facts, question, workMinutes, fixtureTurn.oracle, projectedWorkloads, workEstimateBases,
-        { questionForWork, deferredQuestionCodes, checkQuestionForWork: true },
+        {
+          questionForWork, deferredQuestionCodes, checkQuestionForWork: true,
+          studyRecords: interpretation?.status === 'interpreted' ? interpretation.studyRecords ?? [] : [],
+        },
       );
       const optionalInvitationKind = observedQuestion
         ? ('optionalInvitation' in observedQuestion && observedQuestion.optionalInvitation ? 'optional' : 'required') : 'none';
@@ -1731,7 +1748,9 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     expect(yesterdayCase?.turns[0].oracle).toMatchObject({
       inVNextScope: true,
       questionCode: null,
-      workloads: [{ task: 'math', role: 'completed', amount: 30, unitCode: 'minute', unitLabel: '分' }],
+      workloads: [],
+      studyRecords: [{ date: '2026-10-29', subject: '数学', minutes: 30 }],
+      projectedMinutes: null,
       temporal: [],
     });
   });
@@ -2191,5 +2210,39 @@ describe('D5 negative conversations: oracle controls (offline)', () => {
     const accepted = (await run(id, rate(15)))[1];
     expect(accepted.oracleDifferences).toEqual([]);
     expect((await run(id, abstain))[1].oracleDifferences.length).toBeGreaterThan(0);
+  });
+});
+
+describe('study record oracle controls (offline, #973 fix-05)', () => {
+  const noFacts = { taskIds: [], workloads: [], efforts: [], temporal: [] };
+  const yesterday = vnextRealApiConversations.find(({ id }) => id === 'yesterday-math-completed-30-minutes')!.turns[0].oracle;
+  const read = (studyRecords: { dateExpression: string; subject: string; minutes: number }[]) =>
+    compareTypedOracle(noFacts, null, null, yesterday, [], [], { studyRecords });
+
+  it('accepts exactly the dated record and nothing else', () => {
+    expect(read([{ dateExpression: '2026-10-29', subject: '数学', minutes: 30 }])).toEqual([]);
+  });
+
+  it('rejects a missing, wrong-day, wrong-subject, wrong-minutes or extra record, and V5 (no records)', () => {
+    for (const records of [
+      [],
+      [{ dateExpression: '2026-10-30', subject: '数学', minutes: 30 }],
+      [{ dateExpression: '2026-10-29', subject: '英語', minutes: 30 }],
+      [{ dateExpression: '2026-10-29', subject: '数学', minutes: 25 }],
+      [{ dateExpression: '2026-10-29', subject: '数学', minutes: 30 }, { dateExpression: '2026-10-28', subject: '数学', minutes: 30 }],
+    ]) expect(read(records).join('|')).toContain('study records differ');
+    expect(compareTypedOracle(noFacts, null, null, yesterday).join('|')).toContain('study records differ');
+  });
+
+  it('still rejects a completed workload read for the same sentence (no double counting)', () => {
+    const completed = { factId: 'w', taskId: 't', role: 'completed' as const, amount: 30, unitCode: 'minute' as const, unitLabel: '分', perOccurrence: false, periodExpression: null };
+    const differences = compareTypedOracle({ ...noFacts, taskIds: ['t'], workloads: [completed] }, null, null, yesterday, [], [],
+      { studyRecords: [{ dateExpression: '2026-10-29', subject: '数学', minutes: 30 }] });
+    expect(differences).toContain('workloads differ');
+  });
+
+  it('leaves oracles without studyRecords unchanged', () => {
+    const other = vnextRealApiConversations.find(({ id }) => id === 'recurrence-out-of-vnext-scope')!.turns[0].oracle;
+    expect(compareTypedOracle(noFacts, null, null, other, [], [], { studyRecords: [{ dateExpression: '2026-10-29', subject: '数学', minutes: 30 }] })).toEqual([]);
   });
 });

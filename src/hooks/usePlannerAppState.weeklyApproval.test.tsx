@@ -19,6 +19,7 @@ const editorSavePlanDraftMock = vi.hoisted(() => vi.fn(async () => undefined));
 const showNoticeMock = vi.hoisted(() => vi.fn());
 const bootstrapSessionMock = vi.hoisted(() => vi.fn(async () => undefined));
 const plannerFixture = vi.hoisted(() => ({ plans: [] as Plan[], userId: 'user-1' }));
+const durationBatchMock = vi.hoisted(() => vi.fn(async () => undefined));
 const stableNoop = vi.hoisted(() => vi.fn());
 const stableAsyncNoop = vi.hoisted(() => vi.fn(async () => undefined));
 
@@ -102,6 +103,7 @@ vi.mock('./usePlannerDataState', () => ({
     cancelRecurringPlanScope: stableNoop,
     saveActual: stableAsyncNoop,
     saveStandaloneActual: stableAsyncNoop,
+    saveDurationActualsBatch: durationBatchMock,
     linkStandaloneActualToPlan: stableAsyncNoop,
     deleteActual: stableAsyncNoop,
     saveDayNote: stableAsyncNoop,
@@ -171,6 +173,7 @@ describe('usePlannerAppState weekly approval save', () => {
     plannerFixture.userId = 'user-1';
     repositoryUpsertPlanMock.mockReset();
     approvalSavePlanMock.mockReset();
+    durationBatchMock.mockClear();
     approvalCompleteOperationMock.mockClear();
     loadPlannerDataMock.mockClear();
     projectPlanSaveMock.mockClear();
@@ -287,6 +290,16 @@ describe('usePlannerAppState weekly approval save', () => {
     expect(loadPlannerDataMock).not.toHaveBeenCalled();
     expect(result).toBeInstanceOf(PlannerMutationScopeExpiredError);
     expect(approvalSavePlanMock).toHaveBeenCalledTimes(1);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('saves confirmed study records through the one batch for the signed-in owner, and refuses another owner before any write', async () => {
+    const records = [{ id: 'wp-actual-c-2026-10-26-math', occurrenceDate: '2026-10-26', subject: '数学', minutes: 60 }];
+    await act(async () => { await ref.current!.saveWeeklyActualRecords!('user-1', records); });
+    expect(durationBatchMock).toHaveBeenCalledOnce();
+    expect(durationBatchMock).toHaveBeenCalledWith(records);
+    await expect(ref.current!.saveWeeklyActualRecords!('someone-else', records)).rejects.toThrow('所有者が一致しません');
+    expect(durationBatchMock).toHaveBeenCalledOnce();
     await act(async () => { renderer.unmount(); });
   });
 

@@ -64,6 +64,7 @@ import {
   type WeeklyPlanningStableV5PersistedSession,
 } from './weeklyPlanningStableV5SessionCodec';
 import { submitWeeklyPlanningApplicationTurn } from './weeklyPlanningTurnApplication';
+import type { PendingWeeklyPlanningActualRecord } from './weeklyPlanningActualRecords';
 
 export interface UseWeeklyPlanningApplicationInput {
   userId: string | null | undefined;
@@ -80,6 +81,11 @@ export interface UseWeeklyPlanningApplicationInput {
   isPlannerDataSnapshotCurrent: () => boolean;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
+  /**
+   * Writes duration-only study records in one all-or-nothing batch (I1 saveDurationActualsBatch, #973).
+   * Called only from the explicit confirmation click; absent where the product cannot save records.
+   */
+  saveWeeklyActualRecords?: (userId: string, records: PendingWeeklyPlanningActualRecord[]) => Promise<void>;
 }
 
 export type { WeeklyPlanningTurnPreparationResult, WeeklyPlanningApplicationSubmissionResult } from './weeklyPlanningTurnPreparation';
@@ -116,6 +122,10 @@ export interface WeeklyPlanningApplication {
   removeDraftBlock: (blockId: string) => void;
   clearDraftBlocks: () => void;
   approveDraftBlocks: () => Promise<void>;
+  /** Study records the conversation proposed and the user has not confirmed yet. Absent = none (V5 never proposes any). */
+  pendingActualRecords?: PendingWeeklyPlanningActualRecord[];
+  /** Saves every pending record or none. Only the confirmation button may call it; a chat reply never does. */
+  approveActualRecords?: () => Promise<void>;
 }
 
 // Omitted optional inputs have the same identity across committed renders.

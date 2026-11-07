@@ -10,7 +10,8 @@
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
 import { evaluateVNextLearningStrategy } from '../weeklyPlanningVNextLearningStrategy';
 import { WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5 } from '../../intake/weeklyPlanningProvisionalTimeboxStateV5';
-import type { WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
+import { weeklyPlanningTemporalConstraintAppliesToTargetV5, resolveWeeklyPlanningWorkItemSessionDurationV5,
+  type WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
 import type {
   VNextEffortEstimateFact,
   VNextEstimateBasis,
@@ -74,6 +75,7 @@ interface ProjectionContext {
   resolver: VNextLineageResolver;
   workloadsById: Map<string, WorkloadFactV5>;
   activeWorkloads: WorkloadFactV5[];
+  fixedBounds: WeeklyPlanningVNextState['graph']['temporalConstraints'];
   efforts: VNextEffortEstimateFact[];
   /** Task lineages whose stated study activity is memorization. */
   memorizationTasks: Set<string>;
@@ -351,6 +353,13 @@ function estimateOwnerWork(
         work.push(workItem(unit, { minutes: unit.amount * minutesPerUnit, basis: 'observed_memory_pace', effortIds: [] }));
         continue;
       }
+      // V5 suppresses movable work inside its own fixed scope. Registering that interval
+      // needs no work estimate; the scheduler still validates its date/time before any preview.
+      const lineage = context.resolver.lineageOf;
+      if (context.fixedBounds.some(bound => weeklyPlanningTemporalConstraintAppliesToTargetV5({
+        constraintTaskId: lineage(bound.taskId), constraintTargetFactId: lineage(bound.targetFactId),
+        taskId: lineage(owner.taskId), targetFactId: lineage(owner.componentId ?? owner.taskId),
+      }))) continue;
       const missing = ownerQuestion(owner, 'missing_effort_estimate', [unit.workLineageId], { forWork, values: [unit.amount] });
       // As in Stable V5, a provisional timebox places Stable V5's fixed block for the asked work; a stated estimate wins.
       if (context.provisionalKeys.has(missing.question!.key)) {
@@ -456,6 +465,8 @@ export function projectWeeklyPlanningVNext(
     resolver,
     workloadsById: new Map(graph.workloads.map((workload) => [workload.id, workload])),
     activeWorkloads,
+    fixedBounds: filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints)
+      .filter(bound => bound.kind === 'fixed_interval' && bound.constraintLevel === 'hard'),
     efforts: filterActiveWeeklyPlanningFactsV5(graph, graph.effortEstimates),
     memorizationTasks: new Set(filterActiveWeeklyPlanningFactsV5(graph, graph.studyContexts)
       .filter((study) => study.activityKind === 'memorization_retrieval')
@@ -465,17 +476,32 @@ export function projectWeeklyPlanningVNext(
       .filter((deferral) => deferral.allocation === 'provisional_timebox').map((deferral) => deferral.questionKey)),
   };
 
-  // Settle which work is scheduled first, so scope-wide totals see the final work set.
-  const resolved = computeVNextWorkUnits(graph, state.workRelations).map((owner) => ({ owner, resolution: resolveOwnerWork(context, owner) }));
+  const tasks = filterActiveWeeklyPlanningFactsV5(graph, graph.tasks);
+  const activeBounds = filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints);
+  const pendingClockTasks = new Set((state.pendingEventRegistrationTargetIds ?? []).map(id => resolver.leafOf(id))
+    .filter((id): id is string => id !== null && tasks.some(task => task.id === id)
+      && !activeBounds.some(bound => bound.kind === 'fixed_interval' && bound.constraintLevel === 'hard'
+        && resolver.leafOf(bound.taskId) === id)));
+  // Requested fixed events cannot turn into movable work while their clocks are unknown.
+  // Facts remain intact; the existing V5 question intent asks for the missing start/end pair.
+  const resolved = computeVNextWorkUnits(graph, state.workRelations)
+    .filter(owner => !pendingClockTasks.has(resolver.leafOf(owner.taskId) ?? owner.taskId))
+    .map((owner) => ({ owner, resolution: resolveOwnerWork(context, owner) }));
   const allScheduled = resolved.flatMap(({ resolution }) => ('scheduled' in resolution ? resolution.scheduled : []));
   const owners = resolved.map(({ owner, resolution }) => ('projection' in resolution
     ? resolution.projection
     : estimateOwnerWork(context, owner, resolution.scheduled, allScheduled)));
 
-  const tasks = filterActiveWeeklyPlanningFactsV5(graph, graph.tasks);
-  const activeBounds = filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints);
   for (const task of tasks) {
     const taskLineage = resolver.lineageOf(task.id);
+    if (pendingClockTasks.has(task.id)) {
+      const ownerKey = resolver.ownerKeyOf({ taskId: task.id, componentId: null });
+      owners.push({ ownerKey, taskId: task.id, componentId: null, status: 'question', work: [],
+        question: { code: 'invalid_commitment_interval',
+          key: questionKey({ code: 'invalid_commitment_interval', ownerKey, lineageIds: [taskLineage], values: [] }),
+          ownerKey, taskId: task.id, componentId: null, subjectLineageIds: [taskLineage], forWork: null, options: [] } });
+      continue;
+    }
     if (activeWorkloads.some((workload) => resolver.lineageOf(workload.taskId) === taskLineage)) continue;
     const totals = context.efforts.filter((effort) => effort.kind === 'total_duration'
       && resolver.lineageOf(effort.taskId) === taskLineage && resolver.lineageOf(effort.targetFactId) === taskLineage);
@@ -525,10 +551,15 @@ export function projectWeeklyPlanningVNext(
     const spaced = records.find(record => record.id === learning.acceptedSpacedProposal?.id);
     if (spaced) {
       const id = resolver.leafOf(spaced.workloadFactId)!;
-      const sessions = context.efforts.filter(effort => effort.kind === 'session_duration'
-        && resolver.lineageOf(effort.targetFactId) === resolver.lineageOf(id) && effort.minutes > 0);
-      if (sessions.length === 0) {
-        const workload = graph.workloads.find(fact => fact.id === id)!;
+      const workload = graph.workloads.find(fact => fact.id === id)!;
+      // Questions and placement share scope precedence; a stated owner duration is not missing.
+      const session = resolveWeeklyPlanningWorkItemSessionDurationV5({
+        item: { workloadFactId: resolver.lineageOf(id), taskId: resolver.lineageOf(workload.taskId),
+          componentId: workload.componentId === null ? null : resolver.lineageOf(workload.componentId) },
+        estimates: context.efforts.map(effort => ({ ...effort, taskId: resolver.lineageOf(effort.taskId),
+          targetFactId: resolver.lineageOf(effort.targetFactId) })),
+      });
+      if (session.minutes === null) {
         owner.status = 'question'; owner.work = [];
         owner.question = { code: 'missing_effort_estimate', key: `memory_session_duration:${spaced.id}`,
           ownerKey: owner.ownerKey, taskId: owner.taskId, componentId: owner.componentId,

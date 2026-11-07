@@ -132,6 +132,8 @@ This is a transient compilation view, not another Fact Graph or persisted quanti
 
 Preview/draft checkpoint metadata retains the real source references. Final approval keeps the existing current-revision checks and operation/block identity. Ordinary Plan/ScheduleEvent persistence does not acquire direct Fact Graph source references or a new allocation ledger through this projection. Session-length placement and natural-language explanation remain separate responsibilities.
 
+For quantified memory work with known pace, accepting spaced practice reuses an already stated session duration at workload, component or task scope. Question necessity and full-session placement share the ordinary scope precedence and ambiguity resolver; an unresolved or conflicting applicable duration still requires clarification. This does not infer a total effort from a session length or authorize a save.
+
 ## Work decomposition / atomicity
 
 Task decomposition is typed semantic state, not a scheduler guess.
@@ -202,6 +204,8 @@ Registration previews use the existing preview display, promotion, freshness, ex
 Resolved busy-only evidence without a task identity remains outside the registration-candidate path. Its existing fixed-event manual-entry handoff may refer to `予定` → `予定を追加` with `eventCreatedByTurn:false`; no additional study-work invitation is required. Ordinary ask, topic-shift and resume acts keep their question-identity and freshness rules. This path adds no semantic parser, event classifier, provider call, repair budget or separate save capability.
 
 The Stable checkpoint candidate codec accepts the new source explicitly and rejects learning-only fields on registration candidates. Existing clients that predate that codec reject the new candidate source before turn publication and save; they display the ordinary conversation-state update failure, clear the pending turn and permit another input. Reloading is required to use registration previews on such a tab. New clients continue to accept older Worker responses and their manual-entry handoff; no request capability field is added to the old Worker's strict input allowlist.
+
+In VNext, a workload already covered by its own hard fixed temporal scope does not need a movable-work effort estimate to register that interval. The projector reuses V5's target-scope rule and retains the stated quantity without inventing an estimate. Other tasks' questions and structural or effort conflicts remain unresolved; the existing commitment compiler must still resolve the date and complete clock interval before any preview.
 
 ## Proposal / readiness / scheduler
 
