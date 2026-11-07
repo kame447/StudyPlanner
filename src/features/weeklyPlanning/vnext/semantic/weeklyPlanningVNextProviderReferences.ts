@@ -67,6 +67,8 @@ export function createVNextProviderReferences() {
     next.conversationActs.forEach((act, index) => {
       if (act.targetRef) ref(act.targetRef, `conversationActs[${index}].targetRef`, null);
     });
+    if (next.planningRequestEvidence) next.planningRequestEvidence.questionKey = real('Q',
+      next.planningRequestEvidence.questionKey, 'planningRequestEvidence.questionKey', null);
     if (next.answer?.kind === 'option') next.answer.optionId = real('O', next.answer.optionId, 'answer.optionId', null);
     if (next.answer?.kind === 'proposal_decision') next.answer.proposalId = real('F', next.answer.proposalId, 'answer.proposalId', null);
     return errors.length ? { status: 'rejected', errors } : { status: 'decoded', reading: next };

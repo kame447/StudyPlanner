@@ -81,6 +81,12 @@ function spliceRepair(original: unknown, repaired: unknown, errors: VNextTurnErr
 function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading: VNextProviderReading): VNextTurnError[] {
   const labelErrors = validateVNextProviderLabelEvidence(input, reading, reading.labelEvidence);
   if (labelErrors.length) return labelErrors;
+  const evidence = reading.planningRequestEvidence;
+  if (evidence && (reading.planningIntent !== 'create_plan' || !reading.answer || !input.presentedQuestion
+    || evidence.questionKey !== input.presentedQuestion.key || !evidence.quote.trim()
+    || !input.userText.includes(evidence.quote))) {
+    return [{ code: 'invalid_value', path: 'planningRequestEvidence', localId: null, factId: null }];
+  }
   if (reading.answer) {
     const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
       presented: input.presentedQuestion
