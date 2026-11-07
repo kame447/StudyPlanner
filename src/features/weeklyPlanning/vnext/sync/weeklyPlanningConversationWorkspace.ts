@@ -1,6 +1,6 @@
 import { createConversationSync, conversationScopeKey, type ConversationLocalRecord, type ConversationLocalStore,
   type ConversationPayload, type ConversationRemoteStore, type ConversationScope, type ConversationSnapshot } from './weeklyPlanningConversationSync';
-import { validateConversationPayload } from './weeklyPlanningConversationPayload';
+import { validateConversationPayload, validateLocalConversationPayload } from './weeklyPlanningConversationPayload';
 import { createAiPlanningChat, readAiPlanningChatIndex, saveAiPlanningChatIndex, type AiPlanningChatRecord } from '../../chat/aiPlanningChatStore';
 
 export interface ConversationWorkspaceLocal extends ConversationLocalStore {
@@ -46,6 +46,7 @@ export function createConversationWorkspace(ports: {
   let installing = false;
   let syncRequest: Promise<boolean> | null = null;
   const sync = createConversationSync({ ...ports, validatePayload: validateConversationPayload,
+    validateLocalPayload: validateLocalConversationPayload,
     operationId: () => crypto.randomUUID() });
   const guard = () => { if (!ports.active()) throw new Error('owner-changed'); };
   const pair = (scope: Pick<ConversationScope, 'chatId' | 'weekStartDate'>) => `${prefix}${scope.weekStartDate}.${scope.chatId}`;
@@ -86,7 +87,7 @@ export function createConversationWorkspace(ports: {
     const messages = value.payload?.state?.messages as Array<{ role: string; content: string }> | undefined;
     const title = messages?.find(message => message.role === 'user')?.content.trim().slice(0, 32) || '新しいチャット';
     const payload = { core: memory.get(`${key}.core`) ?? null, ui: raw, title };
-    if (!validateConversationPayload(scope, payload)) throw new Error('invalid-conversation-payload');
+    if (!validateLocalConversationPayload(scope, payload)) throw new Error('invalid-conversation-payload');
     return { scope, payload };
   }
   const storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> = {

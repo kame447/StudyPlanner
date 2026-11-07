@@ -344,7 +344,7 @@ Deterministic code owns:
 - Deterministic routing may use machine state and validated typed AI output, but it must not infer user intent from ad-hoc lexical heuristics.
 - Do not add more raw-text regex rules to compensate for semantic routing or interpretation failures.
 - Provider failure, malformed output, validation failure, or AI repair failure must not fall back to a legacy natural-language parser.
-- Semantic repair may be performed at most once where the current Stable V5 contract permits it.
+- Keep semantic repair bounded by the active VNext production contract; do not add unbounded retries or use the Stable V5 semantic pipeline as a fallback. Local Stable V5 comparison keeps its own bounded-repair contract.
 - AI must not choose formal lifecycle mutations, readiness, question priority, scheduler placement, approval, or save.
 - Renderer output is presentation only. Do not infer machine state or pending targets back from rendered Japanese text.
 - Keep current saved-data migration/read compatibility separate from semantic runtime compatibility. Existing data compatibility is not permission to reintroduce legacy semantic execution.
@@ -353,12 +353,13 @@ Deterministic code owns:
 Canonical weekly-planning documentation lives under `docs/domains/weekly-planning/`:
 
 - `docs/domains/weekly-planning/README.md`
-- `docs/domains/weekly-planning/architecture/current-contract-v5.md`
-- `docs/domains/weekly-planning/architecture/weekly-planning-semantic-ownership-boundary-v5.md`
+- `docs/domains/weekly-planning/architecture/vnext-conversation-core.md` (production)
+- `docs/domains/weekly-planning/architecture/current-contract-v5.md` (local comparison / reused pure responsibilities)
+- `docs/domains/weekly-planning/architecture/weekly-planning-semantic-ownership-boundary-v5.md` (V5 reference)
 - `docs/domains/weekly-planning/quality/test-philosophy.md`
 - `docs/domains/weekly-planning/roadmap/current.md`
 
-Historical task files, audits, legacy architecture documents, old branch names, or stale `Status: active` markers under `docs/archive/` must not override the current Stable V5 contract.
+Historical task files, audits, legacy architecture documents, old branch names, or stale `Status: active` markers under `docs/archive/` must not override the current VNext production contract.
 
 ## Responsive design rules
 
