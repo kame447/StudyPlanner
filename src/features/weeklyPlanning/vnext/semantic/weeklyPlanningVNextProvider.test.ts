@@ -226,6 +226,10 @@ describe('VNext native provider', () => {
     const prompt = buildWeeklyPlanningVNextProviderMessages(input([]))[0].content;
     for (const requirement of [VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT,
       VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT, VNEXT_STUDY_CONTEXT_REQUIREMENT]) expect(prompt).toContain(requirement);
+    // A recurrence's weekdays/count cannot carry a separately stated start boundary (#978 X0).
+    expect(VNEXT_RECURRENCE_REQUIREMENT).toContain('earliest_start');
+    expect(VNEXT_RECURRENCE_REQUIREMENT).toContain('dateExpression');
+    expect(VNEXT_RECURRENCE_REQUIREMENT).toContain('next_week');
   });
 
   it('requires endpoint year evidence in the provider schema and never accepts model-supplied verification authority', () => {
