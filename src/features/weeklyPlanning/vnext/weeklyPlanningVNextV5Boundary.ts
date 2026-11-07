@@ -40,6 +40,7 @@ export { WEEKLY_PLANNING_SELECTED_STARTER_TARGET_INSTRUCTION_V5,
 export type { WeeklyPlanningLearningStrategyProposalRecord, PlanningDraftGenerationIntent } from '../intake/weeklyPlanningIntakeTypes';
 export { isWeeklyPlanningStableV5PreviewAuthorized } from '../application/weeklyPlanningStableV5PlanningEvaluation';
 export { weeklyPlanningTemporalConstraintAppliesToTargetV5 } from '../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
+export { resolveWeeklyPlanningWorkItemSessionDurationV5 } from '../semantic/weeklyPlanningSchedulerWorkDistributionV5';
 export { projectWeeklyPlanningFixedEventRegistration, weeklyPlanningFixedEventRegistrationFacts,
   fixedEventOnlyInteractionStatus, fixedEventCommunicationFacts,
   type WeeklyPlanningFixedEventCommunicationFacts,

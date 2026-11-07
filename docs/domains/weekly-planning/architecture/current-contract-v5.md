@@ -132,6 +132,8 @@ This is a transient compilation view, not another Fact Graph or persisted quanti
 
 Preview/draft checkpoint metadata retains the real source references. Final approval keeps the existing current-revision checks and operation/block identity. Ordinary Plan/ScheduleEvent persistence does not acquire direct Fact Graph source references or a new allocation ledger through this projection. Session-length placement and natural-language explanation remain separate responsibilities.
 
+For quantified memory work with known pace, accepting spaced practice reuses an already stated session duration at workload, component or task scope. Question necessity and full-session placement share the ordinary scope precedence and ambiguity resolver; an unresolved or conflicting applicable duration still requires clarification. This does not infer a total effort from a session length or authorize a save.
+
 ## Work decomposition / atomicity
 
 Task decomposition is typed semantic state, not a scheduler guess.
