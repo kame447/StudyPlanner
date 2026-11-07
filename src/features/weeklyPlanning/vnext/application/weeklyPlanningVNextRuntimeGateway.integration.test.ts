@@ -673,7 +673,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       } };
     } });
     failAppend = true;
-    const submitted = await h.submit('各章を2回。普段は1回20分、第1章だけ30分で今週の予定案を作って');
+    const submitted = await h.submit('数学は各章を2回。普段は1回20分、第1章だけ30分で今週の予定案を作って');
     // The stated 60/40-minute work keeps the ordinary 10/5-minute estimate buffers.
     expect(submitted.draftCandidates.reduce((sum, item) => sum + getEntryDurationMinutes(item.startTime, item.endTime), 0)).toBe(115);
     expect(submitted.draftCandidates.every(item => item.approvalStatus === 'unapproved')).toBe(true);
