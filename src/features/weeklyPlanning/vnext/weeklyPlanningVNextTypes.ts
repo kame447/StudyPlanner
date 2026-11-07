@@ -92,6 +92,8 @@ export interface WeeklyPlanningVNextState {
   draftGenerationIntent: PlanningDraftGenerationIntent;
   /** V5's optional invitation ended; unchanged turns do not invite again. */
   optionalInvitationClosed: boolean;
+  /** Formally bound task/component references awaiting registration details; absent in older checkpoints. */
+  pendingEventRegistrationTargetIds?: string[];
 }
 
 export type VNextPlanningIntent = WeeklyPlanningSemanticDocumentV5['planningIntent'];
