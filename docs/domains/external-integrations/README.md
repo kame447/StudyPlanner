@@ -14,6 +14,8 @@ Status: current domain entry point
 
 ## Active work
 
+- [MCP read-only first slice](work/mcp-read-slice-handoff.md): Issue #355; owner-scoped schedule adapter and disabled, unpublished Worker entry. OAuth, deployment and writes are separate follow-ups.
+
 - [Timetable OCR result boundary](work/20261103-timetable-ocr-result-boundary.md): local-only separation of candidate normalization/editing rules from Firebase/HTTP transport, preserving the public import path.
 
 - [Firestore wire codec boundary](work/20261020-firestore-codec-boundary.md): local-only separation of pure value conversion from Worker transport, preserving the existing client facade and wire representations.
