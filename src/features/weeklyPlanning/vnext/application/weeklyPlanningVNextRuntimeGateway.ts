@@ -7,13 +7,15 @@ import type { WeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocal
 import { loadWeeklyPlanningVNextRuntimeModule } from './weeklyPlanningVNextRuntimeLoader';
 import type { WeeklyPlanningVNextDurableTurnInput, WeeklyPlanningVNextDurableTurnResult } from './weeklyPlanningVNextDurableTurn';
 import { parseWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
+import type { WeeklyDraftApprovalOperation } from '../../planning/weeklyPlanningApprovalTypes';
 
 /** One turn payload for both local execution and the durable Worker. Optimistic actuals from a still-pending
- * save cannot be used as evidence that the records are already saved. No new field crosses the wire. */
+ * save cannot be used as evidence that the records are already saved. */
 export function buildWeeklyPlanningVNextTurnPayload(input: ExecuteWeeklyPlanningTurnRuntimeParams, before: string | null,
   legacyV5Checkpoint: string | null, clock: ReturnType<typeof createWeeklyPlanningTurnRequestContext>,
-  savingActualRecordIds: ReadonlySet<string>): WeeklyPlanningVNextDurableTurnInput {
+  savingActualRecordIds: ReadonlySet<string>, allowUnapprovedPreviewReplan = false): WeeklyPlanningVNextDurableTurnInput {
   return { core: 'vnext', checkpoint: before, legacyV5Checkpoint, weekStartDate: input.snapshot.weekStartDate,
+    ...(allowUnapprovedPreviewReplan ? { allowUnapprovedPreviewReplan: true } : {}),
     input: { previousState: input.snapshot.intakeState, messages: input.snapshot.messages,
       userText: input.userText, supplementalContext: input.supplementalContext, selectedStarterTarget: input.selectedStarterTarget,
       selectedDate: input.selectedDate, userId: input.userId, plans: input.plans,
@@ -37,6 +39,7 @@ export function readWeeklyPlanningVNextDurableReceipt(ownerId: string) {
 export function createWeeklyPlanningVNextRuntimeGateway(params: {
   session: Pick<WeeklyPlanningVNextLocalSession, 'checkpoint' | 'legacyV5Checkpoint'>;
   savingActualRecordIds?: () => ReadonlySet<string>;
+  approvalOperations?: () => readonly WeeklyDraftApprovalOperation[];
   /** Built only when the turn runs in this tab, so a lazy runtime loads after durable execution is ruled out. */
   ports(input: ExecuteWeeklyPlanningTurnRuntimeParams): WeeklyPlanningVNextExperimentalPorts | Promise<WeeklyPlanningVNextExperimentalPorts>;
 }): { runtimeGateway: WeeklyPlanningTurnRuntimeGateway; stagingLifecycle: WeeklyPlanningTurnStagingLifecycle } {
@@ -47,8 +50,13 @@ export function createWeeklyPlanningVNextRuntimeGateway(params: {
       const clock = createWeeklyPlanningTurnRequestContext({ startedAtIso: input.pending.startedAt,
         timeZone: input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'Asia/Tokyo',
         weekStartsOn: input.weekStartsOn ?? 'monday' });
+      const shown = before === null ? null : parseWeeklyPlanningVNextSessionCheckpoint({ raw: before,
+        ownerId: input.userId, weekStartDate: input.snapshot.weekStartDate })?.vnext.preview;
+      const operations = params.approvalOperations?.();
+      const allowReplan = Boolean(shown && operations && !operations.some(operation => operation.userId === input.userId
+        && operation.previewId === shown.previewId && operation.previewStateRevision === shown.graphRevision));
       const payload = buildWeeklyPlanningVNextTurnPayload(input, before, params.session.legacyV5Checkpoint.read(),
-        clock, params.savingActualRecordIds?.() ?? new Set());
+        clock, params.savingActualRecordIds?.() ?? new Set(), allowReplan);
       let completed: WeeklyPlanningVNextDurableTurnResult;
       if (durableWeeklyPlanningEnabled()) {
         const receipt = input.resumeDurable ? readWeeklyPlanningVNextDurableReceipt(input.userId) : {

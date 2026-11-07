@@ -8,6 +8,8 @@ export interface WeeklyPlanningVNextDurableTurnInput {
   weekStartDate: string;
   checkpoint: string | null;
   legacyV5Checkpoint: string | null;
+  /** Pages checked the current preview against its approval operations. Old payloads retain it. */
+  allowUnapprovedPreviewReplan?: boolean;
 }
 
 export interface WeeklyPlanningVNextDurableTurnResult extends IsolatedWeeklyPlanningTurnResult {

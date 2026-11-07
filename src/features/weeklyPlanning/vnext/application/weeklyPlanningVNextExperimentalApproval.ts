@@ -52,10 +52,15 @@ export async function approveWeeklyPlanningVNextExperimentalPreview(params: {
   if (!ledger) return { status: 'rejected', reason: 'approval-ledger-unreadable' };
   const existing = ledger.operations.find((operation) => operation.userId === scope.ownerId
     && operation.previewId === guard.metadata.previewId && operation.previewStateRevision === guard.metadata.stateRevision);
-  const operation = await executeWeeklyDraftApproval({
-    operation: existing ?? createWeeklyDraftApprovalOperation({
+  const started = existing ?? createWeeklyDraftApprovalOperation({
       userId: scope.ownerId, metadata: guard.metadata, blocks: preview.blocks, now: ports.now(),
-    }),
+    });
+  // Publish the operation before the first save, so its shown contents cannot be regenerated mid-save.
+  if (!existing) ports.approvalLedger.write(serializeWeeklyApprovalLedger([
+    ...ledger.operations.filter(candidate => candidate.approvalOperationId !== started.approvalOperationId), started,
+  ]));
+  const operation = await executeWeeklyDraftApproval({
+    operation: started,
     blocks: preview.blocks,
     dependencies: {
       findExistingPlanId: ({ sourceDraftBlockId }) => ports.plans.findExistingPlanId(sourceDraftBlockId),

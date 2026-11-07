@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Plan } from '../../../../types/domain';
+import type { WeeklyDraftApprovalOperation } from '../../planning/weeklyPlanningApprovalTypes';
 import { getEntryDurationMinutes } from '../../../../lib/entryTimeRange';
 import { createWeeklyPlanningStableV5DialoguePrompt } from '../../dialogue/weeklyPlanningStableV5DialoguePrompt';
 import { CANDIDATE_CHOICE_CATALOG_VERSION, type CandidateChoiceWireRequest } from '../../../../../shared/candidateChoiceDecision';
@@ -61,6 +63,7 @@ afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyP
   setWeeklyPlanningTraceRepositoryForTests(undefined); vi.useRealTimers(); restore(); });
 
 function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRenderer?: WeeklyPlanningVNextExperimentalPorts['createRenderer'];
+  plans?: () => Plan[]; approvalOperations?: () => readonly WeeklyDraftApprovalOperation[];
   nativeReadings?: unknown[]; nativeReading?: unknown; providerFails?: boolean; planningIntent?: 'create_plan' | 'discuss'; beforeDispatch?: (action: WeeklyPlanningAction) => void } = {}) {
   const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: createMemoryStorageHarness().storage });
   let state = createInitialPlanningState(WEEK);
@@ -74,7 +77,7 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
       ?? { planningIntent: options.planningIntent ?? 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null };
     return JSON.stringify(typeof response === 'function' ? response(input) : response);
   } };
-  const gateway = createWeeklyPlanningVNextRuntimeGateway({ session: local, ports: () => ({ client,
+  const gateway = createWeeklyPlanningVNextRuntimeGateway({ session: local, approvalOperations: options.approvalOperations, ports: () => ({ client,
     interpret: options.interpret ?? createWeeklyPlanningVNextProviderInterpreter(), checkpoint: local.checkpoint,
     legacyV5Checkpoint: local.legacyV5Checkpoint, now: () => NOW,
     approvalLedger: { read: () => null, write: () => { throw new Error('no approval in this test'); } },
@@ -89,7 +92,7 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
   const submit = (userText: string) => submitWeeklyPlanningControlledTurn({ session: controller, ownerId: OWNER, userText, now: () => NOW,
     getState, dispatch, async execute(input) {
       const result = await gateway.runtimeGateway.execute({ ...input, userId: OWNER, selectedDate: WEEK,
-        plans: [], scheduleTemplates: [], timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' });
+        plans: options.plans?.() ?? [], scheduleTemplates: [], timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' });
       results.push(result); return result;
     },
     prepareExecutionCommit: ({ pending }) => gateway.stagingLifecycle.prepare({ ownerId: OWNER, pending }),
@@ -843,6 +846,72 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     const saved = JSON.stringify(server.entries[0]);
     expect(saved).toContain('keep-component-budget-evidence');
     expect(saved).toContain('total_duration');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
+  });
+
+  it.each([false, true])('#1034 persists the regenerated placement through outbox reload and Worker (large=%s)', async large => {
+    let plans: Plan[] = [];
+    const wire = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: EMPTY };
+    const inputs: unknown[] = [];
+    const h = harness({ plans: () => plans, approvalOperations: () => [],
+      nativeReadings: [{ ...wire, delta: { ...EMPTY, add: [task, work('minutes', 'remaining', 60, 'minute')] } }, wire],
+      createRenderer: () => {
+        const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+        return { render(input) {
+          Object.assign(input.communication!, { futureReplanSentinel: 'keep-latest-placement-evidence',
+            ...(large ? { futureReplanDetails: 'x'.repeat(48 * 1024) } : {}) });
+          inputs.push(structuredClone(input)); return renderer.render(input);
+        } };
+      } });
+    await h.submit('数学は60分で予定案を作って');
+    const before = h.local.readCheckpoint()!.vnext;
+    const block = before.preview!.blocks[0];
+    plans = [{ id: 'manual-busy', seriesId: 'manual-busy', userId: OWNER, title: '学校', subject: '', type: 'other',
+      date: block.date, startTime: block.startTime, endTime: block.endTime, repeat: 'none', repeatUntil: null,
+      recurrenceRules: [], excludedDates: [], memo: '', createdAt: NOW, updatedAt: NOW }];
+    failAppend = true;
+    const submitted = await h.submit('カレンダーに合わせて予定案を作り直して');
+    expect(submitted.draftCandidates.length).toBeGreaterThan(0);
+    expect(submitted.draftCandidates.every(item => item.approvalStatus === 'unapproved')).toBe(true);
+    expect(h.getState().previewCandidates).toEqual(submitted.draftCandidates);
+    const after = h.local.readCheckpoint()!.vnext;
+    expect(after.preview!.previewId).toBe(before.preview!.previewId);
+    expect(after.preview!.blocks.some(item => item.date === block.date && item.startTime < block.endTime && block.startTime < item.endTime)).toBe(false);
+    expect(h.results[1].dialogueRendererTrace?.request?.promptContext).toEqual(inputs[1]);
+    expect(h.results[1].dialogueRendererTrace?.response?.status).toBe('rendered');
+    const sent = h.requests[1] as { messages: { role: string; content: string }[] };
+    expect(h.results[1].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(attempted.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-latest-placement', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(attempted.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '112' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ rawResponses: [expect.objectContaining({ text: JSON.stringify(wire) })] });
+    const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+    if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(inputs[1]);
+    else {
+      const originalBytes = new TextEncoder().encode(JSON.stringify(inputs[1])).byteLength;
+      const truncated = diagnostic.dialogueRenderer.request.promptContext as { originalBytes: number; jsonHead: string; jsonTail: string };
+      expect(truncated).toMatchObject({ traceTruncated: true, jsonHead: expect.any(String), jsonTail: expect.any(String) });
+      if (truncated.originalBytes === originalBytes) {
+        expect(JSON.stringify(inputs[1]).startsWith(truncated.jsonHead)).toBe(true);
+        expect(JSON.stringify(inputs[1]).endsWith(truncated.jsonTail)).toBe(true);
+      } else expect(truncated.jsonHead).toContain(`"originalBytes":${originalBytes}`);
+      expect(truncated.jsonTail.length).toBeGreaterThan(0);
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-latest-placement-evidence');
     expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
   });
