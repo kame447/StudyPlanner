@@ -51,7 +51,9 @@ export function evaluateVNextLearningStrategy(params: {
   return evaluateWeeklyPlanningLearningStrategyProposalsV5({
     previousState: { ...createInitialPlanningIntakeState(), learningStrategyProposalRecords: params.state.learningStrategyProposalRecords },
     document, localToFactId: Object.fromEntries(identities),
-    excludedWorkloadFactIds: workloads.filter(workload => ownersWithoutFutureWork.has(resolver.ownerKeyOf(workload)))
+    // A stated time budget is already schedulable; a memory method must not replace it with session work.
+    excludedWorkloadFactIds: workloads.filter(workload => ownersWithoutFutureWork.has(resolver.ownerKeyOf(workload))
+      || workload.unitCode === 'minute' || workload.unitCode === 'hour')
       .map(workload => workload.id),
     compilation: { status: 'needs_resolution', input: null,
       issues: [

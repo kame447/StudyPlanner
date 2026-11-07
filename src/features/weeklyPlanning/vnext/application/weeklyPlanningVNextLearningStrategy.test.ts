@@ -65,6 +65,27 @@ function memoryWeek(completed: number, activityKind: 'memorization_retrieval' | 
 }
 
 describe('VNext learning strategy adapters use V5 policy', () => {
+  it.each([
+    { unitCode: 'minute', amount: 60, activityKind: 'memorization_retrieval' },
+    { unitCode: 'hour', amount: 1, activityKind: 'memorization_retrieval' },
+    { unitCode: 'minute', amount: 60, activityKind: 'problem_solving' },
+    { unitCode: 'hour', amount: 1, activityKind: 'problem_solving' },
+  ] as const)('keeps the stated time budget without a method question ($activityKind, $unitCode)', ({ unitCode, amount, activityKind }) => {
+    const state = apply(createEmptyWeeklyPlanningVNextState(), { ...empty(), add: [
+      { kind: 'task', localId: 't', category: 'study', title: '英単語' },
+      { kind: 'study_context', localId: 'study', taskRef: { localId: 't' }, purpose: 'self_study', contextLabel: '英語', activityKind },
+      { ...work, amount, unitCode, unitLabel: unitCode === 'minute' ? '分' : '時間' },
+      { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+      { ...work, localId: 'math-time', taskRef: { localId: 'math' }, amount: 60, unitCode: 'minute', unitLabel: '分' },
+    ] });
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection.questions).toEqual([]);
+    expect(state.learningStrategyProposalRecords).toEqual([]);
+    expect(projection.owners.map(owner => owner.work.map(item => item.minutes))).toEqual([[60], [60]]);
+    expect(compile(state).input!.movableWorkItems.map(item => item.estimatedMinutes)).toEqual([60, 60]);
+    expect(state.graph.workloads.map(fact => [fact.amount, fact.unitCode])).toEqual([[amount, unitCode], [60, 'minute']]);
+  });
+
   it.each(['memorization_retrieval', 'problem_solving'] as const)('keeps fully completed %s work out of method questions while the other subject stays ready', activity => {
     const state = memoryWeek(100, activity);
     const projection = projectWeeklyPlanningVNext(state);
@@ -105,20 +126,36 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     }
   });
 
-  it('keeps the method question on an unfinished component when another component is complete', () => {
+  it.each(['completed', 'time_budget'] as const)('keeps the quantity method question when another component has %s work', basis => {
     const state = apply(createEmptyWeeklyPlanningVNextState(), { ...empty(), add: [
       { kind: 'task', localId: 't', category: 'study', title: '英単語' },
       { kind: 'study_context', localId: 'study', taskRef: { localId: 't' }, purpose: 'self_study', contextLabel: null, activityKind: 'memorization_retrieval' },
       { kind: 'component', localId: 'finished', taskRef: { localId: 't' }, parentComponentRef: null, role: 'chapter', label: '完了した章' },
       { kind: 'component', localId: 'unfinished', taskRef: { localId: 't' }, parentComponentRef: null, role: 'chapter', label: '未完了の章' },
-      { ...work, quantityRole: 'scope_total', componentRef: { localId: 'finished' } },
-      { ...work, localId: 'done', quantityRole: 'completed', componentRef: { localId: 'finished' } },
+      { ...work, quantityRole: 'scope_total', componentRef: { localId: 'finished' },
+        ...(basis === 'time_budget' ? { amount: 60, unitCode: 'minute', unitLabel: '分' } : {}) },
+      ...(basis === 'completed' ? [{ ...work, localId: 'done', quantityRole: 'completed' as const, componentRef: { localId: 'finished' } }] : []),
       { ...work, localId: 'next', amount: 50, componentRef: { localId: 'unfinished' } },
     ] });
     const next = state.graph.workloads.find(fact => fact.amount === 50)!;
     expect(state.learningStrategyProposalRecords).toEqual([expect.objectContaining({ workloadFactId: next.id })]);
     expect(projectWeeklyPlanningVNext(state).questions[0]).toMatchObject({ code: 'learning_strategy_proposal', componentId: next.componentId });
-    expect(projectWeeklyPlanningVNext(state).owners.find(owner => owner.componentId !== next.componentId)).toMatchObject({ status: 'nothing_to_schedule' });
+    expect(projectWeeklyPlanningVNext(state).owners.find(owner => owner.componentId !== next.componentId)).toMatchObject(
+      basis === 'completed' ? { status: 'nothing_to_schedule' } : { status: 'ready', work: [{ minutes: 60 }] });
+  });
+
+  it.each(['pending', 'accepted'] as const)('retains %s history when the user replaces quantity work with a time budget', status => {
+    let state = seed();
+    if (status === 'accepted') state = decide(state, 'accept');
+    const proposalId = state.learningStrategyProposalRecords[0].id;
+    state = apply(state, { ...empty(), patch: [{ kind: 'workload', localId: 'time-budget',
+      targetFactId: state.graph.workloads[0].id, amountDelta: null,
+      changes: { amount: 60, unitCode: 'minute', unitLabel: '分', quantityRole: null,
+        rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] });
+    expect(state.learningStrategyProposalRecords).toHaveLength(1);
+    expect(state.learningStrategyProposalRecords[0]).toMatchObject({ id: proposalId, status });
+    expect(projectWeeklyPlanningVNext(state).questions).toEqual([]);
+    expect(compile(state).input!.movableWorkItems.map(item => item.estimatedMinutes)).toEqual([60]);
   });
 
   it('proposes spaced memory practice from stated activity, never from a unit label', () => {
