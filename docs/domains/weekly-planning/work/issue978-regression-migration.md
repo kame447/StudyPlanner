@@ -27,8 +27,8 @@ Branch: `test/issue978-v5-regression-vnext`, base `799d89a3`
 | X0 final-c /2,/3,/4 | DateOracle `accepts the same stated day` / `rejects missing, wrong-day and wrong-owner bounds`。各turnがworkDateを要求。 | **追加検証済み**: Workerで完了10→12、残り8・64分、独立した日付/単位時間の保持、checkpoint再開。元の各日本語の現行モデル読取は未実施。 |
 | X0 `recurrence-out-of-vnext-scope/1` | DateOracle `accepts the next-week start`。weekly/月曜と開始境界の両方を要求。元IDは証拠との対応用に保持。 | **追加検証済み**: Workerでearliest_start/計画窓の2正例と開始欠落の負例。旧rep3の失敗を合格へ変更していない。 |
 | X0 `fixed-event-yes-after-rendered-offer/1,/2` | 登録依頼false・候補0、busy区間は既存の固定予定oracleで検査。明示登録2正例も維持。 | **追加検証済み**: busy共有→checkpoint再開→相づちの2turnでbusyを保持し、task/candidate/previewなし。 |
-| #882 completed/remaining/同turn見積訂正 | 既存Transaction `C12 and explicit R8` / `R8 + E60`、Projection `binds a same-turn quantity and total correction`、providerシナリオ `882-c12-derived-r8` / `882-iter4-explicit-r8` / `compound-r8-e60-1,2`。 | **追加検証済み**: Workerの10→12と不正参照対照。明示R8と同turn E60のWorker対応は次の単位。 |
-| #904 明示日付/期限/schema回復 | 既存Transactionの無効temporal/相対日、FocusedRecovery統合、providerシナリオ `explicit-date` / `deadline-tomorrow-1300`。 | 日付窓は上記で追加検証済み。元の13:00期限・不正schema→回復のWorker正例/反例は未追加。 |
+| #882 completed/remaining/同turn見積訂正 | 既存Transaction `C12 and explicit R8` / `R8 + E60`、Projection `binds a same-turn quantity and total correction`、providerシナリオ `882-c12-derived-r8` / `882-iter4-explicit-r8` / `compound-r8-e60-1,2`。 | **追加検証済み**: Workerの10→12と不正参照対照。Correction suiteで明示R8枚＋E60分を節順2通りとも最終8枚へbindし、候補/保存権限0。 |
+| #904 明示日付/期限/schema回復 | 既存Transactionの無効temporal/相対日、FocusedRecovery統合、providerシナリオ `explicit-date` / `deadline-tomorrow-1300`。 | **追加検証済み**: Correction suiteで初回schema不正→1回修復成功、および修復も不正→graph保持→次turn成功。どちらも明日13:00を受理時計の8/27終了期限として保持し、独立作業/見積は不変。 |
 | #905/#907 「残り45分」と独立作業 | 既存Projection `never silently drops or double-counts other-basis work`、providerシナリオ `independent-scope` / `native-45-minute`。 | 同一/別scopeの各選択と日本語のWorker対応は未追加。 |
 | #906/#907 blocking質問→対象付き訂正/関係明示 | 既存Projectionの矛盾選択/owner同一性、StageA3の反復質問と選択、provider `option-answer`。 | 完了値の対象付き訂正は追加検証済み。関係選択の元反例との対応は未完。 |
 | #908 再解釈による値変更/独立節消失 | 既存Providerの999改変を含むbounded repair、Transactionの独立節/ownership/stale/cross-task拒否。 | **追加検証済み**: Workerの不正参照を初回/1回修復とも拒否しgraph全体を保持。元モデルの12→999や別対象移動の読取は別途照合。 |
@@ -42,6 +42,8 @@ Branch: `test/issue978-v5-regression-vnext`, base `799d89a3`
 
 base799d89a3上の未commit作業ツリーで、DateOracle＋比較fixtureのfocused **37pass**（実API28件は既存opt-in skip）、Worker focused **8pass**。app+Worker typecheck（Worker型の再生成を含む）は成功。local full verify/E2E/実モデルは実行せず、親がexact headのCIを担当する。
 
+第1単位はcommit `8edc29c2` / [PR #1010](https://github.com/kame447/StudyPlanner/pull/1010)。その上で `durableVNextV5Correction.integration.test.ts` の **4pass**（節順2例・schema回復2例）、app+Worker typecheck再成功。これも合成応答であり実モデル読取の成功とは区別する。
+
 初回の失敗は評価側のrangeのfield名、および旧除外ケースを前提とするテストを分類・修正した。Workerのpreview assertionも実在するcheckpointのpreviewを検査する形へ訂正し、候補0という独立条件を保持した。過去モデルの意味欠落を修正したとは扱わない。
 
-次は#882の明示R8＋E60、#904の13:00/schema回復、#905の同一/別scopeから、未カバーのWorker正例/反例を最小単位で追加する。実モデルrunは親の予算・実行判断へ依頼する。全行の境界と結果が揃うまで#978全体の完了とはしない。
+次は#905の同一/別scope、#911/#912のrate-total衝突から、未カバーのWorker正例/反例を最小単位で追加する。実モデルrunは親の予算・実行判断へ依頼する。全行の境界と結果が揃うまで#978全体の完了とはしない。
