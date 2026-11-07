@@ -60,6 +60,11 @@ function questionIntent(state: WeeklyPlanningVNextState, question: VNextQuestion
       targetFactId, amount: question.forWork.amount, unitCode: null, unitLabel: question.forWork.unitLabel };
   }
   const questionTarget = questionTargetForStableV5Dialogue({ planningInformation, targetFactId });
+  if (question.code === 'semantic_uncertainty' && state.graph.planningWindows.some(window => window.id === targetFactId)) {
+    return { kind: 'resolution_question', resolutionKind: 'semantic_clarification', targetFactId,
+      requestedInformation: ['clarify_ambiguous_meaning'], allowedChoices: [], knownAmount: null, knownUnitLabel: null,
+      ambiguityField: 'planning_window', ambiguityReason: '計画期間の開始年・終了年の根拠が未確認です。' };
+  }
   return questionIntentForStableV5Dialogue({ questionCode: question.code, questionTarget, planningInformation })
     ?? { kind: 'resolution_question', resolutionKind: 'semantic_clarification', targetFactId,
       requestedInformation: ['clarify_ambiguous_meaning'], allowedChoices: [], knownAmount: null, knownUnitLabel: null,

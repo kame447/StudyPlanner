@@ -75,6 +75,161 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>, fa
 
 describe('VNext native fixed-event registration through the unchanged V5 projection and approval', () => {
   it.each([
+    { activityKind: 'memorization_retrieval', movableMemory: false },
+    { activityKind: 'problem_solving', movableMemory: false },
+    { activityKind: 'memorization_retrieval', movableMemory: true },
+  ] as const)('keeps fixed memory outside method choices, while movable memory remains a choice (activity=$activityKind, movable=$movableMemory)', async ({ activityKind, movableMemory }) => {
+      const add: VNextAddFact[] = [
+        ...event('english', 'study', '10:00', '10:30'),
+        { kind: 'study_context', localId: 'english-context', taskRef: { localId: 'english' },
+          purpose: 'self_study', contextLabel: '英語', activityKind },
+        { kind: 'workload', localId: 'english-words', taskRef: { localId: 'english' }, componentRef: null,
+          quantityRole: 'target', amount: 30, unitCode: 'word', unitLabel: '語', rangeStart: null, rangeEnd: null,
+          perOccurrence: false, periodExpression: null },
+        ...work,
+        { kind: 'task', localId: 'physics', category: 'study', title: '物理' },
+        ...(movableMemory ? [{ kind: 'study_context' as const, localId: 'physics-context', taskRef: { localId: 'physics' },
+          purpose: 'self_study' as const, contextLabel: '物理公式', activityKind: 'memorization_retrieval' as const }] : []),
+        { kind: 'workload', localId: 'physics-work', taskRef: { localId: 'physics' }, componentRef: null,
+          quantityRole: 'target', amount: 5, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null,
+          perOccurrence: false, periodExpression: null },
+        { kind: 'effort_estimate', localId: 'physics-rate', taskRef: { localId: 'physics' }, targetRef: { localId: 'physics-work' },
+          effortKind: 'duration_per_unit', minutes: 10, unitCode: 'problem', unitLabel: '問', precision: 'exact' },
+        ...event('club', 'non_study', '16:00', '17:00'),
+      ];
+      const h = harness([wire(add, [request({ localId: 'english' }), request({ localId: 'club' })], 'create_plan')]);
+      const result = await h.turn(`今週は数学60分、物理5問で1問10分。火曜10時から10時半に英単語30語${activityKind === 'memorization_retrieval' ? 'を暗記' : 'を使った問題演習'}、16時から17時に部活。固定2件を登録し、残りの予定案も作って`);
+      expect(result.interpretation).toMatchObject({ status: 'interpreted', metrics: { calls: 1, repairs: 0 } });
+      expect(result.outcome).toBe('applied');
+      expect(h.state().graph.tasks).toHaveLength(4);
+      expect(h.state().graph.workloads.map(fact => [fact.amount, fact.unitCode])).toEqual([[30, 'word'], [60, 'minute'], [5, 'problem']]);
+      expect(h.state().graph.effortEstimates).toMatchObject([{ kind: 'duration_per_unit', minutes: 10 }]);
+      const englishId = h.state().graph.tasks.find(task => task.title === 'english')!.id;
+      const clubId = h.state().graph.tasks.find(task => task.title === 'club')!.id;
+      const comparison = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(h.state().graph),
+        context: { ownerId: OWNER, currentDate: WEEK, planningStartDate: WEEK, planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } });
+      expect(comparison.status).toBe('ready');
+      expect(comparison.input!.movableWorkItems.some(item => item.taskId === englishId)).toBe(false);
+      expect(h.oracle('turn-1', englishId).candidates).toMatchObject([
+        { date: '2026-11-03', startTime: '10:00', endTime: '10:30', durationMinutes: 30 },
+      ]);
+      expect(h.oracle('turn-1', clubId).candidates).toMatchObject([
+        { date: '2026-11-03', startTime: '16:00', endTime: '17:00', durationMinutes: 60 },
+      ]);
+      expect(h.saves()).toBe(0);
+      expect(h.slots.get('ledger')).toBeUndefined();
+      expect(h.calls()).toBe(1);
+      if (movableMemory) {
+        const physicsId = h.state().graph.tasks.find(task => task.title === '物理')!.id;
+        expect(result.question).toMatchObject({ code: 'learning_strategy_proposal', taskId: physicsId,
+          proposal: { kind: 'spaced_memory_practice' } });
+        expect(result.preview).toBeNull();
+        expect(h.state().learningStrategyProposalRecords).toMatchObject([{ taskId: physicsId }]);
+        return;
+      }
+      expect(h.state().learningStrategyProposalRecords).toEqual([]);
+      expect({ questionCode: result.question?.code ?? null, preview: result.preview !== null,
+        fixedRegistrations: result.draftCandidates?.filter(candidate => candidate.source === 'fixed_event_registration').length ?? 0 })
+        .toEqual({ questionCode: null, preview: true, fixedRegistrations: 2 });
+    });
+
+  it.each([
+    { explicit: false, taskTotal: false }, { explicit: true, taskTotal: false },
+    { explicit: false, taskTotal: true }, { explicit: true, taskTotal: true },
+  ])('keeps movable work independent of a broad registration while honoring its explicit target (explicit=$explicit, taskTotal=$taskTotal)', async ({ explicit, taskTotal }) => {
+    const math: VNextAddFact[] = taskTotal ? [work[0], { kind: 'effort_estimate', localId: 'math-total',
+      taskRef: { localId: 'math' }, targetRef: { localId: 'math' }, effortKind: 'total_duration', minutes: 60,
+      unitCode: null, unitLabel: null, precision: 'exact' }] : work;
+    const h = harness([wire([...event(), ...math], [request(explicit ? { localId: 'math' } : null)], 'create_plan')]);
+    const result = await h.turn(explicit ? '部活は固定予定です。数学60分も固定枠として登録したいです'
+      : '部活の固定予定を登録して。数学は60分、空き時間に予定を作って');
+    const mathId = h.state().graph.tasks.find(task => task.title === '数学')!.id;
+    if (explicit) {
+      expect(result.question).toMatchObject({ code: 'invalid_commitment_interval', taskId: mathId });
+      expect(h.state().pendingEventRegistrationTargetIds).toEqual([mathId]);
+      expect(result.preview).toBeNull();
+    } else {
+      expect(result.question).toBeNull();
+      expect(result.draftCandidates?.filter(candidate => candidate.source === 'fixed_event_registration')).toHaveLength(1);
+      expect(result.draftCandidates?.filter(candidate => candidate.source === 'weekly_exam_prep')).toHaveLength(1);
+      expect(h.state()).not.toHaveProperty('pendingEventRegistrationTargetIds');
+    }
+    expect(h.saves()).toBe(0);
+  });
+
+  it('retains one requested event through unknown answers, reload and another question, then consumes only its captured preview', async () => {
+    const conference: VNextAddFact[] = [
+      { kind: 'task', localId: 'conference', title: 'カンファレンス', category: 'non_study' },
+      { kind: 'task_date_rule', localId: 'conference-date', taskRef: { localId: 'conference' }, targetRef: { localId: 'conference' },
+        ruleKind: 'allowed_date', dateExpression: '2026-11-03', constraintLevel: 'hard' },
+    ];
+    const h = harness([
+      wire([...conference, { kind: 'task', localId: 'math', title: '数学', category: 'study' }], [request({ localId: 'conference' })]),
+      wire(),
+      (context: Context) => { const id = context.activeFacts.tasks.find(task => task.title === 'カンファレンス')!.id;
+        return wire([{ kind: 'temporal_constraint', localId: 'conference-time', taskRef: { factId: id }, targetRef: { factId: id },
+          constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+          startTime: '14:00', endTime: '15:00', precision: 'exact' }]); },
+      (context: Context) => { const id = context.activeFacts.tasks.find(task => task.title === '数学')!.id;
+        return wire([{ ...work.find(fact => fact.kind === 'workload')!, taskRef: { factId: id } }]); },
+      wire(event('later-busy')),
+    ]);
+    const first = await h.turn('明日のカンファレンスを登録して。数学もやりたいです');
+    const targetId = h.state().graph.tasks.find(task => task.title === 'カンファレンス')!.id;
+    expect(first.question).toMatchObject({ code: 'invalid_commitment_interval', taskId: targetId });
+    expect(h.state().pendingEventRegistrationTargetIds).toEqual([targetId]);
+    const unknown = await h.turn('まだ時刻は分かりません');
+    expect(unknown.question?.key).toBe(first.question!.key);
+    const reloaded = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: h.memory.storage });
+    expect(reloaded.readCheckpoint()!.vnext.state.pendingEventRegistrationTargetIds).toEqual([targetId]);
+    expect(reloaded.readCheckpoint()!.vnext.preview).toBeNull();
+    const timed = await h.turn('カンファレンスは14時から15時です');
+    expect(timed.question).toMatchObject({ code: 'missing_schedulable_work', taskId: h.state().graph.tasks.find(task => task.title === '数学')!.id });
+    expect(timed.preview).toBeNull();
+    expect(h.state().pendingEventRegistrationTargetIds).toEqual([targetId]);
+    expect(h.saves()).toBe(0);
+    const ready = await h.turn('数学は60分やります');
+    expect(ready.draftCandidates?.map(candidate => [candidate.title, candidate.date, candidate.startTime, candidate.endTime]))
+      .toEqual([['カンファレンス', '2026-11-03', '14:00', '15:00']]);
+    expect(h.state()).not.toHaveProperty('pendingEventRegistrationTargetIds');
+    expect(h.state().draftGenerationIntent).toBe('not_requested');
+    expect(h.saves()).toBe(0);
+    expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
+    expect(h.saves()).toBe(1);
+    const later = await h.turn('別の固定予定も分かりました');
+    expect(later.preview).toBeNull();
+    expect(later.draftCandidates?.filter(candidate => candidate.source === 'fixed_event_registration') ?? []).toEqual([]);
+    await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports });
+    expect(h.saves()).toBe(1);
+  });
+
+  it.each([true, false])('keeps null registration limited to tasks stated in its own turn (sameTurn=%s)', async sameTurn => {
+    const task: VNextAddFact = { kind: 'task', localId: 'conference', title: 'カンファレンス', category: 'non_study' };
+    const h = harness(sameTurn ? [wire([task], [request()])] : [wire([task]), wire([], [request()])]);
+    let result = await h.turn('カンファレンスがあります');
+    if (!sameTurn) result = await h.turn('今回の予定を登録して');
+    expect(result.question?.code).toBe(sameTurn ? 'invalid_commitment_interval' : 'missing_schedulable_work');
+    expect(h.state().pendingEventRegistrationTargetIds ?? []).toEqual(sameTurn ? [h.state().graph.tasks[0].id] : []);
+    expect(result.preview).toBeNull(); expect(h.saves()).toBe(0);
+  });
+
+  it.each([false, true])('asks for fixed clock bounds only when the timeless task is requested as a registration (requested=%s)', async requested => {
+    const task: VNextAddFact = { kind: 'task', localId: 'conference', title: 'カンファレンス', category: 'non_study' };
+    const date: VNextAddFact = { kind: 'task_date_rule', localId: 'conference-date',
+      taskRef: { localId: 'conference' }, targetRef: { localId: 'conference' }, ruleKind: 'allowed_date',
+      dateExpression: '2026-11-03', constraintLevel: 'hard' };
+    const h = harness([wire([task, date], requested ? [request({ localId: 'conference' })] : [])]);
+    const result = await h.turn(`明日カンファレンスがあります。${requested ? '予定に入れてください。' : ''}`);
+    expect(result.outcome).toBe('applied');
+    expect(h.state().graph.tasks).toHaveLength(1);
+    expect(result.preview).toBeNull();
+    expect(h.saves()).toBe(0);
+    expect(h.rendererInputs[0]).toMatchObject({ questionIntent: requested
+      ? { kind: 'resolution_question', resolutionKind: 'commitment_time_bounds', requestedInformation: ['commitment_start_and_end_time'] }
+      : { kind: 'schedulable_work_detail', mode: 'open_ended_session', requestedInformation: ['session_allocation'] } });
+  });
+
+  it.each([
     { name: 'fixed interval alone', quantity: false, estimate: false },
     { name: 'fixed interval with page count', quantity: true, estimate: false },
     { name: 'fixed interval with page count and estimate', quantity: true, estimate: true },
@@ -308,7 +463,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     { reading: 'separate explicit math day', window: false, mathDate: 'day_after_tomorrow', expectedMathDate: '2026-11-04' },
   ])('#868-6 characterizes $reading without interpreting the compound utterance again', async ({ window, mathDate, expectedMathDate }) => {
     const add: VNextAddFact[] = [...event('seminar'), ...work];
-    if (window) add.push({ kind: 'planning_window', localId: 'shared-day', windowKind: 'relative_day',
+    if (window) add.push({ kind: 'planning_window', localId: 'shared-day', yearBasis: null, windowKind: 'relative_day',
       value: 'tomorrow', start: null, end: null });
     if (mathDate) for (const constraintKind of ['earliest_start', 'latest_end'] as const) add.push({
       kind: 'temporal_constraint', localId: `math-${constraintKind}`, taskRef: { localId: 'math' },

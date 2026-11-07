@@ -30,7 +30,9 @@ import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningS
 import { vnextQuestionKeyAllowsProvisionalTimebox } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import { evaluateVNextLearningStrategy } from '../weeklyPlanningVNextLearningStrategy';
-import { resolveVNextEventRegistrationActs, vnextRegistrationCandidateKeys } from '../weeklyPlanningVNextEventRegistration';
+import { resolveVNextEventRegistrationActs, retainVNextPendingEventRegistrationTargets, vnextRegistrationCandidateKeys } from '../weeklyPlanningVNextEventRegistration';
+import { bindVNextPlanningWindowYearBasis, vnextPlanningWindowYearBasisVerified } from '../weeklyPlanningVNextPlanningWindowYear';
+import type { VNextPlanningWindowYearBasis } from '../weeklyPlanningVNextTypes';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -48,7 +50,7 @@ export const VNEXT_PATCH_FIELDS = {
   workload: ['quantityRole', 'amount', 'unitCode', 'unitLabel', 'rangeStart', 'rangeEnd', 'perOccurrence', 'periodExpression'],
   effort_estimate: ['effortKind', 'minutes', 'unitCode', 'unitLabel', 'precision'],
   temporal_constraint: ['constraintKind', 'constraintLevel', 'dateExpression', 'namedTimePeriod', 'startTime', 'endTime', 'precision'],
-  planning_window: ['windowKind', 'value', 'start', 'end'],
+  planning_window: ['windowKind', 'value', 'start', 'end', 'yearBasis'],
   recurrence: ['recurrenceKind', 'count', 'days'],
   task_date_rule: ['ruleKind', 'dateExpression', 'constraintLevel'],
   availability_declaration: ['availabilityKind', 'dateExpression', 'namedTimePeriod', 'startTime', 'endTime', 'recurrenceKind', 'days', 'capacityMinutes', 'constraintLevel'],
@@ -217,7 +219,13 @@ export function applyWeeklyPlanningVNextTurn(
       error('invalid_value', `${path}.end`, null, localId);
       return payload;
     }
-    return { ...payload, kind: 'absolute', value: start === end ? start : `${start}/${end}`, start, end };
+    return { ...payload, kind: 'absolute', value: start === end ? start : `${start}/${end}`, start, end,
+      yearBasis: bindVNextPlanningWindowYearBasis(payload.yearBasis as VNextPlanningWindowYearBasis | null, { start, end }, {
+        ...context,
+        // An unconfirmed candidate cannot become its own evidence on the next turn.
+        planningHorizonVerified: state.graph.planningWindows.filter(window => initialActive.has(window.id))
+          .every(vnextPlanningWindowYearBasisVerified),
+      }) };
   };
   const addPayload = (fact: VNextAddFact, path: string): Record<string, unknown> => {
     switch (fact.kind) {
@@ -241,7 +249,8 @@ export function applyWeeklyPlanningVNextTurn(
         targetFactId: ref(fact.targetRef, `${path}.targetRef`), kind: fact.constraintKind,
         constraintLevel: fact.constraintLevel, dateExpression: fixDate(fact.dateExpression, dateMeaning(fact.kind), `${path}.dateExpression`, fact.localId), namedTimePeriod: fact.namedTimePeriod,
         startTime: fact.startTime, endTime: fact.endTime, precision: fact.precision };
-      case 'planning_window': return freezeWindow({ kind: fact.windowKind, value: fact.value, start: fact.start, end: fact.end }, path, fact.localId);
+      case 'planning_window': return freezeWindow({ kind: fact.windowKind, value: fact.value, start: fact.start, end: fact.end,
+        yearBasis: fact.yearBasis }, path, fact.localId);
       case 'uncertainty': {
         const targetFactId = ref(fact.targetRef, `${path}.targetRef`);
         if (fact.field !== 'planning_window' || !graph.planningWindows.some(window => window.id === targetFactId)) {
@@ -531,15 +540,19 @@ export function applyWeeklyPlanningVNextTurn(
       return reject();
     }
   }
-  next.learningStrategyProposalRecords = evaluateVNextLearningStrategy({ state: next,
-    projection: projectWeeklyPlanningVNext(next, context.observedMemoryPace), turnId: context.turnId, decision: statedDelta.proposalDecision }).records;
   const registration = resolveVNextEventRegistrationActs({ state: next, delta: statedDelta,
     acts: context.preview?.eventRegistration?.acts, currentTurnId: context.turnId });
   if (registration.status === 'rejected') return { status: 'rejected', state, errors: registration.errors };
+  const pendingTargets = retainVNextPendingEventRegistrationTargets(next, registration.acts, context.turnId);
+  if (pendingTargets.length) next.pendingEventRegistrationTargetIds = pendingTargets;
+  else delete next.pendingEventRegistrationTargetIds;
+  next.learningStrategyProposalRecords = evaluateVNextLearningStrategy({ state: next,
+    projection: projectWeeklyPlanningVNext(next, context.observedMemoryPace), turnId: context.turnId, decision: statedDelta.proposalDecision }).records;
   const acceptedRegistration = context.preview?.eventRegistration ? { registrationActs: registration.acts } : {};
   if (!diff.added.length && !diff.removed.length && !diff.superseded.length
     && JSON.stringify(next.workRelations) === JSON.stringify(state.workRelations)
     && JSON.stringify(next.deferrals) === JSON.stringify(state.deferrals)
+    && JSON.stringify(next.pendingEventRegistrationTargetIds) === JSON.stringify(state.pendingEventRegistrationTargetIds)
     && JSON.stringify(next.learningStrategyProposalRecords) === JSON.stringify(state.learningStrategyProposalRecords)) {
     // Preview identity covers accepted permission/registration meaning, not facts alone.
     // Compare both V5 key sources once; unchanged sets never tick or create a second save identity.

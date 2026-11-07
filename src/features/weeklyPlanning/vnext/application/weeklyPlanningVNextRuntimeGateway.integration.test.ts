@@ -69,7 +69,9 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
   const client: WeeklyPlanningVNextExperimentalPorts['client'] = { async createChatCompletion(input) {
     requests.push(structuredClone(input));
     if (options.providerFails) throw new Error('synthetic provider unavailable');
-    return JSON.stringify(options.nativeReadings ? options.nativeReadings.shift() : options.nativeReading ?? { planningIntent: options.planningIntent ?? 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null });
+    const response = options.nativeReadings ? options.nativeReadings.shift() : options.nativeReading
+      ?? { planningIntent: options.planningIntent ?? 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null };
+    return JSON.stringify(typeof response === 'function' ? response(input) : response);
   } };
   const gateway = createWeeklyPlanningVNextRuntimeGateway({ session: local, ports: () => ({ client,
     interpret: options.interpret ?? createWeeklyPlanningVNextProviderInterpreter(), checkpoint: local.checkpoint,
@@ -102,20 +104,24 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
 const diagnosticEntries = () => writes.flatMap(write => write.entries).filter(entry => entry.kind === 'turn_diagnostic');
 
 describe('VNext session → gateway → existing controller and trace owner', () => {
-  it.each([false, true])('persists the actual ambiguous-period request and required question through outbox and Worker (large=%s)', async large => {
+  it.each([false, true].flatMap(large => [true, false].map(withUncertainty => ({ large, withUncertainty }))))(
+    'persists year evidence and a required period question through outbox and Worker (large=$large, uncertainty=$withUncertainty)', async ({ large, withUncertainty }) => {
     const reason = 'The omitted end year may mean a much longer period ending next year';
     const native = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [
       { kind: 'planning_window', localId: 'period', windowKind: 'absolute',
-        value: '2026-11-03/2027-09-07', start: '2026-11-03', end: '2027-09-07' },
+        value: '2026-11-03/2027-09-07', start: '2026-11-03', end: '2027-09-07', yearBasis: {
+          start: { origin: 'context', source: 'current_date', reference: WEEK },
+          end: { origin: 'inferred', source: 'user_text', reference: '9/7' },
+        } },
       task, work('daily-work', 'remaining', 45, 'minute'),
-      { kind: 'uncertainty', localId: 'year-question', targetRef: { localId: 'period' }, field: 'planning_window', reason },
+      ...(withUncertainty ? [{ kind: 'uncertainty', localId: 'year-question', targetRef: { localId: 'period' }, field: 'planning_window', reason }] : []),
     ] } };
     const h = harness({ nativeReading: native, createRenderer: () => {
       const delegate = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
       return { render(input) {
         expect(input.questionCode).toBe('semantic_uncertainty');
         expect(input.questionIntent).toMatchObject({ resolutionKind: 'semantic_clarification',
-          ambiguityField: 'planning_window', ambiguityReason: reason });
+          ambiguityField: 'planning_window', ambiguityReason: withUncertainty ? reason : '計画期間の開始年・終了年の根拠が未確認です。' });
         Object.assign(input.communication!, { futureWindowSentinel: 'keep-future-window-confirmation',
           ...(large ? { futureLargeWindowMetadata: 'x'.repeat(48 * 1024) } : {}) });
         return delegate.render(input);
@@ -123,21 +129,24 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     } });
     failAppend = true;
     expect(await h.submit('明日から9/7までの数学の予定を作って')).toEqual({ accepted: true, draftCandidates: [] });
-    expect(h.local.readCheckpoint()!.vnext.state.graph.uncertainties[0]).toMatchObject({ field: 'planning_window', reason });
+    if (withUncertainty) expect(h.local.readCheckpoint()!.vnext.state.graph.uncertainties[0]).toMatchObject({ field: 'planning_window', reason });
+    else expect(h.local.readCheckpoint()!.vnext.state.graph.uncertainties).toEqual([]);
+    expect(h.local.readCheckpoint()!.vnext.state.graph.planningWindows[0].yearBasis?.end)
+      .toMatchObject({ origin: 'inferred', source: 'user_text', reference: '9/7', year: 2027, verified: false });
     expect(h.local.readCheckpoint()!.vnext.presentedQuestion?.questionKey).toContain('semantic_uncertainty');
     expect(h.results[0].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
       request: { messages: (h.requests[0] as { messages: unknown[] }).messages },
     });
     const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
     expect(queued).toHaveLength(1);
-    expect(JSON.stringify(queued[0].input)).toContain(reason);
+    expect(JSON.stringify(queued[0].input)).toContain(withUncertainty ? reason : 'yearBasis');
     resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
     await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'window-confirmation-retry', debugTraceEvents: [] });
     expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
     const write = writes.find(write => write.entries.some(entry => entry.requestId === queued[0].input.requestId))!;
     const entry = write.entries.find(entry => entry.kind === 'turn_diagnostic' && entry.requestId === queued[0].input.requestId)!;
     const serialized = JSON.stringify(entry);
-    expect(serialized).toContain(reason);
+    expect(serialized).toContain(withUncertainty ? reason : 'yearBasis');
     expect(serialized).toContain('semantic_uncertainty');
     expect(serialized).toContain('keep-future-window-confirmation');
     expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
@@ -145,15 +154,92 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
     { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
     expect(server.entries).toHaveLength(1);
-    expect(JSON.stringify(server.entries[0])).toContain(reason);
+    expect(JSON.stringify(server.entries[0])).toContain(withUncertainty ? reason : 'yearBasis');
     expect(JSON.stringify(server.entries[0])).toContain('keep-future-window-confirmation');
     expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
   });
 
-  it.each([false, true])('Stage B: persists fixed-quantity registration through failed append, reload and Worker (large=%s)', async large => {
+  it.each([false, true])('persists an inherited session duration and its accepted preview through outbox reload and Worker (large=%s)', async large => {
+    const initial = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [task,
+      { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
+        activityKind: 'memorization_retrieval', contextLabel: null },
+      { ...work('words', 'remaining', 100), unitCode: 'word', unitLabel: '語' },
+      { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'task' }, targetRef: { localId: 'words' },
+        effortKind: 'duration_per_unit', minutes: 2, unitCode: 'word', unitLabel: '語', precision: 'exact' },
+      { kind: 'effort_estimate', localId: 'session', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+        effortKind: 'session_duration', minutes: 20, unitCode: null, unitLabel: null, precision: 'exact' },
+    ] } };
+    const contexts: unknown[] = [];
+    let acceptedWire: unknown;
+    const h = harness({ nativeReadings: [initial, (request: { messages: { content: string }[] }) => {
+      const input = JSON.parse(request.messages[1].content);
+      acceptedWire = { planningIntent: 'unknown', conversationActs: [], delta: EMPTY,
+        answer: { kind: 'proposal_decision', proposalId: input.presentedQuestion.proposal.id, decision: 'accept' } };
+      return acceptedWire;
+    }], createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        Object.assign(input.communication!, { futureKnownSessionSentinel: 'keep-known-session-evidence',
+          ...(large ? { futureKnownSessionDetails: 'x'.repeat(48 * 1024) } : {}) });
+        contexts.push(structuredClone(input));
+        return renderer.render(input);
+      } };
+    } });
+    await h.submit('暗記100語、1語2分、1回20分で計画して');
+    expect(h.local.readCheckpoint()!.vnext.state.learningStrategyProposalRecords[0].status).toBe('pending');
+    failAppend = true;
+    await h.submit('分散学習の提案を採用して');
+    const result = h.results[1];
+    const persisted = h.local.readCheckpoint()!.vnext;
+    expect(persisted.presentedQuestion).toBeNull();
+    expect(persisted.preview!.blocks.length).toBeGreaterThan(0);
+    expect(result.draftCandidates.every(candidate => candidate.durationMinutes === 20)).toBe(true);
+    expect(persisted.preview!.blocks.map(({ date, startTime, endTime }) => ({ date, startTime, endTime }))).toEqual(
+      result.draftCandidates.map(({ date, startTime, endTime }) => ({ date, startTime, endTime })));
+    expect(persisted.state.graph.effortEstimates.filter(fact => fact.kind === 'session_duration')).toMatchObject([
+      { minutes: 20, targetFactId: persisted.state.graph.tasks[0].id },
+    ]);
+    expect(result.draftCandidates.every(candidate => candidate.approvalStatus === 'unapproved')).toBe(true);
+    expect(result.dialogueRendererTrace?.request?.promptContext).toEqual(contexts[1]);
+    expect(result.dialogueRendererTrace?.response?.status).toBe('rendered');
+    const sent = h.requests[1] as { messages: { content: string }[] };
+    expect(result.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(attempted.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-known-session', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(attempted.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '107' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ rawResponses: [expect.objectContaining({ text: JSON.stringify(acceptedWire) })] });
+    const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+    if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(contexts[1]);
+    else {
+      const originalBytes = new TextEncoder().encode(JSON.stringify(contexts[1])).byteLength;
+      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true, originalBytes,
+        jsonHead: expect.stringContaining('keep-known-session-evidence'), jsonTail: expect.any(String) });
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-known-session-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
+  });
+
+  it.each([false, true])('Stage B: persists fixed memorization registration through failed append, reload and Worker (large=%s)', async large => {
     const wire = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: null }],
       answer: null, delta: { ...EMPTY, add: [task, work('pages', 'remaining', 10),
+        { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
+          activityKind: 'memorization_retrieval', contextLabel: null },
         { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
           constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03',
           namedTimePeriod: null, startTime: '10:00', endTime: '11:00', precision: 'exact' }] } };
@@ -172,6 +258,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
       date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
     expect(h.local.readCheckpoint()!.vnext.state.graph.effortEstimates).toEqual([]);
+    expect(h.local.readCheckpoint()!.vnext.state.learningStrategyProposalRecords).toEqual([]);
     expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull();
     const result = h.results[0];
     expect(h.getState().previewCandidates).toEqual(result.draftCandidates);
@@ -575,25 +662,36 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
   });
 
-  it.each([false, true])('persists actual registration acts and exact fixed candidates through outbox reload and Worker (large=%s)', async large => {
+  it.each([
+    { large: false, timeless: false }, { large: true, timeless: false },
+    { large: false, timeless: true }, { large: true, timeless: true },
+  ])('persists registration acts and their actual preview or clock question through outbox reload and Worker (large=$large, timeless=$timeless)', async ({ large, timeless }) => {
     const nativeReading = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: { localId: 'club' } }],
       answer: null, delta: { ...EMPTY, add: [{ kind: 'task', localId: 'club', category: 'non_study', title: '部活' },
-        { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
+        ...(timeless ? [{ kind: 'task_date_rule', localId: 'date', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
+          ruleKind: 'allowed_date', dateExpression: '2026-11-03', constraintLevel: 'hard' }] : [{ kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
           constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
-          startTime: '16:00', endTime: '17:30', precision: 'exact' }] } };
+          startTime: '16:00', endTime: '17:30', precision: 'exact' }])] } };
     const h = harness({ nativeReading, createRenderer: () => {
       const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
       return { render(input) {
-        expect(input.communication?.eventRegistration?.candidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
+        if (timeless) expect(input.questionIntent).toMatchObject({ kind: 'resolution_question', resolutionKind: 'commitment_time_bounds',
+          requestedInformation: ['commitment_start_and_end_time'] });
+        else expect(input.communication?.eventRegistration?.candidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
           startTime: '16:00', endTime: '17:30', durationMinutes: 90 })]);
-        Object.assign(input.communication!.eventRegistration!, { futureRegistrationSentinel: 'keep-future-registration',
+        Object.assign(timeless ? input.questionIntent! : input.communication!.eventRegistration!, { futureRegistrationSentinel: 'keep-future-registration',
           ...(large ? { futureLargeRegistrationMetadata: 'x'.repeat(48 * 1024) } : {}) });
         return renderer.render(input);
       } };
     } });
     failAppend = true;
-    expect(await h.submit('火曜16時から17時半の部活を予定に登録して')).toMatchObject({ accepted: true,
+    const submitted = await h.submit(timeless ? '火曜の部活を予定に登録して' : '火曜16時から17時半の部活を予定に登録して');
+    expect(submitted).toMatchObject(timeless ? { accepted: true } : { accepted: true,
       draftCandidates: [expect.objectContaining({ source: 'fixed_event_registration', startTime: '16:00', endTime: '17:30' })] });
+    if (timeless) {
+      expect(h.local.readCheckpoint()!.vnext.state.pendingEventRegistrationTargetIds).toHaveLength(1);
+      expect(h.local.readCheckpoint()!.vnext.preview).toBeNull();
+    }
     const providerMessages = (h.requests[0] as { messages: { role: string; content: string }[] }).messages;
     expect(providerMessages[0].content).toContain('Distinguish a shared planning day from a date limited to one task.');
     expect(h.results[0].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
@@ -608,10 +706,12 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
     const write = writes[0]; const entry = write.entries.find(entry => entry.kind === 'turn_diagnostic')!;
     if (entry.kind !== 'turn_diagnostic') throw new Error('missing registration diagnostic');
-    expect(entry.diagnostics.outcome).toBe('preview_ready');
+    // VNext questions live in its checkpoint; a consultation keeps the initial compatibility intake idle.
+    expect(entry.diagnostics.outcome).toBe(timeless ? 'idle' : 'preview_ready');
     expect(entry.aiInterpreter.structuredResults[0].structuredResult).toMatchObject({ conversationActs: nativeReading.conversationActs,
       authorizationDecision: { authorized: false, draftGenerationIntent: 'not_requested' } });
-    expect(JSON.stringify(entry)).toContain('fixed_event_registration'); expect(JSON.stringify(entry)).toContain('keep-future-registration');
+    const evidence = timeless ? 'commitment_start_and_end_time' : 'fixed_event_registration';
+    expect(JSON.stringify(entry)).toContain(evidence); expect(JSON.stringify(entry)).toContain('keep-future-registration');
     expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
     const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
       entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
@@ -621,7 +721,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       conversationActs: nativeReading.conversationActs,
     }) })] });
     expect(JSON.stringify(server.entries[0])).toContain('keep-future-registration');
-    expect(JSON.stringify(server.entries[0])).toContain('fixed_event_registration');
+    expect(JSON.stringify(server.entries[0])).toContain(evidence);
     // Full requests remain in the persistent outbox; diagnostics retain bounded evidence with explicit truncation.
     const storedInterpreter = server.entries[0].aiInterpreter as typeof entry.aiInterpreter;
     const storedPrompt = storedInterpreter.input.requests[0].messages[0].content;

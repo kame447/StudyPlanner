@@ -81,6 +81,26 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     expect(projectWeeklyPlanningVNext(rejected).owners.flatMap(owner => owner.work)).toEqual([]);
   });
 
+  it('retains an earlier method proposal as history while fixed, and presents it again when the work becomes movable', () => {
+    const initial = seed('memorization_retrieval', true);
+    const records = structuredClone(initial.learningStrategyProposalRecords);
+    const taskRef = { factId: initial.graph.tasks[0].id };
+    const fixed = apply(initial, { ...empty(), add: [{ kind: 'temporal_constraint', localId: 'fixed',
+      taskRef, targetRef: taskRef, constraintKind: 'fixed_interval', constraintLevel: 'hard',
+      dateExpression: '2026-11-03', namedTimePeriod: null, startTime: '10:00', endTime: '10:30', precision: 'exact' }] });
+    expect(fixed.learningStrategyProposalRecords).toEqual(records);
+    expect(projectWeeklyPlanningVNext(fixed).questions).toEqual([]);
+    const fixedCompilation = compileGenericSchedulerInput({
+      graph: createWeeklyPlanningActiveSchedulerGraphViewV5(fixed.graph), context });
+    expect(fixedCompilation.status).toBe('ready');
+    expect(fixedCompilation.input!.movableWorkItems).toEqual([]);
+
+    const movable = apply(fixed, { ...empty(), remove: [{ targetFactId: fixed.graph.temporalConstraints[0].id }] });
+    expect(movable.learningStrategyProposalRecords).toEqual(records);
+    expect(projectWeeklyPlanningVNext(movable).questions[0]).toMatchObject({ code: 'learning_strategy_proposal',
+      proposal: { id: records[0].id, status: 'pending' } });
+  });
+
   it('asks session duration after spacing acceptance, then proposes exactly one pace calibration', () => {
     const accepted = decide(seed(), 'accept');
     expect(projectWeeklyPlanningVNext(accepted).questions[0]).toMatchObject({ code: 'missing_effort_estimate', effortMeasurement: 'session_duration' });
@@ -307,6 +327,114 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     expect(read.checkpoint.state.graph.workloads.map(fact => fact.amount)).toEqual([100]);
     expect(read.checkpoint.preview!.blocks[0]).toHaveProperty('behaviorMetadata.weeklyPlanningObservationSource');
     expect(call).toBe(4);
+  });
+
+  it.each(['workload', 'task', 'component', 'unstated'] as const)(
+    'does not re-ask an already stated session duration after accepting spacing (scope=%s)', async target => {
+      let checkpoint: string | null = null;
+      let call = 0;
+      let saves = 0;
+      let approvals = 0;
+      const ports: WeeklyPlanningVNextExperimentalPorts = {
+        client: { async createChatCompletion(request) {
+          const input = JSON.parse(request.messages[1].content);
+          const step = call++;
+          if (step === 2) return JSON.stringify({ planningIntent: 'discuss', delta: empty(), answer: null,
+            conversationActs: [{ kind: 'request_event_registration', targetRef: { factId: input.activeFacts.tasks[0].id } }] });
+          const initial = step === 0;
+          return JSON.stringify({ planningIntent: initial ? 'create_plan' : 'unknown', conversationActs: [],
+            delta: initial ? { ...empty(), add: [
+              { kind: 'task', localId: 't', category: 'study', title: '暗記学習' },
+              { kind: 'study_context', localId: 's', taskRef: { localId: 't' }, purpose: 'self_study',
+                activityKind: 'memorization_retrieval', contextLabel: null },
+              ...(target === 'component' ? [{ kind: 'component', localId: 'component', taskRef: { localId: 't' },
+                parentComponentRef: null, role: 'chapter', label: '暗記章' }] : []),
+              { ...work, ...(target === 'component' ? { componentRef: { localId: 'component' } } : {}) },
+              { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 't' }, targetRef: { localId: 'w' },
+                effortKind: 'duration_per_unit', minutes: 2, unitCode: 'custom', unitLabel: '項目', precision: 'exact' },
+              ...(target === 'unstated' ? [] : [{ kind: 'effort_estimate', localId: 'session', taskRef: { localId: 't' },
+                targetRef: { localId: target === 'task' ? 't' : target === 'component' ? 'component' : 'w' }, effortKind: 'session_duration',
+                minutes: 20, unitCode: null, unitLabel: null, precision: 'exact' }]),
+            ] } : empty(), answer: initial ? null : { kind: 'proposal_decision',
+              proposalId: input.presentedQuestion?.proposal?.id, decision: 'accept' } });
+        } },
+        interpret: createWeeklyPlanningVNextProviderInterpreter(),
+        checkpoint: { read: () => checkpoint, write: raw => { checkpoint = raw; } },
+        legacyV5Checkpoint: { read: () => null },
+        approvalLedger: { read: () => null, write: () => { approvals++; } },
+        plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { saves++; throw new Error('Not approved'); } },
+        calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }),
+        createRenderer: () => ({ async render() { return { status: 'rendered', text: 'synthetic shown reply', rawResponse: '' }; } }),
+        now: () => '2026-11-02T09:00:00Z',
+      };
+      const scope = { ownerId: 'owner', conversationId: `prior-session-${target}`,
+        weekStartDate: context.currentDate, clock, notBeforeTime: '09:00' };
+      const first = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports,
+        turnId: 'initial', userText: 'synthetic typed request with known pace and session duration', shownRevision: null });
+      expect(first.outcome).toBe('applied');
+      expect(first.question?.proposal?.kind).toBe('spaced_memory_practice');
+      const accepted = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports,
+        turnId: 'accept', userText: 'synthetic explicit proposal acceptance', shownRevision: first.graphRevision });
+      expect(accepted.outcome).toBe('applied');
+      expect(call).toBe(2);
+      expect({ saves, approvals }).toEqual({ saves: 0, approvals: 0 });
+      const read = readWeeklyPlanningVNextExperimentalSession(scope, ports);
+      if (read.status !== 'ready') throw new Error('checkpoint did not round-trip');
+      const state = read.checkpoint.state;
+      expect(state.learningStrategyProposalRecords).toMatchObject([{ kind: 'spaced_memory_practice', status: 'accepted' }]);
+      expect(state.graph.workloads.map(fact => fact.amount)).toEqual([100]);
+      if (target === 'unstated') {
+        expect(accepted.question).toMatchObject({ code: 'missing_effort_estimate', effortMeasurement: 'session_duration' });
+        expect(accepted.preview).toBeNull();
+        return;
+      }
+      expect(state.graph.effortEstimates.filter(fact => fact.kind === 'session_duration')).toMatchObject([
+        { minutes: 20, targetFactId: target === 'task' ? state.graph.tasks[0].id
+          : target === 'component' ? state.graph.components[0].id : state.graph.workloads[0].id },
+      ]);
+      // The same accepted facts are already sufficient for the shared placement responsibility.
+      const comparison = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(state.graph), context });
+      expect(comparison.status).toBe('ready');
+      expect(accepted.question).toBeNull();
+      expect(accepted.preview!.blocks.length).toBeGreaterThan(0);
+      expect(accepted.draftCandidates!.every(candidate => candidate.durationMinutes === 20)).toBe(true);
+      expect(accepted.preview!.blocks.map(({ date, startTime, endTime }) => ({ date, startTime, endTime }))).toEqual(
+        accepted.draftCandidates!.map(({ date, startTime, endTime }) => ({ date, startTime, endTime })));
+      const items = compile(state).input!.movableWorkItems;
+      expect(items.every(item => item.estimatedMinutes === 20)).toBe(true);
+      expect(items.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(100);
+      if (target === 'task') {
+        // A later fixed registration still needs actual clocks; the known sitting length cannot supply them.
+        const registration = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports,
+          turnId: 'fixed-registration', userText: 'synthetic explicit fixed registration without clocks', shownRevision: accepted.graphRevision });
+        expect(registration.outcome).toBe('applied');
+        expect(registration.question).toMatchObject({ code: 'invalid_commitment_interval', taskId: state.graph.tasks[0].id });
+        expect(registration.preview).toBeNull();
+        const reloaded = readWeeklyPlanningVNextExperimentalSession(scope, ports);
+        if (reloaded.status !== 'ready') throw new Error('checkpoint did not round-trip');
+        expect(reloaded.checkpoint.state.pendingEventRegistrationTargetIds).toEqual([state.graph.tasks[0].id]);
+        expect(reloaded.checkpoint.state.graph.effortEstimates.filter(fact => fact.kind === 'session_duration')).toEqual(
+          state.graph.effortEstimates.filter(fact => fact.kind === 'session_duration'));
+        expect({ saves, approvals, call }).toEqual({ saves: 0, approvals: 0, call: 3 });
+      }
+    });
+
+  it.each(['other-task', 'conflict'] as const)('keeps a necessary session question when scope is unresolved (%s)', scope => {
+    let state = seed('memorization_retrieval', true);
+    const taskId = state.graph.tasks[0].id;
+    state = apply(state, { ...empty(), add: [
+      ...(scope === 'other-task' ? [{ kind: 'task' as const, localId: 'other', category: 'study' as const, title: '別学習' }] : []),
+      { kind: 'effort_estimate', localId: 'session', taskRef: scope === 'other-task' ? { localId: 'other' } : { factId: taskId },
+        targetRef: scope === 'other-task' ? { localId: 'other' } : { factId: taskId },
+        effortKind: 'session_duration', minutes: 20, unitCode: null, unitLabel: null, precision: 'exact' },
+      ...(scope === 'conflict' ? [{ kind: 'effort_estimate' as const, localId: 'conflict', taskRef: { factId: taskId },
+        targetRef: { factId: taskId }, effortKind: 'session_duration' as const, minutes: 30,
+        unitCode: null, unitLabel: null, precision: 'exact' as const }] : []),
+    ] });
+    state = decide(state, 'accept');
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection.questions[0]).toMatchObject({ code: 'missing_effort_estimate', effortMeasurement: 'session_duration' });
+    expect(compileWeeklyPlanningVNextSchedulerInput({ state, projection, context }).status).toBe('not_ready');
   });
 
   it('does not offer provisional placement for an unanswered session-duration question', async () => {

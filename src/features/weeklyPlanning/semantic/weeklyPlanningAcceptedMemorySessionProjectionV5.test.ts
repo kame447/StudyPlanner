@@ -82,6 +82,34 @@ function proposal(kind: 'spaced_memory_practice' | 'calibrate_memory_pace'): Wee
 }
 
 describe('accepted memory session projection', () => {
+  it.each(['task', 'component', 'workload', 'other-task', 'conflict'])(
+    'shares session scope and precedence with ordinary placement (%s)', scope => {
+      const base = graph();
+      const session = { ...base.effortEstimates[0],
+        targetFactId: scope === 'other-task' ? 'other-task' : scope === 'conflict' ? 'task' : scope,
+        taskId: scope === 'other-task' ? 'other-task' : 'task', minutes: 15 };
+      const sourceGraph: WeeklyPlanningGenericSchedulerGraphView = { ...base,
+        components: [{ id: 'component', taskId: 'task', parentComponentId: null,
+          role: 'chapter', label: '章', source, createdRevision: 1 }],
+        workloads: [{ ...base.workloads[0], componentId: 'component' }],
+        effortEstimates: [session,
+          ...(scope === 'workload' ? [{ ...session, id: 'inherited', targetFactId: 'task', minutes: 30 }] : []),
+          ...(scope === 'conflict' ? [{ ...session, id: 'conflicting', minutes: 30 }] : []),
+        ],
+      };
+      const sourceCompilation = compilation();
+      sourceCompilation.input!.movableWorkItems[0].componentId = 'component';
+      const before = structuredClone({ sourceGraph, sourceCompilation });
+      const result = applyAcceptedMemorySessionProjectionV5({ compilation: sourceCompilation, graph: sourceGraph,
+        acceptedSpacedProposal: proposal('spaced_memory_practice'), acceptedCalibrationProposal: null });
+      if (scope === 'other-task' || scope === 'conflict') expect(result).toEqual(sourceCompilation);
+      else {
+        expect(result.input!.movableWorkItems.every(item => item.estimatedMinutes === 15)).toBe(true);
+        expect(result.input!.movableWorkItems.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(220);
+      }
+      expect({ sourceGraph, sourceCompilation }).toEqual(before);
+    });
+
   it.each(['220語', '語'])('keeps count labels truthful through accepted session projection: %s', (unitLabel) => {
     const sourceGraph = graph();
     const sourceCompilation = compilation();

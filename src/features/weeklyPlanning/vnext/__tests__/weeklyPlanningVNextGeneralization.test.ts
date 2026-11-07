@@ -105,7 +105,7 @@ describe('VNext generalization: meaning-preserving properties', () => {
   it('window patch and remove/add resolve the same Friday deadline in the final window', () => {
     const initial = apply(createEmptyWeeklyPlanningVNextState(), { add: [
       ...task('first'),
-      { kind: 'planning_window', localId: 'old-window', windowKind: 'absolute',
+      { kind: 'planning_window', localId: 'old-window', yearBasis: null, windowKind: 'absolute',
         value: '2026-11-09/2026-11-15', start: '2026-11-09', end: '2026-11-15' },
     ] }, 'initial');
     const taskId = initial.graph.tasks[0].id;
@@ -116,11 +116,11 @@ describe('VNext generalization: meaning-preserving properties', () => {
       startTime: null, endTime: '13:00', precision: 'exact' };
     const oldHorizon = { planningHorizon: { startDate: '2026-11-09', endDate: '2026-11-15' } };
     const replacementWindow: VNextAddFact = { kind: 'planning_window', localId: 'new-window',
-      windowKind: 'absolute', value: '2026-11-16/2026-11-22', start: '2026-11-16', end: '2026-11-22' };
+      yearBasis: null, windowKind: 'absolute', value: '2026-11-16/2026-11-22', start: '2026-11-16', end: '2026-11-22' };
 
     const patched = applyWeeklyPlanningVNextTurn(initial, { ...emptyDelta(), add: [deadline], patch: [
       { kind: 'planning_window', localId: 'patch-window', targetFactId: oldWindowId,
-        changes: { windowKind: null, value: '2026-11-16/2026-11-22', start: '2026-11-16', end: '2026-11-22' } },
+        changes: { yearBasis: null, windowKind: null, value: '2026-11-16/2026-11-22', start: '2026-11-16', end: '2026-11-22' } },
     ] }, context(initial, 'patch-window', oldHorizon));
     if (patched.status !== 'applied') throw new Error(`Window patch failed: ${JSON.stringify(patched)}`);
 

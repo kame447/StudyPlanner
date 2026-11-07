@@ -43,7 +43,9 @@ export function presentWeeklyPlanningVNextQuestion(
   const choices = question.options.length ? `（${question.options.map((option) => optionLabels[option.optionId]).join(' / ')}）` : '';
 
   let text: string;
-  if (question.code === 'missing_schedulable_work') {
+  if (question.code === 'invalid_commitment_interval') {
+    text = `「${title}」は何時から何時までですか？`;
+  } else if (question.code === 'missing_schedulable_work') {
     text = `「${title}」は、どれくらいやりますか？（時間や量）`;
   } else if (question.code === 'missing_effort_estimate' && question.forWork) {
     text = `「${title}」の${question.forWork.amount}は、全部で何分くらいかかりそうですか？`;

@@ -55,9 +55,32 @@ export type VNextStudyContextFact = WeeklyPlanningFactGraphV5['studyContexts'][n
   activityKind: SemanticStudyActivityKindV5;
 };
 
+export interface VNextPlanningYearBasis {
+  origin: 'explicit' | 'context' | 'inferred';
+  source: 'user_text' | 'current_date' | 'planning_horizon';
+  reference: string | null;
+}
+
+export interface VNextPlanningWindowYearBasis {
+  start: VNextPlanningYearBasis;
+  end: VNextPlanningYearBasis;
+}
+
+export interface VNextBoundPlanningYearBasis extends VNextPlanningYearBasis {
+  /** Bound by code to the frozen endpoint; never supplied by the provider. */
+  year: number;
+  verified: boolean;
+}
+
+export type VNextPlanningWindowFact = WeeklyPlanningFactGraphV5['planningWindows'][number] & {
+  /** Optional on old checkpoints; absence is not evidence for an inferred year crossing. */
+  yearBasis?: { start: VNextBoundPlanningYearBasis; end: VNextBoundPlanningYearBasis } | null;
+};
+
 export interface WeeklyPlanningVNextGraph extends WeeklyPlanningFactGraphV5 {
   effortEstimates: VNextEffortEstimateFact[];
   studyContexts: VNextStudyContextFact[];
+  planningWindows: VNextPlanningWindowFact[];
 }
 
 export type VNextWorkRelationKind = 'same' | 'distinct';
@@ -188,6 +211,7 @@ export type VNextAddStudyContext = Omit<StatedPayload<VNextStudyContextFact>, 't
 };
 export type VNextAddPlanningWindow = Omit<PlanningWindowPayload, 'kind'> & {
   kind: 'planning_window'; localId: string; windowKind: PlanningWindowPayload['kind'];
+  yearBasis: VNextPlanningWindowYearBasis | null;
 };
 /** Reuses the stored V5 uncertainty; semantic interpretation alone identifies an ambiguous period. */
 export interface VNextAddPlanningWindowUncertainty {
@@ -398,6 +422,8 @@ export type VNextQuestionCode =
   | 'same_or_distinct_work'
   | 'missing_effort_estimate'
   | 'effort_inconsistent'
+  /** A requested fixed event needs its actual start/end clocks, never a movable-work estimate. */
+  | 'invalid_commitment_interval'
   /** A stated task with no work, no total time and no fixed time: how much is to be done. */
   | 'missing_schedulable_work';
 

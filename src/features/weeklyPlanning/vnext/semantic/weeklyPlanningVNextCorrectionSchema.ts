@@ -12,6 +12,7 @@ import { CANONICAL_WEEKDAY_DATE_EXPRESSIONS } from '../../semantic/weeklyPlannin
 import { WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5 } from '../../semantic/weeklyPlanningSemanticSchemaV5';
 import { isWeeklyPlanningNamedTimePeriodV5 } from '../../semantic/weeklyPlanningTemporalValueValidatorV5';
 import type { VNextPatch, VNextRemove, VNextTurnError } from '../weeklyPlanningVNextTypes';
+import { isVNextPlanningWindowYearBasis, VNEXT_YEAR_ORIGINS, VNEXT_YEAR_SOURCES } from '../weeklyPlanningVNextPlanningWindowYear';
 
 interface FieldRule {
   schema: Record<string, unknown>;
@@ -23,7 +24,7 @@ const {
   changesByKind, number, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS,
   VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT,
   VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT,
-  VNEXT_TASK_RELATION_REQUIREMENT, VNEXT_CONSTRAINT_SOURCE_REQUIREMENT, VNEXT_CORRECTION_RESPONSE_FORMAT,
+  VNEXT_TASK_RELATION_REQUIREMENT, VNEXT_CONSTRAINT_SOURCE_REQUIREMENT, VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_PLANNING_YEAR_BASIS_SCHEMA,
 } = /*#__PURE__*/ (() => {
   const nullable = (schema: Record<string, unknown>, accepts: FieldRule['accepts']): FieldRule => ({
     schema: { anyOf: [schema, { type: 'null' }] }, accepts: value => value === null || accepts(value),
@@ -51,7 +52,7 @@ const {
 
   const VNEXT_STUDY_CONTEXT_REQUIREMENT = `study_context records the user's stated study meaning for taskRef. purpose uses ${SEMANTIC_STUDY_PURPOSES_V5.join(', ')}; activityKind uses ${SEMANTIC_STUDY_ACTIVITY_KINDS_V5.join(', ')}. memorization_retrieval means the user intends to memorize or retrieve learned items; use the other activity kinds when the stated activity has that meaning, and unknown when it is not stated. A title, contextLabel or quantity unit alone does not establish the activity: never infer memorization from them. contextLabel is a stated descriptive label or null. This fact states activity, not a learned pace or permission for a calibration/learning-strategy proposal.`;
   const VNEXT_WORKLOAD_PERIOD_REQUIREMENT = 'periodExpression is the measurement interval or frequency that defines the stated amount (for example per day, per week, or an explicitly period-scoped target). It is part of the quantity basis, not a history timestamp or deadline. When reporting progress on an accepted whole, keep that whole\'s period basis, null when unscoped, unless the user explicitly changes what the amount measures. When work was completed or is due does not create a new quantity period. Keep historical timing as source evidence; use temporal facts for stated scheduling constraints, and do not invent a completion-date fact. Preserve genuinely stated daily, weekly or other measurement scopes.';
-  const VNEXT_PLANNING_WINDOW_REQUIREMENT = `planning_window uses windowKind ${VNEXT_PLANNING_WINDOW_KINDS.join(', ')}. For an absolute window state start/end; for a relative or named window state its canonical date value and null start/end. Code freezes its range when accepted. A patch stating a new value changes the effective window; do not copy old bounds into that correction. If an omitted year and a past month/day make it unclear whether the user intends a much longer period ending next year, retain the candidate window and add uncertainty with field planning_window, targetRef naming that window and a reason stating the unresolved year. An ordinary short December-to-January period or an explicitly stated long/year-qualified period is not uncertain merely because it crosses a year or is long. Use the words and conversation context to establish that meaning, never a fixed day-count threshold. When a later answer establishes the dates or year, patch the exact window and remove only the corresponding resolved uncertainty by its supplied fact alias; keep unrelated work and uncertainty.`;
+  const VNEXT_PLANNING_WINDOW_REQUIREMENT = `yearBasis is required (null only when no basis can be supplied). Give both start/end an origin explicit, context, or inferred, a source user_text/current_date/planning_horizon, and a reference. user_text references quote the exact current utterance; current_date references the supplied ISO currentDate; planning_horizon references its ISO start/end joined by /. A year directly stated is explicit; a year supplied by established conversational date scope or an ordinary December-to-January range is context; choosing next year for an omitted past month/day without established scope is inferred. Do not label that inferred year context merely because it is the next calendar occurrence. Code validates references and derives confirmation necessity; the model does not set verified/readiness. In a date correction supply the new endpoint bases, not old proof. planning_window uses windowKind ${VNEXT_PLANNING_WINDOW_KINDS.join(', ')}. For an absolute window state start/end; for a relative or named window state its canonical date value and null start/end. Code freezes its range when accepted. A patch stating a new value changes the effective window; do not copy old bounds into that correction. If an omitted year and a past month/day make it unclear whether the user intends a much longer period ending next year, retain the candidate window and add uncertainty with field planning_window, targetRef naming that window and a reason stating the unresolved year. An ordinary short December-to-January period or an explicitly stated long/year-qualified period is not uncertain merely because it crosses a year or is long. Use the words and conversation context to establish that meaning, never a fixed day-count threshold. When a later answer establishes the dates or year, patch the exact window and remove only the corresponding resolved uncertainty by its supplied fact alias; keep unrelated work and uncertainty.`;
   const VNEXT_RECURRENCE_REQUIREMENT = `recurrenceKind is ${SEMANTIC_RECURRENCE_KINDS_V5.join(', ')}; count is positive for times_per_week, otherwise null unless stated. days uses canonical weekday tokens (${CANONICAL_WEEKDAY_DATE_EXPRESSIONS.join(', ')}); use [] when no specific weekdays were stated. One occurrence's amount belongs in a workload with perOccurrence true, plus this recurrence fact targeting that workload's task or component in the same task. The target is never a workload fact; V5 pairs the perOccurrence workload with its task/component owner. Never emit multiplied or expanded occurrence workloads.`;
   const VNEXT_TASK_DATE_RULE_REQUIREMENT = `task_date_rule uses ruleKind ${SEMANTIC_TASK_DATE_RULE_KINDS_V5.join(', ')} and a hard constraintLevel. targetRef must name the same task as taskRef (not a workload or component). dateExpression is required. Keep weekday tokens symbolic; the existing scheduler applies every matching day inside the planning horizon.`;
   const VNEXT_AVAILABILITY_REQUIREMENT = `availability_declaration has no task reference. availabilityKind is ${SEMANTIC_AVAILABILITY_KINDS_V5.join(', ')}; recurrenceKind is null or ${SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5.join(', ')}. State the date, named period, clocks or recurrence that scopes it. capacityMinutes is positive only for capacity; no_additional_constraint has no positive clocks/period/recurrence/days/capacity. Resolution status is assigned by code.`;
@@ -60,6 +61,14 @@ const {
   const VNEXT_CONSTRAINT_SOURCE_REQUIREMENT = `constraint_source_request states whether to use an external constraint source: sourceKind is ${SEMANTIC_CONSTRAINT_SOURCE_KINDS_V5.join(', ')}, selector is active, requestedAction is use or stop_using. It has no task reference. Resolution belongs to the existing V5 source resolver; an unavailable source is not an empty calendar. Stopping a source does not authorize overlapping existing commitments.`;
 
   const described = (rule: FieldRule, description: string): FieldRule => ({ ...rule, schema: { ...rule.schema, description } });
+
+  const yearEndpoint = { type: 'object', additionalProperties: false, required: ['origin', 'source', 'reference'], properties: {
+    origin: { type: 'string', enum: [...VNEXT_YEAR_ORIGINS] }, source: { type: 'string', enum: [...VNEXT_YEAR_SOURCES] },
+    reference: text.schema,
+  } };
+  const VNEXT_PLANNING_YEAR_BASIS_SCHEMA = { anyOf: [{ type: 'object', additionalProperties: false,
+    required: ['start', 'end'], properties: { start: yearEndpoint, end: yearEndpoint } }, { type: 'null' }] };
+  const yearBasis: FieldRule = { schema: VNEXT_PLANNING_YEAR_BASIS_SCHEMA, accepts: isVNextPlanningWindowYearBasis };
 
   /** The same field owner supplies standalone corrections and native provider patches. */
   const changesByKind = {
@@ -77,7 +86,8 @@ const {
       namedTimePeriod: nullable({ type: 'string' }, isWeeklyPlanningNamedTimePeriodV5),
       startTime: text, endTime: text, precision },
     planning_window: { windowKind: described(enumeration(VNEXT_PLANNING_WINDOW_KINDS), VNEXT_PLANNING_WINDOW_REQUIREMENT),
-      value: described(text, VNEXT_PLANNING_WINDOW_REQUIREMENT), start: described(text, VNEXT_PLANNING_WINDOW_REQUIREMENT), end: described(text, VNEXT_PLANNING_WINDOW_REQUIREMENT) },
+      value: described(text, VNEXT_PLANNING_WINDOW_REQUIREMENT), start: described(text, VNEXT_PLANNING_WINDOW_REQUIREMENT), end: described(text, VNEXT_PLANNING_WINDOW_REQUIREMENT),
+      yearBasis: described(yearBasis, VNEXT_PLANNING_WINDOW_REQUIREMENT) },
     recurrence: { recurrenceKind: described(enumeration(SEMANTIC_RECURRENCE_KINDS_V5), VNEXT_RECURRENCE_REQUIREMENT),
       count: described(number, VNEXT_RECURRENCE_REQUIREMENT), days: described(strings, VNEXT_RECURRENCE_REQUIREMENT) },
     task_date_rule: { ruleKind: described(enumeration(SEMANTIC_TASK_DATE_RULE_KINDS_V5), VNEXT_TASK_DATE_RULE_REQUIREMENT),
@@ -113,7 +123,7 @@ const {
     changesByKind, number, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS,
     VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT,
     VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT,
-    VNEXT_TASK_RELATION_REQUIREMENT, VNEXT_CONSTRAINT_SOURCE_REQUIREMENT, VNEXT_CORRECTION_RESPONSE_FORMAT,
+    VNEXT_TASK_RELATION_REQUIREMENT, VNEXT_CONSTRAINT_SOURCE_REQUIREMENT, VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_PLANNING_YEAR_BASIS_SCHEMA,
   };
 })();
 
@@ -121,7 +131,7 @@ export {
   VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS, VNEXT_STUDY_CONTEXT_REQUIREMENT,
   VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT,
   VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT,
-  VNEXT_CONSTRAINT_SOURCE_REQUIREMENT, VNEXT_CORRECTION_RESPONSE_FORMAT,
+  VNEXT_CONSTRAINT_SOURCE_REQUIREMENT, VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_PLANNING_YEAR_BASIS_SCHEMA,
 };
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object'
