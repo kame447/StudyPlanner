@@ -60,6 +60,25 @@ function harness(responses: Array<unknown | ((context: ProviderContext) => unkno
 }
 
 describe('V5 authorization policy through the VNext native/session boundary', () => {
+  it('keeps a new future time budget independent of past completed quantity', async () => {
+    const budget: VNextAddFact = { kind: 'effort_estimate', localId: 'future-budget', taskRef: { localId: 'task' },
+      targetRef: { localId: 'task' }, effortKind: 'total_duration', minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' };
+    const past: VNextAddFact = { kind: 'workload', localId: 'past', taskRef: { localId: 'task' }, componentRef: null,
+      quantityRole: 'completed', amount: 10, unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null,
+      perOccurrence: false, periodExpression: null };
+    const h = harness([wire('create_plan', { add: [task, past, budget] })]);
+    const result = await h.turn('数学は先週10ページできました。今週は数学を60分予定にして');
+    expect(result.outcome).toBe('applied');
+    const state = h.local.readCheckpoint()!.vnext.state;
+    expect(state.graph.workloads).toEqual([expect.objectContaining({ quantityRole: 'completed', amount: 10, unitCode: 'page' })]);
+    expect(state.graph.effortEstimates[0]).toMatchObject({ minutes: 60, workBinding: null });
+    const control = harness([wire('create_plan', { add: [task, budget] })]);
+    const withoutHistory = await control.turn('今週は数学を60分予定にして');
+    expect(withoutHistory.preview).not.toBeNull();
+    expect(result.question).toBeNull();
+    expect(result.preview).toEqual(withoutHistory.preview);
+  });
+
   it.each(['create_plan', 'discuss'] as const)('uses component totals without another quantity question ($intent)', async intent => {
     const add: VNextAddFact[] = [task,
       { kind: 'component', localId: 'calculation', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '計算' },
