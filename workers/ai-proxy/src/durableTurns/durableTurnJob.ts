@@ -215,7 +215,11 @@ export class DurableTurnJob {
       const record = await this.storage.read();
       if (!record || record.identity.requestId !== requestId || record.expiresAt > this.now()) return;
       // No raw input, provider output, or generated result survives retention. The single compact
-      // watermark fences old revisions/IDs; it is not an indefinitely growing request ledger.
+      // identifier-only record fences a repeated requestId and stale baseRevision values, but only until
+      // purgeAt (expiresAt + acceptanceAgeMs); it is not an indefinitely growing request ledger.
+      // After the purge, a repeated requestId is still refused by the acceptance window (startedAt too old),
+      // but the stale-baseRevision fence is intentionally gone: a request with a fresh startedAt and an old
+      // baseRevision is accepted, and the client's own stale-state checks are the only remaining guard (#939).
       const expired = expiredRecord(record);
       await this.storage.write(expired, purgeAt(expired));
     });

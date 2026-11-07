@@ -198,6 +198,19 @@ describe('expired identifier record retention', () => {
     expect(h.storage.remove).toHaveBeenCalledTimes(1); expect(h.read()).toBeUndefined();
     await expect(job.accept(h.input)).rejects.toMatchObject({ code: 'expired_request' });
   });
+  it('after the purge, the stale-baseRevision fence is gone by design while a repeated requestId stays refused', async () => {
+    const h = harness(); const job = h.create(); await job.accept(h.input); await job.run(async () => 'secret');
+    h.advance(purge(h)); await job.run(async () => { throw new Error('must not run'); });
+    expect(h.read()).toBeUndefined();
+    // Inside the window this same request was refused with revision_conflict (see the first test).
+    await expect(job.accept({ ...h.input, requestId: 'stale', baseRevision: 0, startedAt: h.now() }))
+      .resolves.toMatchObject({ status: 'queued', identity: { requestId: 'stale', baseRevision: 0 } });
+    expect(h.read()).toMatchObject({ status: 'queued', identity: { requestId: 'stale' } });
+    // The original requestId is still refused: its startedAt is older than the acceptance window.
+    const h2 = harness(); const job2 = h2.create(); await job2.accept(h2.input); await job2.run(async () => 'secret');
+    h2.advance(purge(h2)); await job2.run(async () => { throw new Error('must not run'); });
+    await expect(job2.accept(h2.input)).rejects.toMatchObject({ code: 'expired_request' });
+  });
   it('never removes active jobs or records whose content still exists', async () => {
     for (const finish of [false, true]) {
       const h = harness(); const job = h.create(); await job.accept(h.input);
