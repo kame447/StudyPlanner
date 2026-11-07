@@ -382,6 +382,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   userText: string;
   supplementalContext?: string;
   selectedStarterTarget?: import('../weeklyPlanningVNextV5Boundary').WeeklyPlanningSelectedStarterTargetV5;
+  confirmedUserContext?: import('../weeklyPlanningVNextConfirmedUserContext').VNextConfirmedUserContext;
   /**
    * Graph revision of the reply the user is answering (`graphRevision` of the turn shown), or null
    * before any reply. Another tab may have moved the conversation on since; then the stored question is
@@ -431,6 +432,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     client: ports.client, state, projection: before, presentedQuestion, userText: params.userText, clock,
     ...(params.supplementalContext === undefined ? {} : { supplementalContext: params.supplementalContext }),
     ...(params.selectedStarterTarget === undefined ? {} : { selectedStarterTarget: params.selectedStarterTarget }),
+    ...(params.confirmedUserContext === undefined ? {} : { confirmedUserContext: params.confirmedUserContext }),
     observedMemoryPace: pace,
     studyRecords: read.checkpoint.actualRecords ?? [],
     pendingStudyRecordQuestion: read.checkpoint.pendingStudyRecordQuestion ?? null,

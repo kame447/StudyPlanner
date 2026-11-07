@@ -18,6 +18,8 @@ V5の機能を全面的に再実装するためではない。意味の再解釈
 
 総量を含意しない完了量だけの進捗報告は未来の作業量ではなく、別に述べた科目全体の時間予算を抑止しない。過去量を保持したまま既存の総時間投影を一度だけ使う。完了量を対象にした観測時間からは未来の仕事を作らず、明示された未来の数量や割合から導く総量がある場合は既存の数量計算を維持する。
 
+利用者が確認した保存済みの記憶（`user_planning_contexts` の `origin=user_confirmed`、同一owner、有効）は、独立したtyped channel `confirmedUserContext` として generic interpreter にだけ読取り専用の背景で渡す。gatewayがturnごとに一度選び、local/durable共通のexecution payloadへ固定する。選択はV5のselector（global 10 / scope 10）を使い、scopeはcheckpointの有効なtask名とUI選択のtargetだけから取り、無関係なrecent補充はしない。JSON全体は4096 UTF-8 bytes・20件以下で、収まらないrecordは丸ごと除く。出典ID・日付は保ち、原発話 `sourceText` は複製しない。記憶は現在の発話のfactの根拠、承認、保存のauthorityにならず、読取りができない場合は記憶なしで続ける。payloadは既存の24時間保持・完了時消去に従い、新しいFirestore field/collection/Rulesは作らない。長期traceにはprovider requestの記憶本文を残さず、件数とbytesだけを残す。
+
 処理の方向は「AIの意味解釈 → 型付きの差分 → 一回の原子的更新 → 一つの投影 → 既存の配置・表示・承認・保存」。rendererとJevは状態や保存の権限を持たない。副作用を伴うprovider・clock・calendar・checkpoint・plan repositoryはsessionの境界から注入し、domainの変換と投影は同じ入力に同じ結果を返す。
 
 表示済みの未承認案は、承認operationが未開始と確認でき、native `create_plan`が認可されて質問も残らない明示再生成turnに限り、同じFact Graph revisionでも現在のカレンダーで置き換えられる。開始済みoperation（部分保存を含む）の案と通常の非生成turnは保持する。IDが同じでも承認時は現在表示中の日付・開始/終了時刻を照合し、再生成前に選択した旧配置を保存しない。Workerへは既存operation一覧を所有するPagesが確認したoptional booleanだけを渡し、未指定なら旧案を維持する。checkpointとsaved-dataの形式は変えず、配信は新しいWorker readerを先、Pages producerを後に行う。

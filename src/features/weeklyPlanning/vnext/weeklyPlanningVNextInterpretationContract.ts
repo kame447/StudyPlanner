@@ -5,6 +5,7 @@
 // facts, lifecycle operations, question priority, placement, approval or saving.
 // Code owns ids, revisions, validity, math and freshness.
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
+import type { VNextConfirmedUserContext } from './weeklyPlanningVNextConfirmedUserContext';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from './weeklyPlanningVNextV5Boundary';
 import type {
@@ -62,6 +63,8 @@ export interface WeeklyPlanningVNextInterpretationInput {
   supplementalContext?: string;
   /** UI-selected stored reference, with V5's provenance contract; never a Fact Graph reference or instruction. */
   selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
+  /** Stored memory the user confirmed earlier. Read-only background for the generic interpreter: never evidence for a fact of this utterance, an approval or a save. */
+  confirmedUserContext?: VNextConfirmedUserContext;
   clock: WeeklyPlanningVNextInterpretationClock;
   /** The study records kept so far and the one open record question (#973); context for corrections and answers. */
   studyRecords?: readonly VNextActualRecord[];

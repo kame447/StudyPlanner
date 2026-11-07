@@ -8,6 +8,24 @@ import {
 } from '../weeklyPlanningVNextV5Boundary';
 import type { WeeklyPlanningVNextExperimentalPorts, WeeklyPlanningVNextExperimentalTurn } from './weeklyPlanningVNextExperimentalSession';
 
+/** Stored memory is background, not a conversation record: the trace keeps how much was sent, never its words. */
+export function withoutConfirmedUserContext<T extends { messages?: unknown }>(request: T): T {
+  if (!Array.isArray(request.messages)) return request;
+  let changed = false;
+  const messages = request.messages.map((message: { role?: unknown; content?: unknown }) => {
+    if (message?.role !== 'user' || typeof message.content !== 'string' || !message.content.includes('"confirmedUserContext"')) return message;
+    try {
+      const body = JSON.parse(message.content) as Record<string, unknown>;
+      if (!Array.isArray(body.confirmedUserContext)) return message;
+      changed = true;
+      const bytes = new TextEncoder().encode(JSON.stringify(body.confirmedUserContext)).byteLength;
+      return { ...message, content: JSON.stringify({ ...body, confirmedUserContext: { omittedFromTrace: true,
+        records: body.confirmedUserContext.length, bytes } }) };
+    } catch { return message; }
+  });
+  return changed ? { ...request, messages } : request;
+}
+
 /** Application-only observation of the actual ports, not another trace writer. The existing
  * bounded collector and outcome lifecycle own persistence, retry and Worker privacy. Keep
  * interpretation/session free of telemetry; RuntimeGateway integration guards that evidence
@@ -20,7 +38,8 @@ export function captureWeeklyPlanningVNextTurnDiagnostics(requestId: string, por
     client: { ...ports.client, async createChatCompletion(request) {
       const current = `vnext_${++attempt}`;
       recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: 'semantic_provider_request',
-        data: { attempt: current, requestBytes: new TextEncoder().encode(JSON.stringify(request)).byteLength, request } });
+        data: { attempt: current, requestBytes: new TextEncoder().encode(JSON.stringify(request)).byteLength,
+          request: withoutConfirmedUserContext(request) } });
       try {
         const rawResponse = await ports.client.createChatCompletion(request);
         recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: 'semantic_provider_response',

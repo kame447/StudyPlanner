@@ -32,7 +32,7 @@ const MAX_CORE_CONTEXT_RECORDS = 10;
 const MAX_RELEVANT_CONTEXT_RECORDS = 10;
 const MAX_RECENT_FALLBACK_RECORDS = 4;
 
-function normalizeScopeKey(value: string): string {
+export function normalizeUserPlanningContextScopeKeyV2(value: string): string {
   return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ja-JP');
 }
 
@@ -74,7 +74,7 @@ export function selectUserPlanningContextPromptRecordsV2(params: {
   const active = params.records.filter((record) => record.status === 'active');
   const relevantKeys = new Set(
     (params.relevantScopeKeys ?? [])
-      .map(normalizeScopeKey)
+      .map(normalizeUserPlanningContextScopeKeyV2)
       .filter(Boolean),
   );
 
@@ -86,7 +86,7 @@ export function selectUserPlanningContextPromptRecordsV2(params: {
   const scoped = active.filter((record) => !coreIds.has(record.id));
   const exactRelevant = scoped.filter((record) => {
     const scope = projectUserPlanningContextScopeV2(record);
-    return scope.key !== null && relevantKeys.has(normalizeScopeKey(scope.key));
+    return scope.key !== null && relevantKeys.has(normalizeUserPlanningContextScopeKeyV2(scope.key));
   });
   const exactIds = new Set(exactRelevant.map((record) => record.id));
   const recentFallback = scoped

@@ -1,6 +1,7 @@
 import type { IsolatedWeeklyPlanningTurnInput } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningIsolatedTurn';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFactGraphValidatorV5';
 import { parseWeeklyPlanningVNextSessionCheckpoint } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
+import { parseVNextConfirmedUserContext } from '../../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextConfirmedUserContext';
 import type { DurableTurnInput } from './durableTurnJob';
 import { createWeeklyPlanningTurnRequestContext } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningTemporalContext';
 import { decodeWeeklyPlanningMachineBoundEffortAnswerV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningMachineBoundAnswerV5';
@@ -70,7 +71,8 @@ const checkpointText = (v: unknown) => v === null || (typeof v === 'string' && v
 
 /** The VNext envelope carries its own checkpoint as the only graph authority; V5 payload bytes are untouched. */
 function decodeVNextTurn(value: Record<string, unknown>, payload: Record<string, unknown>, ownerId: string): DurableTurnInput | null {
-  if (!only(payload, ['core', 'input', 'weekStartDate', 'checkpoint', 'legacyV5Checkpoint', 'allowUnapprovedPreviewReplan']) || !record(payload.input)
+  if (!only(payload, ['core', 'input', 'weekStartDate', 'checkpoint', 'legacyV5Checkpoint', 'allowUnapprovedPreviewReplan', 'confirmedUserContext']) || !record(payload.input)
+    || (payload.confirmedUserContext !== undefined && !parseVNextConfirmedUserContext(payload.confirmedUserContext, ownerId))
     || (payload.allowUnapprovedPreviewReplan !== undefined && typeof payload.allowUnapprovedPreviewReplan !== 'boolean')
     || !date(payload.weekStartDate) || !checkpointText(payload.checkpoint) || !checkpointText(payload.legacyV5Checkpoint)
     || !validCommonTurnInput(value, payload.input, ownerId)) return null;

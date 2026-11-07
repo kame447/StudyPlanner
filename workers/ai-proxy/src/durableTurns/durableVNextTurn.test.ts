@@ -400,3 +400,61 @@ describe('VNext durable envelope validation', () => {
     expect(accepted).toHaveLength(0);
   });
 });
+
+describe('VNext durable execution carries confirmed memory as a read-only background (#294)', () => {
+  const SENTINEL = '志望校合格-durable-sentinel';
+  const memory = (change: Record<string, unknown> = {}) => ({ records: [{ id: 'goal', ownerId: 'alice', kind: 'study_goal', label: SENTINEL, value: '偏差値65',
+    dateExpression: null, scope: { type: 'global', key: null }, origin: 'user_confirmed', observedDate: '2026-10-01',
+    recordedAt: '2026-10-01T00:00:00.000Z', sourceConversationId: 'earlier', sourceTurnId: 'earlier-turn', ...change }] });
+  const envelope = (confirmedUserContext?: unknown) => ({ conversationId: 'chat', requestId: 'chat:request:1', baseRevision: 0, startedAt: Date.parse(STARTED),
+    payload: { ...payload(), ...(confirmedUserContext === undefined ? {} : { confirmedUserContext }) } });
+
+  it('accepts the bounded wire shape and an old payload without it, and rejects anything else', () => {
+    expect(decodeDurableTurnInput(envelope(), 'alice')).not.toBeNull();
+    expect(decodeDurableTurnInput(envelope(memory()), 'alice')).not.toBeNull();
+    for (const bad of [memory({ ownerId: 'bob' }), memory({ origin: 'ai_inferred' }), memory({ sourceText: 'original utterance' }),
+      { ...memory(), extra: true }, { records: [] }, 'x', memory({ value: 'あ'.repeat(5000) })]) {
+      expect(decodeDurableTurnInput(envelope(bad), 'alice')).toBeNull();
+    }
+  });
+
+  it('feeds the production interpreter, replays from the journal, and leaves no memory in the result, checkpoint or finished record', async () => {
+    const bodies: string[] = [];
+    const fetcher = providerFetch(reading([addTask, addWork]));
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown, init?: RequestInit) => { bodies.push(String(init!.body)); return fetcher(url, init); }));
+    const decoded = decodeDurableTurnInput(envelope(memory()), 'alice')!;
+    let record: DurableTurnRecord | undefined;
+    const job = new DurableTurnJob({ read: async () => structuredClone(record),
+      write: async value => { record = structuredClone(value); }, alarmAt: async () => {} }, () => Date.parse(STARTED));
+    await job.accept(decoded);
+    expect(record?.payload).toContain(SENTINEL);
+    await job.run((raw, dispatch, ip, deadline) => executeDurableVNextJob(providerEnv, JSON.parse(raw), dispatch, ip, deadline));
+    const semantic = bodies.filter(body => body.includes('confirmedUserContext'));
+    expect(semantic).toHaveLength(1);
+    expect(semantic[0]).toContain(SENTINEL);
+    expect(semantic[0]).not.toContain('"ownerId"');
+    expect(record?.status).toBe('completed');
+    // A completed job keeps neither its input nor its journal, and the result carries the trace without the words.
+    expect(record?.payload).toBeUndefined();
+    expect(record?.journal).toBeUndefined();
+    expect(JSON.stringify(record)).not.toContain(SENTINEL);
+    const result = JSON.parse(record!.result!) as WeeklyPlanningVNextDurableTurnResult;
+    expect(result.checkpointAfter).not.toContain(SENTINEL);
+    expect(JSON.stringify(result.result.debugTraceEvents)).not.toContain(SENTINEL);
+    expect(JSON.stringify(result.result.debugTraceEvents)).toContain('omittedFromTrace');
+  });
+
+  it('replays an interrupted turn with the same payload and no new provider dispatch', async () => {
+    const fetcher = providerFetch(reading([addTask, addWork]));
+    vi.stubGlobal('fetch', fetcher);
+    const dispatches = journal();
+    const body = decodeDurableTurnInput(envelope(memory()), 'alice')!;
+    const run = () => executeDurableVNextJob(providerEnv, JSON.parse(body.payload), dispatches.dispatch);
+    const first = await run();
+    const sent = fetcher.mock.calls.length;
+    dispatches.restart();
+    const second = await run();
+    expect(fetcher.mock.calls.length).toBe(sent);
+    expect(second.checkpointAfter).toBe(first.checkpointAfter);
+  });
+});
