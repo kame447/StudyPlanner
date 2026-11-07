@@ -1,4 +1,5 @@
 import { useWeeklyPlanningConversationSync, type ConversationSyncDependencies } from '../sync/useWeeklyPlanningConversationSync';
+import { isFirebaseEnabled } from '../../../../lib/firebaseConfig';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { WeeklyPlanningApplication, UseWeeklyPlanningApplicationInput } from '../../application/useWeeklyPlanningApplication';
 import { weeklyPlanningReducer, createInitialPlanningState } from '../../weeklyPlanningReducer';
@@ -47,10 +48,14 @@ function localServices(): WeeklyPlanningVNextLocalApplicationServices {
   const loaded = () => { if (!runtime) throw new Error('The VNext runtime is not loaded.'); return runtime; };
   // Resolve storage per operation so an absent or throwing localStorage (private mode, blocked
   // site data) surfaces inside the hook's guarded reads and writes, as it does for V5's stores.
-  return { conversationSync: async (ownerId, alive) => {
-      const { createConversationSyncBrowser } = await import('../sync/weeklyPlanningConversationSyncBrowser');
-      return createConversationSyncBrowser(ownerId, alive);
-    }, storage: { getItem: key => window.localStorage.getItem(key),
+  // In local-only mode there is no remote conversation authority. Do not advertise
+  // a temporary sync-checking state: its asynchronous disabling render could revoke
+  // a legitimate turn while the existing VNext runtime is preparing it.
+  const sync = isFirebaseEnabled() ? { conversationSync: async (ownerId: string, alive: () => boolean) => {
+    const { createConversationSyncBrowser } = await import('../sync/weeklyPlanningConversationSyncBrowser');
+    return createConversationSyncBrowser(ownerId, alive);
+  } } : {};
+  return { ...sync, storage: { getItem: key => window.localStorage.getItem(key),
       setItem: (key, value) => window.localStorage.setItem(key, value),
       removeItem: key => window.localStorage.removeItem(key) },
     preload: async () => { runtime = (await loadWeeklyPlanningVNextRuntimeModule()).weeklyPlanningVNextRuntimeFactories; },
