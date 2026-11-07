@@ -534,11 +534,14 @@ test.describe('examinee week of study records by conversation (durable emulator 
       await expect(CONFIRM.save(dialog)).toHaveText('保存中...');
       await expect(dialog).toContainText('保存中（まだ確定していません）');
       expect(await actualDocuments(request, userId), 'the blocked first batch never reached the server').toEqual([]);
+      // Keep transport blocked until the old page and its SDK queue are disposed.
+      // Reconnecting that queue first can legitimately commit the original batch;
+      // the separate late-commit test below preserves that recovery contract.
+      await page.reload();
     } finally {
       await page.unroute(firestoreRoute);
     }
 
-    await page.reload();
     await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
     expect(await actualDocuments(request, userId), 'the first attempt is still absent after reload').toEqual([]);
     await openPlannerOnPreviousWeek(page);
