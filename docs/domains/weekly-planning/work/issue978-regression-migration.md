@@ -2,7 +2,7 @@
 
 Status: active
 Owner: Issue [#978](https://github.com/kame447/StudyPlanner/issues/978)
-Branch: `test/issue978-v5-regression-vnext`, base `799d89a3`
+Current branch: `test/issue978-v5-regression-vnext-2`, base `351137f0`（前単位は下記PR #1010）
 
 週間実績の新機能は #973 で完了した。[移管コメント](https://github.com/kame447/StudyPlanner/issues/978#issuecomment-6702890002) が移管ケースの正本。本記録はテスト実装と残る境界を対応付ける。旧 V5 の mutation pipeline や比較専用 live gate は本番へ戻さない。
 
@@ -38,6 +38,7 @@ Branch: `test/issue978-v5-regression-vnext`, base `799d89a3`
 | #918 受理時clock固定 | 既存Transactionのmulti-week weekday/relative date固定、Sessionの後日V5移行。DateOracleは受理後の絶対日を検査する。 | **追加検証済み**: Continuity suiteで11/2に受理した相対窓を11/3のWorker再開でも同じ絶対日として保持。 |
 | #461 「明日ではなく今日」 | 既存planning-windowの明示patch/atomic staging。 | **追加検証済み**: Continuity suiteで明日→今日のwindow patch、必要な作業量の質問・task保持。不正refの初回/1回修復はgraph不変。両経路を翌日再開しても受理済日付を動かさず候補/preview0。 |
 | #335 / D5 / C20 / A群 | 移管コメントのケースID・turn、既存provider/会話oraclesを再利用する。旧JEV live-negativeは5発話であり旧表の3行と異なる。 | **D5の型付き境界を追加検証済み**: `durableVNextD5Regression.integration.test.ts` が5発話の独立Math/English・総時間/単位時間・approximate・複合deadline・未承認preview0を検査。現行実モデルの解釈、C20/A全行と旧security反例の個別証拠は引き続き照合対象。旧コア比較や総数49/49を個別合格へ流用しない。 |
+| C20 `past-progress-observed-pace` /1、`timebox-only-work` /1 | 既存Projectionのobserved paceと時間単位workload。 | Worker対応を `durableVNextV5Effort.integration.test.ts` に追加。完了10ページ/実測80分から残り5ページだけ40分とし、過去80分を将来の総時間へ流用しない。30分workloadは追加rateなしで30分とし、見積質問・候補/previewを作らない。合成意味出力を使う境界検証であり、実モデルの日本語読取の合格とはしない。 |
 
 ## 検証と次の手順
 
@@ -56,3 +57,5 @@ CI `42345564448`（1245dd12）は有効な依存境界テスト1件が失敗し�
 初回の失敗は評価側のrangeのfield名、および旧除外ケースを前提とするテストを分類・修正した。Workerのpreview assertionも実在するcheckpointのpreviewを検査する形へ訂正し、候補0という独立条件を保持した。過去モデルの意味欠落を修正したとは扱わない。
 
 親の指示により新規のテスト単位追加を区切り、#1010の必須CI修復・exact-head gate確認を優先する。#996の既存実モデルrunは完了後に入力/ケース/差分を確認してAPI0の再採点候補とする。#996候補はprompt/schema/transactionも異なるため、そのrunを旧#1010 headの直接実モデル証拠とはしない。#978全体の未検証範囲はOpenのまま保持する。
+
+次単位はmain `351137f0` 上のC20未対応2ケースのみ。`durableVNextV5Effort.integration.test.ts` のfocused **2pass**（`--maxWorkers=2`）で、実測80分を完了10ページへbindしたまま将来の5ページを40分へ見積もること、および時間単位のtarget30分を追加rateなしで30分とすることを確認した。Workerのschema/transaction/checkpointを通し、質問・未承認候補/previewなしも検査する。初回は公開wireに存在しないsession内部のoutcome/questionを参照したharness不整合を修正した。型検査・full verify・CI/E2Eは親が担当する。これは合成応答の境界検証であり、実モデル読取やC20全体の完了宣言ではない。
