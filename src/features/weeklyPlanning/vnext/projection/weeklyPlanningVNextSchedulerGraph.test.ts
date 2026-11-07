@@ -81,6 +81,28 @@ describe('VNext → Stable V5 scheduler bridge', () => {
     expect(item).toMatchObject({ taskId: state.graph.tasks[1].id, baseEstimatedMinutes: 45 });
   });
 
+  it('compiles component totals with their own source evidence and no synthetic provenance', () => {
+    const state = turn(createEmptyWeeklyPlanningVNextState(), { add: [task('t', '数学'),
+      ...['a', 'b'].flatMap((localId, index): VNextAddFact[] => [
+        { kind: 'component', localId, taskRef: { localId: 't' }, parentComponentRef: null, role: 'chapter', label: localId },
+        { ...effort(`${localId}-time`, 't', 'total_duration', index === 0 ? 30 : 20), targetRef: { localId } } as VNextAddFact,
+      ]),
+    ] });
+    const before = structuredClone(state);
+    const items = compile(state).compilation.input!.movableWorkItems;
+    expect(items.map(item => item.baseEstimatedMinutes)).toEqual([30, 20]);
+    expect(new Set(items.map(item => item.id)).size).toBe(2);
+    for (const [index, item] of items.entries()) {
+      const componentId = state.graph.components[index].id;
+      const estimateId = state.graph.effortEstimates[index].id;
+      expect(item.componentId).toBe(componentId);
+      expect(item.estimateSourceFactIds).toEqual([estimateId]);
+      expect(item.sourceFactRefs).toEqual(expect.arrayContaining([state.graph.tasks[0].id, componentId, estimateId]));
+      expect([...item.sourceFactRefs, ...item.estimateSourceWorkloadFactIds].some(id => id.startsWith('vnext-'))).toBe(false);
+    }
+    expect(state).toEqual(before);
+  });
+
   it('derives the scheduling context from the state by V5 resolvers: a stated planning window is the horizon, else the selected week', () => {
     const requestContext = { startedAtIso: '2026-11-02T00:00:00.000Z', timeZone: 'Asia/Tokyo', currentDate: '2026-11-02', currentTime: '09:00',
       notBeforeDate: '2026-11-02', notBeforeTime: '09:00', weekStartsOn: 'monday' as const };
