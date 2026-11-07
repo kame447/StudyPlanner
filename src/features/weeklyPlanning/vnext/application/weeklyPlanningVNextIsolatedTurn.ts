@@ -40,6 +40,7 @@ export async function executeIsolatedWeeklyPlanningVNextTurn(
     ports: diagnostic.ports, turnId: input.traceRequestId, userText: input.userText,
     supplementalContext: input.supplementalContext,
     selectedStarterTarget: input.selectedStarterTarget,
+    confirmedUserContext: payload.confirmedUserContext,
     shownRevision: read?.vnext.presentedQuestion?.graphRevision ?? null,
   });
   const intake = input.previousState ?? createInitialPlanningIntakeState();

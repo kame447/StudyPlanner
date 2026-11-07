@@ -8,6 +8,7 @@ import { submitWeeklyPlanningApplicationTurnWithServices, weeklyPlanningTurnAppl
 import { createWeeklyPlanningTurnOutcomeLifecycle } from '../../application/weeklyPlanningTurnOutcomeLifecycle';
 import { approveWeeklyPlanningDraftBlocks } from '../../application/weeklyPlanningApprovalApplication';
 import { classifyWeeklyPlanningApprovalAvailability } from '../../application/weeklyPlanningApprovalAvailability';
+import { readUserPlanningContextSnapshotV1 } from '../../../userPlanningContext/userPlanningContextSpace';
 import { loadWeeklyPlanningApprovalOperations, saveWeeklyPlanningApprovalOperations } from '../../application/weeklyPlanningApprovalLedgerStorage';
 import { startOfWeeklyPlanningWeek } from '../../personalization/weeklyPlanningWeek';
 import { useWeeklyPlanningPersonalization } from '../../personalization/WeeklyPlanningPersonalizationContext';
@@ -327,6 +328,10 @@ export function useWeeklyPlanningVNextApplication(
   const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: liveSession,
     savingActualRecordIds: () => savingActualRecordIds.current,
     approvalOperations: () => runtime.operations,
+    userContextRecords: (owner, currentDate) => {
+      const read = readUserPlanningContextSnapshotV1({ ownerId: owner, currentDate });
+      return read.kind === 'available' ? read.snapshot.records : null;
+    },
     ports: async turn => {
       await services.preload?.();
       const local = runtime.local;

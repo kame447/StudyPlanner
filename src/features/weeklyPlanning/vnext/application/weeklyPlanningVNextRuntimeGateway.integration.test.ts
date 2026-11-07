@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Plan } from '../../../../types/domain';
+import type { UserPlanningContextRecordV1 } from '../../../userPlanningContext/userPlanningContextTypes';
 import type { WeeklyDraftApprovalOperation } from '../../planning/weeklyPlanningApprovalTypes';
 import { getEntryDurationMinutes } from '../../../../lib/entryTimeRange';
 import { createWeeklyPlanningStableV5DialoguePrompt } from '../../dialogue/weeklyPlanningStableV5DialoguePrompt';
@@ -65,6 +66,7 @@ afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyP
 
 function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRenderer?: WeeklyPlanningVNextExperimentalPorts['createRenderer'];
   plans?: () => Plan[]; approvalOperations?: () => readonly WeeklyDraftApprovalOperation[];
+  userContextRecords?: () => readonly UserPlanningContextRecordV1[] | null;
   nativeReadings?: unknown[]; nativeReading?: unknown; providerFails?: boolean; planningIntent?: 'create_plan' | 'discuss'; beforeDispatch?: (action: WeeklyPlanningAction) => void } = {}) {
   const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: createMemoryStorageHarness().storage });
   let state = createInitialPlanningState(WEEK);
@@ -78,7 +80,8 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
       ?? { planningIntent: options.planningIntent ?? 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null };
     return JSON.stringify(typeof response === 'function' ? response(input) : response);
   } };
-  const gateway = createWeeklyPlanningVNextRuntimeGateway({ session: local, approvalOperations: options.approvalOperations, ports: () => ({ client,
+  const gateway = createWeeklyPlanningVNextRuntimeGateway({ session: local, approvalOperations: options.approvalOperations,
+    ...(options.userContextRecords ? { userContextRecords: options.userContextRecords } : {}), ports: () => ({ client,
     interpret: options.interpret ?? createWeeklyPlanningVNextProviderInterpreter(), checkpoint: local.checkpoint,
     legacyV5Checkpoint: local.legacyV5Checkpoint, now: () => NOW,
     approvalLedger: { read: () => null, write: () => { throw new Error('no approval in this test'); } },
@@ -1551,5 +1554,48 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(JSON.stringify(server.entries[0])).toContain('keep-future-vnext-field');
     expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     if (oversized) expect(JSON.stringify(server.entries[0])).toContain('truncat');
+  });
+});
+
+describe('confirmed stored memory reaches only the generic interpreter (#294)', () => {
+  const memory = (id: string, label: string, change: Partial<UserPlanningContextRecordV1> = {}): UserPlanningContextRecordV1 => ({
+    id, ownerId: OWNER, kind: 'study_goal', label, value: `${label}の詳細`, dateExpression: null, observedDate: '2026-10-01', resolvedDate: null,
+    sourceText: `ORIGINAL-${id}`, sourceConversationId: 'earlier-conversation', sourceTurnId: 'earlier-turn',
+    recordedAt: '2026-10-01T00:00:00.000Z', status: 'active', origin: 'user_confirmed', ...change });
+  const userBodies = (requests: unknown[]) => (requests as { messages: { role: string; content: string }[] }[])
+    .map(request => request.messages.filter(message => message.role === 'user').map(message => message.content)).flat();
+
+  it('selects at the gateway, fixes it in the one payload, and keeps it out of the checkpoint, result trace and outbox', async () => {
+    const h = harness({ userContextRecords: () => [memory('goal', '志望校合格'), memory('inferred', 'AI推測', { origin: 'ai_inferred' }),
+      memory('foreign', '他人の目標', { ownerId: 'someone-else' }), memory('revoked', '撤回済み', { status: 'revoked' })] });
+    await h.submit('数学は残り30分。予定案にして');
+    const bodies = userBodies(h.requests).filter(body => body.includes('confirmedUserContext'));
+    expect(bodies).toHaveLength(1);
+    const context = (JSON.parse(bodies[0]) as { confirmedUserContext: { id: string }[] }).confirmedUserContext;
+    expect(context.map(item => item.id)).toEqual(['goal']);
+    for (const absent of ['AI推測', '他人の目標', '撤回済み', 'ORIGINAL-']) expect(bodies[0]).not.toContain(absent);
+    const everywhere = [h.local.checkpoint.read(), JSON.stringify(h.results[0].debugTraceEvents), JSON.stringify(writes), JSON.stringify(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION }))];
+    for (const text of everywhere) expect(text).not.toContain('志望校合格');
+    const traced = h.results[0].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!;
+    expect(JSON.stringify(traced.data)).toContain('omittedFromTrace');
+    expect(writes.length).toBeGreaterThan(0);
+  });
+
+  it.each([['unreadable memory', () => null], ['no stored memory', () => []]])('runs the same turn without the channel for %s', async (_name, records) => {
+    const h = harness({ userContextRecords: records });
+    expect(await h.submit('数学は残り30分。予定案にして')).toMatchObject({ accepted: true });
+    expect(userBodies(h.requests).some(body => body.includes('confirmedUserContext'))).toBe(false);
+    expect(h.getState().previewCandidates?.length).toBeGreaterThan(0);
+  });
+
+  it('uses only typed scope keys: a scoped memory joins once the checkpoint has a task of that name', async () => {
+    const records = () => [memory('math', '数学', { kind: 'concern' }), memory('english', '英語', { kind: 'concern' })];
+    const h = harness({ userContextRecords: records, planningIntent: 'discuss' });
+    await h.submit('数学は残り30分');
+    expect(userBodies(h.requests).filter(body => body.includes('confirmedUserContext'))).toEqual([]);
+    await h.submit('それは火曜にやりたい');
+    const withMemory = userBodies(h.requests).filter(body => body.includes('confirmedUserContext'));
+    expect(withMemory).toHaveLength(1);
+    expect((JSON.parse(withMemory[0]) as { confirmedUserContext: { id: string }[] }).confirmedUserContext.map(item => item.id)).toEqual(['math']);
   });
 });
