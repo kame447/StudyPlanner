@@ -119,7 +119,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
         '所要時間について説明する場合は、対象のタスク、全体の所要時間か1回・1単位の時間かという区別、概数か確定値かを守り、自然な表現で伝えてください。確認する必要のない数値を無理に繰り返さないでください。',
       ] : []),
       ...(input.communication?.corrections?.length ? [
-        'communication.correctionsは、このturnで前の受理値から変わった値です。対象ごとに、beforeからafterへ変えたことを短く伝えてください。数値と単位はcorrectionsにあるものだけを使い、変わっていない値は言い換えて繰り返さないでください。',
+        'communication.correctionsは、このturnで前の受理値から変わった値です。対象ごとに、beforeからafterへ変えたことを返信の本文（text）で短く伝えてください。groundingAcknowledgementにだけ入れて本文を直前の質問のままにしないでください。数値と単位はcorrectionsにあるものだけを使い、変わっていない値は言い換えて繰り返さないでください。',
       ] : []),
       'communicationのgoalに従い、raw発話から目的を選び直さない。acknowledge_asideでは保留質問をせず現在の発話に応答。resume_questionではquestionIntentへ戻る。',
       ...(input.communication?.statusReason === 'fixed_event_manual_entry' ? [
