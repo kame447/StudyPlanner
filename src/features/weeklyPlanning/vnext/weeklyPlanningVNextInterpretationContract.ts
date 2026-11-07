@@ -25,6 +25,15 @@ export interface VNextEventRegistrationAct {
   targetRef: VNextFactRef | null;
 }
 
+/** Current-turn request accompanying an answer, validated against userText and the shown question.
+ * The AI owns whether the quote is an independent request; matching text is not a meaning test.
+ * This evidence never becomes a checkpoint field or preview approval.
+ */
+export interface VNextPlanningRequestEvidence {
+  quote: string;
+  questionKey: string;
+}
+
 export interface WeeklyPlanningVNextInterpretationClock {
   /** Accepted-at date the turn is read against (YYYY-MM-DD, local to timeZone). */
   currentDate: string;
@@ -106,6 +115,7 @@ export type WeeklyPlanningVNextInterpretation =
       status: 'interpreted';
       /** The AI interprets intent; the shared V5 application gate alone grants preview permission. */
       planningIntent: VNextPlanningIntent;
+      planningRequestEvidence?: VNextPlanningRequestEvidence | null;
       /** Additive turn-local acts; kept out of Fact Graph and approval state. */
       conversationActs?: VNextEventRegistrationAct[];
       /** Applies cleanly to `state` (validated with the same pure transaction), or is empty. */
