@@ -2,7 +2,7 @@
 import { resolveWeeklyPlanningAcceptedPlanningWindow, type WeeklyPlanningTurnRequestContext } from '../application/weeklyPlanningTemporalContext';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import { resolveCanonicalDateExpression } from '../semantic/weeklyPlanningCalendarResolver';
-import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningFactGraphV5 } from '../vnext/weeklyPlanningVNextV5Boundary';
 
 export interface RealApiDateMeaningOracle {
   planningWindow?: { startDate: string; endDate: string };

@@ -36,7 +36,7 @@ Branch: `test/issue978-v5-regression-vnext`, base `799d89a3`
 | #911/#912 rate×量とtotal/別単位scope | 既存Projection `surfaces a rate and a total that disagree`、ShadowComparison、provider `rate-total-conflict` / `independent-scope`。 | **追加検証済み**: WorkIdentity suiteで8×5とtotal60を保持して質問、明示total40への訂正/旧rate取消によるtotal60保持で解消。別単位scopeは上記3選択。既存実API結果の個別再利用照合は未完。 |
 | #918 受理時clock固定 | 既存Transactionのmulti-week weekday/relative date固定、Sessionの後日V5移行。DateOracleは受理後の絶対日を検査する。 | **追加検証済み**: Continuity suiteで11/2に受理した相対窓を11/3のWorker再開でも同じ絶対日として保持。 |
 | #461 「明日ではなく今日」 | 既存planning-windowの明示patch/atomic staging。 | **追加検証済み**: Continuity suiteで明日→今日のwindow patch、必要な作業量の質問・task保持。不正refの初回/1回修復はgraph不変。両経路を翌日再開しても受理済日付を動かさず候補/preview0。 |
-| #335 / D5 / C20 / A群 | 移管コメントのケースID・turn、既存provider/会話oraclesを再利用する。旧JEV live-negativeは5発話であり旧表の3行と異なる。 | 通常VNextの権限/独立事実の境界へ対応付ける。旧コア比較のgreenや総数49/49を個別ケースの合格としない。 |
+| #335 / D5 / C20 / A群 | 移管コメントのケースID・turn、既存provider/会話oraclesを再利用する。旧JEV live-negativeは5発話であり旧表の3行と異なる。 | **D5の型付き境界を追加検証済み**: `durableVNextD5Regression.integration.test.ts` が5発話の独立Math/English・総時間/単位時間・approximate・複合deadline・未承認preview0を検査。現行実モデルの解釈、C20/A全行と旧security反例の個別証拠は引き続き照合対象。旧コア比較や総数49/49を個別合格へ流用しない。 |
 
 ## 検証と次の手順
 
@@ -48,6 +48,10 @@ base799d89a3上の未commit作業ツリーで、DateOracle＋比較fixtureのfoc
 
 第3単位はcommit `1245dd12`。その上の `durableVNextV5Continuity.integration.test.ts` は **4pass**（明示残量の保持/取消2例、日付窓訂正/不正ref2例）。既存の成功済みapp/Worker型検査の対象コード・型生成入力に差分はなく、その検証を継承する。追加Worker testは実行で検査した。
 
+Continuityは`b5ba8496`、D5の5passは`daa090b1`で同PRへ統合。D5は条件付きの型付き読取をWorkerへ流す検証であり、全言い換えの意味読取の保証ではない。時間未定のMathはgraphと質問へ残し、配置可能なworkからは除外するという既存の境界を検査する。
+
+CI `42345564448`（1245dd12）は有効な依存境界テスト1件が失敗した。新規評価helperのStable V5 graph型の直接importが原因で、既存の公開VNext境界経由へ修正した。isolation test/allowlistは変更せず、同gate＋DateOracleの9tests、全変更のfocused 8files64pass、app/Worker型検査を再確認。flake/環境原因へ読み替えない。
+
 初回の失敗は評価側のrangeのfield名、および旧除外ケースを前提とするテストを分類・修正した。Workerのpreview assertionも実在するcheckpointのpreviewを検査する形へ訂正し、候補0という独立条件を保持した。過去モデルの意味欠落を修正したとは扱わない。
 
-次は#335/C20/D5の5発話を現行Workerの独立事実・見積binding・未承認境界へ対応付け、その後に残るモデル証拠を照合する。#996の既存実モデルrunは入力/ケース/差分を確認してAPI0の再採点候補とする。全行の境界と結果が揃うまで#978全体の完了とはしない。
+親の指示により新規のテスト単位追加を区切り、#1010の必須CI修復・exact-head gate確認を優先する。#996の既存実モデルrunは完了後に入力/ケース/差分を確認してAPI0の再採点候補とする。#996候補はprompt/schema/transactionも異なるため、そのrunを旧#1010 headの直接実モデル証拠とはしない。#978全体の未検証範囲はOpenのまま保持する。
