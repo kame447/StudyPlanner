@@ -323,15 +323,9 @@ function resolveOwnerWork(
     return { projection: { ...ownerQuestion(owner, owner.issue.code, []), question: issueQuestion(owner.issue, owner, context) } };
   }
   const units = owner.units;
-  const represented = new Set<VNextWorkUnit>();
   const openPairs: Array<readonly [VNextWorkUnit, VNextWorkUnit]> = [];
   units.forEach((a, index) => units.slice(index + 1).forEach((b) => {
     if (hasRelation(context, 'distinct', a.workLineageId, b.workLineageId)) return;
-    const oneTarget = (a.role === 'target') !== (b.role === 'target');
-    if (oneTarget && hasRelation(context, 'same', a.workLineageId, b.workLineageId)) {
-      represented.add(a.role === 'target' ? b : a);
-      return;
-    }
     openPairs.push([a, b]);
   }));
   if (openPairs.length > 0) {
@@ -342,7 +336,7 @@ function resolveOwnerWork(
       }),
     };
   }
-  return { scheduled: units.filter((unit) => !represented.has(unit)) };
+  return { scheduled: units };
 }
 
 function estimateOwnerWork(
@@ -501,9 +495,21 @@ export function projectWeeklyPlanningVNext(
         && resolver.leafOf(bound.taskId) === id)));
   // Requested fixed events cannot turn into movable work while their clocks are unknown.
   // Facts remain intact; the existing V5 question intent asks for the missing start/end pair.
-  const resolved = computeVNextWorkUnits(graph, state.workRelations)
-    .filter(owner => !pendingClockTasks.has(resolver.leafOf(owner.taskId) ?? owner.taskId))
-    .map((owner) => ({ owner, resolution: resolveOwnerWork(context, owner) }));
+  const workOwners = computeVNextWorkUnits(graph, state.workRelations)
+    .filter(owner => !pendingClockTasks.has(resolver.leafOf(owner.taskId) ?? owner.taskId));
+  // An explicit same decision lets the current target represent progress across owner scopes too.
+  // Resolve that once before asking or estimating per owner; no quantity/parent-based inference.
+  const targets = new Set(workOwners.flatMap(owner => owner.units).filter(unit => unit.role === 'target').map(unit => unit.workLineageId));
+  const represented = new Set<string>();
+  for (const { kind, lineageIds: [a, b] } of state.workRelations) {
+    if (kind !== 'same') continue;
+    if (targets.has(a) && !targets.has(b)) represented.add(b);
+    else if (targets.has(b) && !targets.has(a)) represented.add(a);
+  }
+  const resolved = workOwners.map(owner => {
+    const selected = { ...owner, units: owner.units.filter(unit => !represented.has(unit.workLineageId)) };
+    return { owner: selected, resolution: resolveOwnerWork(context, selected) };
+  });
   const allScheduled = resolved.flatMap(({ resolution }) => ('scheduled' in resolution ? resolution.scheduled : []));
   const owners = resolved.map(({ owner, resolution }) => ('projection' in resolution
     ? resolution.projection
