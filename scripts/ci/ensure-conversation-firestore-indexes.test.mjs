@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ensureConversationFirestoreIndexes } from './ensure-conversation-firestore-indexes.mjs';
+import { describeIndexPermissions, ensureConversationFirestoreIndexes } from './ensure-conversation-firestore-indexes.mjs';
 
 const BASE = 'projects/demo-studyplanner/databases/(default)/collectionGroups/sessions';
 const index = (state = 'READY') => ({ name: `${BASE}/indexes/expected`, queryScope: 'COLLECTION_GROUP', state,
@@ -73,5 +73,24 @@ describe('safe narrowly targeted Firestore index deployment', () => {
     const b = backend();
     await expect(ensureConversationFirestoreIndexes(opts(b,{projectId:'bad'}))).rejects.toThrow('Valid project');
     expect(b.calls).toHaveLength(0);
+  });
+});
+
+describe('describeIndexPermissions', () => {
+  it('reports the token principal and the missing index permissions without exposing the token', async () => {
+    const calls = [];
+    const request = async (url, init) => {
+      calls.push({ url, init });
+      if (url.startsWith('https://oauth2.googleapis.com/tokeninfo')) return { json: async () => ({ email: 'deployer@p.iam.gserviceaccount.com', scope: 'https://www.googleapis.com/auth/cloud-platform' }) };
+      return { ok: true, json: async () => ({ permissions: ['datastore.indexes.list'] }) };
+    };
+    const lines = await describeIndexPermissions({ projectId: 'study-planner-d1bc8', accessToken: 'secret-token', request });
+    expect(lines).toEqual([
+      'Token principal: deployer@p.iam.gserviceaccount.com; scopes: https://www.googleapis.com/auth/cloud-platform',
+      'Granted on study-planner-d1bc8: datastore.indexes.list',
+      'Missing on study-planner-d1bc8: datastore.indexes.get, datastore.indexes.create, datastore.indexes.update',
+    ]);
+    expect(calls[1].url).toBe('https://cloudresourcemanager.googleapis.com/v1/projects/study-planner-d1bc8:testIamPermissions');
+    expect(lines.join('\n')).not.toContain('secret-token');
   });
 });

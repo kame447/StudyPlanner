@@ -78,12 +78,41 @@ export async function ensureConversationFirestoreIndexes({ projectId, accessToke
   throw new Error('Firestore conversation index not READY; do not deploy Rules yet');
 }
 
+const INDEX_PERMISSIONS = ['datastore.indexes.list', 'datastore.indexes.get', 'datastore.indexes.create', 'datastore.indexes.update'];
+
+/** Read-only: report the token's principal and which index permissions IAM grants it in the project. */
+export async function describeIndexPermissions({ projectId, accessToken, request = fetch }) {
+  const lines = [];
+  try {
+    const info = await request(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`);
+    const body = await info.json();
+    lines.push(`Token principal: ${body.email ?? body.azp ?? 'unknown'}; scopes: ${body.scope ?? 'unknown'}`);
+  } catch (error) { lines.push(`Token principal lookup failed: ${error instanceof Error ? error.message : error}`); }
+  try {
+    const response = await request(`https://cloudresourcemanager.googleapis.com/v1/projects/${projectId}:testIamPermissions`, {
+      method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permissions: INDEX_PERMISSIONS }) });
+    if (!response.ok) lines.push(`testIamPermissions failed (${response.status}): ${(await response.text()).slice(0, 250)}`);
+    else {
+      const granted = (await response.json()).permissions ?? [];
+      lines.push(`Granted on ${projectId}: ${granted.join(', ') || 'none'}`);
+      lines.push(`Missing on ${projectId}: ${INDEX_PERMISSIONS.filter(p => !granted.includes(p)).join(', ') || 'none'}`);
+    }
+  } catch (error) { lines.push(`testIamPermissions request failed: ${error instanceof Error ? error.message : error}`); }
+  return lines;
+}
+
 async function main() {
-  const result = await ensureConversationFirestoreIndexes({
-    projectId: process.env.GCP_PROJECT_ID,
-    accessToken: process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
-    verifyOnly: process.argv.includes('--verify-only'),
-  });
+  const options = { projectId: process.env.GCP_PROJECT_ID, accessToken: process.env.GOOGLE_OAUTH_ACCESS_TOKEN };
+  let result;
+  try {
+    result = await ensureConversationFirestoreIndexes({ ...options, verifyOnly: process.argv.includes('--verify-only') });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('(403)')) {
+      for (const line of await describeIndexPermissions(options)) console.error(line);
+    }
+    throw error;
+  }
   console.log(`Conversation retention index READY (${result.indexName}); payload indexing disabled (${result.fieldName}).`);
 }
 
