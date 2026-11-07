@@ -8,6 +8,8 @@ import {
 import type { WeeklyDraftApprovalOperation } from '../../planning/weeklyPlanningApprovalTypes';
 import { readWeeklyPlanningVNextExperimentalSession, type WeeklyPlanningVNextExperimentalPorts,
   type WeeklyPlanningVNextExperimentalScope } from './weeklyPlanningVNextExperimentalSession';
+import { vnextPlanningWindowNeedsYearConfirmation } from '../weeklyPlanningVNextPlanningWindowYear';
+import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
 
 export type WeeklyPlanningVNextExperimentalApproval =
   | { status: 'rejected'; reason: string }
@@ -40,6 +42,10 @@ export async function approveWeeklyPlanningVNextExperimentalPreview(params: {
     runtimeSnapshot: { conversationId: scope.conversationId, stateRevision: state.graph.revision, proposalRecords: [] },
   });
   if (!guard.allowed) return { status: 'rejected', reason: guard.attempt.kind };
+  // An old shown preview is not proof of the year after a checkpoint reload.
+  if (filterActiveWeeklyPlanningFactsV5(state.graph, state.graph.planningWindows).some(vnextPlanningWindowNeedsYearConfirmation)) {
+    return { status: 'rejected', reason: 'planning-window-unconfirmed' };
+  }
 
   const ledgerRaw = ports.approvalLedger.read();
   const ledger = ledgerRaw === null ? { operations: [] } : parseWeeklyApprovalLedger(ledgerRaw);

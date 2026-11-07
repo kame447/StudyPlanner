@@ -9,6 +9,7 @@
 // "never silently drops or double-counts other-basis work…").
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
 import { evaluateVNextLearningStrategy } from '../weeklyPlanningVNextLearningStrategy';
+import { vnextPlanningWindowNeedsYearConfirmation } from '../weeklyPlanningVNextPlanningWindowYear';
 import { WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5 } from '../../intake/weeklyPlanningProvisionalTimeboxStateV5';
 import { weeklyPlanningTemporalConstraintAppliesToTargetV5, resolveWeeklyPlanningWorkItemSessionDurationV5,
   type WorkloadFactV5 } from '../weeklyPlanningVNextV5Boundary';
@@ -17,6 +18,7 @@ import type {
   VNextEstimateBasis,
   VNextOwnerProjection,
   VNextTaskQuestion,
+  VNextQuestion,
   VNextQuestionCode,
   VNextQuestionOption,
   VNextTurnDelta,
@@ -272,7 +274,7 @@ type OwnerWorkUnits = ReturnType<typeof computeVNextWorkUnits>[number];
 
 function ownerQuestion(
   owner: OwnerWorkUnits,
-  code: VNextQuestionCode,
+  code: VNextTaskQuestion['code'],
   lineageIds: string[],
   extra: { values?: number[]; forWork?: VNextTaskQuestion['forWork']; options?: VNextQuestionOption[] } = {},
 ): VNextOwnerProjection {
@@ -456,7 +458,7 @@ function missingWorkOwner(context: ProjectionContext, taskId: string): VNextOwne
 export function projectWeeklyPlanningVNext(
   state: WeeklyPlanningVNextState,
   observedMemoryPace: WeeklyPlanningVNextObservedMemoryPace = {},
-): WeeklyPlanningVNextProjection & { questions: VNextTaskQuestion[]; deferredQuestions: VNextTaskQuestion[] } {
+): WeeklyPlanningVNextProjection {
   const graph = state.graph;
   const resolver = createVNextLineageResolver(graph);
   const activeWorkloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads);
@@ -571,9 +573,27 @@ export function projectWeeklyPlanningVNext(
   }
 
   const deferredKeys = new Set(state.deferrals.map((deferral) => deferral.questionKey));
-  const allQuestions = owners.flatMap((owner) => (owner.question ? [owner.question] : []));
-  const questions = allQuestions.filter((question) => !deferredKeys.has(question.key));
-  const deferredQuestions = allQuestions.filter((question) => deferredKeys.has(question.key));
+  const questions: VNextQuestion[] = [];
+  const deferredQuestions: VNextQuestion[] = [];
+  // A period ambiguity affects every placement; it cannot be bypassed by deferring one task.
+  for (const uncertainty of filterActiveWeeklyPlanningFactsV5(graph, graph.uncertainties)) {
+    if ((uncertainty.field === 'planning_window' || uncertainty.field === 'planningWindow')
+      && graph.planningWindows.some(window => window.id === uncertainty.targetFactId)) questions.push({
+      code: 'semantic_uncertainty', key: `semantic_uncertainty:${uncertainty.id}`,
+      ownerKey: 'planning_window', taskId: null, componentId: null, subjectLineageIds: [uncertainty.id],
+      targetFactId: uncertainty.id, forWork: null, options: [] });
+  }
+  for (const window of filterActiveWeeklyPlanningFactsV5(graph, graph.planningWindows)) {
+    const alreadyAsked = graph.uncertainties.some(uncertainty => uncertainty.targetFactId === window.id
+      && questions.some(question => question.code === 'semantic_uncertainty' && question.targetFactId === uncertainty.id));
+    if (vnextPlanningWindowNeedsYearConfirmation(window) && !alreadyAsked) questions.push({
+      code: 'semantic_uncertainty', key: `semantic_uncertainty:year-basis:${window.id}`, ownerKey: 'planning_window',
+      taskId: null, componentId: null, subjectLineageIds: [window.id], targetFactId: window.id, forWork: null, options: [],
+    });
+  }
+  for (const { question } of owners) {
+    if (question) (deferredKeys.has(question.key) ? deferredQuestions : questions).push(question);
+  }
   const hasWork = owners.some((owner) => owner.work.length > 0 || owner.calibration);
   return {
     graphRevision: graph.revision,
