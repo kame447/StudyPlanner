@@ -102,6 +102,67 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
 const diagnosticEntries = () => writes.flatMap(write => write.entries).filter(entry => entry.kind === 'turn_diagnostic');
 
 describe('VNext session → gateway → existing controller and trace owner', () => {
+  it.each([false, true])('Stage B: persists fixed-quantity registration through failed append, reload and Worker (large=%s)', async large => {
+    const wire = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: null }],
+      answer: null, delta: { ...EMPTY, add: [task, work('pages', 'remaining', 10),
+        { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+          constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03',
+          namedTimePeriod: null, startTime: '10:00', endTime: '11:00', precision: 'exact' }] } };
+    const rendererInputs: unknown[] = [];
+    const h = harness({ nativeReading: wire, createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        Object.assign(input.communication!, { futureFixedQuantitySentinel: 'keep-fixed-quantity-evidence',
+          ...(large ? { futureFixedQuantityDetails: 'x'.repeat(48 * 1024) } : {}) });
+        rendererInputs.push(structuredClone(input));
+        return renderer.render(input);
+      } };
+    } });
+    failAppend = true;
+    const submitted = await h.submit('火曜10時から11時に数学の残り10枚を進める予定を入れて');
+    expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
+      date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
+    expect(h.local.readCheckpoint()!.vnext.state.graph.effortEstimates).toEqual([]);
+    expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull();
+    const result = h.results[0];
+    expect(h.getState().previewCandidates).toEqual(result.draftCandidates);
+    expect(result.draftCandidates[0].approvalStatus).toBe('unapproved');
+    expect(result.dialogueRendererTrace?.request?.promptContext).toEqual(rendererInputs[0]);
+    expect(result.dialogueRendererTrace?.response?.status).toBe('rendered');
+    const sent = h.requests[0] as { messages: { role: string; content: string }[] };
+    expect(result.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(attempted.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-fixed-quantity', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(attempted.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ rawResponses: [expect.objectContaining({ text: JSON.stringify(wire) })] });
+    const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+    if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(rendererInputs[0]);
+    else {
+      // Response-source and document budgets bound this context in two stages. The
+      // outer size measures the first wrapper; its head must retain the raw size.
+      const originalBytes = new TextEncoder().encode(JSON.stringify(rendererInputs[0])).byteLength;
+      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+        jsonHead: expect.stringContaining(`"originalBytes":${originalBytes}`), jsonTail: expect.any(String) });
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-fixed-quantity-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
+  });
+
   it.each([
     { code: 'missing_effort_estimate', large: false }, { code: 'missing_effort_estimate', large: true },
     { code: 'missing_schedulable_work', large: false }, { code: 'missing_schedulable_work', large: true },
