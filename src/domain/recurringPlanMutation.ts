@@ -8,7 +8,9 @@ import type {
   Plan,
   PlanDraft,
   RecurringPlanScope,
+  TimedActual,
 } from '../types/domain';
+import { isTimedActual } from '../lib/actualDuration';
 
 export interface RecurringPlanMutation {
   planUpserts: Plan[];
@@ -42,8 +44,9 @@ function ownedSeriesPlans(plans: Plan[], sourcePlan: Plan): Plan[] {
 function ownedLinkedActuals(
   actuals: Actual[],
   sourcePlan: Plan,
-): Actual[] {
-  return actuals.filter(
+): TimedActual[] {
+  // A linked actual always carries clock times; a duration actual is never linked to a plan.
+  return actuals.filter(isTimedActual).filter(
     (actual) =>
       actual.userId === sourcePlan.userId && actual.planId === sourcePlan.id,
   );

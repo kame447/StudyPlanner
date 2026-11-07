@@ -21,7 +21,9 @@ import type { WeeklyPlanningVNextInterpretation, WeeklyPlanningVNextInterpreter 
 import type { VNextAddFact, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weeklyPlanningVNextProvider';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
-import { createWeeklyPlanningVNextRuntimeGateway } from './weeklyPlanningVNextRuntimeGateway';
+import { buildWeeklyPlanningVNextTurnPayload, createWeeklyPlanningVNextRuntimeGateway } from './weeklyPlanningVNextRuntimeGateway';
+import { createWeeklyPlanningTurnRequestContext } from '../../application/weeklyPlanningTemporalContext';
+import type { ExecuteWeeklyPlanningTurnRuntimeParams } from '../../application/weeklyPlanningTurnRuntimeGateway';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { createWeeklyPlanningVNextOptionChoiceInterpreter } from './weeklyPlanningVNextOptionChoice';
 import { createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoiceBrowserPort';
@@ -67,7 +69,9 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
   const client: WeeklyPlanningVNextExperimentalPorts['client'] = { async createChatCompletion(input) {
     requests.push(structuredClone(input));
     if (options.providerFails) throw new Error('synthetic provider unavailable');
-    return JSON.stringify(options.nativeReadings ? options.nativeReadings.shift() : options.nativeReading ?? { planningIntent: options.planningIntent ?? 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null });
+    const response = options.nativeReadings ? options.nativeReadings.shift() : options.nativeReading
+      ?? { planningIntent: options.planningIntent ?? 'create_plan', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 30, 'minute')] }, answer: null };
+    return JSON.stringify(typeof response === 'function' ? response(input) : response);
   } };
   const gateway = createWeeklyPlanningVNextRuntimeGateway({ session: local, ports: () => ({ client,
     interpret: options.interpret ?? createWeeklyPlanningVNextProviderInterpreter(), checkpoint: local.checkpoint,
@@ -100,6 +104,343 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
 const diagnosticEntries = () => writes.flatMap(write => write.entries).filter(entry => entry.kind === 'turn_diagnostic');
 
 describe('VNext session → gateway → existing controller and trace owner', () => {
+  it.each([false, true])('persists an inherited session duration and its accepted preview through outbox reload and Worker (large=%s)', async large => {
+    const initial = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [task,
+      { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
+        activityKind: 'memorization_retrieval', contextLabel: null },
+      { ...work('words', 'remaining', 100), unitCode: 'word', unitLabel: '語' },
+      { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'task' }, targetRef: { localId: 'words' },
+        effortKind: 'duration_per_unit', minutes: 2, unitCode: 'word', unitLabel: '語', precision: 'exact' },
+      { kind: 'effort_estimate', localId: 'session', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+        effortKind: 'session_duration', minutes: 20, unitCode: null, unitLabel: null, precision: 'exact' },
+    ] } };
+    const contexts: unknown[] = [];
+    let acceptedWire: unknown;
+    const h = harness({ nativeReadings: [initial, (request: { messages: { content: string }[] }) => {
+      const input = JSON.parse(request.messages[1].content);
+      acceptedWire = { planningIntent: 'unknown', conversationActs: [], delta: EMPTY,
+        answer: { kind: 'proposal_decision', proposalId: input.presentedQuestion.proposal.id, decision: 'accept' } };
+      return acceptedWire;
+    }], createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        Object.assign(input.communication!, { futureKnownSessionSentinel: 'keep-known-session-evidence',
+          ...(large ? { futureKnownSessionDetails: 'x'.repeat(48 * 1024) } : {}) });
+        contexts.push(structuredClone(input));
+        return renderer.render(input);
+      } };
+    } });
+    await h.submit('暗記100語、1語2分、1回20分で計画して');
+    expect(h.local.readCheckpoint()!.vnext.state.learningStrategyProposalRecords[0].status).toBe('pending');
+    failAppend = true;
+    await h.submit('分散学習の提案を採用して');
+    const result = h.results[1];
+    const persisted = h.local.readCheckpoint()!.vnext;
+    expect(persisted.presentedQuestion).toBeNull();
+    expect(persisted.preview!.blocks.length).toBeGreaterThan(0);
+    expect(result.draftCandidates.every(candidate => candidate.durationMinutes === 20)).toBe(true);
+    expect(persisted.preview!.blocks.map(({ date, startTime, endTime }) => ({ date, startTime, endTime }))).toEqual(
+      result.draftCandidates.map(({ date, startTime, endTime }) => ({ date, startTime, endTime })));
+    expect(persisted.state.graph.effortEstimates.filter(fact => fact.kind === 'session_duration')).toMatchObject([
+      { minutes: 20, targetFactId: persisted.state.graph.tasks[0].id },
+    ]);
+    expect(result.draftCandidates.every(candidate => candidate.approvalStatus === 'unapproved')).toBe(true);
+    expect(result.dialogueRendererTrace?.request?.promptContext).toEqual(contexts[1]);
+    expect(result.dialogueRendererTrace?.response?.status).toBe('rendered');
+    const sent = h.requests[1] as { messages: { content: string }[] };
+    expect(result.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(attempted.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-known-session', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(attempted.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '107' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ rawResponses: [expect.objectContaining({ text: JSON.stringify(acceptedWire) })] });
+    const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+    if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(contexts[1]);
+    else {
+      const originalBytes = new TextEncoder().encode(JSON.stringify(contexts[1])).byteLength;
+      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true, originalBytes,
+        jsonHead: expect.stringContaining('keep-known-session-evidence'), jsonTail: expect.any(String) });
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-known-session-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
+  });
+
+  it.each([false, true])('Stage B: persists fixed memorization registration through failed append, reload and Worker (large=%s)', async large => {
+    const wire = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: null }],
+      answer: null, delta: { ...EMPTY, add: [task, work('pages', 'remaining', 10),
+        { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
+          activityKind: 'memorization_retrieval', contextLabel: null },
+        { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+          constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03',
+          namedTimePeriod: null, startTime: '10:00', endTime: '11:00', precision: 'exact' }] } };
+    const rendererInputs: unknown[] = [];
+    const h = harness({ nativeReading: wire, createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        Object.assign(input.communication!, { futureFixedQuantitySentinel: 'keep-fixed-quantity-evidence',
+          ...(large ? { futureFixedQuantityDetails: 'x'.repeat(48 * 1024) } : {}) });
+        rendererInputs.push(structuredClone(input));
+        return renderer.render(input);
+      } };
+    } });
+    failAppend = true;
+    const submitted = await h.submit('火曜10時から11時に数学の残り10枚を進める予定を入れて');
+    expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
+      date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
+    expect(h.local.readCheckpoint()!.vnext.state.graph.effortEstimates).toEqual([]);
+    expect(h.local.readCheckpoint()!.vnext.state.learningStrategyProposalRecords).toEqual([]);
+    expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull();
+    const result = h.results[0];
+    expect(h.getState().previewCandidates).toEqual(result.draftCandidates);
+    expect(result.draftCandidates[0].approvalStatus).toBe('unapproved');
+    expect(result.dialogueRendererTrace?.request?.promptContext).toEqual(rendererInputs[0]);
+    expect(result.dialogueRendererTrace?.response?.status).toBe('rendered');
+    const sent = h.requests[0] as { messages: { role: string; content: string }[] };
+    expect(result.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(attempted.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-fixed-quantity', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(attempted.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ rawResponses: [expect.objectContaining({ text: JSON.stringify(wire) })] });
+    const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+    if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(rendererInputs[0]);
+    else {
+      // Response-source and document budgets bound this context in two stages. The
+      // outer size measures the first wrapper; its head must retain the raw size.
+      const originalBytes = new TextEncoder().encode(JSON.stringify(rendererInputs[0])).byteLength;
+      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+        jsonHead: expect.stringContaining(`"originalBytes":${originalBytes}`), jsonTail: expect.any(String) });
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-fixed-quantity-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
+  });
+
+  it.each([
+    { code: 'missing_effort_estimate', large: false }, { code: 'missing_effort_estimate', large: true },
+    { code: 'missing_schedulable_work', large: false }, { code: 'missing_schedulable_work', large: true },
+    { code: 'remaining_inconsistent', large: false }, { code: 'remaining_inconsistent', large: true },
+    { code: 'same_or_distinct_work', large: false }, { code: 'same_or_distinct_work', large: true },
+  ])('persists the third unanswered $code explanation through outbox reload and Worker (large=$large)', async ({ code, large }) => {
+    const add: VNextAddFact[] = code === 'remaining_inconsistent'
+      ? [task, work('total', 'scope_total', 20), work('done', 'completed', 12), work('left', 'remaining', 7)]
+      : code === 'same_or_distinct_work' ? [task, work('pages', 'remaining', 10), work('minutes', 'remaining', 45, 'minute')]
+        : code === 'missing_effort_estimate' ? [task, work('work', 'remaining', 8)] : [task];
+    const initial = { planningIntent: 'discuss', conversationActs: [], answer: null,
+      delta: { ...EMPTY, add } };
+    const unanswered = { planningIntent: 'unknown', conversationActs: [], answer: null, delta: EMPTY };
+    const contexts: unknown[] = [];
+    const h = harness({ nativeReadings: [initial, unanswered, unanswered, unanswered], createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+        const response = JSON.parse(await successfulWeeklyPlanningRendererCompletion(request));
+        const prompt = JSON.parse(request.messages[1].content);
+        response.text += (prompt.applicationDecision.relevantLabels ?? []).join(' / ');
+        return JSON.stringify(response);
+      } });
+      return { render(input) {
+        if (input.communication?.goal === 'explain_question') {
+          Object.assign(input.communication, { futureRepeatedQuestionSentinel: 'keep-repeated-question-evidence',
+            ...(large ? { futureRepeatedQuestionDetails: 'x'.repeat(48 * 1024) } : {}) });
+          contexts.push(structuredClone(input));
+        }
+        return renderer.render(input);
+      } };
+    } });
+    const initialText = code === 'remaining_inconsistent' ? '数学は全体20枚、完了12枚、残り7枚です。'
+      : code === 'same_or_distinct_work' ? '数学は残り10枚、残り45分です。'
+        : code === 'missing_effort_estimate' ? '数学を残り8枚やりたいです' : '今週は数学をやりたいです';
+    await h.submit(initialText);
+    const retained = h.local.readCheckpoint()!.vnext.state;
+    await h.submit('わかりません');
+    await h.submit('まだ決めていません');
+    failAppend = true;
+    expect(await h.submit('今は答えられません')).toEqual({ accepted: true, draftCandidates: [] });
+    expect(h.local.readCheckpoint()!.vnext.state).toEqual(retained);
+    expect(h.local.readCheckpoint()!.vnext.unansweredQuestionStreak?.count).toBe(3);
+    expect(h.local.readCheckpoint()!.vnext.preview).toBeNull();
+    const result = h.results[3];
+    const choice = code === 'remaining_inconsistent'
+      ? '全体から完了量を引いた残りと、入力された残量が一致しません。どの値を直すか選んでください。'
+      : code === 'same_or_distinct_work'
+        ? '複数の量や時間が、別々に行う作業なのか、同じ作業を表しているのかが未確定です。予定に含める作業を、表示した選択肢から選んでください。'
+        : '所要時間はまだ分からないので、仮置きで予定を組んで見せて';
+    expect(contexts).toHaveLength(1);
+    expect(result.dialogueRendererTrace?.request?.promptContext).toMatchObject({
+      questionCode: code, communication: { goal: 'explain_question', askQuestion: true },
+      requiredLabels: expect.arrayContaining(code === 'remaining_inconsistent' || code === 'same_or_distinct_work'
+        ? [choice] : ['何分くらい', choice, '後で決める']),
+    });
+    const messages = h.getState().messages;
+    expect(messages[messages.length - 1]?.content).toContain(choice);
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    expect(queued.input.debugTraceEvents).toEqual(result.debugTraceEvents);
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    expect(attempted.entries).toHaveLength(1);
+    expect(measureWeeklyPlanningTraceJsonBytes(attempted.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'repeated-question-retry', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const replayed = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(replayed.entries).toEqual(attempted.entries);
+    const entry = replayed.entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing repeated-question diagnostic');
+    const sent = h.requests[3] as { messages: { role: string; content: string }[] };
+    const requestBytes = new TextEncoder().encode(JSON.stringify(sent)).byteLength;
+    expect(result.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes,
+    });
+    // Recent dialogue makes this native input exceed the per-message trace limit. Preserve
+    // exact sent-request evidence above and explicit clipping in the persisted projection.
+    const recorded = entry.aiInterpreter.input.requests[0];
+    expect(recorded.requestBytes).toBe(requestBytes);
+    const recordedContext = recorded.messages.find(message => message.role === 'user')!.content;
+    expect(recordedContext).toContain(`"code":"${code}"`);
+    expect(recordedContext).toContain('[trace truncated]');
+    expect(entry.aiInterpreter.rawResponses[0].text).toBe(JSON.stringify(unanswered));
+    expect(JSON.stringify(entry)).toContain('keep-repeated-question-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: replayed.session as unknown as Record<string, unknown>,
+      entries: replayed.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-repeated-question-evidence');
+    expect(saved).toContain('explain_question');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) {
+      const renderer = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(renderer.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+        originalBytes: new TextEncoder().encode(JSON.stringify(contexts[0])).byteLength,
+        jsonHead: expect.any(String), jsonTail: expect.any(String) });
+      expect(saved).not.toContain('x'.repeat(48 * 1024));
+    }
+  });
+
+  it.each([
+    { code: 'effort_inconsistent', large: false }, { code: 'effort_inconsistent', large: true },
+    { code: 'completed_exceeds_total', large: false }, { code: 'completed_exceeds_total', large: true },
+  ])('persists the third $code explanation through actual renderer, outbox reload and Worker (large=$large)', async ({ code, large }) => {
+    const rendererRequests: { messages: readonly { content: string }[] }[] = [];
+    const rendererInputs: unknown[] = [];
+    const add: VNextAddFact[] = code === 'completed_exceeds_total'
+      ? [task, work('total', 'scope_total', 10), work('done', 'completed', 12)]
+      : [task, work('pages', 'remaining', 8),
+      { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'task' }, targetRef: { localId: 'pages' },
+        effortKind: 'duration_per_unit', minutes: 5, unitCode: 'page', unitLabel: '枚', precision: 'exact' },
+      { kind: 'effort_estimate', localId: 'total', taskRef: { localId: 'task' }, targetRef: { localId: 'pages' },
+        effortKind: 'total_duration', minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' }];
+    const h = harness({ nativeReadings: [add, [], [], []].map(add => ({ planningIntent: 'discuss',
+      conversationActs: [], delta: { ...EMPTY, add }, answer: null })), createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+        rendererRequests.push(structuredClone(request));
+        const response = JSON.parse(await successfulWeeklyPlanningRendererCompletion(request));
+        const prompt = JSON.parse(request.messages[1].content);
+        response.text += prompt.applicationDecision.relevantLabels.join(' / ');
+        return JSON.stringify(response);
+      } });
+      return { render(input) {
+        Object.assign(input.communication!, { futureEffortConflictSentinel: 'keep-effort-conflict-guidance',
+          ...(large ? { futureLargeEffortConflictField: 'z'.repeat(48 * 1024) } : {}) });
+        rendererInputs.push(structuredClone(input));
+        return renderer.render(input);
+      } };
+    } });
+    await h.submit(code === 'completed_exceeds_total'
+      ? '数学プリントは全体10枚、12枚完了です。' : '数学プリントは残り8枚、1枚5分、全体60分です。');
+    expect(h.results[0].dialogueRendererTrace?.response?.status,
+      JSON.stringify(h.results[0].dialogueRendererTrace?.response)).toBe('rendered');
+    await h.submit('うーん'); await h.submit('まだ分からない');
+    failAppend = true;
+    await h.submit('そうですね');
+    const result = h.results[3];
+    const sent = rendererRequests[rendererRequests.length - 1];
+    const prompt = JSON.parse(sent.messages[1].content);
+    expect(prompt.applicationDecision).toMatchObject({ questionCode: code,
+      communication: { goal: 'explain_question' }, relevantLabels: expect.arrayContaining(code === 'completed_exceeds_total'
+        ? ['全体10枚', '完了12枚'] : ['1枚あたり5分', '全体60分']) });
+    expect(result.dialogueRendererTrace?.response?.status).toBe('rendered');
+    const actualInput = rendererInputs[3] as Parameters<typeof createWeeklyPlanningStableV5DialoguePrompt>[0];
+    const actualPrompt = createWeeklyPlanningStableV5DialoguePrompt(actualInput);
+    expect(sent.messages).toEqual([{ role: 'system', content: actualPrompt.systemPrompt },
+      { role: 'user', content: actualPrompt.userPrompt }]);
+    expect(result.dialogueRendererTrace?.request?.promptContext).toEqual(actualInput);
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const failedWrite = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(failedWrite.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-effort-conflict', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(failedWrite.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    if (!large) {
+      const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(actualInput);
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-effort-conflict-guidance');
+    expect(saved).toContain('explain_question');
+    expect(saved).toContain(code);
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) {
+      const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+        originalBytes: new TextEncoder().encode(JSON.stringify(rendererInputs[3])).byteLength });
+      expect(saved).not.toContain('z'.repeat(48 * 1024));
+    }
+  });
+
+  it('omits in-flight optimistic actuals from the shared local/durable payload without changing the wire shape', () => {
+    const actuals = [{ id: 'saving-one' }, { id: 'saved-one' }, { id: 'saving-two' }] as ExecuteWeeklyPlanningTurnRuntimeParams['actuals'];
+    const input = { snapshot: createInitialPlanningState(WEEK), pending: { conversationId: CONVERSATION,
+      requestId: 'request-1', baseRevision: 0 }, userText: '同じ週を再送', selectedDate: WEEK, userId: OWNER,
+      plans: [], actuals, scheduleTemplates: [] } as unknown as ExecuteWeeklyPlanningTurnRuntimeParams;
+    const clock = createWeeklyPlanningTurnRequestContext({ startedAtIso: NOW, timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' });
+    const payload = buildWeeklyPlanningVNextTurnPayload(input, null, null, clock, new Set(['saving-one', 'saving-two']));
+    expect(payload.input.actuals?.map(actual => actual.id)).toEqual(['saved-one']);
+    expect(input.actuals?.map(actual => actual.id)).toEqual(['saving-one', 'saved-one', 'saving-two']);
+    expect(payload.input).not.toHaveProperty('savingActualRecordIds');
+    expect(Object.keys(payload)).toEqual(['core', 'checkpoint', 'legacyV5Checkpoint', 'weekStartDate', 'input']);
+  });
+
   it('keeps successful placement and records the actual native request and renderer evidence', async () => {
     const h = harness();
     const submitted = await h.submit('数学を30分');
@@ -265,39 +606,56 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
   });
 
-  it.each([false, true])('persists actual registration acts and exact fixed candidates through outbox reload and Worker (large=%s)', async large => {
+  it.each([
+    { large: false, timeless: false }, { large: true, timeless: false },
+    { large: false, timeless: true }, { large: true, timeless: true },
+  ])('persists registration acts and their actual preview or clock question through outbox reload and Worker (large=$large, timeless=$timeless)', async ({ large, timeless }) => {
     const nativeReading = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: { localId: 'club' } }],
       answer: null, delta: { ...EMPTY, add: [{ kind: 'task', localId: 'club', category: 'non_study', title: '部活' },
-        { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
+        ...(timeless ? [{ kind: 'task_date_rule', localId: 'date', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
+          ruleKind: 'allowed_date', dateExpression: '2026-11-03', constraintLevel: 'hard' }] : [{ kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
           constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
-          startTime: '16:00', endTime: '17:30', precision: 'exact' }] } };
+          startTime: '16:00', endTime: '17:30', precision: 'exact' }])] } };
     const h = harness({ nativeReading, createRenderer: () => {
       const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
       return { render(input) {
-        expect(input.communication?.eventRegistration?.candidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
+        if (timeless) expect(input.questionIntent).toMatchObject({ kind: 'resolution_question', resolutionKind: 'commitment_time_bounds',
+          requestedInformation: ['commitment_start_and_end_time'] });
+        else expect(input.communication?.eventRegistration?.candidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
           startTime: '16:00', endTime: '17:30', durationMinutes: 90 })]);
-        Object.assign(input.communication!.eventRegistration!, { futureRegistrationSentinel: 'keep-future-registration',
+        Object.assign(timeless ? input.questionIntent! : input.communication!.eventRegistration!, { futureRegistrationSentinel: 'keep-future-registration',
           ...(large ? { futureLargeRegistrationMetadata: 'x'.repeat(48 * 1024) } : {}) });
         return renderer.render(input);
       } };
     } });
     failAppend = true;
-    expect(await h.submit('火曜16時から17時半の部活を予定に登録して')).toMatchObject({ accepted: true,
+    const submitted = await h.submit(timeless ? '火曜の部活を予定に登録して' : '火曜16時から17時半の部活を予定に登録して');
+    expect(submitted).toMatchObject(timeless ? { accepted: true } : { accepted: true,
       draftCandidates: [expect.objectContaining({ source: 'fixed_event_registration', startTime: '16:00', endTime: '17:30' })] });
+    if (timeless) {
+      expect(h.local.readCheckpoint()!.vnext.state.pendingEventRegistrationTargetIds).toHaveLength(1);
+      expect(h.local.readCheckpoint()!.vnext.preview).toBeNull();
+    }
+    const providerMessages = (h.requests[0] as { messages: { role: string; content: string }[] }).messages;
+    expect(providerMessages[0].content).toContain('Distinguish a shared planning day from a date limited to one task.');
     expect(h.results[0].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
       request: { messages: (h.requests[0] as { messages: unknown[] }).messages },
     });
     const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
     expect(queued).toHaveLength(1); expect(queued[0].input.debugTraceEvents).toEqual(h.results[0].debugTraceEvents);
+    const queuedRequest = queued[0].input.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!;
+    expect(queuedRequest.data).toMatchObject({ request: { messages: providerMessages } });
     resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
     await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'registration-retry-after-reload', debugTraceEvents: [] });
     expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
     const write = writes[0]; const entry = write.entries.find(entry => entry.kind === 'turn_diagnostic')!;
     if (entry.kind !== 'turn_diagnostic') throw new Error('missing registration diagnostic');
-    expect(entry.diagnostics.outcome).toBe('preview_ready');
+    // VNext questions live in its checkpoint; a consultation keeps the initial compatibility intake idle.
+    expect(entry.diagnostics.outcome).toBe(timeless ? 'idle' : 'preview_ready');
     expect(entry.aiInterpreter.structuredResults[0].structuredResult).toMatchObject({ conversationActs: nativeReading.conversationActs,
       authorizationDecision: { authorized: false, draftGenerationIntent: 'not_requested' } });
-    expect(JSON.stringify(entry)).toContain('fixed_event_registration'); expect(JSON.stringify(entry)).toContain('keep-future-registration');
+    const evidence = timeless ? 'commitment_start_and_end_time' : 'fixed_event_registration';
+    expect(JSON.stringify(entry)).toContain(evidence); expect(JSON.stringify(entry)).toContain('keep-future-registration');
     expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
     const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
       entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
@@ -307,7 +665,17 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       conversationActs: nativeReading.conversationActs,
     }) })] });
     expect(JSON.stringify(server.entries[0])).toContain('keep-future-registration');
-    expect(JSON.stringify(server.entries[0])).toContain('fixed_event_registration');
+    expect(JSON.stringify(server.entries[0])).toContain(evidence);
+    // Full requests remain in the persistent outbox; diagnostics retain bounded evidence with explicit truncation.
+    const storedInterpreter = server.entries[0].aiInterpreter as typeof entry.aiInterpreter;
+    const storedPrompt = storedInterpreter.input.requests[0].messages[0].content;
+    expect(storedPrompt).toContain('…[trace truncated]');
+    const keptPrefix = storedPrompt.slice(0, storedPrompt.indexOf('…[trace truncated]'));
+    expect(keptPrefix).not.toBe('');
+    expect(providerMessages[0].content.startsWith(keptPrefix)).toBe(true);
+    expect(storedInterpreter.input.requests[0].messages[1]).toEqual(providerMessages[1]);
+    expect(server.entries[0].diagnostics).toMatchObject({ truncation: { applied: true,
+      fields: expect.arrayContaining(['aiInterpreter.input.requests[0].messages[0].content']) } });
     expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     if (large) expect(JSON.stringify(server.entries[0])).toContain('truncat');
   });

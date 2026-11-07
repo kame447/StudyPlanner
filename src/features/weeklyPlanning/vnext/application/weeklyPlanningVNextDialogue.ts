@@ -36,6 +36,11 @@ export interface WeeklyPlanningVNextMessage {
   content: string;
 }
 
+export const VNEXT_REPEATED_EFFORT_INCONSISTENT_GUIDANCE =
+  '時間の見積もりが一致していません。どの見積もりを何分に訂正するか、対象と時間を指定してください。今決められなければ「今回は保留」と答えられます。';
+export const VNEXT_REPEATED_COMPLETED_EXCEEDS_TOTAL_GUIDANCE =
+  '終わった量が全体の量を超えています。全体の量と終わった量のどちらを訂正するか、対象と量を指定してください。今決められなければ「今回は保留」と答えられます。';
+
 /** Typed extension on V5's existing presentation-only communication channel. */
 type VNextDialogueRenderInput = WeeklyPlanningStableV5DialogueRenderInput & {
   communication: NonNullable<WeeklyPlanningStableV5DialogueRenderInput['communication']> & {
@@ -72,6 +77,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   userText: string;
   recentConversation: readonly WeeklyPlanningVNextMessage[];
   authorizationRequired?: boolean;
+  repeatedQuestionGuidance?: boolean;
   registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts;
 }): VNextDialogueRenderInput {
   const { state, question, preview } = params;
@@ -83,9 +89,20 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   const asked = question ? question.forWork?.definingFactId ?? question.taskId : null;
   const targetFactId = asked === null ? null : leafOf(asked) ?? asked;
   const optionLabels = question ? Object.values(presentWeeklyPlanningVNextQuestion(state, question).optionLabels) : [];
+  // A conflict has no option binding: show the retained estimates and request an explicit correction or deferral.
+  const effortConflictLabels = params.repeatedQuestionGuidance && question?.code === 'effort_inconsistent'
+    ? graph.effortEstimates.filter(estimate => question.subjectLineageIds.some(id => (leafOf(id) ?? id) === estimate.id))
+      .map(estimate => `${estimate.kind === 'duration_per_unit' ? `1${estimate.unitLabel ?? '単位'}あたり`
+        : estimate.kind === 'session_duration' ? '1回' : '全体'}${estimate.minutes}分${estimate.precision === 'approximate' ? 'くらい' : ''}`)
+    : [];
+  const completedConflictLabels = params.repeatedQuestionGuidance && question?.code === 'completed_exceeds_total'
+    ? graph.workloads.filter(workload => question.subjectLineageIds.some(id => (leafOf(id) ?? id) === workload.id))
+      .map(workload => `${workload.quantityRole === 'completed' ? '完了' : '全体'}${workload.amount}${workload.unitLabel}`)
+    : [];
   return {
     communication: {
-      goal: actionKind === 'question' ? 'ask_question' : actionKind === 'preview_ready' ? 'present_preview' : 'acknowledge',
+      goal: actionKind === 'question' ? params.repeatedQuestionGuidance ? 'explain_question' : 'ask_question'
+        : actionKind === 'preview_ready' ? 'present_preview' : 'acknowledge',
       askQuestion: actionKind === 'question',
       ...params.registrationCommunication,
       ...(params.authorizationRequired ? { previewAuthorization: {
@@ -107,7 +124,18 @@ export function createWeeklyPlanningVNextRenderInput(params: {
       : question && targetFactId ? questionIntent(state, question, planningInformation, targetFactId) : null,
     previewPromotionControlLabel: preview ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL : null,
     requiredLabels: [...new Set([...requiredLabelsForStableV5Dialogue({ planningInformation, targetFactId,
-      includePreviewPromotionControl: preview !== null }), ...optionLabels])],
+      includePreviewPromotionControl: preview !== null }), ...optionLabels, ...effortConflictLabels, ...completedConflictLabels,
+      ...(params.repeatedQuestionGuidance && (question?.code === 'missing_effort_estimate'
+        || question?.code === 'missing_schedulable_work')
+        ? ['何分くらい', '所要時間はまだ分からないので、仮置きで予定を組んで見せて', '後で決める'] : []),
+      ...(params.repeatedQuestionGuidance && question?.code === 'remaining_inconsistent'
+        ? ['全体から完了量を引いた残りと、入力された残量が一致しません。どの値を直すか選んでください。'] : []),
+      ...(params.repeatedQuestionGuidance && question?.code === 'same_or_distinct_work'
+        ? ['複数の量や時間が、別々に行う作業なのか、同じ作業を表しているのかが未確定です。予定に含める作業を、表示した選択肢から選んでください。'] : []),
+      ...(params.repeatedQuestionGuidance && question?.code === 'effort_inconsistent'
+        ? [VNEXT_REPEATED_EFFORT_INCONSISTENT_GUIDANCE] : []),
+      ...(params.repeatedQuestionGuidance && question?.code === 'completed_exceeds_total'
+        ? [VNEXT_REPEATED_COMPLETED_EXCEEDS_TOTAL_GUIDANCE] : [])])],
     fallbackText: params.authorizationRequired
       ? '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。'
       : RENDERER_TECHNICAL_STOP,

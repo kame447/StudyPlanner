@@ -2,6 +2,7 @@ import type { StartupSessionCapability } from '../lib/startupSessionScope';
 import type {
   Actual,
   DayNote,
+  DurationActual,
   MonthEvent,
   Plan,
   ScheduleTemplate,
@@ -14,6 +15,7 @@ import type {
   UserProfileDraft,
 } from '../types/domain';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
+import type { DurationActualInput } from '../domain/durationActuals';
 
 export interface AuthStorageGateway {
   // Serializes a complete user-collection mutation; callbacks must not reenter.
@@ -153,6 +155,8 @@ export interface PlannerRepository {
   upsertPlan(plan: Plan): Promise<Plan>;
   deletePlan(userId: string, planId: string): Promise<void>;
   upsertActual(actual: Actual): Promise<Actual>;
+  /** All-or-nothing: one batch of time-only actuals with caller-supplied deterministic ids (a repeat rewrites, never duplicates). */
+  saveDurationActualsBatch(userId: string, records: readonly DurationActualInput[]): Promise<DurationActual[]>;
   deleteActual(userId: string, actualId: string): Promise<void>;
   upsertDayNote(dayNote: DayNote): Promise<DayNote>;
   applyRecurringMonthEventMutation(userId: string, monthEvents: MonthEvent[]): Promise<void>;

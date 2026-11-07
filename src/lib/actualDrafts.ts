@@ -1,5 +1,5 @@
 import { getPlanOccurrenceDate } from './planRecurrence';
-import type { Actual, ActualDraft, Plan } from '../types/domain';
+import type { Actual, ActualDraft, Plan, TimedActual } from '../types/domain';
 
 export function resolveActualTitle(plan: Plan, actual?: Actual): string {
   return actual?.title?.trim() || plan.title;
@@ -44,9 +44,9 @@ export function createActualDraftForPlan(plan: Plan, actual?: Actual): ActualDra
 }
 
 export function createRelinkCandidateActual(
-  actual: Actual,
+  actual: TimedActual,
   draft: ActualDraft,
-): Actual {
+): TimedActual {
   return {
     ...actual,
     occurrenceDate: draft.occurrenceDate,

@@ -9,9 +9,9 @@ import {
 } from './date';
 import { expandPlansForDateRange, resolvePlanOccurrence } from './planRecurrence';
 import {
+  applyMaterialColors,
   buildSubjectColorMap,
   endOfMonth,
-  getMaterialColor,
   resolveMaterialEntry,
 } from './reportAnalytics';
 import { getPlannedMinutes, isStudyTimePlan } from './studyAnalytics';
@@ -328,30 +328,20 @@ function buildBreakdown({
     });
   });
 
-  const subjectVariantCounts = new Map<string, number>();
-
-  return [...grouped.entries()]
-    .map(([key, entry]) => ({
-      key,
-      ...entry,
-    }))
-    .filter((entry) => entry.minutes > 0)
-    .sort((left, right) => right.minutes - left.minutes)
-    .map((entry, index) => {
-      const subjectKey = entry.subject || UNSET_BREAKDOWN_LABEL;
-      const subjectVariantIndex = subjectVariantCounts.get(subjectKey) ?? 0;
-      subjectVariantCounts.set(subjectKey, subjectVariantIndex + 1);
-
-      return {
+  return applyMaterialColors(
+    [...grouped.entries()]
+      .map(([key, entry]) => ({
+        key,
+        ...entry,
+      }))
+      .filter((entry) => entry.minutes > 0)
+      .sort((left, right) => right.minutes - left.minutes)
+      .map((entry) => ({
         ...entry,
         ratio: totalMinutes === 0 ? 0 : entry.minutes / totalMinutes,
-        color: getMaterialColor(
-          entry,
-          subjectColorMap.has(entry.subject) ? subjectVariantIndex : index,
-          subjectColorMap,
-        ),
-      };
-    });
+      })),
+    subjectColorMap,
+  );
 }
 
 function buildDailyBuckets({

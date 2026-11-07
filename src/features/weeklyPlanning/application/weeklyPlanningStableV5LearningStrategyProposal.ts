@@ -98,6 +98,7 @@ function blockingEffortFactId(
 function memoryWorkloadFromCurrentMeaning(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   localToFactId: Readonly<Record<string, string>>;
+  fixedWorkloadIds: ReadonlySet<string>;
 }): { taskId: string; workloadFactId: string } | null {
   for (const task of params.document.tasks) {
     if (task.study?.activityKind !== 'memorization_retrieval') continue;
@@ -109,7 +110,7 @@ function memoryWorkloadFromCurrentMeaning(params: {
     ];
     for (const workload of workloads) {
       const workloadFactId = params.localToFactId[workload.localId];
-      if (workloadFactId) return { taskId, workloadFactId };
+      if (workloadFactId && !params.fixedWorkloadIds.has(workloadFactId)) return { taskId, workloadFactId };
     }
   }
   return null;
@@ -225,7 +226,11 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     presentedProposalId: params.presentedProposalId,
   });
 
-  const currentMemoryWorkload = memoryWorkloadFromCurrentMeaning(params);
+  // A method can change movable learning, not an already fixed registration.
+  // Keep old records as history, but do not create or select them for fixed work.
+  const fixedWorkloadIds = new Set(params.compilation.issues
+    .filter(issue => issue.code === 'fixed_task_movable_work_suppressed').map(issue => issue.factId));
+  const currentMemoryWorkload = memoryWorkloadFromCurrentMeaning({ ...params, fixedWorkloadIds });
   records = createInitialMemoryProposal({
     records,
     currentMemoryWorkload,
@@ -233,7 +238,8 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     turnId: params.turnId,
   });
 
-  const missingEffortFactId = blockingEffortFactId(params.compilation);
+  const missingEffort = blockingEffortFactId(params.compilation);
+  const missingEffortFactId = missingEffort && !fixedWorkloadIds.has(missingEffort) ? missingEffort : null;
   records = createCalibrationProposal({
     records,
     effortEstimates: params.effortEstimates ?? [],
@@ -245,17 +251,18 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   const decisionTargetProposalId = params.document.decisions.find(
     (decision) => decision.target.kind === 'proposal' && decision.target.publicId,
   )?.target.publicId ?? null;
-  const lastRecord = records.length > 0 ? records[records.length - 1] : null;
+  const eligibleRecords = records.filter(record => !fixedWorkloadIds.has(record.workloadFactId));
+  const lastRecord = eligibleRecords.length > 0 ? eligibleRecords[eligibleRecords.length - 1] : null;
   const relevantWorkloadFactId = currentMemoryWorkload?.workloadFactId
     ?? missingEffortFactId
     ?? (decisionTargetProposalId
-      ? records.find((record) => record.id === decisionTargetProposalId)?.workloadFactId ?? null
+      ? eligibleRecords.find((record) => record.id === decisionTargetProposalId)?.workloadFactId ?? null
       : null)
-    ?? records.find((record) => record.status === 'pending')?.workloadFactId
+    ?? eligibleRecords.find((record) => record.status === 'pending')?.workloadFactId
     ?? lastRecord?.workloadFactId
     ?? null;
   const relevant = relevantWorkloadFactId
-    ? records.filter((record) => record.workloadFactId === relevantWorkloadFactId)
+    ? eligibleRecords.filter((record) => record.workloadFactId === relevantWorkloadFactId)
     : [];
   const acceptedSpacedProposal = relevant.find((record) =>
     record.kind === 'spaced_memory_practice' && record.status === 'accepted') ?? null;

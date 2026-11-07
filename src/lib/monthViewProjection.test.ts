@@ -5,12 +5,10 @@ import {
   type MonthPanelProjection,
 } from './monthViewProjection';
 import type {
-  Actual,
   MonthEvent,
   Plan,
   ScheduleTemplate,
-  TimetableTerm,
-} from '../types/domain';
+  TimetableTerm, TimedActual } from '../types/domain';
 
 const plan: Plan = {
   id: 'plan-1',
@@ -31,7 +29,7 @@ const plan: Plan = {
   updatedAt: '2026-08-01T00:00:00.000Z',
 };
 
-const actual: Actual = {
+const actual: TimedActual = {
   id: 'actual-1',
   userId: 'user-1',
   planId: 'plan-1',
@@ -44,7 +42,7 @@ const actual: Actual = {
   updatedAt: '2026-08-14T10:10:00.000Z',
 };
 
-function createStandaloneActual(overrides: Partial<Actual> = {}): Actual {
+function createStandaloneActual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     ...actual,
     id: 'standalone-1',

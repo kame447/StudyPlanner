@@ -18,6 +18,7 @@ import { useExitMotion } from '../hooks/useExitMotion';
 import type { Plan } from '../types/domain';
 import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
 import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
+import { AiPlanningActualRecordsSection } from './AiPlanningActualRecordsSection';
 import { AiPlanningView as AiPlanningViewLegacy, type AiPlanningStarterCatalog } from './AiPlanningViewLegacy';
 import './AiPlanningPreviewDialog.css';
 import './AiPlanningPreviewDialogLayout.css';
@@ -33,6 +34,8 @@ interface AiPlanningViewProps {
   starterCatalog?: AiPlanningStarterCatalog;
 }
 
+const EMPTY_ACTUAL_RECORDS: NonNullable<AiPlanningViewProps['application']['pendingActualRecords']> = [];
+
 export function AiPlanningView(props: AiPlanningViewProps) {
   return <OwnerScopedAiPlanningView key={props.userId} {...props} />;
 }
@@ -43,6 +46,11 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [entrySuppressed, setEntrySuppressed] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const [actualError, setActualError] = useState('');
+  const [isSavingActuals, setIsSavingActuals] = useState(false);
+  // Repeated activations before React commits must not each start a save (state alone is stale in that window).
+  const actualSaveInFlight = useRef(false);
+  const actualRecords = application.pendingActualRecords ?? EMPTY_ACTUAL_RECORDS;
   const shellRef = useRef<HTMLDivElement | null>(null);
   const cancellationEpoch = useRef(0);
   const presentationActive = useRef(active);
@@ -69,7 +77,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
     [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks],
   );
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval || application.chat.requiresInitialization);
-  const showingPreview = active && isPreviewOpen && allPreviewBlocks.length > 0;
+  const showingPreview = active && isPreviewOpen && (allPreviewBlocks.length > 0 || actualRecords.length > 0);
 
   useLayoutEffect(() => {
     if (!active) {
@@ -230,6 +238,33 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
     }
   }
 
+  async function saveActualRecords() {
+    if (!presentationActive.current || isBusy || actualSaveInFlight.current || actualRecords.length === 0 || !application.approveActualRecords) return;
+    actualSaveInFlight.current = true;
+    setActualError('');
+    setIsSavingActuals(true);
+    try {
+      await application.approveActualRecords();
+    } catch (error) {
+      // Every record stays pending, so the same button retries the whole batch.
+      setActualError(error instanceof Error ? error.message : '学習実績を保存できませんでした。保存はされていません。');
+    } finally {
+      actualSaveInFlight.current = false;
+      setIsSavingActuals(false);
+      persistActiveChatSnapshot();
+    }
+  }
+
+  const actualRecordsSection = (
+    <AiPlanningActualRecordsSection
+      records={actualRecords}
+      isSaving={isSavingActuals}
+      disabled={isBusy || !application.approveActualRecords}
+      error={actualError}
+      onSave={() => void saveActualRecords()}
+    />
+  );
+
   function closePreviewForAdjustment() {
     requestClosePreview();
   }
@@ -284,7 +319,25 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
         <div
           className={`ai-planning-preview-motion ${isPreviewClosing ? 'is-closing' : 'is-open'}`}
         >
+          {allPreviewBlocks.length === 0 ? (
+            <div className="ai-planning-preview-overlay ai-planning-preview-overlay-v2" onClick={() => requestClosePreview()}>
+              <section
+                className="ai-planning-preview-modal ai-planning-preview-dialog-v2"
+                role="dialog"
+                aria-modal="true"
+                aria-label="仮実績の確認"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <header className="ai-planning-preview-header">
+                  <button type="button" onClick={() => requestClosePreview()}>閉じる</button>
+                  <div><h2>仮実績の確認</h2></div>
+                </header>
+                {actualRecordsSection}
+              </section>
+            </div>
+          ) : (
           <AiPlanningPreviewDialog
+            actualRecordsSection={actualRecordsSection}
             blocks={allPreviewBlocks}
             plans={plans}
             error={previewError}
@@ -299,6 +352,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
             onPromote={promotePreview}
             onSave={(blocks) => void saveDrafts(blocks)}
           />
+          )}
         </div>
       ) : null}
     </div>

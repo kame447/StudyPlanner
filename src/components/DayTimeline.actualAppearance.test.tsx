@@ -1,6 +1,6 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { expect, it, vi } from 'vitest';
-import type { Actual, MonthEvent, Plan } from '../types/domain';
+import type { Actual, MonthEvent, Plan, TimedActual } from '../types/domain';
 import { DayTimeline } from './DayTimeline';
 
 it.each(['plan', 'month-event', 'standalone-actual'] as const)(
@@ -53,7 +53,7 @@ it('only displays a major event in the actual column when a saved record exists'
     occurrenceDate: event.date, title: event.title, subject: '主要予定',
     actualStartTime: event.startTime, actualEndTime: event.endTime, note: '', updatedAt: '' };
   const onSelectEntry = vi.fn();
-  const timeline = (actuals: Actual[]) => <DayTimeline dateLabel={event.date} plans={[]} monthEvents={[event]}
+  const timeline = (actuals: TimedActual[]) => <DayTimeline dateLabel={event.date} plans={[]} monthEvents={[event]}
     scheduleOccurrences={[]} actuals={actuals} onSelectEntry={onSelectEntry}
     onPreviousDay={vi.fn()} onNextDay={vi.fn()} onPrint={vi.fn()} />;
   let renderer!: ReactTestRenderer;

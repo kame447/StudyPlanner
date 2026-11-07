@@ -8,6 +8,7 @@ import {
   calculateMaterialPace,
   getMaterialUnitLabel,
   getRemainingUnits,
+  type MaterialPaceResult,
 } from './materialPace';
 import type { StudyMaterial } from '../types/domain';
 
@@ -335,5 +336,54 @@ describe('actual material progress draft input', () => {
         deltaUnitsInput: 'abc',
       }),
     ).toBeUndefined();
+  });
+});
+
+
+describe('material pace result projection', () => {
+  const cases: [string, Partial<StudyMaterial>, Partial<MaterialPaceResult>][] = [
+    ['disabled before completion', { paceEnabled: false, currentUnit: 100 }, {
+      enabled: false, currentUnit: 100, remainingUnits: 0, progressRate: 100, status: 'disabled',
+    }],
+    ['unknown total before missing target', { totalUnits: undefined, targetDate: undefined }, {
+      totalUnits: null, remainingUnits: 0, targetDate: null, remainingDays: null, progressRate: 0, status: 'invalid',
+    }],
+    ['completion before overdue target', { currentUnit: 100, targetDate: '2026-04-30' }, {
+      currentUnit: 100, remainingUnits: 0, targetDate: '2026-04-30', remainingDays: 0,
+      dailyQuota: 0, suggestedDailyUnits: 0, progressRate: 100, estimatedDailyMinutes: 0, status: 'completed',
+    }],
+    ['missing target', { targetDate: undefined }, {
+      targetDate: null, remainingDays: null, status: 'no-target',
+    }],
+    ['overdue target', { targetDate: '2026-04-30' }, {
+      targetDate: '2026-04-30', remainingDays: 0, status: 'overdue',
+    }],
+    ['invalid target', { targetDate: 'not-a-date' }, {
+      targetDate: 'not-a-date', remainingDays: null, status: 'overdue',
+    }],
+    ['on-track estimate', { currentUnit: 21, estimatedMinutesPerUnit: 6 }, {
+      currentUnit: 21, remainingUnits: 79, dailyQuota: 9.875, suggestedDailyUnits: 10,
+      progressRate: 21, estimatedDailyMinutes: 60, status: 'on-track',
+    }],
+  ];
+
+  it.each(cases)('keeps the complete result for %s without changing its material', (_name, overrides, expected) => {
+    const input = material(overrides);
+    const original = JSON.stringify(input);
+    expect(calculateMaterialPace(input, '2026-05-01')).toEqual({
+      enabled: true,
+      unitLabel: '問',
+      totalUnits: 100,
+      currentUnit: 20,
+      remainingUnits: 80,
+      targetDate: '2026-05-08',
+      remainingDays: 8,
+      dailyQuota: null,
+      suggestedDailyUnits: null,
+      progressRate: 20,
+      estimatedDailyMinutes: null,
+      ...expected,
+    });
+    expect(JSON.stringify(input)).toBe(original);
   });
 });

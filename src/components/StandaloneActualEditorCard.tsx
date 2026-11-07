@@ -11,7 +11,9 @@ import {
   resolveStandaloneActualEndTime,
 } from '../lib/standaloneActualDrafts';
 import { TimeWheelPicker } from './TimeRangeFields';
-import type { Actual, ActualDraft, Plan } from '../types/domain';
+import { isDurationActual } from '../lib/actualDuration';
+import { DurationActualDetail } from './DurationActualList';
+import type { Actual, ActualDraft, Plan, TimedActual } from '../types/domain';
 
 type DurationOptionValue = number | 'custom';
 
@@ -41,7 +43,12 @@ function isPresetDuration(value: number | null): boolean {
 }
 
 export function StandaloneActualEditorCard(props: StandaloneActualEditorCardProps) {
-  return <StandaloneActualEditor key={JSON.stringify([props.actual.userId, props.actual.id])} {...props} />;
+  // A record that states only a length has no clock times to edit: it is shown and may be deleted.
+  if (isDurationActual(props.actual)) {
+    return <DurationActualDetail actual={props.actual} onDeleteActual={props.onDeleteActual} onClose={props.onClose}
+      onPendingChange={props.onPendingChange} key={JSON.stringify([props.actual.userId, props.actual.id])} />;
+  }
+  return <StandaloneActualEditor key={JSON.stringify([props.actual.userId, props.actual.id])} {...props} actual={props.actual} />;
 }
 
 function StandaloneActualEditor({
@@ -53,7 +60,7 @@ function StandaloneActualEditor({
   onDeleteActual,
   onClose,
   onPendingChange,
-}: StandaloneActualEditorCardProps) {
+}: StandaloneActualEditorCardProps & { actual: TimedActual }) {
   const [actual] = useState(initialActual);
   const pendingMutation = useRef<object | null>(null);
   const pendingObserver = useRef(onPendingChange);

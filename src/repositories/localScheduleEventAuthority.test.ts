@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { deferred } from './localPersistenceConcurrency.testUtils';
-import type { Actual, MonthEvent, Plan } from '../types/domain';
+import type { MonthEvent, Plan, TimedActual } from '../types/domain';
 import { createLocalPlannerStorageGateway } from './localStorageGateway';
 import { createLocalScheduleEventAuthority } from './localScheduleEventAuthority';
 import { createPlannerRepository } from './plannerRepository';
@@ -81,7 +81,7 @@ function monthEvent(overrides: Partial<MonthEvent> = {}): MonthEvent {
   };
 }
 
-function actual(overrides: Partial<Actual> = {}): Actual {
+function actual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1',
     userId: 'user-1',

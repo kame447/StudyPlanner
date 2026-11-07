@@ -363,6 +363,35 @@ describe('weekly planning trace privacy boundary', () => {
     expect(prepared.entries[0].policyVersion).toBe(WEEKLY_PLANNING_TRACE_POLICY_VERSION);
   });
 
+  it('masks phone-like runs in fact references while preserving their structure and order', () => {
+    const sourceFactRefs = [
+      'wpf_task_a01kelh22gw9',
+      'wpf_effort_d2036216bqjke',
+      'wpf_effort_10186823pnnsm',
+      'wpf_effort_d2036216bqjke',
+    ];
+    const entry = validDiagnosticEntry({ constraintContext: {
+      existingPlanCount: 0, scheduleTemplateCount: 0, relevantBusyIntervals: [],
+      scheduler: { preview: { representativeCandidates: [{ stableV5Metadata: { sourceFactRefs } }] } },
+    } });
+    const original = structuredClone(entry);
+    const prepared = prepareWeeklyPlanningTraceWrite({
+      session: validSession(), entries: [entry],
+    }, { token: 'wpt_subject', epoch: '100' }, OCCURRED_AT);
+
+    expect(prepared.entries[0]).toMatchObject({ constraintContext: { scheduler: { preview: {
+      representativeCandidates: [{ stableV5Metadata: { sourceFactRefs: [
+        'wpf_task_a01kelh22gw9',
+        'wpf_effort_d2[PHONE]bqjke',
+        'wpf_effort_1[PHONE]pnnsm',
+        'wpf_effort_d2[PHONE]bqjke',
+      ] } }],
+    } } } });
+    expect(serialized(prepared)).not.toContain('wpf_effort_d2036216bqjke');
+    expect(serialized(prepared)).not.toContain('wpf_effort_10186823pnnsm');
+    expect(entry).toEqual(original);
+  });
+
   it('rejects full application state and chunk metadata in a schema v2 diagnostic', () => {
     const forbidden = [
       { runtime: { plans: [{ id: 'plan-1' }] } },

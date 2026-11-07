@@ -18,6 +18,7 @@ import {
   summarizeLegacyRepeatFromRecurrenceRules,
   summarizeLegacyRepeatUntilFromRecurrenceRules,
 } from '../lib/planRecurrence';
+import { isDurationActual } from '../lib/actualDuration';
 
 export function replaceById<T extends { id: string }>(
   records: T[],
@@ -237,13 +238,16 @@ export function normalizeActualRecord(
     date?: string;
   },
 ): Actual {
+  const occurrenceDate = actual.occurrenceDate ?? actual.date ?? '';
+  // A duration actual has no plan by definition.
+  if (isDurationActual(actual)) return { ...actual, planId: null, occurrenceDate };
   return {
     ...actual,
     planId:
       typeof actual.planId === 'string' && actual.planId.trim().length > 0
         ? actual.planId
         : null,
-    occurrenceDate: actual.occurrenceDate ?? actual.date ?? '',
+    occurrenceDate,
   };
 }
 
