@@ -81,6 +81,26 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     expect(projectWeeklyPlanningVNext(rejected).owners.flatMap(owner => owner.work)).toEqual([]);
   });
 
+  it('retains an earlier method proposal as history while fixed, and presents it again when the work becomes movable', () => {
+    const initial = seed('memorization_retrieval', true);
+    const records = structuredClone(initial.learningStrategyProposalRecords);
+    const taskRef = { factId: initial.graph.tasks[0].id };
+    const fixed = apply(initial, { ...empty(), add: [{ kind: 'temporal_constraint', localId: 'fixed',
+      taskRef, targetRef: taskRef, constraintKind: 'fixed_interval', constraintLevel: 'hard',
+      dateExpression: '2026-11-03', namedTimePeriod: null, startTime: '10:00', endTime: '10:30', precision: 'exact' }] });
+    expect(fixed.learningStrategyProposalRecords).toEqual(records);
+    expect(projectWeeklyPlanningVNext(fixed).questions).toEqual([]);
+    const fixedCompilation = compileGenericSchedulerInput({
+      graph: createWeeklyPlanningActiveSchedulerGraphViewV5(fixed.graph), context });
+    expect(fixedCompilation.status).toBe('ready');
+    expect(fixedCompilation.input!.movableWorkItems).toEqual([]);
+
+    const movable = apply(fixed, { ...empty(), remove: [{ targetFactId: fixed.graph.temporalConstraints[0].id }] });
+    expect(movable.learningStrategyProposalRecords).toEqual(records);
+    expect(projectWeeklyPlanningVNext(movable).questions[0]).toMatchObject({ code: 'learning_strategy_proposal',
+      proposal: { id: records[0].id, status: 'pending' } });
+  });
+
   it('asks session duration after spacing acceptance, then proposes exactly one pace calibration', () => {
     const accepted = decide(seed(), 'accept');
     expect(projectWeeklyPlanningVNext(accepted).questions[0]).toMatchObject({ code: 'missing_effort_estimate', effortMeasurement: 'session_duration' });

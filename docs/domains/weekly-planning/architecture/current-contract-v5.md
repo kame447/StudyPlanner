@@ -207,6 +207,8 @@ The Stable checkpoint candidate codec accepts the new source explicitly and reje
 
 In VNext, a workload already covered by its own hard fixed temporal scope does not need a movable-work effort estimate to register that interval. The projector reuses V5's target-scope rule and retains the stated quantity without inventing an estimate. Other tasks' questions and structural or effort conflicts remain unresolved; the existing commitment compiler must still resolve the date and complete clock interval before any preview.
 
+Learning-method proposals apply to movable learning work. Work excluded by its hard fixed scope does not create or select a method proposal that blocks registration; earlier records remain history without implicit acceptance or rejection. Eligible movable work keeps its ordinary proposal and required-question priority.
+
 ## Proposal / readiness / scheduler
 
 A proposal is not a command.

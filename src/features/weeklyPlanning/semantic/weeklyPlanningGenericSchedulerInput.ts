@@ -66,7 +66,7 @@ import {
   materializeWeeklyPlanningHardTemporalBoundsV5,
   resolveWeeklyPlanningPreferredTimeWindowV5,
   resolveWeeklyPlanningTemporalConstraintsV5,
-  weeklyPlanningTemporalConstraintAppliesToTargetV5,
+  isWeeklyPlanningWorkItemFixedByTemporalScopeV5 as isWorkItemFixedByTemporalScope,
   type WeeklyPlanningResolvedTemporalConstraintsV5,
   type WeeklyPlanningResolvedHardClockBoundV5,
   type WeeklyPlanningSchedulerHardDateBoundV5,
@@ -420,22 +420,6 @@ function applyObservedEstimateOverrides(params: {
     };
   });
   return { items, appliedWorkloadFactIds };
-}
-
-function isWorkItemFixedByTemporalScope(params: {
-  graph: WeeklyPlanningGenericSchedulerGraphView;
-  item: Pick<GenericPlanningWorkItem, 'taskId' | 'componentId'>;
-}): boolean {
-  const targetFactId = params.item.componentId ?? params.item.taskId;
-  return params.graph.temporalConstraints.some((constraint) =>
-    constraint.kind === 'fixed_interval'
-    && constraint.constraintLevel === 'hard'
-    && weeklyPlanningTemporalConstraintAppliesToTargetV5({
-      constraintTaskId: constraint.taskId,
-      constraintTargetFactId: constraint.targetFactId,
-      taskId: params.item.taskId,
-      targetFactId,
-    }));
 }
 
 function taskFullyFixedByTemporalScope(params: {
