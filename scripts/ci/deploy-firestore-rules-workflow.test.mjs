@@ -33,12 +33,18 @@ describe('Firestore Rules deployment trust boundary', () => {
     expect(deploy).toContain("if: github.repository == 'kame447/StudyPlanner'");
   });
 
-  it('executes only the two dependency-free Node scripts in the privileged job', () => {
+  it('executes only the three audited dependency-free Node scripts in the privileged job', () => {
     const deploy = jobs.get('deploy');
     expect([...deploy.matchAll(/^        run: (.+)$/gm)].map(([, command]) => command)).toEqual([
+      'node scripts/ci/ensure-conversation-firestore-indexes.mjs',
       'node scripts/ci/deploy-firestore-rules.mjs',
       'node scripts/ci/verify-deployed-firestore-rules.mjs',
     ]);
+    for (const trigger of ['firestore.indexes.json',
+      'scripts/ci/ensure-conversation-firestore-indexes.mjs',
+      'scripts/ci/ensure-conversation-firestore-indexes.test.mjs']) {
+      expect(workflow).toContain(`      - ${trigger}`);
+    }
     expect(deploy).not.toMatch(/\b(?:npm|npx)\b/);
     expect(deploy).not.toMatch(/^\s+cache:/m);
     expect(deploy).toContain('package-manager-cache: false');
@@ -56,8 +62,8 @@ describe('Firestore Rules deployment trust boundary', () => {
     }
   });
 
-  it('keeps deploy and read-back imports restricted to Node built-ins', () => {
-    for (const path of ['scripts/ci/deploy-firestore-rules.mjs', 'scripts/ci/verify-deployed-firestore-rules.mjs']) {
+  it('keeps index ensure, deploy and read-back imports restricted to Node built-ins', () => {
+    for (const path of ['scripts/ci/ensure-conversation-firestore-indexes.mjs', 'scripts/ci/deploy-firestore-rules.mjs', 'scripts/ci/verify-deployed-firestore-rules.mjs']) {
       const source = ts.createSourceFile(path, read(path), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
       const imports = [];
       function inspect(node) {

@@ -18,6 +18,8 @@ VNext本番の会話hook・チャット画面・チャット切替と、最初�
 
 注意: 同期の180日保持期限を実際に動かすscheduled sweepにはFirestoreのcollection-group composite indexが必要で、既存のRules専用デプロイworkflowは `firestore.indexes.json` をデプロイしない。インデックスの安全な作成・確認と本番Rules/Worker/Pages配信を完了するまで、本番提供は完了と扱わない。現在のPRはDraft。#47の長期個別最適化は今回の同期実装とは別の未完了責務として残す。
 
+本番インデックスの配備経路は `scripts/ci/ensure-conversation-firestore-indexes.mjs` と既存 `.github/workflows/deploy-firestore-rules.yml` に追加。現状の全インデックスをFirebase CLIで一括上書きするのではなく、`sessions` の必要なcollection-group複合インデックスと `payload` の非インデックス設定だけを、既存状態照合の後に追加・確認する。既存インデックスにDELETEを実行せず、READYとreadbackを確認できない場合はRules配備を開始しない。認証は既存のGitHub OIDC/WIF（新しい長期認証鍵は追加しない）。WIFのFirestore index管理権限は実環境で未確認のため、権限が不足すれば本番配備は止めて根拠を報告する。既存の必須workflow trust contractを、監査対象の新scriptが1件増える形に更新した。ターゲットとWIF権限を変更せず、テストは12件成功。
+
 以下の「本番hook未接続」など古い進捗記述は基盤PR作成時の履歴であり、最新状態の判断にはこのチェックポイントと実装・CIの結果を優先する。
 
 ## 現在地とリリース境界
