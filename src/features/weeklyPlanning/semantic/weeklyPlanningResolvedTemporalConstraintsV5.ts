@@ -109,6 +109,23 @@ function earlierDate(left: string | null, right: string): string {
   return left === null || right < left ? right : left;
 }
 
+/** One fixed-scope rule for movable-work suppression and learning-strategy eligibility. */
+export function isWeeklyPlanningWorkItemFixedByTemporalScopeV5(params: {
+  graph: Pick<WeeklyPlanningTemporalConstraintGraphViewV5, 'temporalConstraints'>;
+  item: { taskId: string; componentId: string | null };
+}): boolean {
+  const targetFactId = params.item.componentId ?? params.item.taskId;
+  return params.graph.temporalConstraints.some((constraint) =>
+    constraint.kind === 'fixed_interval'
+    && constraint.constraintLevel === 'hard'
+    && weeklyPlanningTemporalConstraintAppliesToTargetV5({
+      constraintTaskId: constraint.taskId,
+      constraintTargetFactId: constraint.targetFactId,
+      taskId: params.item.taskId,
+      targetFactId,
+    }));
+}
+
 export function weeklyPlanningTemporalConstraintAppliesToTargetV5(params: {
   constraintTaskId: string;
   constraintTargetFactId: string;
