@@ -3,7 +3,7 @@ import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStora
 import { expectDurableVNext, observeDurableTurns } from './vnext-durable-observation.mjs';
 import { openScheduleDay, removeSavedPlansByTitle, sweepLeftoverPlans } from './schedule-plan-cleanup.mjs';
 import { isSavedPlanTitle } from './schedule-plan-title.mjs';
-import { attachWriteLedger, cancellationCommitProblems, protectedWritesIn } from './vnext-firestore-writes.mjs';
+import { attachWriteLedger, planDeletionCommitProblems, protectedWritesIn } from './vnext-firestore-writes.mjs';
 import { assertKnownFlowOptions } from './vnext-flow-options.mjs';
 import { addDays, chooseTargetDay, isoDay, keyForWeek, onlyWeek, weeksOf } from './vnext-planner-week.mjs';
 
@@ -35,7 +35,7 @@ export const openAiPlanning = async page => {
 // the sweep, the approved save and the cleanup are the only authorized ones (flow 3).
 const observeFirestore = attachWriteLedger;
 const expectNoUnauthorizedWrites = ledger => expect(ledger.violations()).toEqual([]);
-const expectCancellationCommits = (ledger, phase, removed) => expect(cancellationCommitProblems(ledger.commitsIn(phase), removed), `${phase}: one cancellation commit per removed block`).toEqual([]);
+const expectDeletionCommits = (ledger, phase, removed) => expect(planDeletionCommitProblems(ledger.commitsIn(phase), removed), `${phase}: one exact source delete per removed block`).toEqual([]);
 
 // One turn: start the optional scripted answers, send, wait for a new assistant bubble and a usable composer.
 async function sendTurn(page, text, scripted) {
@@ -109,9 +109,10 @@ export async function goToTargetPlannerWeek(page, { sweepLeftovers = false, plan
     const today = new Date(Date.UTC(jstToday.getUTCFullYear(), jstToday.getUTCMonth(), jstToday.getUTCDate()));
     const dates = [];
     for (let day = today; day.getTime() <= target.date.getTime(); day = addDays(day, 1)) dates.push(day);
-    const sweep = () => sweepLeftoverPlans(page, { titlePrefix: LEFTOVER_TITLE_PREFIX, dates });
+    const sweep = () => sweepLeftoverPlans(page, { titlePrefix: LEFTOVER_TITLE_PREFIX, dates,
+      withPlanDeletion: ledger ? (id, remove) => ledger.withPlanDeletion(id, remove) : undefined });
     const removed = ledger ? await ledger.during('sweep', sweep) : await sweep();
-    if (ledger) expectCancellationCommits(ledger, 'sweep', removed);
+    if (ledger) expectDeletionCommits(ledger, 'sweep', removed);
     swept = removed;
     if (removed > 0) console.warn(`Removed ${removed} leftover ${LEFTOVER_TITLE_PREFIX} plan title(s) from an earlier failed run.`);
     visitedDayView = true;
@@ -338,11 +339,11 @@ export function defineVNextProductionFlows(options) {
         if (attemptedSave) {
           try {
             // Exactly the blocks observed saved are removed and none remain; when the save never became visible nothing may be found.
-            const removed = await firestore.during('cleanup', () => removeSavedPlansByTitle(page, { title, date: target.date, allowNone: savedBlocks === null }));
+            const removed = await firestore.during('cleanup', () => removeSavedPlansByTitle(page, { title, date: target.date, allowNone: savedBlocks === null,
+              withPlanDeletion: (id, remove) => firestore.withPlanDeletion(id, remove) }));
             expect(removed, 'cleanup removes exactly the saved blocks').toBe(savedBlocks ?? removed);
-            // Each removed block is one cancellation commit. The occurrence is cancelled, not deleted, and the page exposes no
-            // persisted copy of it, so besides 0 visible blocks (checked by the helper) the evidence is that commit.
-            expectCancellationCommits(firestore, 'cleanup', removed);
+            // Each ordinary one-off block must delete its exact canonical source, as well as disappear from the day view.
+            expectDeletionCommits(firestore, 'cleanup', removed);
             expectNoUnauthorizedWrites(firestore);
           } catch (error) { cleanupError = error; }
         }

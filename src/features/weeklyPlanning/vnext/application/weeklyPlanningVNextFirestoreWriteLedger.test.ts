@@ -1,5 +1,5 @@
 // @ts-expect-error The e2e support module is plain ESM without declarations.
-import { actualsCommitProblems, cancellationCommitProblems, createWriteLedger, protectedWritesIn } from '../../../../../tests/e2e/support/vnext-firestore-writes.mjs';
+import { actualsCommitProblems, cancellationCommitProblems, createWriteLedger, planDeletionCommitProblems, protectedWritesIn } from '../../../../../tests/e2e/support/vnext-firestore-writes.mjs';
 // @ts-expect-error The e2e support module is plain ESM without declarations.
 import { assertKnownFlowOptions } from '../../../../../tests/e2e/support/vnext-flow-options.mjs';
 import { describe, expect, it } from 'vitest';
@@ -82,6 +82,87 @@ describe('phase-scoped Firestore write ledger', () => {
           expect(cancellationCommitProblems(ledger.commitsIn(phase), 1)).toEqual([]);
         }
       }
+    });
+
+    it.each(['cleanup', 'sweep'])('only the explicitly named canonical Plan delete is allowed in %s', async phase => {
+      const ledger = createWriteLedger();
+      await ledger.during(phase, async () => {
+        await ledger.withPlanDeletion('source-1', async () => { ledger.record(batch(host, [{ delete: 'schedule_events/plan:source-1' }])); });
+      });
+      expect(ledger.violations()).toEqual([]);
+      expect(planDeletionCommitProblems(ledger.commitsIn(phase), 1)).toEqual([]);
+      expect(planDeletionCommitProblems(ledger.commitsIn(phase), 0)).not.toEqual([]);
+      expect(JSON.stringify(ledger.writes())).not.toContain('source-1');
+      // The same id is forbidden once the individual block's scope has ended.
+      await ledger.during(phase, async () => { ledger.record(batch(host, [{ delete: 'schedule_events/plan:source-1' }])); });
+      expect(ledger.violations()).toHaveLength(1);
+    });
+
+    it.each(['cleanup', 'sweep'])('a scoped delete never admits a different id, collection, nested path or extra operation (%s)', async phase => {
+      for (const ops of [
+        [{ delete: 'schedule_events/plan:other-source' }], [{ delete: 'plans/source-1' }],
+        [{ delete: 'profiles/u1/schedule_events/plan:source-1' }],
+        [{ delete: 'schedule_events/plan:source-1/documents/x/schedule_events/plan:source-1' }],
+        [{ delete: 'actuals/source-1' }], [{ update: 'actuals/a1' }], [{ update: 'todos/t1' }],
+        [{ delete: 'schedule_events/plan:source-1' }, { update: 'plans/p2' }],
+        [{ delete: 'schedule_events/plan:source-1' }, { delete: 'schedule_events/plan:source-1' }],
+      ]) {
+        const ledger = createWriteLedger();
+        await ledger.during(phase, async () => {
+          await ledger.withPlanDeletion('source-1', async () => { ledger.record(batch(host, ops)); });
+        });
+        expect(ledger.violations(), JSON.stringify(ops)).toHaveLength(1);
+        expect(planDeletionCommitProblems(ledger.commitsIn(phase), 1)).not.toEqual([]);
+      }
+    });
+
+    it('the SDK WebChannel delete matches the checked source without retaining names or stream tokens', async () => {
+      const ledger = createWriteLedger();
+      await ledger.during('cleanup', async () => {
+        await ledger.withPlanDeletion('private-source', async () => {
+          ledger.record({ url: `${host}/google.firestore.v1.Firestore/Write/channel`, method: 'POST',
+            postData: new URLSearchParams({ count: '1', ofs: '0', req0___data__: JSON.stringify({ streamToken: 'private-token',
+              writes: [{ delete: `${DOC}/schedule_events/plan:private-source` }] }) }).toString() });
+        });
+      });
+      expect(ledger.violations()).toEqual([]);
+      expect(planDeletionCommitProblems(ledger.commitsIn('cleanup'), 1)).toEqual([]);
+      expect(JSON.stringify(ledger.writes())).not.toMatch(/private-source|private-token|projects\//u);
+    });
+
+    it('malformed protected writes cannot borrow a matching source authorization', async () => {
+      const ledger = createWriteLedger();
+      await ledger.during('cleanup', async () => {
+        await ledger.withPlanDeletion('source-1', async () => {
+          const request = batch(host, [{ delete: 'schedule_events/plan:source-1' }]);
+          const body = JSON.parse(request.postData);
+          body.writes.push({ unsupported: true });
+          ledger.record({ ...request, postData: JSON.stringify(body) });
+        });
+      });
+      expect(ledger.violations()).toHaveLength(1);
+      expect(planDeletionCommitProblems(ledger.commitsIn('cleanup'), 1)).not.toEqual([]);
+    });
+
+    it('a cleanup update is still observed but cannot prove a one-off source deletion', async () => {
+      const ledger = await during('cleanup', batch(host, [{ update: 'schedule_events/e1' }]));
+      expect(ledger.violations()).toEqual([]);
+      expect(planDeletionCommitProblems(ledger.commitsIn('cleanup'), 1)).not.toEqual([]);
+    });
+
+    it('a source-delete scope cannot authorize writes before approval or during save and is restored after failure', async () => {
+      const ledger = createWriteLedger();
+      for (const phase of ['none', 'save']) {
+        await ledger.during(phase, async () => {
+          await expect(ledger.withPlanDeletion('source-1', async () => { throw new Error('must not run'); })).rejects.toThrow('cleanup/sweep');
+          ledger.record(batch(host, [{ delete: 'schedule_events/plan:source-1' }]));
+        });
+      }
+      await ledger.during('cleanup', async () => {
+        await expect(ledger.withPlanDeletion('source-1', async () => { throw new Error('delete failed'); })).rejects.toThrow('delete failed');
+        ledger.record(batch(host, [{ delete: 'schedule_events/plan:source-1' }]));
+      });
+      expect(ledger.violations()).toHaveLength(3);
     });
 
     it('the confirmed record save: one commit of N actuals updates is allowed in save-actuals', async () => {

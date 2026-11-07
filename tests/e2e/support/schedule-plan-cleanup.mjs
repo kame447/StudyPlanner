@@ -55,7 +55,7 @@ async function entryTitles(page, prefix) {
  * were deleted. `deleteLabels` is the product's accepted label set for a one-off plan; a plan whose danger
  * action is anything else (a recurring series, a changed label) fails loudly instead of deleting.
  */
-async function removeVisibleTitled(page, title, deleteLabels) {
+async function removeVisibleTitled(page, title, deleteLabels, withPlanDeletion) {
   let removed = 0;
   for (let blocks = await titledBlocks(page, title); blocks.length > 0; blocks = await titledBlocks(page, title)) {
     const before = blocks.length;
@@ -67,19 +67,29 @@ async function removeVisibleTitled(page, title, deleteLabels) {
     if (labels.length !== 1 || !deleteLabels.includes(labels[0].trim())) {
       throw new Error(`Refusing to delete: the plan menu offers [${labels.join(', ')}], expected one of [${deleteLabels.join(', ')}] only.`);
     }
-    await danger.first().click();
-    await expect(menu).toHaveCount(0, WAIT);
-    await expect.poll(() => countTitled(page, title), { message: 'deleting must remove exactly one entry', timeout: WAIT.timeout }).toBe(before - 1);
+    const remove = async () => {
+      await danger.first().click();
+      await expect(menu).toHaveCount(0, WAIT);
+      await expect.poll(() => countTitled(page, title), { message: 'deleting must remove exactly one entry', timeout: WAIT.timeout }).toBe(before - 1);
+    };
+    if (withPlanDeletion) {
+      // This is the product's machine identity (scheduleOccurrence.ts), never a title-derived document id.
+      const occurrenceId = await blocks[0].locator.getAttribute('data-schedule-occurrence-id');
+      const match = occurrenceId?.match(/^plan:(.+):\d{4}-\d{2}-\d{2}$/u);
+      if (!match || match[1].includes('/')) throw new Error('One-off cleanup needs its exact Plan source identity.');
+      // Keep the scope until ack removes the block; click alone can finish before the asynchronous batch is sent.
+      await withPlanDeletion(match[1], remove);
+    } else await remove();
     removed += 1;
   }
   return removed;
 }
 
 /** Returns the number of entries removed; a call that finds none fails (cleanup of a saved plan is never vacuous). */
-export async function removeSavedPlansByTitle(page, { title, date, deleteLabels = [ONE_OFF_DELETE_LABEL], allowNone = false }) {
+export async function removeSavedPlansByTitle(page, { title, date, deleteLabels = [ONE_OFF_DELETE_LABEL], allowNone = false, withPlanDeletion }) {
   expect(title, 'cleanup needs the exact unique title').toBeTruthy();
   await openScheduleDay(page, date);
-  const removed = await removeVisibleTitled(page, title, deleteLabels);
+  const removed = await removeVisibleTitled(page, title, deleteLabels, withPlanDeletion);
   if (!allowNone) expect(removed, `no saved plan titled "${title}" was found to remove`).toBeGreaterThan(0);
   return removed;
 }
@@ -88,13 +98,13 @@ export async function removeSavedPlansByTitle(page, { title, date, deleteLabels 
  * Removes leftovers of earlier failed runs: every saved plan whose title starts with `titlePrefix`
  * on each of `dates`. Returns the number of leftover entries removed so the caller can report it.
  */
-export async function sweepLeftoverPlans(page, { titlePrefix = 'E2E-E2E-VNEXT-', dates, deleteLabels = [ONE_OFF_DELETE_LABEL] }) {
+export async function sweepLeftoverPlans(page, { titlePrefix = 'E2E-E2E-VNEXT-', dates, deleteLabels = [ONE_OFF_DELETE_LABEL], withPlanDeletion }) {
   expect(titlePrefix.length, 'the sweep prefix must be specific').toBeGreaterThanOrEqual(8);
   let removed = 0;
   for (const date of dates) {
     await openScheduleDay(page, date);
     for (const title of await entryTitles(page, titlePrefix)) {
-      removed += await removeVisibleTitled(page, title, deleteLabels);
+      removed += await removeVisibleTitled(page, title, deleteLabels, withPlanDeletion);
     }
     expect(await entryTitles(page, titlePrefix), `no ${titlePrefix} plan may remain on ${dayLabel(date)}`).toEqual([]);
   }

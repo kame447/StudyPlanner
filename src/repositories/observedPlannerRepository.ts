@@ -70,6 +70,15 @@ export function createObservedPlannerRepository(
       await repository.deletePlan(userId, planId);
       recordBestEffort(telemetry, 'plan_deleted');
     },
+    async deletePlanRetainingActuals(mutation) {
+      const result = await repository.deletePlanRetainingActuals(mutation);
+      if (mutation.todo) {
+        todoStatusById.set(mutation.todo.id, mutation.todo.status);
+        recordBestEffort(telemetry, 'todo_updated');
+      }
+      recordBestEffort(telemetry, 'plan_deleted');
+      return result;
+    },
     async deletePlanWithDependents(mutation) {
       await repository.deletePlanWithDependents(mutation);
       if (mutation.todo) {

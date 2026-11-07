@@ -1,4 +1,5 @@
 import { deleteMonthEventPreservingActualSources } from './firebaseActualSourcePreservation';
+import { detachPlanActuals } from '../domain/actualProgressSource';
 import type { ConfirmedStudyHistory } from './confirmedStudyHistory';
 import type { Firestore } from 'firebase/firestore';
 import {
@@ -498,6 +499,20 @@ export function createFirebasePlannerRepository(
             error as FirebaseLikeError,
           ),
         );
+      }
+    },
+    async deletePlanRetainingActuals(mutation) {
+      try {
+        assertOwnedRecords(mutation.userId, mutation.todo ? [mutation.plan, mutation.todo] : [mutation.plan], '予定削除');
+        const detached = detachPlanActuals(await listActualsByPlanId(firestoreDb, mutation.userId, mutation.plan.id), mutation.plan);
+        const batch = writeBatch(firestoreDb);
+        batch.delete(doc(firestoreDb, 'plans', mutation.plan.id));
+        detached.afterActuals.forEach(actual => batch.set(doc(firestoreDb, 'actuals', actual.id), stripUndefinedDeep(actual), { merge: true }));
+        if (mutation.todo) batch.set(doc(firestoreDb, 'todos', mutation.todo.id), stripUndefinedDeep(mutation.todo), { merge: true });
+        await batch.commit();
+        return detached;
+      } catch (error) {
+        throw new Error(normalizeErrorMessage('予定を削除できませんでした。', error as FirebaseLikeError));
       }
     },
     async deletePlanWithDependents(mutation) {

@@ -228,6 +228,20 @@ describe('VNext native provider', () => {
       VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT, VNEXT_STUDY_CONTEXT_REQUIREMENT]) expect(prompt).toContain(requirement);
   });
 
+  it('requires endpoint year evidence in the provider schema and never accepts model-supplied verification authority', () => {
+    const schema = VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.schema as {
+      properties: { delta: { properties: { add: { items: { anyOf: { required: string[]; properties: Record<string, { enum?: string[]; anyOf?: unknown[] }> }[] } } } } };
+    };
+    const windowSchema = schema.properties.delta.properties.add.items.anyOf.find(item => item.properties.kind.enum?.[0] === 'planning_window')!;
+    expect(windowSchema.required).toContain('yearBasis');
+    const endpoint = { origin: 'explicit', source: 'user_text', reference: '2027' };
+    const wire = output([{ kind: 'planning_window', localId: 'period', windowKind: 'absolute', value: '2026-12-28/2027-01-03',
+      start: '2026-12-28', end: '2027-01-03', yearBasis: { start: endpoint, end: { ...endpoint, verified: true } } }]);
+    const decoded = decodeVNextProviderOutput(wire);
+    expect(decoded.status).toBe('rejected');
+    if (decoded.status === 'rejected') expect(decoded.errors).toContainEqual(expect.objectContaining({ path: 'delta.add[0].yearBasis.end.verified' }));
+  });
+
   it('decodes and dry-runs all five ported fact shapes without a V5 state update', async () => {
     const wire = output([task(), task('other', 'Other'), { ...workload('daily', 20), quantityRole: 'target', unitCode: 'minute', unitLabel: '分', perOccurrence: true },
       { kind: 'planning_window', localId: 'window', windowKind: 'relative_week', value: 'next_week', start: null, end: null },

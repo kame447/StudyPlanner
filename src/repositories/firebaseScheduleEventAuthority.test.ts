@@ -330,6 +330,31 @@ describe('Firebase ScheduleEvent authority', () => {
     ).toBe(false);
   });
 
+  it('deletes a one-off source and unlinks its records in one canonical owner batch', async () => {
+    const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+    const source = plan();
+    const record = { id: 'record', userId: source.userId, planId: source.id, occurrenceDate: source.date,
+      actualStartTime: '09:00', actualEndTime: '10:00', title: 'Recorded work', subject: 'Math',
+      note: 'keep this evidence', updatedAt: CREATED_AT, materialProgressUpdates: [{ materialId: 'book', deltaUnits: 3 }] };
+    mocks.getDocs.mockResolvedValueOnce({ docs: [firestoreDoc(record.id, record)] });
+    const receipt = await authority.deletePlanRetainingActuals({ userId: source.userId, plan: source, todo: null });
+    expect(receipt.beforeActuals).toEqual([record]);
+    expect(receipt.afterActuals).toEqual([{ ...record, planId: null, isAlignedToPlan: false,
+      progressSource: { kind: 'study', sourceId: source.id, planType: 'study' } }]);
+    expect(mocks.batchDelete.mock.calls).toEqual([[{ collectionName: 'schedule_events', id: 'plan:plan-1' }]]);
+    expect(mocks.batchSet.mock.calls).toEqual([[{ collectionName: 'actuals', id: record.id }, receipt.afterActuals[0], { merge: true }]]);
+    expect(mocks.batchCommit).toHaveBeenCalledOnce();
+    expect(mocks.getDocs).toHaveBeenCalledWith({ parts: [{ name: 'actuals' }, { parts: ['userId', '==', source.userId] }, { parts: ['planId', '==', source.id] }] });
+  });
+
+  it('rejects a foreign retained-record deletion before reading or dispatching a batch', async () => {
+    const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+    await expect(authority.deletePlanRetainingActuals({ userId: 'user-1', plan: plan({ userId: 'other' }), todo: null }))
+      .rejects.toThrow('所有者');
+    expect(mocks.getDocs).not.toHaveBeenCalled();
+    expect(mocks.writeBatch).not.toHaveBeenCalled();
+  });
+
   it('rejects cross-owner scheduled writes before creating a batch', async () => {
     const authority = createFirebaseScheduleEventAuthority({} as Firestore);
 
