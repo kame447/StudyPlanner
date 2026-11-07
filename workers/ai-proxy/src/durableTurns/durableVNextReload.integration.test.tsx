@@ -21,8 +21,8 @@ import * as firebase from '../../../../src/lib/firebaseClient';
 
 const OWNER = 'durable-vnext-owner'; const WEEK = '2026-11-02'; const NOW = '2026-11-02T00:00:00.000Z';
 const empty = { add: [], patch: [], remove: [], relate: [], defer: [] };
-const reading = JSON.stringify({ planningIntent: 'discuss', conversationActs: [], answer: null, delta: { ...empty, add: [
-  { kind: 'task', localId: 'task', category: 'study', title: '数学' },
+const reading = (title: string) => JSON.stringify({ planningIntent: 'discuss', conversationActs: [], answer: null, delta: { ...empty, add: [
+  { kind: 'task', localId: 'task', category: 'study', title },
   { kind: 'workload', localId: 'work', taskRef: { localId: 'task' }, componentRef: null, quantityRole: 'remaining', amount: 7,
     unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null }] } });
 const workerEnv = { OPENAI_API_KEY: 'server-key', ALLOWED_CHAT_MODELS: 'gpt-6-luna',
@@ -33,6 +33,7 @@ const Harness = forwardRef<WeeklyPlanningApplication, { input: UseWeeklyPlanning
 });
 let restoreStorage: (() => void) | undefined; let renderer: ReactTestRenderer | undefined; let storage: ReturnType<typeof createMemoryStorageHarness>;
 let methods: string[]; let providerCalls: number; let windowTarget: EventTarget;
+let nativeTitle: string;
 /** One Durable Object per chat, as in production (named by owner and conversation): a turn can only ever reach its own. */
 let objects: Map<string, { job: DurableTurnJob; record?: DurableTurnRecord }>;
 let lastConversation: string;
@@ -63,7 +64,7 @@ beforeEach(() => {
   vi.stubEnv('VITE_DURABLE_WEEKLY_TURNS', 'enabled'); vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'false');
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   storage = createMemoryStorageHarness(); restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
-  methods = []; providerCalls = 0; objects = new Map(); lastConversation = ''; outstanding = []; conflicts = []; unhandled = [];
+  methods = []; providerCalls = 0; nativeTitle = '数学'; objects = new Map(); lastConversation = ''; outstanding = []; conflicts = []; unhandled = [];
   windowListeners = new Set(); documentListeners = new Set();
   process.on('unhandledRejection', onUnhandled);
   const registry = (target: EventTarget, listeners: Set<unknown>) => ({
@@ -84,7 +85,7 @@ beforeEach(() => {
       providerCalls += 1;
       const body = JSON.parse(String(init!.body)) as { response_format?: { json_schema?: { name?: string } }; messages: { content: string }[] };
       const content = body.response_format?.json_schema?.name === VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name
-        ? reading : await successfulWeeklyPlanningRendererCompletion(body);
+        ? reading(nativeTitle) : await successfulWeeklyPlanningRendererCompletion(body);
       return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content } }] });
     }
     methods.push(init?.method ?? 'GET');
@@ -256,6 +257,7 @@ it('resumes into the chat that owns the receipt and leaves another chat\'s check
   expect(chatABytes).not.toBeNull();
   await act(async () => { first.ref.current!.startConversation(); });
   const chatB = first.ref.current!.chat.index.activeChatId; expect(chatB).not.toBe(chatA);
+  nativeTitle = '英語'; // This independent chat's scripted response must match its own source.
   const { submitted } = await submit(first.ref, '英語を7ページ');
   await act(async () => renderer!.unmount()); renderer = undefined;
   await runAlarm(); expect(currentRecord()?.status).toBe('completed');

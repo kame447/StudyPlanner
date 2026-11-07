@@ -12,6 +12,7 @@ const capture = JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/weekl
 const ORIGIN = 'http://127.0.0.1:4174';
 const PROXY = `${ORIGIN}/session-ack-proxy/chat/completions`;
 const SEMANTIC_SCHEMA = VNEXT_SCHEMA;
+const LABEL_REPAIR_SCHEMA = 'weekly_planning_vnext_label_repair_v1';
 const RENDERER_SCHEMA = 'weekly_planning_stable_v5_dialogue_response';
 const RECOVERY_SCHEMA = 'weekly_planning_recovery_verdict';
 const RECOVERY_TEXT = '今回の内容は計画へ反映していません。1回の長さをもう一度教えてください。';
@@ -27,7 +28,11 @@ async function boot(page, mode) {
   const reading = structuredClone(capture.semanticDocument);
   const reply = capture.replies.find(item => item.name === mode);
   reading.tasks[0].effortEstimates[0].precision = reply?.precision ?? 'exact';
-  if (mode === 'invalid typed duration') reading.tasks[0].effortEstimates[0].minutes = 0;
+  if (mode === 'invalid typed duration') {
+    // This negative case isolates the invalid number, without spending its repair on a paraphrased name.
+    reading.tasks[0].title = '英語';
+    reading.tasks[0].effortEstimates[0].minutes = 0;
+  }
   const modelText = mode === 'misleading duration' ? '英語の勉強は明日90分ですね。候補を確認してください。'
     : mode === 'false save claim' ? '保存しました。'
       : `${reply?.acknowledgement ?? capture.replies[0].acknowledgement}候補を確認してください。`;
@@ -54,6 +59,8 @@ async function boot(page, mode) {
     calls.push(schema);
     let content;
     if (schema === SEMANTIC_SCHEMA) content = JSON.stringify(vnextReadingFromFacts(reading));
+    else if (schema === LABEL_REPAIR_SCHEMA) content = JSON.stringify({ ...vnextReadingFromFacts(reading),
+      labelEvidence: [{ localId: 'english', quote: '英語' }] });
     else if (schema === RENDERER_SCHEMA) {
       const prompt = request.messages.filter(message => message.role === 'user').map(message => {
         try { return JSON.parse(message.content); } catch { return null; }

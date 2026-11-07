@@ -105,6 +105,69 @@ function harness(options: { interpret?: WeeklyPlanningVNextInterpreter; createRe
 const diagnosticEntries = () => writes.flatMap(write => write.entries).filter(entry => entry.kind === 'turn_diagnostic');
 
 describe('VNext session → gateway → existing controller and trace owner', () => {
+  it.each([false, true])('#1005 persists answer-plus-request evidence through outbox reload and Worker (large=%s)', async large => {
+    const quote = 'この条件で今週の予定案を作って';
+    let wire: unknown;
+    const h = harness({ nativeReadings: [
+      { planningIntent: 'discuss', conversationActs: [], delta: { ...EMPTY, add: [task, work('work', 'remaining', 8)] }, answer: null },
+      (request: { messages: { content: string }[] }) => {
+        const context = JSON.parse(request.messages[1].content);
+        wire = { planningIntent: 'create_plan', conversationActs: [], delta: EMPTY,
+          planningRequestEvidence: { quote, questionKey: context.presentedQuestion.key },
+          answer: { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' } };
+        return wire;
+      },
+    ], createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        Object.assign(input.communication!, { futurePlanningRequestSentinel: 'keep-planning-request',
+          ...(large ? { futureLargePlanningRequestDetails: 'x'.repeat(48 * 1024) } : {}) });
+        return renderer.render(input);
+      } };
+    } });
+    await h.submit('数学プリントは残り8枚です');
+    const questionKey = h.local.readCheckpoint()!.vnext.presentedQuestion!.questionKey;
+    failAppend = true;
+    expect(await h.submit(`全部で40分です。${quote}`)).toMatchObject({ accepted: true,
+      draftCandidates: [expect.objectContaining({ approvalStatus: 'unapproved' })] });
+    const result = h.results[1];
+    const sent = h.requests[1] as { messages: { role: string; content: string }[] };
+    expect(result.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued.input.debugTraceEvents).toEqual(result.debugTraceEvents);
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'planning-request-retry', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(attempted.entries);
+    const entry = write.entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing planning request diagnostic');
+    expect(entry.diagnostics.outcome).toBe('preview_ready');
+    expect(entry.aiInterpreter.rawResponses[0].text).toBe(JSON.stringify(wire));
+    expect(entry.aiInterpreter.structuredResults[0].structuredResult).toMatchObject({ planningIntent: 'create_plan',
+      planningRequestEvidence: { quote, questionKey }, authorizationDecision: { authorized: true } });
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ structuredResults: [expect.objectContaining({
+      structuredResult: expect.objectContaining({ planningRequestEvidence: { quote, questionKey } }),
+    })] });
+    expect(JSON.stringify(server.entries[0])).toContain('keep-planning-request');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) {
+      const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+        jsonHead: expect.any(String), jsonTail: expect.any(String) });
+      expect(JSON.stringify(server.entries[0])).not.toContain('x'.repeat(48 * 1024));
+    }
+    expect(JSON.stringify(h.local.readCheckpoint()!.vnext)).not.toContain('"planningRequestEvidence"');
+  });
+
   it.each([false, true])('#868 persists a timed registration retained across an independent question through outbox and Worker (large=%s)', async large => {
     const first = { planningIntent: 'create_plan', conversationActs: [{ kind: 'request_event_registration', targetRef: { localId: 'club' } }],
       answer: null, delta: { ...EMPTY, add: [task, work('work', 'remaining', 8),
@@ -220,7 +283,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
   });
 
   it.each([false, true])('persists an inherited session duration and its accepted preview through outbox reload and Worker (large=%s)', async large => {
-    const initial = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [task,
+    const initial = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [{ ...task, title: '暗記' },
       { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
         activityKind: 'memorization_retrieval', contextLabel: null },
       { ...work('words', 'remaining', 100), unitCode: 'word', unitLabel: '語' },
@@ -294,13 +357,17 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
   });
 
-  it.each([false, true].flatMap(completed => [false, true].map(large => ({ completed, large }))))
-  ('Stage B: persists ready memory planning through failed append, reload and Worker (completed=$completed, large=$large)', async ({ completed, large }) => {
-    const wire = completed ? { planningIntent: 'create_plan', conversationActs: [], answer: null,
+  it.each(['fixed', 'completed', 'time_budget'].flatMap(kind => [false, true].map(large => ({ kind, large }))))
+  ('Stage B: persists ready memory planning through failed append, reload and Worker (kind=$kind, large=$large)', async ({ kind, large }) => {
+    const completed = kind === 'completed';
+    const timeBudget = kind === 'time_budget';
+    const wire = completed || timeBudget ? { planningIntent: 'create_plan', conversationActs: [], answer: null,
       delta: { ...EMPTY, add: [
         { ...task, title: '英単語' },
-        { ...work('scope', 'scope_total', 100, 'word'), unitLabel: '語' },
-        { ...work('done', 'completed', 100, 'word'), unitLabel: '語' },
+        ...(completed ? [
+          { ...work('scope', 'scope_total', 100, 'word'), unitLabel: '語' },
+          { ...work('done', 'completed', 100, 'word'), unitLabel: '語' },
+        ] : [work('time-budget', 'remaining', 60, 'minute')]),
         { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
           activityKind: 'memorization_retrieval', contextLabel: null },
         { kind: 'task', localId: 'math', category: 'study', title: '数学' },
@@ -323,12 +390,13 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       } };
     } });
     failAppend = true;
-    const submitted = await h.submit(completed ? '英単語100語は全部終わった。今週は数学60分の予定案を作って'
+    const submitted = await h.submit(timeBudget ? '今週は英単語60分と数学60分の予定案を作って'
+      : completed ? '英単語100語は全部終わった。今週は数学60分の予定案を作って'
       : '火曜10時から11時に数学の残り10枚を進める予定を入れて');
-    if (completed) {
-      expect(h.local.readCheckpoint()!.vnext.state.graph.workloads.map(fact => fact.amount)).toEqual([100, 100, 60]);
+    if (completed || timeBudget) {
+      expect(h.local.readCheckpoint()!.vnext.state.graph.workloads.map(fact => fact.amount)).toEqual(completed ? [100, 100, 60] : [60, 60]);
       expect(submitted.draftCandidates.reduce((minutes, candidate) => minutes
-        + getEntryDurationMinutes(candidate.startTime, candidate.endTime), 0)).toBe(60);
+        + getEntryDurationMinutes(candidate.startTime, candidate.endTime), 0)).toBe(timeBudget ? 120 : 60);
     } else {
       expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
         date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
@@ -364,7 +432,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(rendererInputs[0]);
     else {
       const originalBytes = new TextEncoder().encode(JSON.stringify(rendererInputs[0])).byteLength;
-      if (completed) {
+      if (completed || timeBudget) {
         // This ready-turn document fits after one source-value truncation.
         const truncated = diagnostic.dialogueRenderer.request.promptContext as { jsonHead: string; jsonTail: string };
         expect(truncated).toMatchObject({ traceTruncated: true, originalBytes,
@@ -584,6 +652,73 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(Object.keys(payload)).toEqual(['core', 'checkpoint', 'legacyV5Checkpoint', 'weekStartDate', 'input']);
   });
 
+  it.each([false, true])('Stage B: persists ordinary scoped session durations through outbox reload and Worker (large=%s)', async large => {
+    const wire = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [task,
+      { kind: 'component', localId: 'a', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '第1章' },
+      { kind: 'component', localId: 'b', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '第2章' },
+      { ...work('a-work', 'remaining', 2, 'session'), unitLabel: '回', componentRef: { localId: 'a' } },
+      { ...work('b-work', 'remaining', 2, 'session'), unitLabel: '回', componentRef: { localId: 'b' } },
+      { kind: 'effort_estimate', localId: 'default', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+        effortKind: 'session_duration', minutes: 20, unitCode: null, unitLabel: null, precision: 'exact' },
+      { kind: 'effort_estimate', localId: 'detail', taskRef: { localId: 'task' }, targetRef: { localId: 'a' },
+        effortKind: 'session_duration', minutes: 30, unitCode: null, unitLabel: null, precision: 'exact' },
+    ] } };
+    const inputs: unknown[] = [];
+    const h = harness({ nativeReading: wire, createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        Object.assign(input.communication!, { futureScopedSessionSentinel: 'keep-session-scope-evidence',
+          ...(large ? { futureScopedSessionDetails: 'x'.repeat(48 * 1024) } : {}) });
+        inputs.push(structuredClone(input)); return renderer.render(input);
+      } };
+    } });
+    failAppend = true;
+    const submitted = await h.submit('数学は各章を2回。普段は1回20分、第1章だけ30分で今週の予定案を作って');
+    // The stated 60/40-minute work keeps the ordinary 10/5-minute estimate buffers.
+    expect(submitted.draftCandidates.reduce((sum, item) => sum + getEntryDurationMinutes(item.startTime, item.endTime), 0)).toBe(115);
+    expect(submitted.draftCandidates.every(item => item.approvalStatus === 'unapproved')).toBe(true);
+    expect(h.getState().previewCandidates).toEqual(submitted.draftCandidates);
+    const checkpoint = h.local.readCheckpoint()!.vnext;
+    expect(checkpoint.presentedQuestion).toBeNull();
+    expect(checkpoint.state.graph.effortEstimates.map(estimate => estimate.minutes)).toEqual([20, 30]);
+    expect(h.results[0].dialogueRendererTrace?.request?.promptContext).toEqual(inputs[0]);
+    expect(h.results[0].dialogueRendererTrace?.response?.status).toBe('rendered');
+    const sent = h.requests[0] as { messages: { role: string; content: string }[] };
+    expect(h.results[0].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(attempted.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-scoped-session', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(attempted.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '112' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ rawResponses: [expect.objectContaining({ text: JSON.stringify(wire) })] });
+    const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+    if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(inputs[0]);
+    else {
+      const originalBytes = new TextEncoder().encode(JSON.stringify(inputs[0])).byteLength;
+      const truncated = diagnostic.dialogueRenderer.request.promptContext as { originalBytes: number; jsonHead: string; jsonTail: string };
+      expect(truncated).toMatchObject({ traceTruncated: true, jsonHead: expect.any(String), jsonTail: expect.any(String) });
+      if (truncated.originalBytes === originalBytes) {
+        expect(JSON.stringify(inputs[0]).startsWith(truncated.jsonHead)).toBe(true);
+        expect(JSON.stringify(inputs[0]).endsWith(truncated.jsonTail)).toBe(true);
+      } else expect(truncated.jsonHead).toContain(`"originalBytes":${originalBytes}`);
+      expect(truncated.jsonTail.length).toBeGreaterThan(0);
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-session-scope-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
+  });
+
   it('keeps successful placement and records the actual native request and renderer evidence', async () => {
     const h = harness();
     const submitted = await h.submit('数学を30分');
@@ -700,6 +835,66 @@ describe('VNext session → gateway → existing controller and trace owner', ()
         jsonHead: expect.any(String), jsonTail: expect.any(String) });
       expect(saved).not.toContain('z'.repeat(48 * 1024));
     }
+  });
+
+  it.each([false, true])('persists #951 label repair requests and quotations through outbox reload and Worker (large=%s)', async large => {
+    const native = (title: string, unitLabel: string) => ({ planningIntent: 'create_plan', conversationActs: [], answer: null,
+      delta: { ...EMPTY, add: [{ kind: 'task', localId: 'cards', category: 'study', title },
+        { kind: 'workload', localId: 'cards-left', taskRef: { localId: 'cards' }, componentRef: null,
+          quantityRole: 'remaining', amount: 10, unitCode: 'custom', unitLabel, rangeStart: null, rangeEnd: null,
+          perOccurrence: false, periodExpression: null },
+        { kind: 'effort_estimate', localId: 'cards-rate', taskRef: { localId: 'cards' }, targetRef: { localId: 'cards-left' },
+          effortKind: 'duration_per_unit', minutes: 8, unitCode: 'custom', unitLabel, precision: 'exact' }] } });
+    const initial = native('卡片', '张');
+    const repaired = { ...native('カードを進める作業', '枚'), labelEvidence: [{ localId: 'cards', quote: 'カード' }] };
+    const interpret = createWeeklyPlanningVNextProviderInterpreter();
+    const h = harness({ nativeReadings: [initial, repaired], interpret: async input => {
+      const result = await interpret(input);
+      Object.assign(result.metrics, { futureLabelEvidenceSentinel: 'retain-future-label-evidence',
+        ...(large ? { futureLargeLabelDiagnostic: 'x'.repeat(48 * 1024) } : {}) });
+      return result;
+    } });
+    failAppend = true;
+    await h.submit('カードは残り10枚で、1枚8分です。この内容で今週の計画を作ってください。');
+    const accepted = h.local.readCheckpoint()!.vnext;
+    expect(accepted.state.graph.tasks).toMatchObject([{ title: 'カードを進める作業' }]);
+    expect(JSON.stringify(accepted)).not.toContain('labelEvidence');
+    expect(h.requests).toHaveLength(2);
+    const requests = h.requests as { messages: unknown[]; responseFormat: { json_schema: { name: string } } }[];
+    expect(requests.map(request => request.responseFormat.json_schema.name))
+      .toEqual(['weekly_planning_vnext_native_v1', 'weekly_planning_vnext_label_repair_v1']);
+    const events = h.results[0].debugTraceEvents!;
+    const sent = events.filter(event => event.stage === 'semantic_provider_request');
+    expect(sent).toHaveLength(2);
+    sent.forEach((event, index) => expect(event.data).toMatchObject({ request: { messages: requests[index].messages },
+      requestBytes: new TextEncoder().encode(JSON.stringify(requests[index])).byteLength }));
+    expect(events.filter(event => event.stage === 'semantic_provider_response').map(event => (event.data as { rawResponse: string }).rawResponse))
+      .toEqual([JSON.stringify(initial), JSON.stringify(repaired)]);
+    const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toHaveLength(1);
+    expect(queued[0].input.debugTraceEvents).toEqual(events);
+    const failed = appendAttempts[0];
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'label-repair-retry', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes[0];
+    expect(write.entries).toEqual(failed.entries);
+    const entry = write.entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing label repair diagnostic');
+    expect(entry.aiInterpreter.input.requests).toHaveLength(2);
+    requests.forEach((request, index) => expect(entry.aiInterpreter.input.requests[index])
+      .toMatchObject({ requestBytes: new TextEncoder().encode(JSON.stringify(request)).byteLength }));
+    expect(entry.aiInterpreter.rawResponses.map(response => response.text)).toEqual([JSON.stringify(initial), JSON.stringify(repaired)]);
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    const persisted = JSON.stringify(server.entries[0]);
+    expect(persisted).toContain('labelEvidence');
+    expect(persisted).toContain('retain-future-label-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(persisted).toContain('truncat');
   });
 
   it.each([false, true])('persists actual intent and authorization presentation through append failure/reload/Worker (large=%s)', async large => {

@@ -4,6 +4,28 @@ const HARNESS_URL = 'http://127.0.0.1:4174/full-planner-recovery.html';
 const navigate = (page, name) => page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name, exact: true }).click();
 const counts = detail => detail.locator('.class-attendance-counts dd');
 
+async function openLesson(page, viewport, { withSavedDetail = false } = {}) {
+  await page.setViewportSize(viewport);
+  await page.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort());
+  await page.goto(`${HARNESS_URL}?theme=${viewport.theme}`);
+  await page.waitForFunction(() => window.__plannerRecoveryHook?.snapshot?.().ready === true);
+  await page.evaluate(() => window.__plannerRecoveryHook.startTimetableClass({ title: '数理論理', periodNumber: 1 }));
+  await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+  if (withSavedDetail) {
+    // This independent editor journey reads real saved data, without replaying
+    // the attendance/schedule UI journey or fabricating mounted hook state.
+    await page.evaluate(async date => {
+      const template = window.__plannerRecoveryHook.snapshot().scheduleTemplates.find(row => row.title === '数理論理');
+      await window.__plannerRecoveryRepository.seedTimetableClassDetail({ userId: template.userId, templateId: template.id, date });
+      await window.__plannerRecoveryHook.refresh();
+    }, E2E_TODAY);
+    await page.waitForFunction(() => window.__plannerRecoveryHook?.snapshot?.().ready === true);
+  }
+  await navigate(page, '時間割');
+  await page.getByRole('button', { name: '月曜 1限 数理論理の詳細', exact: true }).click();
+  return page.getByRole('dialog', { name: '数理論理の詳細', exact: true });
+}
+
 async function expectFrontmostOpaqueDialog(dialog) {
   // Ordinary save notices intentionally sit above dialogs for 3600ms. Inspect
   // the stable dialog after they expire; do not hide or lower application UI.
@@ -58,16 +80,8 @@ for (const viewport of [
   { width: 390, height: 844, theme: 'dark' },
   { width: 320, height: 640, theme: 'light' },
 ]) {
-  test(`lesson detail, attendance correction and related schedule survive reload ${viewport.width}-${viewport.theme}`, async ({ page }, testInfo) => {
-    await page.setViewportSize(viewport);
-    await page.route('**/*', route => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort());
-    await page.goto(`${HARNESS_URL}?theme=${viewport.theme}`);
-    await page.waitForFunction(() => window.__plannerRecoveryHook?.snapshot?.().ready === true);
-    await page.evaluate(() => window.__plannerRecoveryHook.startTimetableClass({ title: '数理論理', periodNumber: 1 }));
-    await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
-    await navigate(page, '時間割');
-    await page.getByRole('button', { name: '月曜 1限 数理論理の詳細', exact: true }).click();
-    const detail = page.getByRole('dialog', { name: '数理論理の詳細', exact: true });
+  test(`lesson detail corrects attendance and saves a related schedule ${viewport.width}-${viewport.theme}`, async ({ page }) => {
+    const detail = await openLesson(page, viewport);
     await expect(detail).toBeVisible();
     await expectFrontmostOpaqueDialog(detail);
     await expect(detail.locator('form')).toHaveCount(0);
@@ -108,7 +122,10 @@ for (const viewport of [
       expect.objectContaining({ title: '論理レポート提出', category: 'deadline', provenance: expect.objectContaining({ sourceType: 'manual', sourceId: null }) }),
     ]);
     expect(stored.actuals).toEqual([]);
+  });
 
+  test(`lesson editing retains attendance and related schedule after reload ${viewport.width}-${viewport.theme}`, async ({ page }, testInfo) => {
+    const detail = await openLesson(page, viewport, { withSavedDetail: true });
     await detail.getByRole('button', { name: '編集', exact: true }).click();
     const editor = page.getByRole('dialog', { name: '授業を編集', exact: true });
     await expect(editor.getByLabel('教科', { exact: true })).toBeHidden();

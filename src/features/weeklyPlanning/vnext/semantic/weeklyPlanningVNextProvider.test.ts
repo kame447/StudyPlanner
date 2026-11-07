@@ -21,7 +21,7 @@ import { VNEXT_RECURRENCE_REQUIREMENT, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_
   VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 
 const emptyDelta = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
-const task = (localId = 'task', title = 'Math') => ({ kind: 'task', localId, category: 'study', title });
+const task = (localId = 'task', title = '数学') => ({ kind: 'task', localId, category: 'study', title });
 const workload = (localId = 'work', amount: unknown = 7) => ({ kind: 'workload', localId,
   taskRef: { localId: 'task' }, componentRef: null, quantityRole: 'remaining', amount,
   unitCode: 'custom', unitLabel: '枚', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null });
@@ -252,6 +252,7 @@ describe('VNext native provider', () => {
       { kind: 'relation', localId: 'order', relationKind: 'before', fromTaskRef: { localId: 'task' }, toTaskRef: { localId: 'other' } },
     ]);
     const params = input([JSON.stringify(wire)]);
+    params.userText += 'Otherの予定も入れてください。';
     const before = structuredClone(params.state);
     const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
     expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 1, repairs: 0 } });
@@ -411,7 +412,7 @@ describe('VNext native provider', () => {
     expect(projection.questions).toEqual([]);
     expect(projection.owners[0].work).toEqual([expect.objectContaining({ amount: 50, minutes: 90 })]);
 
-    const unasked = input([JSON.stringify(output([task(), { ...workload('work', 45), quantityRole: 'target', unitCode: 'minute', unitLabel: '分' }]))]);
+    const unasked = input([JSON.stringify(output([task('task', '英語'), { ...workload('work', 45), quantityRole: 'target', unitCode: 'minute', unitLabel: '分' }]))]);
     unasked.userText = '英語の音読を45分やりたいです';
     expect(unasked.presentedQuestion).toBeNull();
     const timeWork = await createWeeklyPlanningVNextProviderInterpreter()(unasked);
@@ -469,11 +470,13 @@ describe('VNext native provider', () => {
   it('splices the erroneous field by local ID even if the repair reorders facts or changes unrelated content', async () => {
     const first = output([task(), workload('work', '7'), task('independent', 'English')]);
     const repaired = output([task('independent', 'silently changed'), workload('work', 7), task('task', 'silently changed too')]);
-    const result = await createWeeklyPlanningVNextProviderInterpreter()(input([JSON.stringify(first), JSON.stringify(repaired)]));
+    const params = input([JSON.stringify(first), JSON.stringify(repaired)]);
+    params.userText += 'Englishも追加してください。';
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
     expect(result.status).toBe('interpreted');
     expect(result.metrics).toMatchObject({ calls: 2, repairs: 1 });
     if (result.status === 'interpreted') {
-      expect(result.delta.add[0]).toMatchObject({ title: 'Math' });
+      expect(result.delta.add[0]).toMatchObject({ title: '数学' });
       expect(result.delta.add[1]).toMatchObject({ amount: 7 });
       expect(result.delta.add[2]).toMatchObject({ title: 'English' });
     }
@@ -615,6 +618,7 @@ describe('VNext native provider', () => {
 
   it.each(['add', 'patch'] as const)('rereads an estimate answer duplicated by %s once, preserving independent facts', async collection => {
     const params = changedUnitInput();
+    params.userText += 'Englishも追加してください。';
     const before = structuredClone(params.state);
     params.client = { createChatCompletion: vi.fn(async request => {
       const context = JSON.parse(request.messages[1].content);
@@ -655,6 +659,7 @@ describe('VNext native provider', () => {
 
   it.each(['patch', 'remove'] as const)('rereads an option answer restated by %s once, preserving independent facts', async collection => {
     const params = input([]);
+    params.userText += 'Englishも追加してください。';
     const facts: VNextAddFact[] = collection === 'patch'
       ? VNEXT_PROVIDER_SCENARIOS.find(scenario => scenario.id === 'option-answer')!.seed
       : [{ kind: 'task', localId: 'task', category: 'study', title: 'Synthetic slides' },
@@ -735,7 +740,7 @@ describe('VNext native provider', () => {
   it('accepts an estimate answer alongside time for a different task without a repair', async () => {
     const params = changedUnitInput();
     params.userText += '別の英語は全体で30分です。';
-    params.client = { createChatCompletion: vi.fn(async () => JSON.stringify(output([task('other', 'English'),
+    params.client = { createChatCompletion: vi.fn(async () => JSON.stringify(output([task('other', '英語'),
       { kind: 'effort_estimate', localId: 'other-time', taskRef: { localId: 'other' }, targetRef: { localId: 'other' },
         effortKind: 'total_duration', minutes: 30, unitCode: null, unitLabel: null, precision: 'exact' }],
     { kind: 'estimate_minutes', optionId: null, minutes: 20, per: 'unit' }))) };
@@ -747,6 +752,7 @@ describe('VNext native provider', () => {
   it.each(['882-iter4-explicit-r8', 'custom-unit-change'])('judges %s through the session binder and question-work oracle', async id => {
     const scenario = VNEXT_PROVIDER_SCENARIOS.find(candidate => candidate.id === id)!;
     const params = input([]);
+    params.userText = scenario.turns[0].text;
     const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: scenario.seed }, {
       expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: id, conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic',
     });
@@ -938,6 +944,7 @@ describe('VNext native provider', () => {
 
   it('repairs an unknown alias using the same vocabulary while retaining independent facts', async () => {
     const params = input([]);
+    params.userText += 'Preserve thisも追加してください。';
     const seeded = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [
       { kind: 'task', localId: 'existing', title: 'Existing', category: 'study' },
     ] }, { expectedRevision: 0, weekStartsOn: 'monday' as const, planningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, defaultPlanningHorizon: { startDate: '2026-11-02', endDate: '2026-11-08' }, acceptedDate: '2026-11-02', turnKey: 'seed-alias', conversationId: 'c', turnId: 'seed', sourceText: 'seed' });

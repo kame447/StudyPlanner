@@ -22,8 +22,10 @@ const scope: WeeklyPlanningVNextExperimentalScope = { ownerId: OWNER, weekStartD
   conversationId: 'registration-conversation', notBeforeTime: '09:00', clock: { currentDate: WEEK,
     weekStartsOn: 'monday', timeZone: 'Asia/Tokyo', planningStartDate: WEEK, planningEndDate: '2026-11-08' } };
 const EMPTY: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
+// Local aliases identify fixtures; display names are the names stated in the synthetic utterances.
+const eventTitles: Record<string, string> = { club: '部活', seminar: 'ゼミ', english: '英単語', 'later-busy': '固定予定', piano: 'ピアノ教室' };
 const event = (id = 'club', category: 'study' | 'non_study' | 'unknown' = 'non_study', startTime = '16:00', endTime = '17:30'): VNextAddFact[] => [
-  { kind: 'task', localId: id, category, title: id },
+  { kind: 'task', localId: id, category, title: eventTitles[id] ?? id },
   { kind: 'temporal_constraint', localId: `${id}-time`, taskRef: { localId: id }, targetRef: { localId: id },
     constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
     startTime, endTime, precision: 'exact' },
@@ -155,8 +157,8 @@ describe('VNext native fixed-event registration through the unchanged V5 project
       expect(h.state().graph.tasks).toHaveLength(4);
       expect(h.state().graph.workloads.map(fact => [fact.amount, fact.unitCode])).toEqual([[30, 'word'], [60, 'minute'], [5, 'problem']]);
       expect(h.state().graph.effortEstimates).toMatchObject([{ kind: 'duration_per_unit', minutes: 10 }]);
-      const englishId = h.state().graph.tasks.find(task => task.title === 'english')!.id;
-      const clubId = h.state().graph.tasks.find(task => task.title === 'club')!.id;
+      const englishId = h.state().graph.tasks.find(task => task.title === '英単語')!.id;
+      const clubId = h.state().graph.tasks.find(task => task.title === '部活')!.id;
       const comparison = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(h.state().graph),
         context: { ownerId: OWNER, currentDate: WEEK, planningStartDate: WEEK, planningEndDate: '2026-11-08', timeZone: 'Asia/Tokyo' } });
       expect(comparison.status).toBe('ready');
@@ -332,7 +334,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
         { kind: 'effort_estimate', localId: 'total', taskRef: { localId: 'seminar' }, targetRef: { localId: 'pages' },
           effortKind: 'total_duration', minutes: 50, unitCode: null, unitLabel: null, precision: 'exact' });
       const h = harness([wire(add, [request({ localId: 'seminar' })])]);
-      const result = await h.turn('固定予定の登録です。ほかの条件は入力のとおりです。');
+      const result = await h.turn(`ゼミの固定予定の登録です。${mode === 'other_task' ? '英語は5枚あります。' : ''}ほかの条件は入力のとおりです。`);
       expect(result.outcome).toBe('applied');
       expect(result.preview).toBeNull();
       expect(result.draftCandidates ?? []).toEqual([]);
@@ -372,7 +374,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
       patch: [{ kind: 'task', localId: 'rename', targetFactId: context.activeFacts.tasks[0].id,
         changes: { category: null, title: '数学ゼミ' } }],
     }), (context: Context) => wire([], [], 'create_plan', { remove: [{ targetFactId: context.activeFacts.temporalConstraints[0].id }] })]);
-    expect((await h.turn('火曜10時から11時にプリント10枚。予定を登録して')).preview).not.toBeNull();
+    expect((await h.turn('火曜10時から11時にゼミでプリント10枚。予定を登録して')).preview).not.toBeNull();
     const renamed = await h.turn('予定の名前を数学ゼミに変えて登録して');
     expect(renamed.question).toBeNull();
     expect(renamed.draftCandidates).toEqual([expect.objectContaining({ title: '数学ゼミ', startTime: '10:00', endTime: '11:00' })]);
@@ -392,7 +394,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     { name: 'captured unknown category remains V5 null', category: 'unknown' as const, requested: false, movable: false, expected: undefined },
   ])('V5 busy-only handoff same-input control: $name', async ({ category, requested, movable, expected }) => {
     const h = harness([wire([...event('club', category), ...(movable ? work : [])], requested ? [request()] : [])]);
-    const result = await h.turn('11月3日16時から17時半までゼミがあります。'
+    const result = await h.turn('11月3日16時から17時半まで部活があります。'
       + (requested ? 'その予定を登録してください。' : '') + (movable ? '数学は60分です。' : ''));
     const graph = h.state().graph;
     const compilation = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
@@ -409,7 +411,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
   });
 
   it('V5 busy-only handoff ends an unchanged fixed-only turn without another invitation', async () => {
-    const h = harness([wire(event()), wire()]); await h.turn('11月3日16時から17時半までゼミがあります。');
+    const h = harness([wire(event()), wire()]); await h.turn('11月3日16時から17時半まで部活があります。');
     const result = await h.turn('わかりました');
     const graph = h.state().graph;
     const compilation = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
@@ -461,7 +463,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
     expect(h.saves()).toBe(alreadySaved ? 2 : 1);
     expect([...h.saved.values()].filter(block => block.title.includes('数学'))).toHaveLength(1);
-    expect([...h.saved.values()].filter(block => block.title === 'club')).toHaveLength(alreadySaved ? 1 : 0);
+    expect([...h.saved.values()].filter(block => block.title === '部活')).toHaveLength(alreadySaved ? 1 : 0);
     const revision = h.state().graph.revision; const saves = h.saves();
     expect((await h.turn('同じ数学の予定を作って')).outcome).toBe('noop');
     expect(h.state().graph.revision).toBe(revision);
@@ -479,7 +481,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
 
   it.each(['study', 'non_study'] as const)('matches V5 at the stated interval without study authorization or estimate buffer (%s)', async category => {
     const h = harness([wire(event('club', category), [request()])]);
-    const result = await h.turn('火曜16時から17時半の予定を登録してください');
+    const result = await h.turn('火曜16時から17時半の部活の予定を登録してください');
     expect(result.outcome).toBe('applied'); expect(result.question).toBeNull();
     expect(result.draftCandidates).toEqual(h.oracle('turn-1').candidates);
     expect(result.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration', date: '2026-11-03',
@@ -526,14 +528,14 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     const math = result.draftCandidates?.filter(candidate => candidate.title.includes('数学')) ?? [];
     expect(math.length).toBeGreaterThan(0);
     expect(math.every(candidate => candidate.date === expectedMathDate)).toBe(true);
-    expect(result.draftCandidates?.find(candidate => candidate.title === 'seminar')?.date).toBe('2026-11-03');
+    expect(result.draftCandidates?.find(candidate => candidate.title === 'ゼミ')?.date).toBe('2026-11-03');
     expect(h.saves()).toBe(0);
   });
 
   it('selects only the new task named by its local reference', async () => {
     const h = harness([wire([...event('club'), ...event('seminar', 'non_study', '17:00', '21:00')], [request({ localId: 'seminar' })])]);
     const result = await h.turn('部活は16時から17時半。ゼミは17時から21時で、ゼミだけ登録して');
-    expect(result.draftCandidates?.map(c => [c.title, c.startTime, c.endTime])).toEqual([['seminar', '17:00', '21:00']]);
+    expect(result.draftCandidates?.map(c => [c.title, c.startTime, c.endTime])).toEqual([['ゼミ', '17:00', '21:00']]);
   });
 
   it('uses an existing F alias for a later registration and does not let null select historical tasks', async () => {
@@ -547,16 +549,16 @@ describe('VNext native fixed-event registration through the unchanged V5 project
 
   it('keeps overlaps exactly as V5 projects them instead of moving or splitting an event', async () => {
     const h = harness([wire([...event('club'), ...event('seminar', 'non_study', '17:00', '21:00')], [request()])]);
-    const result = await h.turn('両方の固定予定を登録して');
+    const result = await h.turn('部活とゼミの両方の固定予定を登録して');
     expect(result.draftCandidates).toEqual(h.oracle('turn-1').candidates);
     expect(h.rendererInputs[0]).toMatchObject({ communication: { eventRegistration: { overlaps: [
-      { date: '2026-11-03', startTime: '17:00', endTime: '17:30', titles: ['club', 'seminar'] },
+      { date: '2026-11-03', startTime: '17:00', endTime: '17:30', titles: ['部活', 'ゼミ'] },
     ] } } });
   });
 
   it('adds a later explicit registration to a study preview without changing accepted facts', async () => {
     const h = harness([wire([...event(), ...work], [], 'create_plan'),
-      ...Array.from({ length: 3 }, () => (context: Context) => wire([], [request({ factId: context.activeFacts.tasks.find(task => task.title === 'club')!.id })]))]);
+      ...Array.from({ length: 3 }, () => (context: Context) => wire([], [request({ factId: context.activeFacts.tasks.find(task => task.title === '部活')!.id })]))]);
     const first = await h.turn('部活は火曜16時から17時半。数学60分で予定を作って');
     expect(first.draftCandidates?.map(c => c.source)).toEqual(['weekly_exam_prep']);
     expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
@@ -587,7 +589,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
   // re-authorize study work, so the preview held only the registration and said the study work is not placed.
   it('keeps an unapproved study preview out of a later registration turn exactly as V5 does, and returns it on the V5 permissions', async () => {
     const registerClub = (intent: VNextPlanningIntent, add: VNextAddFact[] = []) => (context: Context) => wire(add, [request(
-      add.length ? null : { factId: context.activeFacts.tasks.find(task => task.title === 'club')!.id })], intent);
+      add.length ? null : { factId: context.activeFacts.tasks.find(task => task.title === '部活')!.id })], intent);
     const h = harness([wire([...event(), ...work], [], 'create_plan'), registerClub('unknown')]);
     const first = await h.turn('部活は火曜16時から17時半。数学60分で予定を作って');
     expect(first.draftCandidates?.map(c => c.source)).toEqual(['weekly_exam_prep']);
@@ -616,7 +618,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     const first = await h.turn('数学は60分。予定を作って');
     expect(first.draftCandidates?.map(c => c.source)).toEqual(['weekly_exam_prep']);
     if (saved) expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports })).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
-    const second = await h.turn('11月3日16時から17時半までクラブです。登録して');
+    const second = await h.turn('11月3日16時から17時半まで部活です。登録して');
     expect(second.draftCandidates?.map(c => c.source)).toEqual(['fixed_event_registration']);
     const facts = (h.rendererInputs[1] as { communication: { eventRegistration?: { workAwaitingAuthorization?: string[] } } }).communication;
     expect(facts.eventRegistration?.workAwaitingAuthorization).toEqual(expected);
@@ -641,7 +643,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     const pages = { ...work[1], amount: 8, unitCode: 'page', unitLabel: '枚' } as VNextAddFact;
     const answer = { kind: 'estimate_minutes', optionId: null, minutes: 60, per: 'whole_work' };
     const h = harness([wire([...event(), work[0], pages], [], 'create_plan'), { ...wire(), answer },
-      (context: Context) => wire([], [request({ factId: context.activeFacts.tasks.find(task => task.title === 'club')!.id })]),
+      (context: Context) => wire([], [request({ factId: context.activeFacts.tasks.find(task => task.title === '部活')!.id })]),
       (context: Context) => wire([], [], 'update_plan', { patch: [{ kind: 'workload', localId: 'quantity-correction',
         targetFactId: context.activeFacts.workloads[0].id, amountDelta: null, changes: { amount: 6, quantityRole: null,
           unitCode: null, unitLabel: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] }),
@@ -673,9 +675,9 @@ describe('VNext native fixed-event registration through the unchanged V5 project
   it('repairs an unknown selective target once, retaining both independent tasks', async () => {
     const facts = [...event('club'), ...event('seminar')];
     const h = harness([wire(facts, [request({ localId: 'missing' })]), wire(facts, [request({ localId: 'seminar' })])]);
-    const result = await h.turn('二つのうちゼミだけ登録して');
+    const result = await h.turn('部活とゼミの二つのうちゼミだけ登録して');
     expect(result.interpretation).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
-    expect(h.state().graph.tasks).toHaveLength(2); expect(result.draftCandidates?.map(c => c.title)).toEqual(['seminar']);
+    expect(h.state().graph.tasks).toHaveLength(2); expect(result.draftCandidates?.map(c => c.title)).toEqual(['ゼミ']);
   });
 
   it.each(['missing', 'wrong_kind'] as const)('rejects an invalid act atomically instead of widening it (%s)', async kind => {
@@ -690,7 +692,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     if (quantity) add.push({ kind: 'workload', localId: 'pages', taskRef: { localId: 'club' }, componentRef: null,
       quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: '枚', rangeStart: null, rangeEnd: null,
       perOccurrence: false, periodExpression: null });
-    const h = harness([wire(add, [request()])], 1); const result = await h.turn('その固定予定を登録して');
+    const h = harness([wire(add, [request()])], 1); const result = await h.turn('部活の固定予定を登録して');
     expect(result.preview?.blocks).toHaveLength(1); expect(h.saves()).toBe(0);
     const raw = h.local.checkpoint.read(); h.slots.set('v5', 'untouched-v5-checkpoint');
     const reloaded = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: h.memory.storage });
@@ -785,7 +787,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
 
   it('matches V5 fixed-task handoff, immediate decline, repeat and targeted acknowledgment registration', async () => {
     const h = harness([wire(event()), wire([], [decline]), wire(), (context: Context) => wire([], [request({ factId: context.activeFacts.tasks[0].id })], 'unknown')]);
-    const first = await h.turn('11月3日16時から17時半までゼミがあります。');
+    const first = await h.turn('11月3日16時から17時半まで部活があります。');
     expect(first.question).toBeNull();expect(h.rendererInputs[0]).toMatchObject({ communication: { statusReason: 'fixed_event_manual_entry' } });
     await h.turn('特にないです');await h.turn('変わりません');
     for (const input of h.rendererInputs.slice(1)) expect(input).toMatchObject({ communication: { askQuestion: false, statusReason: 'no_additional_work' } });
@@ -975,7 +977,7 @@ describe('a plan request with new work after the optional invitation', () => {
     });
 
     it('control: the registration turn, a renewed explicit registration request and a turn adding a new registration still present the preview', async () => {
-      const h = harness([wire(event(), [request()]), wire(), (context: Context) => wire([], [request({ factId: context.activeFacts.tasks.find(task => task.title === 'club')!.id })]),
+      const h = harness([wire(event(), [request()]), wire(), (context: Context) => wire([], [request({ factId: context.activeFacts.tasks.find(task => task.title === '部活')!.id })]),
         wire(event('piano', 'non_study', '19:00', '20:00'), [request()])]);
       await h.turn('部活を登録して');
       expect(renderFacts(h.rendererInputs[0])).toMatchObject({ actionKind: 'preview_ready', previewCount: 1 });

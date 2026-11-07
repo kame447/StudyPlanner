@@ -1,8 +1,8 @@
 # VNext conversation core: ownership, extension and scale
 
-Status: production conversation core contract (adoption owned by Issue #926).
+Status: production conversation core contract (adopted via Issue #926).
 
-VNext is the default conversation core on every host. Stable V5 is selectable only with `VITE_WEEKLY_PLANNING_CORE=stable_v5` on a local development host; ordinary builds exclude its application hook. The [V5 contract](current-contract-v5.md) remains the reference for reused pure responsibilities and local comparison. [Issue #926](https://github.com/kame447/StudyPlanner/issues/926) owns the current migration scope, exact verified commit, measured results and unresolved work. This document owns the VNext design intent, not a copy of changing progress reports.
+VNext is the default conversation core on every host. Stable V5 is selectable only with `VITE_WEEKLY_PLANNING_CORE=stable_v5` on a local development host; ordinary builds exclude its application hook. The [V5 contract](current-contract-v5.md) remains the reference for reused pure responsibilities and local comparison. [Issue #926](https://github.com/kame447/StudyPlanner/issues/926) records the completed production migration and its verification evidence. Outstanding V5-to-VNext regression transfer belongs to [Issue #978](https://github.com/kame447/StudyPlanner/issues/978). This document owns the VNext design intent, not a copy of changing progress reports.
 
 ## Why this core exists
 
@@ -25,6 +25,8 @@ transaction内の作業用cloneを変更することは許容するが、呼出�
 値だけの訂正では他の欄を再生成しない。patchのnullは「変更しない」であり、消去とは異なる。参照先の同一性を変える場合は契約に沿って取消と新規追加を使い、単なる名前変更を新しい作業として扱わない。
 
 同じ回答をanswerとdeltaで二重に適用しない。独立した別の指示を捨てて重複を隠すこともしない。意味的に同じだからという理由だけで任意の文書を混ぜる救済処理を追加しない。
+
+質問への回答と独立した計画・previewの依頼を同じ発話で受けた場合、native providerは既存の`create_plan`に`planningRequestEvidence`を添える。根拠は現在の`userText`からの依頼節の引用と、実際に提示した質問の`questionKey`である。アプリは引用の完全一致、参照の解決、現在の提示質問との一致、回答の適用を検証する。依頼・否定・撤回・引用中の発言の意味はAIが判断し、コードが日本語から再判定しない。回答が受理され、readinessがreadyで必須質問が残らない場合だけ、同じturnで既存の計画生成認可を評価する。回答だけ・根拠なしの旧reading・未解決の必須質問は従来のguardを保つ。根拠はturn内と既存の診断traceに限り、checkpointへ新しい欄を保存しない。承認と保存の境界、モデル呼出経路・修復上限は変えない。
 
 ## A transaction is ordered by dependencies, not by a convenient array loop
 
@@ -69,6 +71,14 @@ domainに未解決の質問があることと、利用者に質問を表示し�
 形式修復は型検証が指した欄だけを取り込み、関係ない数量・対象・独立節を変更させない。意味の読み直しは別の操作として評価する。初回のAI出力全体が正解とは仮定しないが、確定した過去のstateを未検証の再生成で書き換えない。
 
 同じ語彙・必須欄はschema、promptとvalidatorの共通定義から渡す。正常な意味を表せる表記の違いを不合格にするテストと、実際の誤更新を拒否するテストを区別する。修復・再試行は既存の有限回数契約を守り、失敗ごとに増やさない。
+
+### Label spelling evidence (#951)
+
+The native provider preserves the source spelling of task names and custom workload/effort units. Before acceptance, code checks literal evidence in the current user text, bounded user conversation, supplied attachment/reference data, or active accepted labels. These checks establish spelling support, not whether a source is relevant or a new fact/action is authorized; those semantic and application boundaries remain separate. Renderer prose is not evidence and the UI does not translate or repair accepted labels.
+
+The first provider schema and prompt remain unchanged. If a title or custom unit lacks literal support, the existing single semantic repair uses an extended response schema with turn-only `labelEvidence` quotations. A paraphrased task title must contain a nonempty naming fragment quoted from the supplied evidence; custom units retain the literal unit word, while percentages keep their existing canonical `%` unit. This preserves generated activity wording without requiring the entire title verbatim. A legitimate paraphrase can therefore consume the one repair call; no third call is added. Invalid repaired labels fail before graph acceptance, preview or save.
+
+Quotation metadata is validated and removed before the interpretation enters the session; it adds no checkpoint or saved-payload key. Actual provider requests and responses, including repair quotations, pass through the existing bounded trace/outbox/Worker path. Literal quotation alone cannot prove the model chose the right naming fragment or preserved all surrounding meaning; that remains part of semantic evaluation.
 
 ## Adding a fact family without adding another pipeline
 

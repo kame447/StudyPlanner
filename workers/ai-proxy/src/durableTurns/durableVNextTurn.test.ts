@@ -59,6 +59,48 @@ const providerFetch = (semantic: string = reading([addTask, addWork])) => vi.fn(
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('VNext durable execution', () => {
+  it('#1005 grants the evidenced request through the production interpreter and replays without dispatch', async () => {
+    const sends: string[] = [];
+    const quote = 'この条件で今週の予定案を作って';
+    vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const body = JSON.parse(init!.body as string);
+      const schema = body.response_format?.json_schema?.name;
+      sends.push(schema);
+      let content: string;
+      if (schema === FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5.json_schema.name) {
+        // Existing focused path abstains on independent meaning; no new dispatch route is introduced.
+        content = focused.replace('effort_answer', 'fallback');
+      } else if (schema === VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name) {
+        const context = JSON.parse(body.messages[1].content);
+        content = context.presentedQuestion ? JSON.stringify({ planningIntent: 'create_plan', conversationActs: [],
+          delta: emptyDelta, planningRequestEvidence: { quote, questionKey: context.presentedQuestion.key },
+          answer: { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' } }) : reading([addTask, addWork]);
+      } else content = await successfulWeeklyPlanningRendererCompletion(body);
+      return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content } }] });
+    }));
+    const first = await executeDurableVNextTurn(providerEnv, payload(), journal().dispatch);
+    const second = payload({ requestId: 'chat:request:2', checkpoint: first.checkpointAfter, userText: `全部で40分です。${quote}` });
+    second.input.inputStateRevision = parseWeeklyPlanningVNextSessionCheckpoint({ raw: first.checkpointAfter!,
+      ownerId: 'alice', weekStartDate: WEEK })!.vnext.state.graph.revision;
+    sends.length = 0;
+    const log = journal();
+    const result = await executeDurableVNextTurn(providerEnv, second, log.dispatch);
+    expect(sends.filter(schema => schema === VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.name)).toHaveLength(1);
+    expect(sends.filter(schema => schema === FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5.json_schema.name)).toHaveLength(1);
+    const checkpoint = parseWeeklyPlanningVNextSessionCheckpoint({ raw: result.checkpointAfter!, ownerId: 'alice', weekStartDate: WEEK })!;
+    expect(checkpoint.vnext.state.draftGenerationIntent).toBe('user_authorized');
+    expect(checkpoint.vnext.preview).not.toBeNull();
+    expect(result.result.draftCandidates).toEqual([expect.objectContaining({ approvalStatus: 'unapproved' })]);
+    expect(checkpoint.vnext.state.graph.effortEstimates).toEqual([expect.objectContaining({ minutes: 40 })]);
+    expect(JSON.stringify(checkpoint.vnext)).not.toContain('"planningRequestEvidence"');
+    log.restart();
+    sends.length = 0;
+    const replayed = await executeDurableVNextTurn(providerEnv, second, log.dispatch);
+    expect(replayed.checkpointAfter).toBe(result.checkpointAfter);
+    expect(replayed.result.draftCandidates).toEqual(result.result.draftCandidates);
+    expect(sends).toEqual([]);
+  });
+
   it('runs the shared VNext turn and returns the new checkpoint with the existing result envelope', async () => {
     vi.stubGlobal('fetch', providerFetch());
     const result = await executeDurableVNextTurn(providerEnv, payload(), journal().dispatch);

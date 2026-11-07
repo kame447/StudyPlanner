@@ -20,7 +20,7 @@ const ENGLISH = [task('english', '英語'), workload('english', 60, 'minute', '�
 const wire = (planningIntent: VNextPlanningIntent, delta: Partial<VNextTurnDelta> = {}, answer: unknown = null) => ({
   planningIntent, conversationActs: [], delta: { ...EMPTY, ...delta }, answer,
 });
-type Context = { userText: string; openQuestions: { key: string }[] };
+type Context = { userText: string; openQuestions: { key: string }[]; presentedQuestion: { key: string } | null };
 
 function harness(responses: Array<unknown | ((context: Context) => unknown)>) {
   const memory = createMemoryStorageHarness();
@@ -91,12 +91,86 @@ describe('Stage B: early preview after an independent explicit request (syntheti
     h.assertUnsaved();
   });
 
+  it('an effort answer and an evidenced explicit preview request do not require another request', async () => {
+    const h = harness([wire('discuss', { add: MATH }), (context: Context) => {
+      expect(context.userText).toBe('全部で40分です。この条件で今週の予定案を作って');
+      return { ...wire('create_plan', {}, { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' }),
+        planningRequestEvidence: { quote: 'この条件で今週の予定案を作って', questionKey: context.presentedQuestion!.key } };
+    }, wire('create_plan')]);
+    expect((await h.turn('数学プリントは残り8枚です')).question?.code).toBe('missing_effort_estimate');
+    const result = await h.turn('全部で40分です。この条件で今週の予定案を作って');
+    expect(result.interpretation).toMatchObject({ status: 'interpreted', planningIntent: 'create_plan',
+      metrics: { calls: 1, repairs: 0 } });
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'ready', question: null, previewBlockedBy: [] });
+    const graph = h.local.readCheckpoint()!.vnext.state.graph;
+    expect(graph.workloads).toHaveLength(1);
+    expect(graph.workloads[0]).toMatchObject({ amount: 8, unitCode: 'page' });
+    expect(graph.effortEstimates).toEqual([expect.objectContaining({ kind: 'total_duration', minutes: 40 })]);
+    h.assertUnsaved();
+    const repeatedRequest = await h.turn('この条件で今週の予定案を作って');
+    expect(repeatedRequest.preview).not.toBeNull();
+    expect(h.local.readCheckpoint()!.vnext.state.graph.effortEstimates).toEqual(graph.effortEstimates);
+    h.assertUnsaved();
+    expect(result.preview, 'the answer also contains a separate explicit preview request').not.toBeNull();
+    expect(h.local.readCheckpoint()!.vnext.state.draftGenerationIntent).toBe('user_authorized');
+    expect(JSON.stringify(h.local.readCheckpoint()!.vnext)).not.toContain('"planningRequestEvidence"');
+  });
+
+  it.each([
+    { text: '全部で40分です', intent: 'unknown' as const },
+    { text: '全部で40分です。予定案はまだ作らないで', intent: 'discuss' as const },
+    { text: '全部で40分です。予定案を作って。やっぱり依頼は取り消します', intent: 'discuss' as const },
+  ])('keeps the estimate without permission for $text', async ({ text, intent }) => {
+    const h = harness([wire('discuss', { add: MATH }), { ...wire(intent, {},
+      { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' }), planningRequestEvidence: null }]);
+    await h.turn('数学プリントは残り8枚です');
+    const result = await h.turn(text);
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'ready', question: null, preview: null,
+      interpretation: { status: 'interpreted', metrics: { calls: 1, repairs: 0 } } });
+    expect(h.local.readCheckpoint()!.vnext.state).toMatchObject({ draftGenerationIntent: 'not_requested',
+      graph: { effortEstimates: [expect.objectContaining({ minutes: 40 })] } });
+    h.assertUnsaved();
+  });
+
+  it.each(['absent_quote', 'empty_quote', 'unshown_question', 'invented_question', 'wrong_intent', 'no_answer'] as const)(
+    'rejects %s evidence with at most the existing one repair and retains accepted facts', async invalid => {
+      const physics = [task('physics', '物理プリント'), workload('physics', 6, 'page', '枚')];
+      const response = (context: Context) => ({ ...wire(invalid === 'wrong_intent' ? 'discuss' : 'create_plan', {},
+        invalid === 'no_answer' ? null : { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' }),
+        planningRequestEvidence: { quote: invalid === 'absent_quote' ? '過去の依頼だけにある文'
+          : invalid === 'empty_quote' ? '' : 'この条件で今週の予定案を作って',
+        questionKey: invalid === 'invented_question' ? 'Q999'
+          : invalid === 'unshown_question' ? context.openQuestions[1].key : context.presentedQuestion!.key } });
+      const h = harness([wire('discuss', { add: [...MATH, ...physics] }), response, response]);
+      await h.turn('数学プリントは残り8枚、物理プリントは残り6枚です');
+      const before = structuredClone(h.local.readCheckpoint()!.vnext.state);
+      const result = await h.turn('全部で40分です。この条件で今週の予定案を作って');
+      expect(result).toMatchObject({ preview: null, interpretation: { status: 'failed', reason: 'rejected_after_repair',
+        metrics: { calls: 2, repairs: 1 } } });
+      expect(h.local.readCheckpoint()!.vnext.state).toEqual(before);
+      h.assertUnsaved();
+    });
+
+  it('does not grant permission from valid evidence while another required question remains', async () => {
+    const physics = [task('physics', '物理プリント'), workload('physics', 6, 'page', '枚')];
+    const h = harness([wire('discuss', { add: [...MATH, ...physics] }), (context: Context) => ({
+      ...wire('create_plan', {}, { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' }),
+      planningRequestEvidence: { quote: 'この条件で今週の予定案を作って', questionKey: context.presentedQuestion!.key },
+    })]);
+    await h.turn('数学プリントは残り8枚、物理プリントは残り6枚です');
+    const result = await h.turn('全部で40分です。この条件で今週の予定案を作って');
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'needs_resolution', preview: null,
+      interpretation: { status: 'interpreted', metrics: { calls: 1, repairs: 0 } } });
+    expect(h.local.readCheckpoint()!.vnext.state.draftGenerationIntent).toBe('not_requested');
+    h.assertUnsaved();
+  });
+
   it('retains the authorization guard while another required question remains unresolved', async () => {
     const physics = [task('physics', '物理プリント'), workload('physics', 6, 'page', '枚')];
     const h = harness([wire('discuss', { add: [...MATH, ...physics] }), (context: Context) => wire('create_plan', {
       add: ENGLISH, defer: [{ questionKey: context.openQuestions[0].key, allocation: 'none' }],
     })]);
-    await h.turn('数学は残り8枚、物理は残り6枚です');
+    await h.turn('数学プリントは残り8枚、物理プリントは残り6枚です');
     const result = await h.turn('数学は後で決めます。先に英語60分の予定案を作って');
     expect(result).toMatchObject({ outcome: 'applied', readiness: 'needs_resolution', preview: null });
     const state = h.local.readCheckpoint()!.vnext.state;

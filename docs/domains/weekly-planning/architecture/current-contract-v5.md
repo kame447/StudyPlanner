@@ -134,6 +134,8 @@ Preview/draft checkpoint metadata retains the real source references. Final appr
 
 For quantified memory work with known pace, accepting spaced practice reuses an already stated session duration at workload, component or task scope. Question necessity and full-session placement share the ordinary scope precedence and ambiguity resolver; an unresolved or conflicting applicable duration still requires clarification. This does not infer a total effort from a session length or authorize a save.
 
+For ordinary session-counted work, VNext also uses that same duration scope resolver before asking an effort question. A workload-specific duration takes precedence over a component duration, which takes precedence over the inherited task duration. The default remains applicable to sibling work, and disagreeing durations at the winning scope still require clarification. Accepted estimates remain intact; this does not change rate/total-duration conflicts or approval.
+
 ## Work decomposition / atomicity
 
 Task decomposition is typed semantic state, not a scheduler guess.
@@ -210,6 +212,8 @@ In VNext, a workload already covered by its own hard fixed temporal scope does n
 Learning-method proposals apply to movable learning work. Work excluded by its hard fixed scope does not create or select a method proposal that blocks registration; earlier records remain history without implicit acceptance or rejection. Eligible movable work keeps its ordinary proposal and required-question priority.
 
 In VNext, an owner already resolved to `nothing_to_schedule` does not create or select a memory-method proposal. Its completed facts and proposal history remain intact; an unfinished owner in the same task still keeps its method question, and independent ready work can proceed.
+
+VNext minute/hour workloads already express the requested time budget and do not create or select a required memory-method proposal. Earlier method records remain history; quantity-based memorization in the same task retains its ordinary question. Intrinsic minutes and explicit approval remain authoritative.
 
 ## Proposal / readiness / scheduler
 

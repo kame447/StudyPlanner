@@ -250,7 +250,7 @@ const optionChoiceOf = (result: WeeklyPlanningVNextDurableTurnResult) => {
 describe('3. fallback and 4. trace, through the durable production path', () => {
   async function presentedQuestionCheckpoint() {
     installDurable('evaluated', inconsistentReading);
-    const first = await runDurable(prodEnv(), payload('chat:request:1', '20枚の資料で12枚終わっていて、残り7枚です', null));
+    const first = await runDurable(prodEnv(), payload('chat:request:1', '数学プリントは20枚で12枚終わっていて、残り7枚です', null));
     expect(first.record.status).toBe('completed');
     const checkpoint = first.result!.checkpointAfter!;
     const state = JSON.parse(checkpoint).vnext as { presentedQuestion: { questionKey: string } | null };

@@ -74,7 +74,7 @@ function harness(focusedReadings: unknown[], nativeAnswers: unknown[]) {
 describe('#916 renderer numbers and interpreted answers at the real VNext session boundary', () => {
   it.each(['はい', '違う'])('does not create an estimate from renderer prose when both readers abstain: %s', async userText => {
     const h = harness([fallback, perUnit], [null]);
-    const first = await h.turn('全20枚のうち10枚終わっています。計画を作ってください。');
+    const first = await h.turn('資料は全20枚のうち10枚終わっています。計画を作ってください。');
     expect(first.question).toMatchObject({ code: 'missing_effort_estimate', options: [] });
     expect(h.checkpoint().vnext.presentedQuestion?.shownText).toBe(reply);
     expect(h.state().graph.effortEstimates).toEqual([]);
@@ -97,7 +97,7 @@ describe('#916 renderer numbers and interpreted answers at the real VNext sessio
 
   it.each(['はい', '違う'])('characterizes a fabricated semantic estimate after focused fallback (not real-model evidence): %s', async userText => {
     const h = harness([fallback], [{ kind: 'estimate_minutes', optionId: null, minutes: 96, per: 'whole_work' }]);
-    await h.turn('全20枚のうち10枚終わっています。計画を作ってください。');
+    await h.turn('資料は全20枚のうち10枚終わっています。計画を作ってください。');
     expect(h.state().graph.effortEstimates).toEqual([]);
 
     const result = await h.turn(userText);
@@ -112,7 +112,7 @@ describe('#916 renderer numbers and interpreted answers at the real VNext sessio
 
   it('binds an explicit per-unit answer to the asked work rather than the number in the rendered reply', async () => {
     const h = harness([perUnit], []);
-    await h.turn('全20枚のうち10枚終わっています。計画を作ってください。');
+    await h.turn('資料は全20枚のうち10枚終わっています。計画を作ってください。');
     await h.turn('1枚8分です');
     expect(h.nativeInputs).toHaveLength(1);
     expect(h.focusedInputs).toHaveLength(1);

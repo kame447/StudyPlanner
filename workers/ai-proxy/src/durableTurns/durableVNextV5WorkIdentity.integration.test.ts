@@ -95,7 +95,7 @@ describe('#978 work identity and effort conflicts through Worker', () => {
         : { patch: [{ kind: 'effort_estimate', localId: 'consistent', targetFactId: total.id,
           changes: { minutes: 40, effortKind: null, unitCode: null, unitLabel: null, precision: null } }] } };
     }]);
-    const before = await h.turn('残り8ページは1ページ5分です。残り全体には60分かかります。');
+    const before = await h.turn('数学プリントの残り8ページは1ページ5分です。残り全体には60分かかります。');
     expect(before.projection.questions.some(q => q.code === 'effort_inconsistent')).toBe(true);
     expect(before.graph.effortEstimates.map(f => f.minutes).sort((a, b) => a - b)).toEqual([5, 60]);
     expect(before.checkpoint.vnext.preview).toBeNull();
