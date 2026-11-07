@@ -49,6 +49,10 @@ interface ChatCompletionUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+    cache_write_tokens?: number;
+  };
   completion_tokens_details?: {
     reasoning_tokens?: number;
     text_tokens?: number;
@@ -220,6 +224,7 @@ function requestPhase(
 function recordRequestMetric(params: {
   purpose: AiChatPurpose | undefined;
   messages: ChatMessage[];
+  responseFormat?: JsonSchemaResponseFormat;
   model: string;
   transport: 'direct' | 'proxy';
   status: 'success' | 'failure';
@@ -230,6 +235,9 @@ function recordRequestMetric(params: {
   providerCompletion?: ProviderCompletionMetadata;
 }): void {
   if (!shouldCaptureEvalMetrics()) return;
+  const schemaName = params.responseFormat?.json_schema.name;
+  const tokenCount = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
   recordOpenAiCompatibleRequestMetric({
     purpose: params.purpose ?? 'general',
     phase: requestPhase(params.purpose, params.messages),
@@ -243,6 +251,11 @@ function recordRequestMetric(params: {
     promptTokens: params.usage?.prompt_tokens ?? null,
     completionTokens: params.usage?.completion_tokens ?? null,
     totalTokens: params.usage?.total_tokens ?? null,
+    cachedTokens: tokenCount(params.usage?.prompt_tokens_details?.cached_tokens),
+    cacheWriteTokens: tokenCount(params.usage?.prompt_tokens_details?.cache_write_tokens),
+    requestKind: params.purpose === 'weekly_planning_renderer' ? 'renderer'
+      : schemaName?.startsWith('weekly_planning_vnext_') ? 'native'
+      : schemaName?.startsWith('weekly_planning_focused_') ? 'focused' : 'other',
     durationMs: Math.max(0, Date.now() - params.startedAtMs),
     ...(params.providerCompletion ? { providerCompletion: params.providerCompletion } : {}),
   });
@@ -396,6 +409,7 @@ export function createOpenAiCompatibleClient(
             recordRequestMetric({
               purpose,
               messages,
+              responseFormat,
               model: logModel,
               transport: 'proxy',
               status: 'success',
@@ -409,6 +423,7 @@ export function createOpenAiCompatibleClient(
             recordRequestMetric({
               purpose,
               messages,
+              responseFormat,
               model: logModel,
               transport: 'proxy',
               status: 'failure',
@@ -503,6 +518,7 @@ export function createOpenAiCompatibleClient(
         recordRequestMetric({
           purpose,
           messages,
+          responseFormat,
           model: directModel,
           transport: 'direct',
           status: 'success',
@@ -517,6 +533,7 @@ export function createOpenAiCompatibleClient(
         recordRequestMetric({
           purpose,
           messages,
+          responseFormat,
           model: directModel,
           transport: 'direct',
           status: 'failure',

@@ -39,6 +39,63 @@ afterEach(() => {
 });
 
 describe('openAiCompatibleClient evaluation metrics', () => {
+  it.each(['direct', 'proxy'] as const)('retains cache counters and unknowns without changing %s requests or replies', async transport => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(transport === 'proxy');
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.test');
+    vi.mocked(getFirebaseAuth).mockReturnValue({ currentUser: { getIdToken: async () => 'private-token' } } as never);
+    const details = [
+      { value: { cached_tokens: 768, cache_write_tokens: 128 }, cached: 768, written: 128 },
+      { value: { cached_tokens: 0, cache_write_tokens: 0 }, cached: 0, written: 0 },
+      { value: undefined, cached: null, written: null },
+      { value: { cached_tokens: -1, cache_write_tokens: 'private-invalid-counter' }, cached: null, written: null },
+      { value: { cached_tokens: 64.5, cache_write_tokens: Number.MAX_SAFE_INTEGER + 1 }, cached: null, written: null },
+      { value: { cached_tokens: 64 }, cached: 64, written: null },
+    ];
+    const request = { messages: [{ role: 'user' as const, content: 'private-prompt-sentinel' }],
+      purpose: 'weekly_planning_renderer' as const };
+    for (const row of details) {
+      const fetchMock = vi.fn<typeof fetch>(async () => Response.json({
+        ...(transport === 'proxy' ? { content: 'private-reply-sentinel' }
+          : { choices: [{ message: { content: 'private-reply-sentinel' } }] }),
+        usage: { prompt_tokens: 2048, completion_tokens: 20, total_tokens: 2068,
+          prompt_tokens_details: row.value },
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      const client = createOpenAiCompatibleClient(config);
+      vi.stubEnv('VITE_AI_EVAL_CAPTURE_METRICS', '0');
+      expect(await client.createChatCompletion(request)).toBe('private-reply-sentinel');
+      expect(takeOpenAiCompatibleRequestMetrics()).toEqual([]);
+      vi.stubEnv('VITE_AI_EVAL_CAPTURE_METRICS', '1');
+      expect(await client.createChatCompletion(request)).toBe('private-reply-sentinel');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1][1]?.body).toBe(fetchMock.mock.calls[0][1]?.body);
+      const metric = takeOpenAiCompatibleRequestMetrics();
+      expect(metric).toEqual([expect.objectContaining({ transport, promptTokens: 2048,
+        cachedTokens: row.cached, cacheWriteTokens: row.written, requestKind: 'renderer' })]);
+      for (const text of ['private-prompt-sentinel', 'private-reply-sentinel', 'private-token', 'private-invalid-counter']) {
+        expect(JSON.stringify(metric)).not.toContain(text);
+      }
+    }
+  });
+
+  it.each([
+    ['weekly_planning_vnext_native_v1', 'native'],
+    ['weekly_planning_vnext_label_repair_v1', 'native'],
+    ['weekly_planning_focused_contextual_answer_v5', 'focused'],
+    ['private-unrecognized-schema', 'other'],
+  ] as const)('groups typed schema %s without retaining it in metrics', async (schemaName, kind) => {
+    vi.stubEnv('VITE_AI_EVAL_CAPTURE_METRICS', '1');
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ choices: [{ message: { content: 'ok' } }] })));
+    await createOpenAiCompatibleClient(config).createChatCompletion({
+      messages: [{ role: 'user', content: 'private request' }], purpose: 'weekly_planning_semantic_normalizer',
+      responseFormat: { type: 'json_schema', json_schema: { name: schemaName, strict: true, schema: { type: 'object' } } },
+    });
+    const metrics = takeOpenAiCompatibleRequestMetrics();
+    expect(metrics[0]).toMatchObject({ requestKind: kind, cachedTokens: null, cacheWriteTokens: null });
+    expect(JSON.stringify(metrics)).not.toContain(schemaName);
+  });
+
   it('captures request/response volume, provider usage, route and latency without storing content', async () => {
     vi.stubEnv('VITE_AI_EVAL_CAPTURE_METRICS', '1');
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
@@ -106,6 +163,8 @@ describe('openAiCompatibleClient evaluation metrics', () => {
         promptTokens: null,
         completionTokens: null,
         totalTokens: null,
+        cachedTokens: null,
+        cacheWriteTokens: null,
         providerCompletion: {
           finishReason: null, refusalPresent: null,
           requestedMaxCompletionTokens: null, effectiveMaxCompletionTokens: null,
@@ -159,6 +218,8 @@ describe('openAiCompatibleClient evaluation metrics', () => {
         promptTokens: null,
         completionTokens: null,
         totalTokens: null,
+        cachedTokens: null,
+        cacheWriteTokens: null,
         durationMs: 1,
       });
     }
