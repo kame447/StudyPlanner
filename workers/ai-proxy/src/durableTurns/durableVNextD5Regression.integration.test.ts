@@ -55,6 +55,7 @@ function harness(second: (context: Context) => Reading) {
     const output = await executeDurableVNextTurn(env, input, (_raw, send) => send());
     const checkpoint = parseWeeklyPlanningVNextSessionCheckpoint({ raw: output.checkpointAfter!, ownerId: input.input.userId, weekStartDate: input.weekStartDate });
     if (!checkpoint) throw new Error('Worker returned unreadable checkpoint');
+    expect(output.result.failure).toBeUndefined();
     input.checkpoint = output.checkpointAfter;
     input.input.inputStateRevision = checkpoint.vnext.state.graph.revision;
     return { output, checkpoint, graph: checkpoint.vnext.state.graph, projection: projectWeeklyPlanningVNext(checkpoint.vnext.state) };
@@ -91,6 +92,12 @@ describe('#978 D5 boundary on the current VNext Worker', () => {
     const before = await h.turn('数学20問と英語15ページを進めたい。英語15ページは全部で45分です。');
     const mathId = before.graph.tasks[0].id;
     const englishId = before.graph.tasks[1].id;
+    // The titles occur verbatim in the setup; independent expected facts also guard an incorrect seed.
+    expect(before.graph.tasks).toMatchObject([{ title: '数学' }, { title: '英語' }]);
+    expect(before.graph.workloads).toMatchObject([
+      { taskId: mathId, quantityRole: 'target', amount: 20, unitCode: 'problem' },
+      { taskId: englishId, quantityRole: 'target', amount: 15, unitCode: 'page' },
+    ]);
     expect(before.projection.questions.some(q => q.code === 'missing_effort_estimate' && q.taskId === mathId)).toBe(true);
     const after = await h.turn(text);
     const work = after.projection.owners.flatMap(owner => owner.work);
@@ -99,6 +106,11 @@ describe('#978 D5 boundary on the current VNext Worker', () => {
     expect(work.filter(w => w.taskId === englishId).map(w => w.minutes)).toEqual([englishMinutes]);
     expect(after.graph.workloads).toEqual(before.graph.workloads);
     expect(after.graph.tasks).toEqual(before.graph.tasks);
+    const active = new Set(after.graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
+    expect(after.graph.effortEstimates.filter(e => active.has(e.id) && e.taskId === mathId).map(e => ({ kind: e.kind, minutes: e.minutes })))
+      .toEqual(mathMinutes === null ? [] : [{ kind: id === 'whole-work' ? 'total_duration' : 'duration_per_unit', minutes: 15 }]);
+    expect(after.graph.effortEstimates.filter(e => active.has(e.id) && e.taskId === englishId).map(e => ({ kind: e.kind, minutes: e.minutes })))
+      .toEqual([{ kind: 'total_duration', minutes: englishMinutes }]);
     expect(after.projection.questions.some(q => q.code === 'missing_effort_estimate' && q.taskId === mathId)).toBe(mathMinutes === null);
     if (id === 'compound') {
       expect(after.graph.temporalConstraints).toHaveLength(1);
@@ -108,6 +120,8 @@ describe('#978 D5 boundary on the current VNext Worker', () => {
       && f.kind === 'duration_per_unit' && f.precision === 'approximate')).toBe(true);
     expect(after.checkpoint.vnext.preview).toBeNull();
     expect(after.output.result.draftCandidates).toEqual([]);
+    expect(before.checkpoint.vnext.state.draftGenerationIntent).toBe('not_requested');
+    expect(after.checkpoint.vnext.state.draftGenerationIntent).toBe('not_requested');
     expect(h.remainingSteps()).toBe(0);
   });
 });
