@@ -534,11 +534,14 @@ test.describe('examinee week of study records by conversation (durable emulator 
       await expect(CONFIRM.save(dialog)).toHaveText('保存中...');
       await expect(dialog).toContainText('保存中（まだ確定していません）');
       expect(await actualDocuments(request, userId), 'the blocked first batch never reached the server').toEqual([]);
+      // Keep transport blocked until the old page and its SDK queue are disposed.
+      // Reconnecting that queue first can legitimately commit the original batch;
+      // the separate late-commit test below preserves that recovery contract.
+      await page.reload();
     } finally {
       await page.unroute(firestoreRoute);
     }
 
-    await page.reload();
     await expect(page.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
     expect(await actualDocuments(request, userId), 'the first attempt is still absent after reload').toEqual([]);
     await openPlannerOnPreviousWeek(page);
@@ -565,6 +568,99 @@ test.describe('examinee week of study records by conversation (durable emulator 
     expect(afterReload.map(({ docId, date, subject, minutes }) => ({ docId, date, subject, minutes })))
       .toEqual(saved.map(({ docId, date, subject, minutes }) => ({ docId, date, subject, minutes })));
     await expectNeighboursUnchanged(request);
+  });
+
+  test('A2 late commit: the queued first save reaches the server and an unacknowledged snapshot reads it back without rewriting', async ({ page, browser, request }, testInfo) => {
+    await signIn(page);
+    const week = await previousWeekOf(page);
+    await seedNeighbours(request, week);
+    await openPlannerOnPreviousWeek(page);
+    const rows = scenarioRows(week);
+    const statement = '月曜は数学60分、火曜は英語45分、水曜は現代文30分、金曜は英語50分、土曜は数学120分、日曜は化学90分でした。';
+    await actualTurn(page, request, week, statement, 'actual_week');
+    const originalIds = (await recordStates(page)).map(state => state.split(' ')[1]);
+    expect(new Set(originalIds).size).toBe(6);
+    const dialog = await openConfirmation(page);
+    const firstWrites = attachWriteLedger(page);
+    const writeChannel = '**/google.firestore.v1.Firestore/Write/channel**';
+    let releaseWrite;
+    const writeGate = new Promise(resolve => { releaseWrite = resolve; });
+    let sawQueuedWrite = false;
+    await page.route(writeChannel, async route => {
+      sawQueuedWrite = true;
+      await writeGate;
+      await route.continue();
+    });
+    let unacknowledged;
+    let saved;
+    try {
+      await firstWrites.during('save-actuals', async () => {
+        await CONFIRM.save(dialog).click();
+        await expect(CONFIRM.save(dialog)).toHaveText('保存中...');
+        await expect.poll(() => sawQueuedWrite, { message: 'the SDK has queued its first save behind the transport gate' }).toBe(true);
+        expect(await actualDocuments(request, userId), 'the queued save has not reached the server').toEqual([]);
+
+        // Preserve the application's real pre-ack checkpoint in memory, including emulator auth.
+        // Reopening this snapshot below injects loss of the acknowledgement; it does not
+        // claim that the resumed SDK itself failed to receive an acknowledgement.
+        unacknowledged = await page.context().storageState({ indexedDB: true });
+        const attempts = unacknowledged.origins.flatMap(origin => origin.localStorage)
+          .filter(entry => entry.name.includes('.weeklyPlanning.vnext.') && entry.name.endsWith('.ui'))
+          .flatMap(entry => {
+            const attempt = JSON.parse(entry.value).actualSaveAttempt;
+            return attempt ? [attempt] : [];
+          });
+        expect(attempts, 'recovery uses an actual persisted in-flight attempt').toHaveLength(1);
+        expect(attempts[0].records.map(record => record.id).sort()).toEqual([...originalIds].sort());
+        expect(attempts[0].records.map(record => record.minutes)).toEqual(rows.map(row => row.minutes));
+
+        releaseWrite();
+        await awaitSavedCommit(firstWrites, request, 6);
+        saved = expectSavedWeek(await actualDocuments(request, userId), week, rows);
+        expect(saved.map(record => record.docId).sort()).toEqual([...originalIds].sort());
+        expect(actualsCommitProblems(firstWrites.commitsIn('save-actuals'), 6)).toEqual([]);
+        expect(firstWrites.violations()).toEqual([]);
+      });
+    } finally {
+      releaseWrite();
+      await page.unroute(writeChannel);
+    }
+    const origin = new URL(page.url()).origin;
+    const viewport = page.viewportSize();
+    await page.close(); // Dispose the old SDK queue before restoring the pre-ack application state.
+
+    const recoveredContext = await browser.newContext({ storageState: unacknowledged, baseURL: origin, viewport, timezoneId: 'Asia/Tokyo' });
+    try {
+      const recovered = await recoveredContext.newPage();
+      const recoveryWrites = attachWriteLedger(recovered);
+      await signIn(recovered);
+      await openPlannerOnPreviousWeek(recovered);
+      await expect(lastReply(recovered)).toHaveText(formatActualSaveReadbackReply(rows.map((row, index) => ({
+        id: originalIds[index], occurrenceDate: row.date, subject: row.subject, minutes: row.minutes,
+      })), originalIds, []));
+      expect(await lastReply(recovered).innerText(), 'committed records are never labelled unsaved').not.toContain('未保存');
+      const savedStates = originalIds.map(id => `saved ${id}`).sort();
+      expect((await recordStates(recovered)).sort()).toEqual(savedStates);
+      await expect(recovered.locator('.ai-planning-actual-card'), 'readback offers no duplicate save').toHaveCount(0);
+      expect(await actualDocuments(request, userId), 'readback preserves the first commit, including updatedAt').toEqual(saved);
+
+      await actualTurn(recovered, request, week, statement, 'actual_week');
+      await expect(lastReply(recovered)).toHaveText(formatAlreadySavedActualRecordsReply(rows.map(row => ({
+        id: '', occurrenceDate: row.date, subject: row.subject, minutes: row.minutes,
+      }))));
+      await recovered.reload();
+      await expect(recovered.locator('.primary-bottom-nav')).toBeVisible({ timeout: 30_000 });
+      await openPlannerOnPreviousWeek(recovered);
+      expect((await recordStates(recovered)).sort()).toEqual(savedStates);
+      await expect(recovered.locator('.ai-planning-actual-card')).toHaveCount(0);
+      expect(await actualDocuments(request, userId), 'resending and reloading neither duplicate nor rewrite the six records').toEqual(saved);
+      expect(protectedWritesIn(recoveryWrites.writes()), 'recovery and the repeated statement perform no protected write').toEqual([]);
+      expect(recoveryWrites.violations()).toEqual([]);
+      await expectNeighboursUnchanged(request);
+      await testInfo.attach('late-commit-write-ledger.json', { body: JSON.stringify({ first: firstWrites.writes(), recovery: recoveryWrites.writes() }), contentType: 'application/json' });
+    } finally {
+      await recoveredContext.close();
+    }
   });
 
   test('A2 corrected unknown save: read back the original attempt after a correction and explicitly save the corrected six', async ({ page, request }) => {
