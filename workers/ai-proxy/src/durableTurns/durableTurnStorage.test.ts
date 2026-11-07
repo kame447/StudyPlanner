@@ -43,4 +43,10 @@ describe('SQLite Durable Object turn field storage', () => {
     expect([...data.keys()].sort()).toEqual(['turn:meta', 'turn:output']); expect(alarm).toBe(10);
     await adapter.write({ ...base, status: 'expired' }); expect([...data.keys()]).toEqual(['turn:meta']);
   });
+  it('removes only its own turn keys', async () => {
+    const data = new Map<string, string>([['turn:meta', '{}'], ['turn:input', 'x'], ['turn:dispatch:0', '{}'], ['other', 'keep']]);
+    const storage = { delete: async (keys: string[]) => keys.forEach((key) => data.delete(key)) } as unknown as DurableObjectStorage;
+    await createDurableTurnStorage(storage).remove();
+    expect([...data.keys()]).toEqual(['other']);
+  });
 });

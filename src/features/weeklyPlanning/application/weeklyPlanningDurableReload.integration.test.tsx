@@ -33,7 +33,7 @@ beforeEach(() => {
   vi.spyOn(aiConfig, 'getCloudflareAiProxyUrl').mockReturnValue('https://proxy.fixture.test');
   vi.spyOn(firebase, 'getFirebaseAuth').mockReturnValue({ currentUser: { uid: OWNER, getIdToken: async () => 'synthetic' } } as never);
   record = undefined; methods = []; providerCalls = 0;
-  job = new DurableTurnJob({ read: async () => record && structuredClone(record), write: async (value) => { record = structuredClone(value); }, alarmAt: async () => {} });
+  job = new DurableTurnJob({ read: async () => record && structuredClone(record), write: async (value) => { record = structuredClone(value); }, alarmAt: async () => {}, remove: async () => { record = undefined; } });
   vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     if (!String(url).includes('/weekly-planning/turns')) return Response.json({ ok: true });
     methods.push(init?.method ?? 'GET');

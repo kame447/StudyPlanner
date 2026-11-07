@@ -56,7 +56,7 @@ it('ordinary durable turn also completes through the real client/job/view withou
   let record: DurableTurnRecord | undefined;
   let providerCalls = 0;
   const job = new DurableTurnJob({ read: async () => record && structuredClone(record),
-    write: async value => { record = structuredClone(value); }, alarmAt: async () => {} });
+    write: async value => { record = structuredClone(value); }, alarmAt: async () => {}, remove: async () => { record = undefined; } });
   const transport = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     if (!String(url).includes('/weekly-planning/turns')) return Response.json({ ok: true });
     expect(init?.method).toBe('POST');
@@ -93,7 +93,7 @@ it.each([false, true])('persists a real D5 selected continuation through view co
   const execute = vi.spyOn(weeklyPlanningTurnRuntimeGateway, 'execute'); // Call through; providers only are synthetic.
   let record: DurableTurnRecord | undefined;
   const job = new DurableTurnJob({ read: async () => record && structuredClone(record),
-    write: async value => { record = structuredClone(value); }, alarmAt: async () => {} });
+    write: async value => { record = structuredClone(value); }, alarmAt: async () => {}, remove: async () => { record = undefined; } });
   const transport = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body));
     if (String(url).includes('/weekly-planning/turns')) {

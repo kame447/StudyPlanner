@@ -53,5 +53,7 @@ export function createDurableTurnStorage(storage: DurableObjectStorage): Durable
       });
     },
     async alarmAt(timestamp) { await storage.setAlarm(timestamp); },
+    // Only this job's own keys: nothing else in the Durable Object storage is touched.
+    async remove() { await storage.delete(keys); },
   };
 }
