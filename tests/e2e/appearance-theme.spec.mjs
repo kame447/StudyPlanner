@@ -102,7 +102,11 @@ for (const mode of ['ライト', 'ダーク']) test(`dot appearance follows all 
     if (await disclosure.getAttribute('aria-expanded') !== 'true') await disclosure.click();
     await page.getByRole('button', { name: palette, exact: true }).click();
     await expect(page.getByRole('button', { name: 'ミニマル', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await page.getByRole('button', { name: '戻る', exact: true }).click(); await fontSettled(page);
+    await page.getByRole('button', { name: '戻る', exact: true }).click();
+    // Back closes settings through history/popstate; the retained home is hidden until then.
+    await expect(page.getByRole('main', { name: 'アプリ設定' })).toBeHidden();
+    await expect(page.locator('.home-start-button')).toBeVisible();
+    await fontSettled(page);
     const measured = await page.evaluate(() => {
       const button = document.querySelector('.home-start-button'), hero = document.querySelector('.home-next-card');
       const style = getComputedStyle(button), decor = getComputedStyle(hero, '::after');

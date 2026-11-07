@@ -6,6 +6,7 @@
 import { WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION } from '../weeklyPlanningVNextV5Boundary';
 import type { PlanningDraftGenerationIntent, WeeklyPlanningFactGraphV5 } from '../weeklyPlanningVNextV5Boundary';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPlanningFactGraphValidatorV5';
+import { isVNextPlanningWindowYearBasis } from '../weeklyPlanningVNextPlanningWindowYear';
 import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { frozenGroundingRange } from '../../application/weeklyPlanningTemporalContext';
 import type { WeeklyPlanningGroundingRecord } from '../../intake/weeklyPlanningIntakeTypes';
@@ -123,6 +124,7 @@ function validState(value: unknown, conversationId: string): value is WeeklyPlan
     || !Array.isArray(value.workRelations) || !Array.isArray(value.deferrals)) return false;
   const graph = value.graph as unknown as WeeklyPlanningVNextState['graph'];
   if (!validateWeeklyPlanningFactGraphValueV5(graph).graph) return false;
+  if (graph.planningWindows.some(window => window.yearBasis !== undefined && !isVNextPlanningWindowYearBasis(window.yearBasis, true))) return false;
   // Expand the reader before any producer emits this state (#868). Local/unknown/wrong-kind
   // references cannot become registration authority; the graph retains superseded fact identity.
   const pendingTargets = value.pendingEventRegistrationTargetIds;

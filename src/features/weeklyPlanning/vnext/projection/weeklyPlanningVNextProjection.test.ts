@@ -306,6 +306,7 @@ describe('projectWeeklyPlanningVNext', () => {
       let state = withTask([page('r', 'remaining', 10)]);
       state = turn(state, { patch: [{ kind: 'task', localId: 'renamed', targetFactId: taskId(state), changes: { category: null, title: '新しい名前' } }] });
       const [question] = projectWeeklyPlanningVNext(state).questions;
+      if (question.code !== 'missing_effort_estimate') throw new Error('Expected an effort question after the task rename');
       state = turn(state, { add: [{ ...total(state, 'answer', question.forWork!.definingFactId, 60), taskRef: { factId: question.taskId } }] });
       expect(minutesOf(state)).toEqual([60]);
     });
@@ -334,6 +335,7 @@ describe('projectWeeklyPlanningVNext', () => {
       let state = withTask([W('c', 'completed', 20, 'custom', '%')]);
       state = turn(state, { patch: [{ kind: 'task', localId: 'renamed', targetFactId: taskId(state), changes: { category: null, title: '別名' } }] });
       const [question] = projectWeeklyPlanningVNext(state).questions;
+      if (question.code !== 'missing_effort_estimate') throw new Error('Expected an effort question after the task rename');
       state = turn(state, { add: [{ ...total(state, 'answer', '', 60), taskRef: { factId: question.taskId }, targetRef: { workLineageId: question.forWork!.workLineageId } }] });
       expect(minutesOf(state)).toEqual([60]);
     });

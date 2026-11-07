@@ -32,7 +32,7 @@ const work = (localId: string, taskLocalId: string, amount = 60, perOccurrence =
   amount, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence, periodExpression: null,
 });
 const window = (localId: string, start: string, end: string): VNextAddFact => ({
-  kind: 'planning_window', localId, windowKind: 'absolute', value: `${start}/${end}`, start, end,
+  kind: 'planning_window', localId, yearBasis: null, windowKind: 'absolute', value: `${start}/${end}`, start, end,
 });
 
 type ScriptStep = VNextTurnDelta | ((input: WeeklyPlanningVNextInterpretationInput) => VNextTurnDelta);
@@ -142,7 +142,7 @@ describe('V5 scheduling regressions through VNext transaction, session, and Stab
         planningEndDate: '2026-11-07', weekStartsOn: 'sunday' },
     };
     const h = harness([{ ...emptyDelta(), add: [task('english', '英語の音読'), work('reading', 'english'), {
-      kind: 'planning_window', localId: 'next-week', windowKind: 'relative_week', value: 'next_week', start: null, end: null,
+      kind: 'planning_window', localId: 'next-week', yearBasis: null, windowKind: 'relative_week', value: 'next_week', start: null, end: null,
     }] }], sundayScope);
     const result = await h.turn('next-week', '来週の計画');
     expect(result).toMatchObject({ outcome: 'applied', readiness: 'ready' });
@@ -193,11 +193,11 @@ describe('V5 scheduling regressions through VNext transaction, session, and Stab
   it('resolves and corrects a relative planning window through the session horizon', async () => {
     await applyCorrectSaveAndReload({
       initial: { ...emptyDelta(), add: [task('english', '英語の音読'), work('reading', 'english'), {
-        kind: 'planning_window', localId: 'window', windowKind: 'relative_week', value: 'next_week', start: null, end: null,
+        kind: 'planning_window', localId: 'window', yearBasis: null, windowKind: 'relative_week', value: 'next_week', start: null, end: null,
       }] },
       correction: input => ({ ...emptyDelta(), patch: [{ kind: 'planning_window', localId: 'move-window',
         targetFactId: input.state.graph.planningWindows[0].id,
-        changes: { windowKind: 'absolute', value: '2026-11-16/2026-11-22', start: '2026-11-16', end: '2026-11-22' },
+        changes: { yearBasis: null, windowKind: 'absolute', value: '2026-11-16/2026-11-22', start: '2026-11-16', end: '2026-11-22' },
       }] }),
       checkInitialPreview: blocks => expect(dates(blocks)).toEqual(['2026-11-09']),
       checkCorrectedPreview: blocks => expect(dates(blocks)).toEqual(['2026-11-16']),

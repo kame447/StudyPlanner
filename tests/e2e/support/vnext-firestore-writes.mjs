@@ -16,12 +16,9 @@ export const NO_WRITE_PHASE = 'none';
 //    weeklyPlanningApprovalFirestoreRepository.ts:203-207 (saveApprovedPlan), :297-305 (completeOperation); collections :38-40, plan ref :94-107.
 //    Everything else the transaction touches is only READ and reaches the wire as a verify: the operation, item, migration and plan
 //    documents (:170-188 saveApprovedPlan reads, :232-250 completeOperation reads).
-//  sweep, cleanup: 「予定を削除」 on the day view is the product's occurrence CANCELLATION, not a delete: the plan is kept with the day added to
-//    its excludedDates and a new updatedAt (domain/dayOccurrenceCancellation.ts:44-50), written by
-//    applyRecurringPlanMutation({ planUpserts: [plan] }) (hooks/usePlannerDataState.ts:1086) as one writeBatch `set` of the plan:
-//    `schedule_events` on a canonical account (firebaseScheduleEventAuthority.ts:544-607, set op :366-372), `plans` on a legacy one
-//    (firebasePlannerRepository.ts:441). Exactly one update of one of those collections per removed block; no delete, actuals,
-//    todos or migration write (whole-plan deletePlanWithDependents is not reachable from the one-off dialog, DayView.tsx:544).
+//  sweep, cleanup: recurring occurrence cancellation retains its update allow-list. Ordinary one-off cleanup (#967) deletes
+//    its canonical source instead. That delete is allowed only while the helper has checked the one-off menu and named the
+//    exact source id from that block's occurrence identity. No actuals, todos, migration or other source is authorized.
 const APPROVAL_DOCUMENTS = ['plans', 'schedule_events', 'weekly_planning_approval_operations', 'weekly_planning_approval_items'];
 //  save-actuals: the confirmed study-record save (#973, DESIGN-DECISION.md 5): ONE writeBatch of `actuals/{deterministic id}` documents, one
 //    `update` operation per record and nothing else (no plan, schedule event, approval or other collection). A transaction that reads the
@@ -39,11 +36,17 @@ function permitted(write) {
   if (write.phase === NO_WRITE_PHASE) return false;
   const list = PHASE_ALLOWLISTS[write.phase];
   if (!list || write.classification !== 'forbidden' || !write.operations?.length) return false; // unclassified, unknown phase, no per-write detail
+  if (write.operations.some(({ kind }) => kind === 'delete')) {
+    return ['sweep', 'cleanup'].includes(write.phase) && write.operations.length === 1
+      && write.operations[0].kind === 'delete' && write.operations[0].collection === 'schedule_events'
+      && write.operations[0].targetMatched === true;
+  }
   return write.operations.every(({ kind, collection }) => list[kind]?.includes(collection));
 }
 
 export function createWriteLedger() {
   let phase = NO_WRITE_PHASE;
+  let deletionTarget = null; // scoped equality input, never retained in the ledger
   const writes = [];
   return {
     get phase() { return phase; },
@@ -54,6 +57,15 @@ export function createWriteLedger() {
       phase = name;
       try { return await body(); } finally { phase = previous; }
     },
+    /** Only the explicit cleanup of one checked one-off block may authorize its source deletion. */
+    async withPlanDeletion(planId, body) {
+      if (!['sweep', 'cleanup'].includes(phase) || typeof planId !== 'string' || !planId || planId.includes('/')) {
+        throw new Error('Plan deletion needs a cleanup/sweep phase and one source id.');
+      }
+      const previous = deletionTarget;
+      deletionTarget = `schedule_events/plan:${planId}`;
+      try { return await body(); } finally { deletionTarget = previous; }
+    },
     record({ url, method, postData }) {
       let parsed;
       try { parsed = new URL(url); } catch { return null; }
@@ -62,7 +74,9 @@ export function createWriteLedger() {
       parsed.hostname = PRODUCTION_HOST; // same path shapes on the emulator; the classifier only knows the production host
       parsed.port = '';
       parsed.protocol = 'https:';
-      const write = classifyFirestoreWrite({ url: parsed.toString(), method, postData }, { withOperations: true });
+      const write = classifyFirestoreWrite({ url: parsed.toString(), method, postData }, { withOperations: true,
+        ...(deletionTarget ? { matchesDocument: name => name.slice(name.indexOf('/documents/') + '/documents/'.length) === deletionTarget } : {}),
+      });
       if (!write) return null;
       const entry = { phase, ...write };
       writes.push(entry);
@@ -92,6 +106,18 @@ export function cancellationCommitProblems(commits, removed) {
   if (commits.length !== removed) problems.push(`expected ${removed} cancellation commit(s), saw ${commits.length}`);
   commits.forEach((commit, index) => {
     if (commit.operations?.length !== 1) problems.push(`commit ${index} has ${commit.operations?.length ?? 'unknown'} operations, expected 1`);
+  });
+  return problems;
+}
+
+/** One exact, authorized canonical source delete per observed removed one-off block. */
+export function planDeletionCommitProblems(commits, removed) {
+  const problems = [];
+  if (commits.length !== removed) problems.push(`expected ${removed} deletion commit(s), saw ${commits.length}`);
+  commits.forEach((commit, index) => {
+    const operations = commit.operations ?? [];
+    if (operations.length !== 1 || operations[0].kind !== 'delete' || operations[0].collection !== 'schedule_events'
+      || operations[0].targetMatched !== true) problems.push(`commit ${index} is not one authorized source delete`);
   });
   return problems;
 }

@@ -93,7 +93,7 @@ export function redactedWriteObservation(value) {
 }
 
 /** Decode the Firebase SDK's sendRawJson WebChannel form or a REST JSON WriteRequest. */
-export function classifyFirestoreWrite({ url: rawUrl, method, postData }, { withOperations = false } = {}) {
+export function classifyFirestoreWrite({ url: rawUrl, method, postData }, { withOperations = false, matchesDocument = null } = {}) {
   const url = new URL(rawUrl);
   if (url.hostname !== 'firestore.googleapis.com') return null;
   const channel = url.pathname.endsWith('/google.firestore.v1.Firestore/Write/channel');
@@ -108,9 +108,11 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }, { with
   // Opt-in (`withOperations`) so every existing caller's result shape is unchanged.
   const result = (classification, collections = []) => ({
     ...redactedWriteObservation({ transport, classification, collections, operationKinds }),
-    ...(withOperations ? { operations: operations.map(({ kind, collection }) => ({
+    ...(withOperations ? { operations: operations.map(({ kind, collection, targetMatched }) => ({
       kind: ['update', 'delete', 'transform', 'verify'].includes(kind) ? kind : 'unknown',
       collection: KNOWN_COLLECTIONS.has(collection) ? collection : 'unknown_collection',
+      // Opt-in equality evidence only; document names/ids never enter the observation.
+      ...(matchesDocument ? { targetMatched: targetMatched === true && !malformed } : {}),
     })) } : {}),
   });
   const unknown = (collections = []) => result('unclassified', collections);
@@ -125,7 +127,8 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }, { with
     if (!parts || parts.length < 2 || parts.length % 2 || parts.some(part => !part)) { malformed = true; return; }
     const collectionNames = parts.filter((_, index) => index % 2 === 0);
     destination.push(collectionNames);
-    operations.push({ kind: currentKind, collection: collectionNames[collectionNames.length - 1] });
+    operations.push({ kind: currentKind, collection: collectionNames[collectionNames.length - 1],
+      ...(matchesDocument ? { targetMatched: matchesDocument(name) === true } : {}) });
   };
   const envelope = message => {
     if (!message || typeof message !== 'object' || Array.isArray(message)

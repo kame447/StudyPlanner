@@ -65,6 +65,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
+    { name: 'emulator-conversation-sync-setup', testMatch: 'emulator/account.setup.mjs',
+      metadata: { email: 'e2e-conversation-sync@example.test', statePath: path.join(repoRoot, 'artifacts/conversation-sync-account.json') },
+      use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium-emulator-conversation-sync', testMatch: 'emulator/conversation-sync.emulator.mjs',
+      dependencies: ['emulator-conversation-sync-setup'],
+      use: { ...devices['Desktop Chrome'], storageState: path.join(repoRoot, 'artifacts/conversation-sync-account.json') } },
     { name: 'emulator-account-setup', testMatch: 'emulator/account.setup.mjs', use: { ...devices['Desktop Chrome'] } },
     {
       name: 'chromium-emulator-account',

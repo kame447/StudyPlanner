@@ -1,3 +1,4 @@
+import { sweepExpiredConversations } from './weeklyPlanningConversationRetention';
 import { handleDurableTurnApi, isDurableTurnPath, type DurableTurnApiEnv } from './durableTurns/durableTurnApi';
 export { WeeklyPlanningTurnDurableObject } from './durableTurns/weeklyPlanningTurnDurableObject';
 import { handleInquiryAttachmentApi, isInquiryAttachmentPath, type InquiryAttachmentEnv } from './inquiryAttachmentApi';
@@ -232,6 +233,7 @@ async function runScheduledObservabilityMaintenance(
     case 'retention':
       await runScheduledObservabilityRetention(env, firestore);
       await sweepExpiredAccountDeletions(firestore);
+      await sweepExpiredConversations(firestore);
       return;
     case 'trace_retention':
       await runScheduledObservabilityRetention(

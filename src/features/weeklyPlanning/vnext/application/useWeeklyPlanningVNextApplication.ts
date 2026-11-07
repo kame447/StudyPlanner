@@ -1,3 +1,5 @@
+import { useWeeklyPlanningConversationSync, type ConversationSyncDependencies } from '../sync/useWeeklyPlanningConversationSync';
+import { isFirebaseEnabled } from '../../../../lib/firebaseConfig';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { WeeklyPlanningApplication, UseWeeklyPlanningApplicationInput } from '../../application/useWeeklyPlanningApplication';
 import { weeklyPlanningReducer, createInitialPlanningState } from '../../weeklyPlanningReducer';
@@ -29,6 +31,7 @@ import type { ActualSaveIntentRecord, ActualSaveReadbackClassification } from '.
 import { createWeeklyPlanningApplicationRequestId } from '../../application/weeklyPlanningApplicationIdentity';
 
 export interface WeeklyPlanningVNextLocalApplicationServices {
+  conversationSync?: (ownerId: string, alive: () => boolean) => Promise<ConversationSyncDependencies | null>;
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
   /** Loads the heavy runtime behind `client`, `interpret` and `createRenderer` before they are called. */
   preload?: () => Promise<void>;
@@ -45,7 +48,14 @@ function localServices(): WeeklyPlanningVNextLocalApplicationServices {
   const loaded = () => { if (!runtime) throw new Error('The VNext runtime is not loaded.'); return runtime; };
   // Resolve storage per operation so an absent or throwing localStorage (private mode, blocked
   // site data) surfaces inside the hook's guarded reads and writes, as it does for V5's stores.
-  return { storage: { getItem: key => window.localStorage.getItem(key),
+  // In local-only mode there is no remote conversation authority. Do not advertise
+  // a temporary sync-checking state: its asynchronous disabling render could revoke
+  // a legitimate turn while the existing VNext runtime is preparing it.
+  const sync = isFirebaseEnabled() ? { conversationSync: async (ownerId: string, alive: () => boolean) => {
+    const { createConversationSyncBrowser } = await import('../sync/weeklyPlanningConversationSyncBrowser');
+    return createConversationSyncBrowser(ownerId, alive);
+  } } : {};
+  return { ...sync, storage: { getItem: key => window.localStorage.getItem(key),
       setItem: (key, value) => window.localStorage.setItem(key, value),
       removeItem: key => window.localStorage.removeItem(key) },
     preload: async () => { runtime = (await loadWeeklyPlanningVNextRuntimeModule()).weeklyPlanningVNextRuntimeFactories; },
@@ -74,12 +84,18 @@ export function useWeeklyPlanningVNextApplication(
   const { weekStartsOn } = useWeeklyPlanningPersonalization();
   const ownerId = input.userId?.trim() || 'anonymous';
   const week = startOfWeeklyPlanningWeek(input.selectedDate, weekStartsOn);
-  const services = useMemo(() => providedServices ?? localServices(), [providedServices]);
+  const lastSelectedWeek = useRef(week);
+  useLayoutEffect(() => { lastSelectedWeek.current = week; }, [week]);
+  const baseServices = useMemo(() => providedServices ?? localServices(), [providedServices]);
+  const cloud = useWeeklyPlanningConversationSync(ownerId, baseServices);
+  const services = useMemo(() => cloud.storage ? { ...baseServices, storage: cloud.storage } : baseServices,
+    [baseServices, cloud.storage, cloud.epoch]);
   const [revision, redraw] = useState(0);
   const recoveringDurableRequest = useRef<string | null>(null);
   // A confirmation click is the only save authority for study records; the in-flight flag prevents a
   // second click while the first batch is still running (#973).
   const actualRecordsInFlight = useRef(false);
+  const actualSyncPreflight = useRef(false);
   const actualReadbackInFlight = useRef(false);
   const savingActualRecordIds = useRef<ReadonlySet<string>>(new Set());
   const [savedActualMinutes, setSavedActualMinutes] = useState<ReadonlyMap<string, number>>(() => new Map());
@@ -93,7 +109,7 @@ export function useWeeklyPlanningVNextApplication(
     let ready = true;
     try { loaded = hasStoredAiPlanningChatIndex(ownerId)
       ? { state: createInitialPlanningState(week), conversationId: 'uninitialized-vnext' } : local.load(); } catch { ready = false; loaded = { state: createInitialPlanningState(week), conversationId: 'unreadable-vnext' }; }
-    return { local, ready, state: loaded.state,
+    return { local, ready, state: loaded.state, followSelectedWeek: lastSelectedWeek.current !== week,
       session: createWeeklyPlanningControllerSession(ownerId, week, loaded.conversationId),
       operations: loadWeeklyPlanningApprovalOperations(ownerId) };
   }, [ownerId, week, services]);
@@ -103,7 +119,7 @@ export function useWeeklyPlanningVNextApplication(
     active.current = runtime; committedInput.current = input;
     return () => { if (active.current === runtime) active.current = null; committedInput.current = null; };
   }, [runtime, input]);
-  const current = () => active.current === runtime && runtime.ready;
+  const current = () => active.current === runtime && runtime.ready && cloud.permitsEditing();
   const getState = () => runtime.state;
   function dispatch(action: WeeklyPlanningAction): PlanningState {
     if (!current()) return runtime.state;
@@ -160,6 +176,7 @@ export function useWeeklyPlanningVNextApplication(
   const chat = useMemo(() => createAiPlanningChatSessionWithStore<Snapshot>(ownerId, {
     isCurrent: () => active.current === runtime,
     isBusy: () => Boolean(runtime.state.pendingTurn || runtime.state.pendingApproval),
+    canNavigate: () => cloud.permitsEditing() && !actualRecordsInFlight.current && !actualReadbackInFlight.current,
     isApplicationStateReady: () => runtime.ready,
     exportSnapshot: includeEmpty => {
       const state = runtime.state;
@@ -184,7 +201,9 @@ export function useWeeklyPlanningVNextApplication(
       if (!record.weekStartDate) return null;
       // Opening this runtime follows the selected week (as V5's per-week slot does); selecting
       // another chat later restores that chat's own last week.
-      const target = runtime.session.conversationId === 'uninitialized-vnext' ? week : record.weekStartDate;
+      const preferred = runtime.session.conversationId === 'uninitialized-vnext' ? week : record.weekStartDate;
+      const target = cloud.storage && !runtime.followSelectedWeek && !services.storage.getItem(`studyplanner.weeklyPlanning.vnext.${ownerId}.${preferred}.${record.id}.ui`)
+        ? record.weekStartDate : preferred;
       try {
         const local = localFor(record.id, target);
         const loaded = local.load();
@@ -209,9 +228,19 @@ export function useWeeklyPlanningVNextApplication(
       // Explicit chat deletion removes only VNext bytes. Legacy V5 snapshots stay read-only.
       const record = chat.index.chats.find(item => item.id === chatId);
       if (record?.weekStartDate) localFor(chatId, record.weekStartDate).clear();
+      cloud.deleted(chatId);
     },
   }), [runtime, ownerId, services]);
-  useLayoutEffect(() => { if (chat.initialize().status === 'saved') chat.checkpoint(); captureReadback(); }, [chat]);
+  useLayoutEffect(() => {
+    cloud.bind({ busy: () => Boolean(runtime.state.pendingTurn || runtime.state.pendingApproval
+      || actualRecordsInFlight.current || actualReadbackInFlight.current) }, services.storage);
+  }, [cloud, runtime, services]);
+  useLayoutEffect(() => {
+    // A migrated account must hydrate its IndexedDB replica before the old localStorage cache can act.
+    if (!cloud.storage && !cloud.permitsEditing()) return;
+    if (chat.initialize().status === 'saved') chat.checkpoint(); captureReadback();
+  }, [chat, cloud, cloud.storage]);
+  useEffect(() => { void cloud.observe(); }, [cloud, runtime, revision, runtime.state]);
   useEffect(() => {
     const candidate = readbackCandidate.current;
     if (!candidate || !services.readActualSave || !input.userId || !current() || runtime.local !== candidate.local) return;
@@ -287,11 +316,11 @@ export function useWeeklyPlanningVNextApplication(
   }, [chat, revision, services, input.userId]);
   // Same unsaved-chat warning as V5: a failed checkpoint write leaves the live state as the only copy.
   useEffect(() => {
-    if (!chat.dirty || typeof window === 'undefined' || !window.addEventListener) return;
+    if ((!chat.dirty && !cloud.unpersisted) || typeof window === 'undefined' || !window.addEventListener) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [chat, revision]);
+  }, [chat, revision, cloud, cloud.unpersisted]);
   // A chat checkpoint, import or new chat replaces runtime.local; the gateway always uses the live one.
   const liveSession = useMemo(() => ({ get checkpoint() { return runtime.local.checkpoint; },
     get legacyV5Checkpoint() { return runtime.local.legacyV5Checkpoint; } }), [runtime]);
@@ -367,8 +396,14 @@ export function useWeeklyPlanningVNextApplication(
   const approveActualRecords = async () => {
     const records = pendingActualRecords;
     // Nothing to save, an owner that is not signed in, or a save already running: never write (no owner mismatch writes).
-    if (records.length === 0 || actualRecordsInFlight.current || actualReadbackInFlight.current
+    if (records.length === 0 || actualRecordsInFlight.current || actualReadbackInFlight.current || actualSyncPreflight.current
       || !input.userId || !input.saveWeeklyActualRecords || !current()) return;
+    if (cloud.storage && runtime.local.readActualSaveAttempt(runtime.session.conversationId) === null) {
+      const beforeSync = runtime.state;
+      actualSyncPreflight.current = true;
+      try { if (!await cloud.beforeApproval() || !current() || runtime.state !== beforeSync) return; }
+      finally { actualSyncPreflight.current = false; }
+    }
     const saveLocal = runtime.local;
     const saveConversationId = runtime.session.conversationId;
     const saveWeekStartDate = runtime.state.weekStartDate;
@@ -409,6 +444,13 @@ export function useWeeklyPlanningVNextApplication(
           role: 'assistant', content, createdAt: services.now() } });
       }
     };
+    // The exact attempt must be durable before a server write can begin.
+    if (cloud.storage) {
+      actualRecordsInFlight.current = true;
+      try { await cloud.persist(); }
+      catch (error) { actualRecordsInFlight.current = false; throw error; }
+      if (!current() || runtime.local !== saveLocal) { actualRecordsInFlight.current = false; return; }
+    }
     actualRecordsInFlight.current = true;
     savingActualRecordIds.current = new Set(records.map(record => record.id));
     redraw(value => value + 1);
@@ -486,8 +528,10 @@ export function useWeeklyPlanningVNextApplication(
     preflight: loadWeeklyPlanningVNextRuntimeModule,
   };
   const prepareTurn = () => prepareWeeklyPlanningTurn(preparationPorts);
-  return { registeredTargetsAvailable: true, chat, state: runtime.state, pendingDraftBlocks,
-    approvalAvailability: classifyWeeklyPlanningApprovalAvailability({ blocks: pendingDraftBlocks, userId: ownerId, resolveRuntime: runtime.local.resolveRuntime }),
+  return { registeredTargetsAvailable: true, conversationSync: cloud.ui, chat, state: runtime.state, pendingDraftBlocks,
+    approvalAvailability: cloud.permitsEditing()
+      ? classifyWeeklyPlanningApprovalAvailability({ blocks: pendingDraftBlocks, userId: ownerId, resolveRuntime: runtime.local.resolveRuntime })
+      : { kind: 'recompute_required', reason: 'state_revision_mismatch', message: '同期状態を確認してから承認してください。' },
     canEditDraftBlocks: current() && !runtime.state.pendingTurn && !runtime.state.pendingApproval && !runtime.state.approvalRecovery,
     plannerDataReady: plannerReady(),
     prepareTurn,
@@ -497,6 +541,7 @@ export function useWeeklyPlanningVNextApplication(
       return captured && chat.checkpoint().status === 'saved' ? { binding: captured, isCurrent: () => current() && runtime.state === state } : null;
     },
     submitTurn: async (userText, supplementalContext, selectedStarterTarget, machineBoundAnswer) => {
+      if (cloud.storage) { try { await cloud.persist(); } catch { return { accepted: false, draftCandidates: [] }; } }
       const start = { state: runtime.state, index: chat.index, binding: binding() };
       if (!input.userId || !current() || chat.requiresInitialization || runtime.state.approvalRecovery) return { accepted: false, draftCandidates: [] };
       // The same preparation and admission as V5: stale planner data is reported as such, the lazy runtime
@@ -510,7 +555,10 @@ export function useWeeklyPlanningVNextApplication(
         session: runtime.session, userText, supplementalContext, selectedStarterTarget, machineBoundAnswer,
         weekStartsOn, getState, dispatch, now: services.now,
         isPlannerDataSnapshotCurrent: plannerReady, isApplicationCurrent: current }, turnServices);
-      if (current()) chat.checkpoint();
+      if (current()) {
+        chat.checkpoint();
+        try { await cloud.persist(); } catch { /* Live reply remains visible with the unsaved warning. */ }
+      }
       return result;
     },
     cancelTurn: () => {
@@ -536,12 +584,17 @@ export function useWeeklyPlanningVNextApplication(
     clearDraftBlocks: () => { dispatch({ type: 'clear_draft_blocks' }); },
     pendingActualRecords,
     approveActualRecords,
-    approveDraftBlocks: () => approveWeeklyPlanningDraftBlocks({ ...input, userId: ownerId,
+    approveDraftBlocks: async () => {
+      const beforeSync = runtime.state;
+      if (cloud.storage && (!await cloud.beforeApproval() || !current() || runtime.state !== beforeSync)) return;
+      await approveWeeklyPlanningDraftBlocks({ ...input, userId: ownerId,
       featureSessionId: runtime.session.conversationId, plans: input.plans, getState, dispatch,
       resolveRuntime: runtime.local.resolveRuntime, approvalOperations: runtime.operations,
       onOperationCompleted: operation => {
         runtime.operations = [...runtime.operations.filter(item => item.approvalOperationId !== operation.approvalOperationId), operation];
         saveWeeklyPlanningApprovalOperations(ownerId, runtime.operations);
-      } }),
+      } });
+      try { await cloud.persist(); } catch { /* Saving a Plan and synchronizing its UI receipt are distinct. */ }
+    },
   };
 }

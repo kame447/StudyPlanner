@@ -768,6 +768,8 @@ export class FirestoreServiceAccountClient {
 
   async queryDocumentsAfter(params: {
     collection: string;
+    allDescendants?: boolean;
+    booleanFilter?: { field: string; value: boolean };
     orderByField: string;
     filters?: Array<{ field: string; value: string }>;
     cursor?: FirestoreOrderedCursor | null;
@@ -776,13 +778,17 @@ export class FirestoreServiceAccountClient {
     endAtTimestamp?: string;
     endAtString?: string;
   }): Promise<FirestoreOrderedDocument[]> {
-    const where = equalityWhere(params.filters ?? []);
+    const equalities = equalityWhere(params.filters ?? []);
+    const booleanFilter = params.booleanFilter ? { fieldFilter: { field: { fieldPath: params.booleanFilter.field },
+      op: 'EQUAL', value: { booleanValue: params.booleanFilter.value } } } : undefined;
+    const where = equalities && booleanFilter ? { compositeFilter: { op: 'AND', filters: [equalities, booleanFilter] } }
+      : equalities ?? booleanFilter;
     const direction = params.direction ?? 'ASCENDING';
     const response = await this.request(`${this.documentsBase()}:runQuery`, {
       method: 'POST',
       body: JSON.stringify({
         structuredQuery: {
-          from: [{ collectionId: params.collection }],
+          from: [{ collectionId: params.collection, ...(params.allDescendants ? { allDescendants: true } : {}) }],
           ...(where ? { where } : {}),
           orderBy: [
             { field: { fieldPath: params.orderByField }, direction },

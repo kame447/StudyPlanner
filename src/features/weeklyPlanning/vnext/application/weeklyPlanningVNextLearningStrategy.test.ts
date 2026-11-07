@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { VNextAddFact, VNextTurnDelta, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
+import type { VNextAddWorkload, VNextTurnDelta, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import type { WeeklyPlanningVNextInterpretedAnswer } from '../weeklyPlanningVNextInterpretationContract';
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
@@ -18,7 +18,7 @@ const context = { ownerId: 'owner', currentDate: '2026-11-02', planningStartDate
 const horizon = { startDate: context.planningStartDate, endDate: context.planningEndDate };
 const clock = { ...context, weekStartsOn: 'monday' as const, defaultPlanningHorizon: horizon };
 const empty = (): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
-const work: VNextAddFact = { kind: 'workload', localId: 'w', taskRef: { localId: 't' }, componentRef: null,
+const work: VNextAddWorkload = { kind: 'workload', localId: 'w', taskRef: { localId: 't' }, componentRef: null,
   quantityRole: 'target', amount: 100, unitCode: 'custom', unitLabel: '項目', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null };
 function apply(state: WeeklyPlanningVNextState, delta: VNextTurnDelta, observedMemoryPace?: Readonly<Record<string, number>>) {
   const result = applyWeeklyPlanningVNextTurn(state, delta, { expectedRevision: state.graph.revision,
@@ -53,7 +53,74 @@ function compile(state: WeeklyPlanningVNextState, multiplier?: number, pace?: Re
   return result.compilation;
 }
 
+function memoryWeek(completed: number, activityKind: 'memorization_retrieval' | 'problem_solving' = 'memorization_retrieval') {
+  return apply(createEmptyWeeklyPlanningVNextState(), { ...empty(), add: [
+    { kind: 'task', localId: 't', category: 'study', title: '英単語' },
+    { kind: 'study_context', localId: 'study', taskRef: { localId: 't' }, purpose: 'self_study', contextLabel: '英語', activityKind },
+    { ...work, quantityRole: 'scope_total', unitCode: 'word', unitLabel: '語' },
+    { ...work, localId: 'done', quantityRole: 'completed', amount: completed, unitCode: 'word', unitLabel: '語' },
+    { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+    { ...work, localId: 'math-time', taskRef: { localId: 'math' }, quantityRole: 'remaining', amount: 60, unitCode: 'minute', unitLabel: '分' },
+  ] });
+}
+
 describe('VNext learning strategy adapters use V5 policy', () => {
+  it.each(['memorization_retrieval', 'problem_solving'] as const)('keeps fully completed %s work out of method questions while the other subject stays ready', activity => {
+    const state = memoryWeek(100, activity);
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(state.graph.workloads.map(fact => fact.amount)).toEqual([100, 100, 60]);
+    expect(projection.owners[0]).toMatchObject({ status: 'nothing_to_schedule', work: [] });
+    expect(projection.owners[1]).toMatchObject({ status: 'ready', work: [{ minutes: 60 }] });
+    expect(projection.questions).toEqual([]);
+    expect(state.learningStrategyProposalRecords).toEqual([]);
+    expect(compile(state).input!.movableWorkItems).toEqual([expect.objectContaining({
+      taskId: state.graph.tasks[1].id, estimatedMinutes: 60,
+    })]);
+  });
+
+  it.each(['pending', 'accepted'] as const)('retains %s method history when the remaining amount reaches zero', status => {
+    let state = memoryWeek(40);
+    if (status === 'accepted') state = decide(state, 'accept');
+    const records = structuredClone(state.learningStrategyProposalRecords);
+    const completedId = state.graph.workloads.find(fact => fact.quantityRole === 'completed')!.id;
+    state = apply(state, { ...empty(), patch: [{ kind: 'workload', localId: 'all-done', targetFactId: completedId,
+      changes: { amount: 100, unitCode: null, unitLabel: null, quantityRole: null,
+        rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null }, amountDelta: null }] });
+    expect(state.learningStrategyProposalRecords).toEqual(records);
+    expect(projectWeeklyPlanningVNext(state).questions).toEqual([]);
+    expect(projectWeeklyPlanningVNext(state).owners[0]).toMatchObject({ status: 'nothing_to_schedule', work: [] });
+    expect(compile(state).input!.movableWorkItems).toEqual([expect.objectContaining({ estimatedMinutes: 60 })]);
+    const raw = serializeWeeklyPlanningVNextSessionCheckpoint({ ownerId: 'owner', weekStartDate: context.currentDate,
+      conversationId: 'c', savedAt: '2026-11-02T09:00:00Z', vnext: { state, presentedQuestion: null, preview: null, messages: [] } })!;
+    const restored = parseWeeklyPlanningVNextSessionCheckpoint({ raw, ownerId: 'owner', weekStartDate: context.currentDate })!.vnext.state;
+    expect(restored.learningStrategyProposalRecords).toEqual(records);
+    expect(projectWeeklyPlanningVNext(restored).questions).toEqual([]);
+    if (status === 'pending') {
+      const currentId = state.graph.factLifecycles.find(fact => fact.factId === completedId)!.supersededByFactId!;
+      const reopened = apply(restored, { ...empty(), patch: [{ kind: 'workload', localId: 'correct-progress', targetFactId: currentId,
+        changes: { amount: 40, unitCode: null, unitLabel: null, quantityRole: null,
+          rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null }, amountDelta: null }] });
+      expect(reopened.learningStrategyProposalRecords).toEqual(records);
+      expect(projectWeeklyPlanningVNext(reopened).questions[0]).toMatchObject({ code: 'learning_strategy_proposal', proposal: { id: records[0].id } });
+    }
+  });
+
+  it('keeps the method question on an unfinished component when another component is complete', () => {
+    const state = apply(createEmptyWeeklyPlanningVNextState(), { ...empty(), add: [
+      { kind: 'task', localId: 't', category: 'study', title: '英単語' },
+      { kind: 'study_context', localId: 'study', taskRef: { localId: 't' }, purpose: 'self_study', contextLabel: null, activityKind: 'memorization_retrieval' },
+      { kind: 'component', localId: 'finished', taskRef: { localId: 't' }, parentComponentRef: null, role: 'chapter', label: '完了した章' },
+      { kind: 'component', localId: 'unfinished', taskRef: { localId: 't' }, parentComponentRef: null, role: 'chapter', label: '未完了の章' },
+      { ...work, quantityRole: 'scope_total', componentRef: { localId: 'finished' } },
+      { ...work, localId: 'done', quantityRole: 'completed', componentRef: { localId: 'finished' } },
+      { ...work, localId: 'next', amount: 50, componentRef: { localId: 'unfinished' } },
+    ] });
+    const next = state.graph.workloads.find(fact => fact.amount === 50)!;
+    expect(state.learningStrategyProposalRecords).toEqual([expect.objectContaining({ workloadFactId: next.id })]);
+    expect(projectWeeklyPlanningVNext(state).questions[0]).toMatchObject({ code: 'learning_strategy_proposal', componentId: next.componentId });
+    expect(projectWeeklyPlanningVNext(state).owners.find(owner => owner.componentId !== next.componentId)).toMatchObject({ status: 'nothing_to_schedule' });
+  });
+
   it('proposes spaced memory practice from stated activity, never from a unit label', () => {
     const state = seed();
     expect(state.learningStrategyProposalRecords).toEqual([expect.objectContaining({ kind: 'spaced_memory_practice', status: 'pending',

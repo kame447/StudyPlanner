@@ -72,6 +72,9 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async applyRecurringPlanMutation() {
       throw createConfigurationError();
     },
+    async deletePlanRetainingActuals() {
+      throw createConfigurationError();
+    },
     async deletePlanWithDependents() {
       throw createConfigurationError();
     },

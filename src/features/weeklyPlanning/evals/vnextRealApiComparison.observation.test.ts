@@ -75,6 +75,8 @@ import type {
   RealApiWorkloadOracle,
 } from './vnextRealApiConversations';
 import { vnextRealApiConversations } from './vnextRealApiConversations';
+import { compareRealApiDateMeaning } from './vnextRealApiDateOracle';
+import { createWeeklyPlanningTurnRequestContext } from '../application/weeklyPlanningTemporalContext';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const outputDir = process.env.WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR ?? 'artifacts/issue156-real-api';
@@ -409,6 +411,17 @@ function matchOracleWorkloads(observed: readonly ObservedWorkload[], oracle: Rea
   const candidates = [oracle.workloads, ...(oracle.workloadAlternatives ?? [])];
   const matches = candidates.map((candidate) => matchWorkloads(observed, candidate));
   return matches.find((match) => match.matched) ?? matches[0];
+}
+
+function compareAcceptedDateMeaning(graph: WeeklyPlanningFactGraphV5, conversation: RealApiConversation, oracle: RealApiTurnOracle): string[] {
+  if (!oracle.dateMeaning) return [];
+  const clock = clockFor(conversation);
+  const taskIdsByKey = new Map<string, string>();
+  for (const [expected, actual] of matchOracleWorkloads(observedFacts(graph).workloads, oracle).pairs) {
+    if (actual) taskIdsByKey.set(expected.task, actual.taskId);
+  }
+  return compareRealApiDateMeaning({ graph, oracle: oracle.dateMeaning, taskIdsByKey,
+    requestContext: createWeeklyPlanningTurnRequestContext({ startedAtIso: `${clock.currentDate}T00:00:00.000Z`, timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' }) });
 }
 
 function effortMatchesOracle(
@@ -868,6 +881,7 @@ async function runV5Conversation(conversation: RealApiConversation): Promise<Con
     if (questionSignature !== null && questionSignature === previousQuestionSignature && !fixtureTurn.oracle.preservePreviousTypedState) repeatedQuestionCount += 1;
     const preview = graph ? previewMinutes(graph, conversation) : { status: 'no_graph', minutes: null, workMinutes: null, workEstimateBases: [] };
     const oracleDifferences = error ? [error] : graph ? compareTypedOracle(facts, currentQuestion, preview.workMinutes, fixtureTurn.oracle, [], preview.workEstimateBases) : ['typed state unavailable'];
+    if (graph) oracleDifferences.push(...compareAcceptedDateMeaning(graph, conversation, fixtureTurn.oracle));
     oracleDifferences.push(...compareBusyIntervalOracle(fixtureTurn.oracle.fixedEventRegistration, busyConstraints));
     oracleDifferences.push(...compareOptionalInvitationOracle(fixtureTurn.oracle.optionalInvitation, {
       optionalInvitationKind, conversationActKinds, communicationStatusReason, optionalInvitationClosed,
@@ -1071,7 +1085,7 @@ async function runVNextConversation(
       const workQuestion = observedQuestion ?? (fixtureTurn.oracle.allowQuestionDeferral
         ? projection.deferredQuestions.find(({ code }) => code === fixtureTurn.oracle.questionCode) : undefined);
       const askedWork = workQuestion?.forWork;
-      questionForWork = askedWork ? {
+      questionForWork = workQuestion?.taskId && askedWork ? {
         taskId: workQuestion!.taskId,
         amount: askedWork.amount,
         unitCode: askedWork.unitCode,
@@ -1104,6 +1118,7 @@ async function runVNextConversation(
         ? (interpretation.conversationActs ?? []).map(act => act.kind) : [];
       const communicationStatusReason = rendererCommunicationStatusReason;
       const optionalInvitationClosed = state.optionalInvitationClosed;
+      differences.push(...compareAcceptedDateMeaning(state.graph, conversation, fixtureTurn.oracle));
       differences.push(...compareOptionalInvitationOracle(fixtureTurn.oracle.optionalInvitation, {
         optionalInvitationKind, conversationActKinds, communicationStatusReason, optionalInvitationClosed,
         finalCandidateCount: finalCandidates.length, saveWritesBeforeApproval,
@@ -1406,7 +1421,7 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     const conversation = vnextRealApiConversations.find(({ id }) => id === 'optional-invitation-busy-decline-reopen')!;
     const emptyDelta: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
     const busyDelta: VNextTurnDelta = { ...emptyDelta, add: [{
-      kind: 'planning_window', localId: 'week-window', windowKind: 'absolute', value: '2026-11-02/2026-11-08',
+      kind: 'planning_window', localId: 'week-window', yearBasis: null, windowKind: 'absolute', value: '2026-11-02/2026-11-08',
       start: '2026-11-02', end: '2026-11-08',
     }, {
       kind: 'availability_declaration', localId: 'busy', availabilityKind: 'unavailable',
@@ -1637,7 +1652,7 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     expect(fixedEventCases.flatMap(conversation => conversation.turns)
       .filter(turn => turn.oracle.inVNextScope && turn.oracle.fixedEventRegistration?.requested)).toHaveLength(2);
     expect(fixedEventCases.flatMap(conversation => conversation.turns)
-      .filter(turn => turn.oracle.inVNextScope && turn.oracle.fixedEventRegistration && !turn.oracle.fixedEventRegistration.requested)).toHaveLength(7);
+      .filter(turn => turn.oracle.inVNextScope && turn.oracle.fixedEventRegistration && !turn.oracle.fixedEventRegistration.requested)).toHaveLength(9);
     for (const conversation of fixedEventCases) {
       for (const turn of conversation.turns.filter(turn => turn.oracle.fixedEventRegistration)) {
         expect(turn.oracle.fixedEventRegistration).toMatchObject({
@@ -1664,9 +1679,8 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     const renderedOfferCase = fixedEventCases.find(({ id }) => id === 'fixed-event-yes-after-rendered-offer')!;
     expect(renderedOfferCase.turns[1].userText).toBe('うん、お願い。');
     expect(renderedOfferCase.source).toContain('no registration offer exists in V5/VNext');
-    expect(renderedOfferCase.turns.map(({ oracle }) => oracle.inVNextScope)).toEqual([false, false]);
-    expect(renderedOfferCase.turns.every(({ oracle }) => oracle.outOfScopeReason ===
-      'no registration offer exists in V5/VNext; contextual acceptance after an offer is not applicable (user decision 2026-11-01)')).toBe(true);
+    expect(renderedOfferCase.turns.map(({ oracle }) => oracle.inVNextScope)).toEqual([true, true]);
+    expect(renderedOfferCase.turns.map(({ oracle }) => oracle.fixedEventRegistration?.requested)).toEqual([false, false]);
     expect(fixedEventCases.find(({ id }) => id === 'fixed-event-yes-without-registration-offer')?.turns[1].userText)
       .toBe('11月3日16時から17時半までゼミがあります。うん、お願い。');
     const optionalInvitation = vnextRealApiConversations.find(({ id }) => id === 'optional-invitation-busy-decline-reopen')!;
@@ -2242,7 +2256,8 @@ describe('study record oracle controls (offline, #973 fix-05)', () => {
   });
 
   it('leaves oracles without studyRecords unchanged', () => {
-    const other = vnextRealApiConversations.find(({ id }) => id === 'recurrence-out-of-vnext-scope')!.turns[0].oracle;
-    expect(compareTypedOracle(noFacts, null, null, other, [], [], { studyRecords: [{ dateExpression: '2026-10-29', subject: '数学', minutes: 30 }] })).toEqual([]);
+    const other = vnextRealApiConversations.find(({ id }) => id === 'fixed-event-busy-information-only')!.turns[0].oracle;
+    expect(compareTypedOracle(noFacts, 'missing_schedulable_work', null, other, [], [],
+      { studyRecords: [{ dateExpression: '2026-10-29', subject: '数学', minutes: 30 }] })).toEqual([]);
   });
 });

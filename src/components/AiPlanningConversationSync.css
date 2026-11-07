@@ -1,0 +1,17 @@
+.ai-planning-sync {
+  grid-column: 1 / -1;
+  max-height: min(36vh, 20rem);
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  padding: .4rem .75rem;
+  font-size: .8rem;
+  color: var(--text-muted);
+}
+.ai-planning-sync > div { width: 100%; }
+.ai-planning-sync p { margin: .4rem 0; line-height: 1.55; }
+.ai-planning-sync button { min-height: 36px; margin-inline-end: .4rem; }
+.ai-planning-sync pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14rem; overflow: auto; }
+.ai-planning-sync h4 { margin-block: .6rem .2rem; }

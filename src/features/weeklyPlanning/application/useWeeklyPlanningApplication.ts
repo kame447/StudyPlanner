@@ -1,3 +1,4 @@
+import type { ConversationSyncUi } from './weeklyPlanningConversationSyncContract';
 import { loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
 import { durableWeeklyPlanningEnabled, readDurableWeeklyTurnReceipt, cancelDurableWeeklyTurn } from './weeklyPlanningDurableTurnClient';
 import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from './weeklyPlanningDurableRecovery';
@@ -91,6 +92,7 @@ export interface UseWeeklyPlanningApplicationInput {
 export type { WeeklyPlanningTurnPreparationResult, WeeklyPlanningApplicationSubmissionResult } from './weeklyPlanningTurnPreparation';
 
 export interface WeeklyPlanningApplication {
+  conversationSync?: ConversationSyncUi;
   /** The isolated local experiment has one conversation per owner/week. */
   conversationNavigation?: 'single';
   registeredTargetsAvailable?: boolean;

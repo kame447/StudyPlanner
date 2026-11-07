@@ -55,9 +55,32 @@ export type VNextStudyContextFact = WeeklyPlanningFactGraphV5['studyContexts'][n
   activityKind: SemanticStudyActivityKindV5;
 };
 
+export interface VNextPlanningYearBasis {
+  origin: 'explicit' | 'context' | 'inferred';
+  source: 'user_text' | 'current_date' | 'planning_horizon';
+  reference: string | null;
+}
+
+export interface VNextPlanningWindowYearBasis {
+  start: VNextPlanningYearBasis;
+  end: VNextPlanningYearBasis;
+}
+
+export interface VNextBoundPlanningYearBasis extends VNextPlanningYearBasis {
+  /** Bound by code to the frozen endpoint; never supplied by the provider. */
+  year: number;
+  verified: boolean;
+}
+
+export type VNextPlanningWindowFact = WeeklyPlanningFactGraphV5['planningWindows'][number] & {
+  /** Optional on old checkpoints; absence is not evidence for an inferred year crossing. */
+  yearBasis?: { start: VNextBoundPlanningYearBasis; end: VNextBoundPlanningYearBasis } | null;
+};
+
 export interface WeeklyPlanningVNextGraph extends WeeklyPlanningFactGraphV5 {
   effortEstimates: VNextEffortEstimateFact[];
   studyContexts: VNextStudyContextFact[];
+  planningWindows: VNextPlanningWindowFact[];
 }
 
 export type VNextWorkRelationKind = 'same' | 'distinct';
@@ -92,7 +115,7 @@ export interface WeeklyPlanningVNextState {
   draftGenerationIntent: PlanningDraftGenerationIntent;
   /** V5's optional invitation ended; unchanged turns do not invite again. */
   optionalInvitationClosed: boolean;
-  /** Formally bound task/component references awaiting registration details; absent in older checkpoints. */
+  /** Formally requested task/component references awaiting a registration preview; absent in older checkpoints. */
   pendingEventRegistrationTargetIds?: string[];
 }
 
@@ -188,7 +211,12 @@ export type VNextAddStudyContext = Omit<StatedPayload<VNextStudyContextFact>, 't
 };
 export type VNextAddPlanningWindow = Omit<PlanningWindowPayload, 'kind'> & {
   kind: 'planning_window'; localId: string; windowKind: PlanningWindowPayload['kind'];
+  yearBasis: VNextPlanningWindowYearBasis | null;
 };
+/** Reuses the stored V5 uncertainty; semantic interpretation alone identifies an ambiguous period. */
+export interface VNextAddPlanningWindowUncertainty {
+  kind: 'uncertainty'; localId: string; targetRef: VNextFactRef; field: 'planning_window'; reason: string;
+}
 export type VNextAddRecurrence = Omit<RecurrencePayload, 'kind' | 'taskId' | 'targetFactId'> & {
   kind: 'recurrence'; localId: string; recurrenceKind: RecurrencePayload['kind']; taskRef: VNextFactRef; targetRef: VNextFactRef;
 };
@@ -214,6 +242,7 @@ export type VNextAddFact =
   | VNextAddEffort
   | VNextAddTemporal
   | VNextAddPlanningWindow
+  | VNextAddPlanningWindowUncertainty
   | VNextAddRecurrence
   | VNextAddTaskDateRule
   | VNextAddAvailability
@@ -383,6 +412,7 @@ export type VNextTurnResult =
 // ---- projection: recomputed every turn, never stored --------------------------
 
 export type VNextQuestionCode =
+  | 'semantic_uncertainty'
   | 'learning_strategy_proposal'
   | 'quantity_role_unresolved'
   | 'quantity_basis_invalid'
@@ -406,7 +436,7 @@ export interface VNextQuestionOption {
 }
 
 export interface VNextTaskQuestion {
-  code: VNextQuestionCode;
+  code: Exclude<VNextQuestionCode, 'semantic_uncertainty'>;
   /** Owner-bound questions are required; the conversation invitation is the separate union arm. */
   optionalInvitation?: undefined;
   proposal?: WeeklyPlanningLearningStrategyProposalRecord;
@@ -434,6 +464,12 @@ export type VNextQuestion = VNextTaskQuestion | (Omit<VNextTaskQuestion, 'taskId
   taskId: null;
   forWork: null;
   optionalInvitation: { message: string; intent: string };
+}) | (Omit<VNextTaskQuestion, 'taskId' | 'code' | 'forWork'> & {
+  code: 'semantic_uncertainty';
+  taskId: null;
+  forWork: null;
+  /** The existing stored uncertainty, not a task or the tentative window itself. */
+  targetFactId: string;
 });
 
 export type VNextEstimateBasis =

@@ -36,6 +36,8 @@ S02の対照試験は、期間のpatchと取消＋新規指定が、同じ最終
 
 ## Stable identity and the current read view
 
+明示的な固定予定の登録依頼は、対象の時刻が既知でも、別作業の質問を挟んで失わない。正式に結び付けた対象IDを既存の`pendingEventRegistrationTargetIds`に保持し、実際の登録previewが同じcheckpointに入った時点で消費する。時刻未定の質問と既存のpreview・承認・保存の境界は維持する。対象省略の依頼は当該turnの固定予定と登録詳細を待つ予定だけを選び、独立した可動作業や過去の固定busyを登録対象へ広げない。登録依頼のない固定予定は引き続き占有時間だけとして使う。
+
 作業の系譜は名前や値ではなく、既存の置換履歴に由来する。取消後に同じ値を再追加しても別の系譜になる。見積もりは対象の系譜・量・数量基準に結び付き、対象が実質的に変わった後は無断で流用しない。
 
 現在版への参照変換は `withCurrentVNextReferences` の一つの純粋な変換に集約する。配置とrendererの双方が同じ変換を使う。新しい参照欄を追加するときはここを更新し、両consumerで参照が届くことを試験する。表示専用の文章と配置専用の計算まで同じ関数に押し込まない。
@@ -45,6 +47,16 @@ S02の対照試験は、期間のpatchと取消＋新規指定が、同じ最終
 今日・明日・来週などの単発の意味は、受理日の暦・週の始まり・最終的な計画期間を使って固定する。繰り返しの曜日フィルタは記号のまま期間内に展開する。単発の金曜締切と毎週金曜の規則を同じ再計算規則で扱わない。
 
 V5移行では、既に受理した期間の根拠を保存されたgroundingから引き継ぐ。旧データの基準が不明な場合に現在の日付から推測してよいと一般化しない。移行・旧版への復帰で元のV5のbytesを書き換えない。
+
+### Planning-window year evidence
+
+Native planning windows and corrections require `yearBasis` for both endpoints: semantic origin (`explicit`, `context`, `inferred`), evidence source (`user_text`, `current_date`, `planning_horizon`) and its reference. A current-utterance reference must occur verbatim in that utterance; calendar references must match the supplied typed context and endpoint year. This checks evidence references, not the meaning of Japanese text. The provider never supplies verification authority. An ordinary December-to-January range may have context-grounded endpoint years; no fixed day-count threshold defines that meaning.
+
+The transaction freezes dates and binds the verified evidence to those years. A planning horizon borrowed from an existing window is evidence only if that window's endpoint years were verified; an unconfirmed candidate cannot validate itself on the next turn. The derived projection requires the existing global `semantic_uncertainty` question for any year crossing with missing, unverified or inferred evidence, even if the provider omitted an uncertainty fact. That question cannot be deferred into readiness. Explicit long ranges and validated ordinary year-boundary context remain eligible without another confirmation. A later date correction carries fresh evidence; an old proof cannot authorize a changed year.
+
+Bound evidence is the optional `graph.planningWindows[].yearBasis` fact extension. Old checkpoints without it remain readable, but absence does not prove a cross-year interval. The shared fact reader used by older VNext checkpoint readers permits optional per-fact fields; no state-level key, state version or capability changes. The new reader validates the extension when present. Approval rechecks the global period question so an old shown preview cannot bypass the gate after reload. Deploy the new Pages reader/approval boundary before the new durable Worker producer, and deploy both revisions before treating the fix as live.
+
+AI can still misclassify an inferred year as explicit or contextual while citing real text. Typed evidence removes reliance on an optional uncertainty signal; it does not make semantic classification infallible. Deterministic evidence/readiness/lifecycle controls and the parent-authorized real-provider controls are separate verification obligations.
 
 ## The shown question is a presentation record
 

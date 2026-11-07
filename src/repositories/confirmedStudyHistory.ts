@@ -88,6 +88,7 @@ export function invalidateStudyHistoryOnWrites(repository: PlannerRepository, re
     upsertActualWithMaterialProgress: mutation => write(mutation.actual.userId, () => repository.upsertActualWithMaterialProgress(mutation)),
     applyRecurringPlanMutation: (owner, mutation) => write(owner, () => repository.applyRecurringPlanMutation(owner, mutation)),
     deletePlanWithDependents: mutation => write(mutation.userId, () => repository.deletePlanWithDependents(mutation)),
+    deletePlanRetainingActuals: mutation => write(mutation.userId, () => repository.deletePlanRetainingActuals(mutation)),
     restorePlanWithDependents: mutation => write(mutation.plan.userId, () => repository.restorePlanWithDependents(mutation)),
     scheduleTodoPlan: mutation => write(mutation.plan.userId, () => repository.scheduleTodoPlan(mutation)),
   };
