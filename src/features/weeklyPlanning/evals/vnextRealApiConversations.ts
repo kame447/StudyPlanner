@@ -4,6 +4,7 @@
  * assistant wording. Setup or unsupported turns are labelled and excluded from
  * the semantic-success denominator.
  */
+import type { RealApiDateMeaningOracle } from './vnextRealApiDateOracle';
 
 export type RealApiWorkUnit = 'custom' | 'page' | 'minute' | 'hour' | 'chapter' | 'session' | 'problem' | 'word' | 'lesson' | 'section' | 'exam_year' | 'mock_exam';
 export type RealApiWorkRole = 'scope_total' | 'completed' | 'remaining' | 'target' | 'declared' | 'unknown';
@@ -98,6 +99,8 @@ export interface RealApiTurnOracle {
   expectNoApplicableEffort?: boolean;
   /** Some regression cases intentionally isolate a different semantic failure. */
   checkTemporal?: boolean;
+  /** Compare resolved meaning when the domain accepts equivalent date representations. */
+  dateMeaning?: RealApiDateMeaningOracle;
   fixedEventRegistration?: RealApiFixedEventRegistrationOracle;
   /** Same typed interaction outcome is asserted by the V5 and VNext runners. */
   optionalInvitation?: RealApiOptionalInvitationOracle;
@@ -239,24 +242,16 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
   },
   {
     id: 'fixed-event-yes-after-rendered-offer',
-    source: '#926 fixed-event contextual acceptance; out of scope: no registration offer exists in V5/VNext; user decision 2026-11-01',
-    description: '登録の申し出を受けた後の承諾を扱うケースだが、V5/VNextに登録の申し出は存在しないため対象外（user decision 2026-11-01）。',
+    source: '#978: no registration offer exists in V5/VNext; user decision 2026-11-01',
+    description: '登録の申し出が無い文脈の相づちは登録依頼にしない。固定予定はbusyとして保持し、保存しない。',
     turns: [
       { userText: '11月3日16時から17時半までゼミがあります。', oracle: {
-        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], {
-          inVNextScope: false,
-          outOfScopeReason: 'no registration offer exists in V5/VNext; contextual acceptance after an offer is not applicable (user decision 2026-11-01)',
-          projectedMinutes: null,
-        }),
-        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0 },
+        ...q('missing_schedulable_work', []), checkTemporal: false,
+        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
       } },
       { userText: 'うん、お願い。', oracle: {
-        ...ready(0, [], [], [{ task: 'seminar', kind: 'fixed_interval', dateExpression: '2026-11-03', time: '16:00', endTime: '17:30', level: 'hard' }], {
-          inVNextScope: false,
-          outOfScopeReason: 'no registration offer exists in V5/VNext; contextual acceptance after an offer is not applicable (user decision 2026-11-01)',
-          projectedMinutes: null,
-        }),
-        fixedEventRegistration: { requested: true, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 1 },
+        ...q('missing_schedulable_work', []), checkTemporal: false,
+        fixedEventRegistration: { requested: false, eventDate: '2026-11-03', startTime: '16:00', endTime: '17:30', candidateCount: 0, requireBusyInterval: true },
       } },
     ],
   },
@@ -375,8 +370,8 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
     clock: { currentDate: '2026-08-26', weekStartDate: '2026-08-24', planningEndDate: '2026-08-30' },
     turns: [
       { userText: '明日の予定を立てたいです', oracle: {
-        inVNextScope: false, outOfScopeReason: 'planning-window selection is not represented by the VNext fact contract',
-        workloads: [], efforts: [], temporal: [], questionCode: null, projectedMinutes: null,
+        ...q('missing_schedulable_work', []),
+        dateMeaning: { planningWindow: { startDate: '2026-08-27', endDate: '2026-08-27' } },
       } },
       { userText: '研究室のレポートを仕上げたいです', oracle: {
         ...ready(0, [], [], [], { projectedMinutes: null }),
@@ -412,14 +407,14 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
     clock: { currentDate: '2026-08-26', weekStartDate: '2026-08-24', planningEndDate: '2026-08-30' },
     turns: [
       { userText: '明日の予定を立てたいです', oracle: {
-        inVNextScope: false, outOfScopeReason: 'planning-window selection is not represented by the VNext fact contract',
-        workloads: [], efforts: [], temporal: [], questionCode: null, projectedMinutes: null,
+        ...q('missing_schedulable_work', []),
+        dateMeaning: { planningWindow: { startDate: '2026-08-27', endDate: '2026-08-27' } },
       } },
       { userText: '夏合宿のスライドは全部20枚で、今10枚までできています。明日残りを終わらせたいです', oracle: {
         ...q('missing_effort_estimate', [
         workload('slides', 'scope_total', 20, 'custom', '枚'),
         workload('slides', 'completed', 10, 'custom', '枚'),
-        ]), checkTemporal: false, expectedTaskCount: 1, sameWorkloadPairs: [[0, 1]],
+        ]), checkTemporal: false, dateMeaning: { workDate: { task: 'slides', date: '2026-08-27' } }, expectedTaskCount: 1, sameWorkloadPairs: [[0, 1]],
       } },
       { userText: '訂正です、今は12枚までできています', oracle: {
         ...q('missing_effort_estimate', [
@@ -427,13 +422,14 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
           workload('slides', 'completed', 12, 'custom', '枚'),
         ]),
         checkTemporal: false,
+        dateMeaning: { workDate: { task: 'slides', date: '2026-08-27' } },
         expectedTaskCount: 1,
         sameWorkloadPairs: [[0, 1]],
         questionForWork: workload('slides', 'remaining', 8, 'custom', '枚'),
       } },
       { userText: '1枚あたりだいたい8分くらいです', oracle: ready(64,
         [workload('slides', 'scope_total', 20, 'custom', '枚'), workload('slides', 'completed', 12, 'custom', '枚')],
-        [rate('slides', 8, 'custom', '枚')], [], { checkTemporal: false, expectedTaskCount: 1, sameWorkloadPairs: [[0, 1]], projectedWorkloads: [workload('slides', 'remaining', 8, 'custom', '枚')] }) },
+        [rate('slides', 8, 'custom', '枚')], [], { checkTemporal: false, dateMeaning: { workDate: { task: 'slides', date: '2026-08-27' } }, expectedTaskCount: 1, sameWorkloadPairs: [[0, 1]], projectedWorkloads: [workload('slides', 'remaining', 8, 'custom', '枚')] }) },
     ],
   },
   {
@@ -489,11 +485,11 @@ export const vnextRealApiConversations: readonly RealApiConversation[] = [
     }) }],
   },
   {
-    id: 'recurrence-out-of-vnext-scope', source: 'implementation-contract.md VNext supported facts',
-    description: '繰り返し規則はVNextのtask/component/workload/effort/temporal範囲外。成功扱いしない。',
+    id: 'recurrence-out-of-vnext-scope', source: '#978 recurrence and accepted start boundary (historical ID retained)',
+    description: '来週から毎週月曜という繰返しと開始境界を保持し、量・所要時間の無い作業を予定化しない。',
     turns: [{ userText: '来週から毎週月曜日に英語を勉強する予定にしてください。', oracle: {
-      inVNextScope: false, outOfScopeReason: 'recurrence is not represented in the VNext fact contract',
-      workloads: [], efforts: [], temporal: [], questionCode: null, projectedMinutes: null,
+      ...q('missing_schedulable_work', []), checkTemporal: false, expectedTaskCount: 1,
+      dateMeaning: { recurrence: { kind: 'weekly', days: ['weekday:monday'], startDate: '2026-11-09' } },
     } }],
   },
   ...d5NegativeConversations(),
