@@ -151,6 +151,35 @@ describe('Stable V5 learning strategy proposal policy', () => {
     expect(result.pendingProposal).toBeNull();
   });
 
+  it.each(['new', 'pending', 'accepted'] as const)('excludes fixed work from method selection without rewriting its %s history', status => {
+    const meaning = document({ activityKind: 'memorization_retrieval' });
+    const identities = { task: 'task-public', workload: 'workload-public' };
+    const first = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null, document: meaning, localToFactId: identities,
+      compilation: compilation(), graphRevision: 1, turnId: 'turn-1',
+    });
+    const proposalId = first.pendingProposal!.id;
+    const records = status === 'new' ? [] : status === 'pending' ? first.records
+      : evaluateWeeklyPlanningLearningStrategyProposalsV5({
+        presentedProposalId: proposalId, previousState: state(first.records),
+        document: document({ activityKind: 'unknown', decision: { proposalId, decision: 'accept' } }),
+        localToFactId: {}, compilation: compilation(), graphRevision: 1, turnId: 'turn-2',
+      }).records;
+    const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      previousState: state(records), presentedProposalId: null,
+      document: meaning, localToFactId: identities, graphRevision: 2, turnId: 'fixed-turn',
+      compilation: { status: 'needs_resolution', input: null, issues: [{
+        domain: 'deduplication', code: 'fixed_task_movable_work_suppressed', blocking: false,
+        factId: 'workload-public', details: { taskId: 'task-public', workItemId: 'workload-public' },
+      }] },
+    });
+    expect(result.records).toEqual(records);
+    expect(result.pendingProposal).toBeNull();
+    expect(result.acceptedProposal).toBeNull();
+    expect(result.acceptedSpacedProposal).toBeNull();
+    expect(result.acceptedCalibrationProposal).toBeNull();
+  });
+
   it('accepts only the exact pending proposal and preserves that decision in weekly state', () => {
     const first = evaluateWeeklyPlanningLearningStrategyProposalsV5({
       presentedProposalId: null,

@@ -179,9 +179,11 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
   });
 
-  it.each([false, true])('Stage B: persists fixed-quantity registration through failed append, reload and Worker (large=%s)', async large => {
+  it.each([false, true])('Stage B: persists fixed memorization registration through failed append, reload and Worker (large=%s)', async large => {
     const wire = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: null }],
       answer: null, delta: { ...EMPTY, add: [task, work('pages', 'remaining', 10),
+        { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
+          activityKind: 'memorization_retrieval', contextLabel: null },
         { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
           constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03',
           namedTimePeriod: null, startTime: '10:00', endTime: '11:00', precision: 'exact' }] } };
@@ -200,6 +202,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
       date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
     expect(h.local.readCheckpoint()!.vnext.state.graph.effortEstimates).toEqual([]);
+    expect(h.local.readCheckpoint()!.vnext.state.learningStrategyProposalRecords).toEqual([]);
     expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull();
     const result = h.results[0];
     expect(h.getState().previewCandidates).toEqual(result.draftCandidates);
