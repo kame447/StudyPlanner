@@ -129,7 +129,55 @@ base `856dbe11` ＋この変更で `npx vitest run --maxWorkers=2 src/features/w
 
 親が [run 42401398186](https://github.com/kame447/StudyPlanner/actions/runs/42401398186) をmain `856dbe11fd4a34c24fbe3d6f79d07b109152e176`、profile `vnext`、repetitions `3` で開始した。workflowのmodelは`gpt-6-luna`。既存28会話を変更せず、C20の20対象turnとJEV5発話の対象turnを各反復の`vnext-native.json`から抽出する。job成功や比較全体の件数で個別turnを合格にしない。`not_reached`、error、skipはPASSではない。
 
-このprofileはnative semantic/session経路の観測で、production focused解釈器・実Worker HTTP/Auth/Firestoreを通すものではない。D5のfocused回答の正式bindは別の決定論Workerテストが所有する。両証拠の範囲を混同しない。結果は進行中で、まだ実モデルPASS/FAILを確定しない。
+このprofileの比較会話はnative semantic/session経路の観測で、production focused解釈器・実Worker HTTP/Auth/Firestoreを通すものではない。D5のfocused回答の正式bindは別の決定論Workerテストが所有する。同profileの別provider suiteにはfocused観測も含まれるが、C20比較会話と混同しない。
+
+3反復は完了。artifact `weekly-planning-real-api-1` = `13585773871`、`-2` = `13586313725`、`-3` = `13586153884`。各artifactのheadは上記mainと一致し、取得ZIPのSHA256をGitHub digestに独立照合した。provider smokeの応答modelも全反復`gpt-6-luna`。比較観測のraw-call captureにはHTTPのmodel/finish/usage envelopeがないため、それらを追加で確認したとはしない。
+
+以下は各`vnext-comparison/vnext-native.json`のcase ID/turn、status、error、oracleDifferencesを照合した**実モデルPASS/FAIL**。全対象が到達・解釈成功し、受理済みで、承認前の保存0。C20の60観測とJEVの15観測には重複する対象があり、75個の独立ケースとは数えない。
+
+| 対象 | case/turn | rep1 | rep2 | rep3 |
+| --- | --- | --- | --- | --- |
+| C01 | fixed-event-busy-information-only/1 | PASS | PASS | PASS |
+| C02 | fixed-event-registration-negated/1 | PASS | PASS | PASS |
+| C03 | fixed-event-yes-without-registration-offer/1 | PASS | PASS | PASS |
+| C04 | fixed-event-yes-without-registration-offer/2 | PASS | PASS | PASS |
+| C05 | omitted-effort-answer/1 | PASS | PASS | PASS |
+| C06 | paraphrase-restatement-no-duplicate/1 | PASS | PASS | PASS |
+| C07 | paraphrase-restatement-no-duplicate/2 | PASS | PASS | PASS |
+| C08 | past-progress-observed-pace/1 | PASS | PASS | PASS |
+| C09 | independent-explicit-remaining/1 | PASS | PASS | PASS |
+| C10 | timebox-only-work/1 | PASS | PASS | PASS |
+| C11 | issue881-final-b-deadline-at-13/2 | PASS | PASS | PASS |
+| C12 | optional-invitation-busy-decline-reopen/1 | PASS | PASS | PASS |
+| C13 | optional-invitation-busy-decline-reopen/2 | PASS | PASS | PASS |
+| C14 | optional-invitation-busy-decline-reopen/3 | PASS | PASS | PASS |
+| C15 | optional-decline-does-not-close-required-effort/1 | PASS | PASS | PASS |
+| C16 | optional-decline-does-not-close-required-effort/2 | PASS | PASS | PASS |
+| C17 | d5-negative-pages-only/2 | PASS | PASS | PASS |
+| C18 | d5-negative-total-minutes/2 | PASS | PASS | PASS |
+| C19 | d5-negative-approximate-rate/2 | PASS | PASS | PASS |
+| C20 | d5-positive-per-unit-rate/2 | PASS | PASS | PASS |
+| J01 | d5-negative-pages-only/2 | PASS | PASS | PASS |
+| J02 | d5-negative-english-minutes/2 | PASS | PASS | PASS |
+| J03 | d5-negative-total-minutes/2 | PASS | PASS | PASS |
+| J04 | d5-negative-compound/2 | PASS | PASS | PASS |
+| J05 | d5-negative-approximate-rate/2 | PASS | PASS | PASS |
+
+close判断のため、同artifactのX0の8turnも個別照合した。final-b/1、final-c/1–4、fixed-event-yes-after-rendered-offer/1–2は各3/3PASS。**recurrence-out-of-vnext-scope/1はPASS/PASS/FAIL**であり、全体完了ではない。rep3 rawはweekly/weekday:mondayだけを返し、「来週から」のearliest_startとplanning_windowの両方が欠落した。受理graphのtemporalは空で、oracleは `recurrence start missing: 2026-11-09`。表示文には「来週から」があっても機械事実の代わりに使わない。候補・preview・保存は0のまま。
+
+### 失敗の分類とclose判断
+
+| 現在の反例 | 分類・根拠 | F / S / Pと処置 |
+| --- | --- | --- |
+| #978 X0 recurrence開始境界（rep3/3のうち1回） | モデルの意味欠落。rawにも受理graphにも開始が無く、oracleの別表現受理（earliest_startまたはwindow）でも救えない。古い除外・環境失敗ではない。 | 実利用F不明、S4、P未算定。1/3は条件付き観測率で本番頻度ではない。明示された開始境界の保持要求違反として**#978に残す**。同じ既知反例の新Issueは作らない。 |
+| 別provider suite #1005 answer-plus-request（rep1のみ） | focused rawがeffort_answerだけを返し、独立の予定案作成依頼を落とす。40分は保持するがplanningIntent=unknown、preview0。rep2/3は作成依頼evidenceとpreviewを保持。 | F不明、S4、P未算定。明示依頼違反として既存#1005へ。C20/JEVの失敗へ混同せず、無関係なcode修正をこのtest単位に混ぜない。 |
+| 別provider suite #868-6 compound-date-shared（rep1/2） | 日付は数学11/3を正しく保持。rawのrequest_event_registrationが空で、明示したゼミ登録候補だけ欠落。rep3は同じ時刻の登録候補を保持。transport障害や日付oracleの誤りではない。 | F不明、S4、P未算定。明示登録依頼違反として既存#868へ。未承認saveは全反復0。 |
+
+workflowのrep1は2failed/94passed、rep2は1failed/95passed、rep3は96passed。**rep3のjob成功でもX0開始欠落は比較artifactに残る**ため、jobのgreenを意味oracleの全件合格にしない。比較native全54turnの結果は54/54、54/54、53/54で、上の個別行が正本。
+
+X0の実Worker再生は `.handoff/978-recurrence-reproducer.patch`（合成観測だけの孤立RED、通常source差分に含めない）に保持。観測rawを変更せず実Workerへ渡すと1件FAILし、開始欠落oracleが再現する。同じWorker suiteの既存bound/window正例はgreenのまま。これは欠落したモデル出力から決定論コードに日付を捏造させる要求ではなく、修正後の意味読取は新しい実モデル応答で再検証する必要がある。
+
+**結論: #978はOpen継続。** A66の会話コア責務は上記12test/66行対応、C20とJEVの今回対象の意味読取は未確認0。残る#978内の実証済み条件はX0 recurrenceの開始境界1件。親が意味読取修正のowner/範囲を決め、現行実モデルの同反例で確認する。別scopeの#1005/#868と共通UIの最終Browser/CIはそれぞれのownerが追跡し、このtest/doc差分の本番配信順序は追加しない。
 
 ## 過去の検証記録
 
