@@ -37,6 +37,7 @@ Branch: `test/issue978-v5-regression-vnext`, base `799d89a3`
 | #918 受理時clock固定 | 既存Transactionのmulti-week weekday/relative date固定、Sessionの後日V5移行。DateOracleは受理後の絶対日を検査する。 | **追加検証済み**: Continuity suiteで11/2に受理した相対窓を11/3のWorker再開でも同じ絶対日として保持。 |
 | #461 「明日ではなく今日」 | 既存planning-windowの明示patch/atomic staging。 | **追加検証済み**: Continuity suiteで明日→今日のwindow patch、必要な作業量の質問・task保持。不正refの初回/1回修復はgraph不変。両経路を翌日再開しても受理済日付を動かさず候補/preview0。 |
 | #335 / D5 / C20 / A群 | 移管コメントのケースID・turn、既存provider/会話oraclesを再利用する。旧JEV live-negativeは5発話であり旧表の3行と異なる。 | **D5の型付き境界を追加検証済み**: `durableVNextD5Regression.integration.test.ts` が5発話の独立Math/English・総時間/単位時間・approximate・複合deadline・未承認preview0を検査。現行実モデルの解釈、C20/A全行と旧security反例の個別証拠は引き続き照合対象。旧コア比較や総数49/49を個別合格へ流用しない。 |
+| C20 `optional-invitation-busy-decline-reopen` /1,/2,/3、`optional-decline-does-not-close-required-effort` /1,/2 | 既存Sessionの任意追加拒否と必須質問の区別。 | `durableVNextV5Invitation.integration.test.ts` の **2pass**。busy共有→任意追加拒否→checkpoint再開で質問を閉じたまま11/3の16:00–17:30を保持する一方、数学10問の必須見積は同じ拒否でも保持・提示する。両経路とも候補/previewなし。合成意味出力によるWorker境界検証であり、実モデル読取や同ケース/4の再開・全C20完了の証明ではない。 |
 
 ## 検証と次の手順
 
