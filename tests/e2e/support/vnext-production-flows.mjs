@@ -234,10 +234,10 @@ export function defineVNextProductionFlows(options) {
       // The registration projection runs on the planner's week, so the day must lie inside it.
       const target = await goToTargetPlannerWeek(page);
       const text = `${target.text}の10:30から12:00まで部活があります。その予定を登録したいです。`;
-      const before = await readVNextChatStorage(page, text);
+      const before = await readVNextChatStorage(page, text, target.weekStart);
       await sendTurn(page, text, scripted(request, { kind: 'registration', title: '部活', date: target.iso }));
       await expectTurnInTargetWeek(page, target, { previewRequired: true });
-      const after = await readVNextChatStorage(page, text);
+      const after = await readVNextChatStorage(page, text, target.weekStart);
       expectTurnPersisted(before, after);
       expect(after.stableV5Keys).toBe(before.stableV5Keys);
       expect(after.previewSources).toContain('fixed_event_registration');
