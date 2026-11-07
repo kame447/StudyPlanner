@@ -1,8 +1,8 @@
 # VNext conversation core: ownership, extension and scale
 
-Status: production conversation core contract (adoption owned by Issue #926).
+Status: production conversation core contract (adopted via Issue #926).
 
-VNext is the default conversation core on every host. Stable V5 is selectable only with `VITE_WEEKLY_PLANNING_CORE=stable_v5` on a local development host; ordinary builds exclude its application hook. The [V5 contract](current-contract-v5.md) remains the reference for reused pure responsibilities and local comparison. [Issue #926](https://github.com/kame447/StudyPlanner/issues/926) owns the current migration scope, exact verified commit, measured results and unresolved work. This document owns the VNext design intent, not a copy of changing progress reports.
+VNext is the default conversation core on every host. Stable V5 is selectable only with `VITE_WEEKLY_PLANNING_CORE=stable_v5` on a local development host; ordinary builds exclude its application hook. The [V5 contract](current-contract-v5.md) remains the reference for reused pure responsibilities and local comparison. [Issue #926](https://github.com/kame447/StudyPlanner/issues/926) records the completed production migration and its verification evidence. Outstanding V5-to-VNext regression transfer belongs to [Issue #978](https://github.com/kame447/StudyPlanner/issues/978). This document owns the VNext design intent, not a copy of changing progress reports.
 
 ## Why this core exists
 
