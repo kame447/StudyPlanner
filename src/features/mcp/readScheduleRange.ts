@@ -19,12 +19,12 @@ export class ScheduleRangeReadError extends Error {
   }
 }
 
-function canonicalTimeZone(value: string): string {
+export function canonicalScheduleTimeZone(value: string): string {
   try { return new Intl.DateTimeFormat('en', { timeZone: value }).resolvedOptions().timeZone; }
   catch { throw new ScheduleRangeReadError('invalid_time_zone'); }
 }
 
-function calendarDate(value: unknown): value is string {
+export function isScheduleCalendarDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
@@ -37,17 +37,17 @@ export function createScheduleRangeReader(source: {
   authority: Pick<ScheduleEventAuthorityRepository, 'getScheduleSnapshot'>;
   timetable: Pick<PlannerRepository, 'getScheduleTemplates' | 'getTimetableTerms'>;
 }): ReadScheduleRange {
-  const timeZone = canonicalTimeZone(source.timeZone);
+  const timeZone = canonicalScheduleTimeZone(source.timeZone);
   return async (actorOwnerId, input) => {
     if (!actorOwnerId || actorOwnerId !== source.ownerId) throw new ScheduleRangeReadError('owner_mismatch');
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ScheduleRangeReadError('invalid_range');
     const query = input as Record<string, unknown>;
     if (Object.keys(query).length !== 3 || Object.keys(query).some(key => !['startDate', 'endDate', 'timeZone'].includes(key))
-      || !calendarDate(query.startDate) || !calendarDate(query.endDate) || query.startDate > query.endDate) {
+      || !isScheduleCalendarDate(query.startDate) || !isScheduleCalendarDate(query.endDate) || query.startDate > query.endDate) {
       throw new ScheduleRangeReadError('invalid_range');
     }
     if (typeof query.timeZone !== 'string') throw new ScheduleRangeReadError('invalid_time_zone');
-    if (canonicalTimeZone(query.timeZone) !== timeZone) throw new ScheduleRangeReadError('time_zone_mismatch');
+    if (canonicalScheduleTimeZone(query.timeZone) !== timeZone) throw new ScheduleRangeReadError('time_zone_mismatch');
     const [snapshot, scheduleTemplates, timetableTerms] = await Promise.all([
       source.authority.getScheduleSnapshot(actorOwnerId),
       source.timetable.getScheduleTemplates(actorOwnerId), source.timetable.getTimetableTerms(actorOwnerId),
