@@ -31,7 +31,7 @@ beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new 
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; setWeeklyPlanningTraceRepositoryForTests(undefined); vi.unstubAllEnvs(); vi.useRealTimers(); restore(); });
 
 for (const mode of ['original redundant duration', 'misleading duration', 'false save claim', 'invalid renderer JSON', 'invalid typed duration']) {
-  it(`${mode}: one reading, one reply, one unapproved 60-minute preview and nothing saved`, async () => {
+  it(`${mode}: bounded label repair, one reply, one unapproved 60-minute preview and nothing saved`, async () => {
     const reading = structuredClone(capture.semanticDocument);
     const reply = capture.replies.find((item: { name: string }) => item.name === mode);
     reading.tasks[0].effortEstimates[0].precision = reply?.precision ?? 'exact';
@@ -42,6 +42,10 @@ for (const mode of ['original redundant duration', 'misleading duration', 'false
     const client = { createChatCompletion: async (request: { responseFormat?: { json_schema?: { name?: string } }; messages: { role: string; content: string }[] }) => {
       const schema = request.responseFormat?.json_schema?.name ?? 'none'; calls.push(schema);
       if (schema === 'weekly_planning_vnext_native_v1') return JSON.stringify(vnextReadingFromFacts(reading));
+      // Preserve the captured utterance and legitimate paraphrase. Its naming
+      // fragment is verified by the existing single repair, not invented by the renderer.
+      if (schema === 'weekly_planning_vnext_label_repair_v1') return JSON.stringify({ ...vnextReadingFromFacts(reading),
+        labelEvidence: [{ localId: 'english', quote: '英語' }] });
       if (schema === 'weekly_planning_stable_v5_dialogue_response') {
         const prompt = request.messages.filter(m => m.role === 'user').map(m => { try { return JSON.parse(m.content); } catch { return null; } }).reverse().find(v => v?.applicationDecision);
         prompts.push(prompt);
@@ -72,13 +76,13 @@ for (const mode of ['original redundant duration', 'misleading duration', 'false
     expect(state.pendingApproval).toBeUndefined();
     if (mode === 'invalid typed duration') {
       // Rejected before preview: two native readings (one reread), one recovery status, one verdict, no accepted facts.
-      expect(calls).toEqual(['weekly_planning_vnext_native_v1', 'weekly_planning_vnext_native_v1', 'weekly_planning_stable_v5_dialogue_response', 'weekly_planning_recovery_verdict']);
+      expect(calls).toEqual(['weekly_planning_vnext_native_v1', 'weekly_planning_vnext_label_repair_v1', 'weekly_planning_stable_v5_dialogue_response', 'weekly_planning_recovery_verdict']);
       expect(assistants[0].content).toBe(RECOVERY_TEXT);
       expect(state.previewCandidates ?? []).toEqual([]);
       return;
     }
-    // One reading, one renderer call; the preview is one unapproved 60-minute block tomorrow at 09:00.
-    expect(calls).toEqual(['weekly_planning_vnext_native_v1', 'weekly_planning_stable_v5_dialogue_response']);
+    // One native reading and its one quoted repair, then one renderer call; no additional attempt.
+    expect(calls).toEqual(['weekly_planning_vnext_native_v1', 'weekly_planning_vnext_label_repair_v1', 'weekly_planning_stable_v5_dialogue_response']);
     const fallback = ['false save claim', 'invalid renderer JSON'].includes(mode);
     if (fallback) {
       expect(assistants[0].content).toContain('まだ保存していません');

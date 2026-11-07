@@ -126,7 +126,7 @@ describe('#978 V5 counterexamples through the production Worker turn', () => {
       targetFactId: invalid ? 'unregistered-reference' : context.activeFacts.workloads.find(w => w.quantityRole === 'completed')!.id,
       amountDelta: null, changes: { amount: 12, quantityRole: null, unitCode: null, unitLabel: null,
         rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] });
-    const calls = provider([[task, work('total', 'scope_total', 20), work('completed', 'completed', 10),
+    const calls = provider([[{ ...task, title: 'スライド' }, work('total', 'scope_total', 20), work('completed', 'completed', 10),
       { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'english' }, targetRef: { localId: 'english' },
         effortKind: 'duration_per_unit', minutes: 8, unitCode: 'custom', unitLabel: '枚', precision: 'exact' },
       { kind: 'temporal_constraint', localId: 'day', taskRef: { localId: 'english' }, targetRef: { localId: 'english' },
