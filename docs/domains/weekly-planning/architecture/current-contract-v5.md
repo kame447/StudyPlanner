@@ -134,6 +134,8 @@ Preview/draft checkpoint metadata retains the real source references. Final appr
 
 For quantified memory work with known pace, accepting spaced practice reuses an already stated session duration at workload, component or task scope. Question necessity and full-session placement share the ordinary scope precedence and ambiguity resolver; an unresolved or conflicting applicable duration still requires clarification. This does not infer a total effort from a session length or authorize a save.
 
+For ordinary session-counted work, VNext also uses that same duration scope resolver before asking an effort question. A workload-specific duration takes precedence over a component duration, which takes precedence over the inherited task duration. The default remains applicable to sibling work, and disagreeing durations at the winning scope still require clarification. Accepted estimates remain intact; this does not change rate/total-duration conflicts or approval.
+
 ## Work decomposition / atomicity
 
 Task decomposition is typed semantic state, not a scheduler guess.
