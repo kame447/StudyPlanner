@@ -397,17 +397,19 @@ function estimateOwnerWork(
   return { ownerKey: owner.ownerKey, taskId: owner.taskId, componentId: owner.componentId, status: 'ready', work, question: null };
 }
 
-/** A task with no stated workload but a stated total time is minute work of that size. */
-function projectTaskTotalOwner(
+/** An owner with no stated workload but a stated total time is minute work of that size. */
+function projectTotalOwner(
   context: ProjectionContext,
   taskId: string,
+  componentId: string | null,
   totals: VNextEffortEstimateFact[],
 ): VNextOwnerProjection {
-  const ownerKey = context.resolver.ownerKeyOf({ taskId, componentId: null });
+  const ownerKey = context.resolver.ownerKeyOf({ taskId, componentId });
+  const definingFactId = componentId ?? taskId;
   const lineageIds = totals.map((effort) => context.resolver.lineageOf(effort.id));
   if (totals.some((effort) => !sameMinutes(effort.minutes, totals[0].minutes))) {
     return {
-      ownerKey, taskId, componentId: null, status: 'question', work: [],
+      ownerKey, taskId, componentId, status: 'question', work: [],
       question: {
         code: 'effort_inconsistent',
         key: questionKey({
@@ -416,16 +418,16 @@ function projectTaskTotalOwner(
           lineageIds,
           values: totals.map((effort) => effort.minutes).sort((a, b) => a - b),
         }),
-        ownerKey, taskId, componentId: null, subjectLineageIds: lineageIds, forWork: null, options: [],
+        ownerKey, taskId, componentId, subjectLineageIds: lineageIds, forWork: null, options: [],
       },
     };
   }
   return {
-    ownerKey, taskId, componentId: null, status: 'ready', question: null,
+    ownerKey, taskId, componentId, status: 'ready', question: null,
     work: [{
-      workLineageId: context.resolver.lineageOf(taskId),
-      definingFactId: taskId,
-      ownerKey, taskId, componentId: null,
+      workLineageId: context.resolver.lineageOf(definingFactId),
+      definingFactId,
+      ownerKey, taskId, componentId,
       quantityRole: 'target',
       derivedFromTotal: false,
       amount: totals[0].minutes,
@@ -520,7 +522,21 @@ export function projectWeeklyPlanningVNext(
     const totals = context.efforts.filter((effort) => effort.kind === 'total_duration'
       && resolver.lineageOf(effort.taskId) === taskLineage && resolver.lineageOf(effort.targetFactId) === taskLineage);
     if (totals.length > 0) {
-      owners.push(projectTaskTotalOwner(context, task.id, totals));
+      owners.push(projectTotalOwner(context, task.id, null, totals));
+      continue;
+    }
+    // A component's stated total is already enough work, just like a task's total.
+    // Do not require an invented quantity or merge independent component budgets.
+    const componentOwners = filterActiveWeeklyPlanningFactsV5(graph, graph.components)
+      .filter(component => resolver.lineageOf(component.taskId) === taskLineage)
+      .flatMap(component => {
+        const componentTotals = context.efforts.filter(effort => effort.kind === 'total_duration'
+          && resolver.lineageOf(effort.taskId) === taskLineage
+          && resolver.lineageOf(effort.targetFactId) === resolver.lineageOf(component.id));
+        return componentTotals.length ? [projectTotalOwner(context, task.id, component.id, componentTotals)] : [];
+      });
+    if (componentOwners.length) {
+      owners.push(...componentOwners);
       continue;
     }
     // Every stated task is accounted for: work, a total, a fixed time, or a question. Never silently nothing.

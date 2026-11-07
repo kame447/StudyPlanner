@@ -87,7 +87,7 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
   // empty/busy-only information too, so its optional-invitation policy can run; no work is invented.
   if (projection.readiness === 'empty' && projection.deferredQuestions.length > 0 && !base.temporalConstraints.some(bound =>
     bound.kind === 'fixed_interval' && bound.constraintLevel === 'hard')) return { status: 'not_ready' };
-  const sources = new Map([...state.graph.workloads, ...state.graph.tasks].map((fact) => [fact.id, fact.source]));
+  const sources = new Map([...state.graph.workloads, ...state.graph.tasks, ...state.graph.components].map((fact) => [fact.id, fact.source]));
 
   const readyOwners = projection.owners.filter((owner) => owner.status === 'ready');
   const scheduledTaskIds = new Set(readyOwners.map((owner) => current(owner.taskId)));
@@ -99,11 +99,11 @@ export function compileWeeklyPlanningVNextSchedulerInput(params: {
   const workloads: WorkloadFactV5[] = [];
   const estimates: EffortEstimateFactV5[] = [];
   for (const item of readyOwners.flatMap((owner) => owner.work)) {
-    // Task-level work (a stated task total, or a provisional block for a task with no work) needs its own id.
-    const taskLevel = item.definingFactId === item.taskId;
-    const id = taskLevel ? `vnext-task-total:${current(item.taskId)}` : current(item.definingFactId);
-    // A task total stands for its stated totals; a provisional block only for its task.
-    if (taskLevel) canonical.set(id, item.estimateBasis === 'task_total' ? item.estimateFactIds : [current(item.taskId)]);
+    // Owner totals and provisional task blocks need scheduling-only workload IDs.
+    const ownerLevel = item.definingFactId === item.taskId || item.definingFactId === item.componentId;
+    const id = ownerLevel ? `vnext-task-total:${current(item.definingFactId)}` : current(item.definingFactId);
+    // Each total stands for its own stated estimates; a provisional block only for its task.
+    if (ownerLevel) canonical.set(id, item.estimateBasis === 'task_total' ? item.estimateFactIds : [current(item.taskId)]);
     projectedEstimates.set(id, item.estimateFactIds);
     const source = sources.get(item.definingFactId)!;
     // A provisional block is scheduler-only minute work, as V5's projectWeeklyPlanningProvisionalTimeboxGraphV5

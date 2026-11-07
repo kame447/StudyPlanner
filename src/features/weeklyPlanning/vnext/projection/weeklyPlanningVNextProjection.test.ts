@@ -281,6 +281,32 @@ describe('projectWeeklyPlanningVNext', () => {
     });
   });
 
+  it('keeps component totals independent without storing derived workloads', () => {
+    const state = withTask(['a', 'b'].flatMap((localId, index): VNextAddFact[] => [
+      { kind: 'component', localId, taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: localId },
+      { kind: 'effort_estimate', localId: `${localId}-time`, taskRef: { localId: 'task' }, targetRef: { localId },
+        effortKind: 'total_duration', minutes: index === 0 ? 30 : 20, unitCode: null, unitLabel: null, precision: 'exact' },
+    ]));
+    const before = structuredClone(state);
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection).toMatchObject({ readiness: 'ready', questions: [] });
+    expect(projection.owners.map(owner => owner.work.map(work => work.minutes))).toEqual([[30], [20]]);
+    expect(projection.owners.map(owner => owner.componentId)).toEqual(state.graph.components.map(component => component.id));
+    expect(state).toEqual(before);
+    expect(state.graph.workloads).toEqual([]);
+  });
+
+  it.each(['session_duration', 'total_duration'] as const)('still asks about unknown or conflicting component totals ($kind)', kind => {
+    const state = withTask([
+      { kind: 'component', localId: 'a', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: 'a' },
+      ...[30, 45].map((minutes, index): VNextAddFact => ({ kind: 'effort_estimate', localId: `time-${index}`,
+        taskRef: { localId: 'task' }, targetRef: { localId: 'a' }, effortKind: kind,
+        minutes, unitCode: null, unitLabel: null, precision: 'exact' })),
+    ]);
+    expect(projectWeeklyPlanningVNext(state)).toMatchObject({ readiness: 'needs_resolution',
+      questions: [{ code: kind === 'session_duration' ? 'missing_schedulable_work' : 'effort_inconsistent' }] });
+  });
+
   describe('Astra audit #926 counterexamples (GustyCurie, c22f0627)', () => {
     const page = (localId: string, role: VNextAddWorkload['quantityRole'], amount: number, extra: Partial<VNextAddWorkload> = {}) =>
       ({ ...W(localId, role, amount, 'page', 'ページ'), ...extra });

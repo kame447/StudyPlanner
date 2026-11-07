@@ -60,6 +60,31 @@ function harness(responses: Array<unknown | ((context: ProviderContext) => unkno
 }
 
 describe('V5 authorization policy through the VNext native/session boundary', () => {
+  it.each(['create_plan', 'discuss'] as const)('uses component totals without another quantity question ($intent)', async intent => {
+    const add: VNextAddFact[] = [task,
+      { kind: 'component', localId: 'calculation', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '計算' },
+      { kind: 'component', localId: 'geometry', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '図形' },
+      { kind: 'effort_estimate', localId: 'calculation-time', taskRef: { localId: 'task' }, targetRef: { localId: 'calculation' },
+        effortKind: 'total_duration', minutes: 30, unitCode: null, unitLabel: null, precision: 'exact' },
+      { kind: 'effort_estimate', localId: 'geometry-time', taskRef: { localId: 'task' }, targetRef: { localId: 'geometry' },
+        effortKind: 'total_duration', minutes: 20, unitCode: null, unitLabel: null, precision: 'exact' },
+    ];
+    const h = harness([wire(intent, { add })]);
+    const result = await h.turn(intent === 'create_plan' ? '数学は計算30分、図形20分で予定を作って' : '数学は計算30分、図形20分です');
+    expect(result.outcome).toBe('applied');
+    const state = h.local.readCheckpoint()!.vnext.state;
+    expect(state.graph.components).toHaveLength(2);
+    expect(state.graph.effortEstimates.map(effort => effort.minutes)).toEqual([30, 20]);
+    expect(state.graph.workloads).toEqual([]);
+    expect(result.question).toBeNull();
+    expect(result.preview !== null).toBe(intent === 'create_plan');
+    expect(result.authorizationRequired).toBe(intent !== 'create_plan');
+    if (result.preview) {
+      expect(result.preview.blocks.map(block => block.behaviorMetadata?.previewMetadata?.approvalEligibility)).toEqual(['eligible', 'eligible']);
+      expect(result.draftCandidates).toHaveLength(2);
+    }
+  });
+
   it.each([
     { intent: 'discuss' as const, expected: false, text: '数学の作業量は60分です。' },
     { intent: 'create_plan' as const, expected: true, text: '数学を60分、この条件で予定を作ってください。' },
