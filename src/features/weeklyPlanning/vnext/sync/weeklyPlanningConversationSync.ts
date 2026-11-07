@@ -82,8 +82,10 @@ export function createConversationSync(ports: {
   operationId(): string;
   now?: () => string;
   validatePayload(scope: ConversationScope, payload: ConversationPayload): boolean;
+  validateLocalPayload?(scope: ConversationScope, payload: ConversationPayload): boolean;
 }) {
   const inflight = new Map<string, Promise<ConversationSyncResult>>();
+  const validateLocalPayload = ports.validateLocalPayload ?? ports.validatePayload;
   function guard(scope: ConversationScope) {
     if (scope.ownerId !== ports.ownerId || !ports.active()) throw new Error('owner-changed');
   }
@@ -93,7 +95,7 @@ export function createConversationSync(ports: {
       || !Number.isSafeInteger(record.generation) || record.generation < 0)) throw new Error('local-state-unreadable');
     if (record) {
       if (typeof record.dirty !== 'boolean' || (record.blocked !== null && record.blocked !== 'conflict')
-        || (record.working !== null && !ports.validatePayload(scope, record.working))) throw new Error('local-state-unreadable');
+        || (record.working !== null && !validateLocalPayload(scope, record.working))) throw new Error('local-state-unreadable');
       remote(record.confirmed, scope); remote(record.conflict, scope);
       const pending = record.pending;
       if (pending && (!sameConversationScope(pending.scope, scope) || !pending.operationId || pending.operationId.length > 128
@@ -123,7 +125,7 @@ export function createConversationSync(ports: {
 
   async function stage(scope: ConversationScope, payload: ConversationPayload | null, expectedGeneration: number) {
     guard(scope);
-    if (payload !== null && !ports.validatePayload(scope, payload)) throw new Error('invalid-conversation-payload');
+    if (payload !== null && !validateLocalPayload(scope, payload)) throw new Error('invalid-conversation-payload');
     return ports.local.update(scope, existing => {
       const record = local(existing, scope);
       if (record.generation !== expectedGeneration) throw new Error('local-revision-conflict');
@@ -167,13 +169,16 @@ export function createConversationSync(ports: {
   async function commitPending(scope: ConversationScope): Promise<ConversationSyncResult> {
     const record = await ports.local.update(scope, existing => {
       const value = local(existing, scope);
-      if (value.blocked || value.pending || !value.dirty) return value;
+      if (value.blocked || value.pending || !value.dirty
+        || (value.working !== null && !ports.validatePayload(scope, value.working))) return value;
       const operationId = ports.operationId();
       if (!operationId || operationId.length > 128) throw new Error('invalid-operation-id');
       return { ...value, pending: { scope, operationId, baseRevision: value.confirmed?.revision ?? 0, payload: value.working } };
     });
     guard(scope);
-    if (record.blocked || !record.pending) return status(record);
+    // Keep an earlier uncertain outbox immutable, but do not send while local approval recovery owns the conversation.
+    if (record.blocked || !record.pending
+      || (record.working !== null && !ports.validatePayload(scope, record.working))) return status(record);
     // Persist the immutable outbox before sending. A rejected/lost response leaves it recoverable.
     const outcome = await ports.remote.commit(record.pending);
     guard(scope); remote(outcome.snapshot, scope);
