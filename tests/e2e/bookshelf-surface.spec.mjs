@@ -1,4 +1,4 @@
-import { expect, test } from './support/fixed-clock.mjs';
+import { expect, test, dateOnlyTest } from './support/fixed-clock.mjs';
 import { prepareMaterialObservation, hasMaterialObservation, observeMaterialControl, attachMaterialObservation } from './support/material-pr-observation.mjs';
 
 // Recording is worker-scoped: opt in at file level, not inside a describe.
@@ -725,7 +725,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
         const purpose = contract === 'detail-cancel'
           ? 'keeps full detail text and cancels unsaved chapter edits'
           : 'saves the last chapter and preserves it after full reload';
-        test(`${purpose} at ${percent}%`, async ({ page }, testInfo) => {
+        const journey = contract === 'save-reload' ? dateOnlyTest : test;
+        journey(`${purpose} at ${percent}%`, async ({ page }, testInfo) => {
           // These three functional journeys exceed 30s on CI; this is not a latency fix (#805).
           if (testInfo.project.name === 'webkit-mobile' && viewport.width === 1920 && viewport.height === 1080
             && (contract === 'save-reload' || percent === 200)) {

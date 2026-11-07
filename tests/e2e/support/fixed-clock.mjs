@@ -23,6 +23,16 @@ export const test = base.extend({
   },
 });
 
+// Save/reload journeys need a deterministic date, not replacement animation/timer APIs.
+// Keep their native actionability frames; other specs retain the flowing clock above.
+export const dateOnlyTest = base.extend({
+  timezoneId: [E2E_TIMEZONE, { option: true }],
+  context: async ({ context }, use) => {
+    await context.clock.setFixedTime(E2E_FIXED_NOW);
+    await use(context);
+  },
+});
+
 // For specs that open their own context (e.g. touch-enabled mobile contexts).
 export async function newFixedClockContext(browser, options = {}) {
   const context = await browser.newContext({ timezoneId: E2E_TIMEZONE, ...options });

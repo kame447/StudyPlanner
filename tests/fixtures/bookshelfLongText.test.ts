@@ -97,7 +97,7 @@ describe('bookshelf long-text functional budget', () => {
   it('extends only the three approved large WebKit mobile journeys', async () => {
     let callback = '';
     function findCallback(node: ts.Node) {
-      if (ts.isCallExpression(node) && node.expression.getText(spec) === 'test'
+      if (ts.isCallExpression(node) && ['test', 'journey'].includes(node.expression.getText(spec))
         && node.arguments[0]?.getText(spec) === '`${purpose} at ${percent}%`') {
         callback = node.arguments[1].getText(spec);
       }

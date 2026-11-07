@@ -1,0 +1,74 @@
+name: Bookshelf Clock Probe
+
+on:
+  push:
+    branches: [test/issue959-bookshelf-clock]
+    paths:
+      - .github/workflows/bookshelf-clock-probe.yml
+      - tests/e2e/support/fixed-clock.mjs
+      - tests/e2e/bookshelf-surface.spec.mjs
+      - tests/fixtures/bookshelfLongText.test.ts
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Baseline commit with the flowing clock
+        required: true
+        type: string
+      candidate_ref:
+        description: Candidate commit with the date-only clock
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+  PLAYWRIGHT_HTML_OPEN: never
+
+jobs:
+  compare:
+    name: ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, candidate]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.variant == 'baseline' && (inputs.baseline_ref || 'b0d1860893b6af9c53bf8323edf6305bd20658f9') || (inputs.candidate_ref || github.sha) }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Snapshot application manifests
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+      - name: Install isolated pinned runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+      - name: Check unchanged application manifests
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+      - name: Install WebKit
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps webkit
+      - name: Build production bundle
+        run: npm run build
+      - name: Repeat the original 1440 save/reload cases without retries
+        run: >-
+          ./tests/e2e/node_modules/.bin/playwright test
+          --config=tests/e2e/playwright.cross-browser.config.mjs
+          --project=webkit-mobile tests/e2e/bookshelf-surface.spec.mjs
+          --grep='material long text 1440x900.*saves the last chapter'
+          --repeat-each=3 --retries=0 --trace=on
+      - name: Upload isolated fixture diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bookshelf-clock-${{ matrix.variant }}-${{ github.run_id }}
+          path: |
+            artifacts/playwright-cross-browser-results.json
+            artifacts/playwright-cross-browser-results/
+          if-no-files-found: error
+          retention-days: 7
