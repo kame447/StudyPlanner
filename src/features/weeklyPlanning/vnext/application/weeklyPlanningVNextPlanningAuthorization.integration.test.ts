@@ -106,6 +106,33 @@ describe('V5 authorization policy through the VNext native/session boundary', ()
     expect(after.preview).toEqual(fresh.preview);
   });
 
+  it.each(['same', 'distinct'] as const)('honors %s work identity across a task and its selected chapter', async kind => {
+    const add: VNextAddFact[] = [task,
+      { kind: 'workload', localId: 'overall', taskRef: { localId: 'task' }, componentRef: null, quantityRole: 'scope_total',
+        amount: 20, unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+      { kind: 'component', localId: 'chapter', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '第1章' },
+      { kind: 'workload', localId: 'picked', taskRef: { localId: 'task' }, componentRef: { localId: 'chapter' }, quantityRole: 'target',
+        amount: 5, unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+      { kind: 'effort_estimate', localId: 'pace', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+        effortKind: 'duration_per_unit', minutes: 2, unitCode: 'page', unitLabel: 'ページ', precision: 'exact' },
+    ];
+    const relate: VNextTurnDelta['relate'] = [{ kind, a: { localId: 'overall' }, b: { localId: 'picked' } }];
+    const text = `数学は全体20ページで、第1章の5ページを今週の目標にします。${kind === 'same' ? '同じ作業の一部です' : '別の作業です'}。1ページ2分で予定を作って`;
+    const h = harness([wire('create_plan', { add, relate })]);
+    const result = await h.turn(text);
+    expect(result.outcome).toBe('applied');
+    expect(h.local.readCheckpoint()!.vnext.state.workRelations).toEqual([expect.objectContaining({ kind })]);
+    expect(result.preview).not.toBeNull();
+    if (kind === 'same') {
+      const control = harness([wire('create_plan', { add: add.map(fact => fact.kind === 'workload' && fact.localId === 'picked'
+        ? { ...fact, componentRef: null } : fact), relate })]);
+      const withinOwner = await control.turn(text);
+      expect(withinOwner.preview).not.toBeNull();
+      expect(result.preview!.blocks).toHaveLength(withinOwner.preview!.blocks.length);
+    }
+    expect(result.preview!.blocks).toHaveLength(kind === 'same' ? 1 : 2);
+  });
+
   it.each(['create_plan', 'discuss'] as const)('uses component totals without another quantity question ($intent)', async intent => {
     const add: VNextAddFact[] = [task,
       { kind: 'component', localId: 'calculation', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '計算' },

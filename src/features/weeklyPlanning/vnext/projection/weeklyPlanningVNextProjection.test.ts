@@ -70,6 +70,21 @@ const amountPatch = (localId: string, targetFactId: string, amount: number) => (
 });
 
 describe('projectWeeklyPlanningVNext', () => {
+  it.each(['same', 'distinct', 'unstated'] as const)('honors the %s relation between task progress and a component target', kind => {
+    const state = turn(createEmptyWeeklyPlanningVNextState(), { add: [task,
+      W('overall', 'scope_total', 20, 'page', 'ページ'),
+      { kind: 'component', localId: 'chapter', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '第1章' },
+      { ...W('picked', 'target', 5, 'page', 'ページ'), componentRef: { localId: 'chapter' } },
+      rate('pace', 2, 'page', null),
+    ], relate: kind === 'unstated' ? [] : [{ kind, a: { localId: 'overall' }, b: { localId: 'picked' } }] });
+    const before = structuredClone(state);
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(state.workRelations).toHaveLength(kind === 'unstated' ? 0 : 1);
+    expect(projection.questions).toEqual([]);
+    expect(projection.owners.flatMap(owner => owner.work).reduce((sum, item) => sum + item.minutes!, 0)).toBe(kind === 'same' ? 10 : 50);
+    expect(state).toEqual(before);
+  });
+
   it.each([
     { unitCode: 'minute', totalAmount: 60, completed: false },
     { unitCode: 'hour', totalAmount: 1, completed: false },
