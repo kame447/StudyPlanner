@@ -10,7 +10,7 @@ import { SEMANTIC_BASE_TEMPORAL_CONSTRAINT_KINDS_V5, SEMANTIC_COMPONENT_ROLES_V5
   SEMANTIC_WORKLOAD_UNIT_CODES_V5, SEMANTIC_STUDY_PURPOSES_V5, SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
 import { SEMANTIC_RECURRENCE_KINDS_V5, SEMANTIC_TASK_DATE_RULE_KINDS_V5, SEMANTIC_AVAILABILITY_KINDS_V5,
   SEMANTIC_AVAILABILITY_RECURRENCE_KINDS_V5 } from '../../semantic/weeklyPlanningSemanticTypesV5';
-import type { VNextEventRegistrationAct, WeeklyPlanningVNextInterpretedAnswer } from '../weeklyPlanningVNextInterpretationContract';
+import type { VNextEventRegistrationAct, VNextPlanningRequestEvidence, WeeklyPlanningVNextInterpretedAnswer } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextPlanningIntent, VNextTurnDelta, VNextTurnError } from '../weeklyPlanningVNextTypes';
 import { VNEXT_STUDY_RECORD_QUESTION_REASONS, type VNextStudyRecordQuestion, type VNextStudyRecordReading } from '../weeklyPlanningVNextStudyRecords';
 import { VNEXT_CORRECTION_RESPONSE_FORMAT, VNEXT_STUDY_CONTEXT_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_PLANNING_WINDOW_KINDS, VNEXT_TASK_RELATION_KINDS, VNEXT_PLANNING_WINDOW_REQUIREMENT, VNEXT_RECURRENCE_REQUIREMENT, VNEXT_TASK_DATE_RULE_REQUIREMENT, VNEXT_AVAILABILITY_REQUIREMENT, VNEXT_TASK_RELATION_REQUIREMENT } from './weeklyPlanningVNextCorrectionSchema';
@@ -101,6 +101,8 @@ const {
   const correction = VNEXT_CORRECTION_RESPONSE_FORMAT.json_schema.schema as Schema;
   const v5 = WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.schema as { properties: { planningIntent: Schema } };
   const root = object({ planningIntent: { ...v5.properties.planningIntent, description: VNEXT_PLANNING_INTENT_REQUIREMENT },
+    planningRequestEvidence: { ...nullable(object({ quote: text, questionKey: text })),
+      description: 'Only when answering presentedQuestion AND independently requesting a plan or preview of the current planning scope, set planningIntent create_plan and provide planningRequestEvidence: quote the exact independent request clause from current userText, with presentedQuestion.key (the supplied Q alias). Otherwise null, including a bare answer, a negated/withdrawn request, quoted or hypothetical requests, supplementalContext and past conversation. Evidence is turn-local meaning, not permission or save approval. Do not quote just the numeric answer or infer a request from complete facts.' },
     conversationActs: { ...array(object({ kind: enumeration(['request_event_registration', 'decline_additional_work']), targetRef: nullable(ref) })), description: `${VNEXT_EVENT_REGISTRATION_REQUIREMENT} V5 meaning (only the two supported kinds above are allowed here): ${v5ActMeaning}` },
     delta: object({ add: array(add), patch: correction.properties!.patch,
     remove: correction.properties!.remove,
@@ -139,6 +141,7 @@ export {
 
 export interface VNextProviderReading {
   planningIntent: VNextPlanningIntent;
+  planningRequestEvidence?: VNextPlanningRequestEvidence | null;
   conversationActs: VNextEventRegistrationAct[];
   delta: VNextTurnDelta;
   /** Always set by the decoder; optional so readings built by plan-only callers stay valid. */
@@ -212,18 +215,19 @@ export function decodeVNextProviderOutput(value: unknown):
   | { status: 'rejected'; errors: VNextTurnError[] } {
   // The model must state both study-record fields (strict schema); a reading recorded before they existed has
   // none, which means no records and no record question, so absence decodes as that rather than as an error.
-  // Earlier readings lack year provenance. Preserve their data as unverified, never infer proof.
+  // Older readings also lack independent-request evidence; keep accepting them without granting the
+  // answer-plus-request permission. Earlier readings lack year provenance. Preserve their data as unverified, never infer proof.
   const withBasis = (items: unknown, patch: boolean) => Array.isArray(items) ? items.map(item => {
     if (!record(item) || item.kind !== 'planning_window') return item;
     if (patch) return record(item.changes) ? { ...item, changes: { yearBasis: null, ...item.changes } } : item;
     return { yearBasis: null, ...item };
   }) : items;
-  const complete = record(value) ? { studyRecords: [], studyRecordQuestion: null, studyRestDays: [], ...value,
+  const complete = record(value) ? { studyRecords: [], studyRecordQuestion: null, studyRestDays: [], planningRequestEvidence: null, ...value,
     ...(record(value.delta) ? { delta: { ...value.delta, add: withBasis(value.delta.add, false), patch: withBasis(value.delta.patch, true) } } : {}),
   } : value;
   const errors = validate(root, complete, '', null);
   if (errors.length) return { status: 'rejected', errors };
-  const wire = structuredClone(complete) as { planningIntent: VNextPlanningIntent; conversationActs: VNextEventRegistrationAct[]; delta: VNextTurnDelta; studyRecords: VNextStudyRecordReading[]; studyRecordQuestion: VNextStudyRecordQuestion | null; studyRestDays: string[]; answer: Record<string, unknown> | null };
+  const wire = structuredClone(complete) as { planningIntent: VNextPlanningIntent; planningRequestEvidence: VNextPlanningRequestEvidence | null; conversationActs: VNextEventRegistrationAct[]; delta: VNextTurnDelta; studyRecords: VNextStudyRecordReading[]; studyRecordQuestion: VNextStudyRecordQuestion | null; studyRestDays: string[]; answer: Record<string, unknown> | null };
   let answer: WeeklyPlanningVNextInterpretedAnswer | null = null;
   if (wire.answer) {
     if (wire.answer.kind === 'proposal_decision' && typeof wire.answer.proposalId === 'string'
@@ -238,6 +242,8 @@ export function decodeVNextProviderOutput(value: unknown):
       answer = { kind: 'estimate_minutes', minutes: wire.answer.minutes, per: wire.answer.per };
     } else return { status: 'rejected', errors: [{ code: 'invalid_value', path: 'answer', localId: null, factId: null }] };
   }
-  return { status: 'decoded', reading: { planningIntent: wire.planningIntent, conversationActs: wire.conversationActs, delta: wire.delta,
+  return { status: 'decoded', reading: { planningIntent: wire.planningIntent,
+    ...(wire.planningRequestEvidence ? { planningRequestEvidence: wire.planningRequestEvidence } : {}),
+    conversationActs: wire.conversationActs, delta: wire.delta,
     studyRecords: wire.studyRecords, studyRecordQuestion: wire.studyRecordQuestion, studyRestDays: wire.studyRestDays, answer } };
 }
