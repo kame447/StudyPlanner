@@ -14,6 +14,9 @@ async function openLesson(page, viewport, { withSavedDetail = false } = {}) {
   if (withSavedDetail) {
     // This independent editor journey reads real saved data, without replaying
     // the attendance/schedule UI journey or fabricating mounted hook state.
+    // saveComplete can precede the hook snapshot that exposes the saved template.
+    await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.snapshot().scheduleTemplates
+      .some(row => row.title === '数理論理'))).toBe(true);
     await page.evaluate(async date => {
       const template = window.__plannerRecoveryHook.snapshot().scheduleTemplates.find(row => row.title === '数理論理');
       await window.__plannerRecoveryRepository.seedTimetableClassDetail({ userId: template.userId, templateId: template.id, date });
