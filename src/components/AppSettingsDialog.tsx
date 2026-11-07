@@ -120,7 +120,7 @@ export function AppSettingsDialog({ open, onClose, onShowTutorial, onDeleteAccou
                 <>
                   <div className="memory-settings-toolbar">
                     <strong>覚えていること</strong>
-                    <button className="ghost-button" onClick={openNewMemory} type="button" disabled={memory.syncing}>
+                    <button className="ghost-button" onClick={openNewMemory} type="button" disabled={memory.syncing || memory.unavailable}>
                       <Plus aria-hidden="true" size={18} strokeWidth={1.9} />
                       追加
                     </button>
@@ -135,7 +135,7 @@ export function AppSettingsDialog({ open, onClose, onShowTutorial, onDeleteAccou
                           onChange={(event) => setEditorText(event.target.value)}
                           placeholder="例：英単語は15分くらいに分けて勉強したい"
                           rows={3}
-                          disabled={memory.syncing}
+                          disabled={memory.syncing || memory.unavailable}
                         />
                       </label>
                       {editorError ? <p className="settings-inline-error" role="alert">{editorError}</p> : null}
@@ -146,7 +146,7 @@ export function AppSettingsDialog({ open, onClose, onShowTutorial, onDeleteAccou
                         <button
                           className="primary-button"
                           type="button"
-                          disabled={memory.syncing || !editorText.trim()}
+                          disabled={memory.syncing || memory.unavailable || !editorText.trim()}
                           onClick={() => {
                             setEditorError(null);
                             void memory.saveNaturalLanguage({
@@ -164,10 +164,10 @@ export function AppSettingsDialog({ open, onClose, onShowTutorial, onDeleteAccou
                   ) : null}
 
                   {memoryRecords.length === 0 ? (
-                    <section className="assistant-settings-card memory-empty-state">
+                    !memory.unavailable ? <section className="assistant-settings-card memory-empty-state">
                       <Brain aria-hidden="true" size={24} strokeWidth={1.7} />
                       <strong>まだ覚えていることはありません</strong>
-                    </section>
+                    </section> : null
                   ) : (
                     <div className="memory-record-list">
                       {memoryRecords.map((record) => {
@@ -192,7 +192,7 @@ export function AppSettingsDialog({ open, onClose, onShowTutorial, onDeleteAccou
                                 aria-label="この内容を編集"
                                 onClick={() => openExistingMemory(record)}
                                 type="button"
-                                disabled={memory.syncing}
+                                disabled={memory.syncing || memory.unavailable}
                               >
                                 <Pencil aria-hidden="true" size={17} strokeWidth={1.9} />
                               </button>
@@ -204,7 +204,7 @@ export function AppSettingsDialog({ open, onClose, onShowTutorial, onDeleteAccou
                                   void memory.removeRecord(record.id).catch(() => undefined);
                                 }}
                                 type="button"
-                                disabled={memory.syncing}
+                                disabled={memory.syncing || memory.unavailable}
                               >
                                 <Trash2 aria-hidden="true" size={17} strokeWidth={1.9} />
                               </button>

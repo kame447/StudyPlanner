@@ -52,13 +52,9 @@ function storageAvailable(): boolean {
 
 function readRaw(ownerId: string): string | null {
   const key = storageKey(ownerId);
-  try {
-    return storageAvailable()
-      ? window.localStorage.getItem(key)
-      : inMemoryStorage.get(key) ?? null;
-  } catch {
-    return null;
-  }
+  return storageAvailable()
+    ? window.localStorage.getItem(key)
+    : inMemoryStorage.get(key) ?? null;
 }
 
 function removeRaw(ownerId: string): void {
@@ -234,31 +230,23 @@ function refreshedStatusForRecord(
   return 'active';
 }
 
-function parseSnapshot(raw: string | null, ownerId: string): UserPlanningContextSnapshotV1 {
-  if (!raw) return createEmptyUserPlanningContextSnapshotV1(ownerId);
+function parseSnapshot(raw: string | null, ownerId: string): UserPlanningContextSnapshotV1 | null {
+  if (raw === null) return createEmptyUserPlanningContextSnapshotV1(ownerId);
   if (new TextEncoder().encode(raw).byteLength > MAX_CONTEXT_BYTES) {
-    removeRaw(ownerId);
-    return createEmptyUserPlanningContextSnapshotV1(ownerId);
+    return null;
   }
   try {
     const parsed: unknown = JSON.parse(raw);
-    const normalized = normalizeUserPlanningContextSnapshotV1(parsed, ownerId);
-    if (!normalized) {
-      removeRaw(ownerId);
-      return createEmptyUserPlanningContextSnapshotV1(ownerId);
-    }
-    return normalized;
+    return normalizeUserPlanningContextSnapshotV1(parsed, ownerId);
   } catch {
-    removeRaw(ownerId);
-    return createEmptyUserPlanningContextSnapshotV1(ownerId);
+    return null;
   }
 }
 
-export function loadUserPlanningContextSnapshotV1(params: {
-  ownerId: string;
-  currentDate: string;
-}): UserPlanningContextSnapshotV1 {
-  const snapshot = parseSnapshot(readRaw(params.ownerId), params.ownerId);
+function projectSnapshotDate(
+  snapshot: UserPlanningContextSnapshotV1,
+  currentDate: string,
+): UserPlanningContextSnapshotV1 {
   return {
     ...snapshot,
     records: snapshot.records.map((record) => {
@@ -269,10 +257,42 @@ export function loadUserPlanningContextSnapshotV1(params: {
       const next = { ...record, resolvedDate };
       return {
         ...next,
-        status: refreshedStatusForRecord(next, params.currentDate),
+        status: refreshedStatusForRecord(next, currentDate),
       };
     }),
   };
+}
+
+export type UserPlanningContextSnapshotReadV1 =
+  | { kind: 'available'; snapshot: UserPlanningContextSnapshotV1 }
+  | { kind: 'unavailable'; reason: 'invalid_data' | 'storage_unavailable' };
+
+/** Reading never repairs or deletes source data. Absence is authoritative only after a successful read. */
+export function readUserPlanningContextSnapshotV1(params: {
+  ownerId: string;
+  currentDate: string;
+}): UserPlanningContextSnapshotReadV1 {
+  let raw: string | null;
+  try {
+    raw = readRaw(params.ownerId);
+  } catch {
+    return { kind: 'unavailable', reason: 'storage_unavailable' };
+  }
+  const snapshot = parseSnapshot(raw, params.ownerId);
+  return snapshot
+    ? { kind: 'available', snapshot: projectSnapshotDate(snapshot, params.currentDate) }
+    : { kind: 'unavailable', reason: 'invalid_data' };
+}
+
+/** Compatibility for optional context consumers. This empty fallback is not authority to migrate or merge. */
+export function loadUserPlanningContextSnapshotV1(params: {
+  ownerId: string;
+  currentDate: string;
+}): UserPlanningContextSnapshotV1 {
+  const result = readUserPlanningContextSnapshotV1(params);
+  return result.kind === 'available'
+    ? result.snapshot
+    : createEmptyUserPlanningContextSnapshotV1(params.ownerId);
 }
 
 function normalizeIdentityPart(value: string | null): string {
@@ -518,13 +538,19 @@ export function finalizeStagedUserPlanningContextV1(params: {
   if (staged.ownerId !== params.ownerId) {
     throw new Error('User planning context owner mismatch.');
   }
-  const current = loadUserPlanningContextSnapshotV1({
+  const current = readUserPlanningContextSnapshotV1({
     ownerId: params.ownerId,
     currentDate: staged.observedDate,
   });
+  if (current.kind === 'unavailable') {
+    // Memory is optional to the conversation commit. Do not overwrite an unreadable source
+    // or leave this turn's skipped memory staged for a later, unrelated commit.
+    stagedContexts.delete(key);
+    return null;
+  }
   const previousRaw = readRaw(params.ownerId);
   const merged = mergeFacts({
-    snapshot: current,
+    snapshot: current.snapshot,
     facts: staged.facts,
     ownerId: params.ownerId,
     conversationId: params.conversationId,
