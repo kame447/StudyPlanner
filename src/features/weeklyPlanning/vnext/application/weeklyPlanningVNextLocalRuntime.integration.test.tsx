@@ -1,5 +1,6 @@
 import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import type { Plan } from '../../../../types/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStorageHarness, createDeferred, installWeeklyPlanningTestStorage } from '../../testUtils/weeklyPlanningApplicationTestHarness';
 import { createReadyPlannerDataAvailability } from '../../testUtils/plannerDataAvailabilityTest';
@@ -94,6 +95,43 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
       createRenderer: () => ({ render: async () => ({ status: 'rendered', text: '30分の計画案です。', rawResponse: '' }) }) };
     return { memory, repository, save, input, services };
   }
+
+  it('#1034 rejects previously selected blocks after a replan and saves only the latest displayed placement', async () => {
+    let calls = 0;
+    const { input, services, save, memory } = fixture(() => async () => calls++ === 0 ? seed
+      : { ...seed, delta: { add: [], patch: [], remove: [], relate: [], defer: [] } });
+    const ref = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
+    await act(async () => { expect((await ref.current!.submitTurn('数学30分の予定を作って')).accepted).toBe(true); });
+    const firstCandidates = ref.current!.state.previewCandidates!;
+    const oldBlocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates: firstCandidates, userId: OWNER, createdAt: NOW });
+    await act(async () => { expect(ref.current!.createDraftBlocks(oldBlocks)).toBe(true); });
+    const busy: Plan = { id: 'manual-busy', seriesId: 'manual-busy', userId: OWNER, title: '学校', subject: '', type: 'other',
+      date: oldBlocks[0].date, startTime: oldBlocks[0].startTime, endTime: oldBlocks[0].endTime,
+      repeat: 'none', repeatUntil: null, recurrenceRules: [], excludedDates: [], memo: '', createdAt: NOW, updatedAt: NOW };
+    await act(async () => { renderer!.update(<LocalHarness ref={ref} input={{ ...input, plans: [busy] }} services={services} />); });
+    await act(async () => { expect((await ref.current!.submitTurn('カレンダーに合わせて作り直して')).accepted).toBe(true); });
+    const latest = createWeeklyDraftBlocksFromPreviewCandidates({ candidates: ref.current!.state.previewCandidates!, userId: OWNER, createdAt: NOW });
+    expect(latest).toHaveLength(1);
+    expect(latest[0].id).toBe(oldBlocks[0].id);
+    expect(latest[0].behaviorMetadata!.previewMetadata!.previewId).toBe(oldBlocks[0].behaviorMetadata!.previewMetadata!.previewId);
+    expect(latest[0].startTime).not.toBe(oldBlocks[0].startTime);
+    await act(async () => { await expect(ref.current!.approveDraftBlocks()).rejects.toThrow('現在の条件と一致しない仮予定'); });
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => { ref.current!.clearDraftBlocks(); expect(ref.current!.createDraftBlocks(latest)).toBe(true); });
+    await act(async () => ref.current!.approveDraftBlocks());
+    expect(save).toHaveBeenCalledTimes(1);
+    expect([...memory.plans.values()]).toEqual([expect.objectContaining({ date: latest[0].date,
+      startTime: latest[0].startTime, endTime: latest[0].endTime })]);
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK,
+      storage: storage.storage, chatId: ref.current!.chat.index.activeChatId });
+    const checkpoint = local.readCheckpoint()!.vnext.preview;
+    await act(async () => { renderer!.update(<LocalHarness ref={ref}
+      input={{ ...input, plans: [{ ...busy, startTime: latest[0].startTime, endTime: latest[0].endTime }] }} services={services} />); });
+    await act(async () => { expect((await ref.current!.submitTurn('もう一度作り直して')).accepted).toBe(true); });
+    expect(local.readCheckpoint()!.vnext.preview).toEqual(checkpoint);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
 
   it('turns on locally, previews V5 candidates, reloads, saves through V5 and rolls back to untouched V5 state', async () => {
     const v5State = createInitialPlanningState(WEEK);

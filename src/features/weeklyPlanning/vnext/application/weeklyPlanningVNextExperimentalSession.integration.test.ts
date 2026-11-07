@@ -482,6 +482,84 @@ describe('VNext experimental session end to end (offline)', () => {
     expect([...h.saved.values()].map((block) => block.startTime)).toEqual(shown.preview!.blocks.map((block) => block.startTime));
   });
 
+  describe('#1034 unapproved preview regeneration', () => {
+    const work: VNextAddFact[] = [
+      { kind: 'task', localId: 'slides', category: 'study', title: '数学' },
+      { kind: 'workload', localId: 'w', taskRef: { localId: 'slides' }, componentRef: null, quantityRole: 'remaining',
+        amount: 120, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null },
+      { kind: 'effort_estimate', localId: 'session', taskRef: { localId: 'slides' }, targetRef: { localId: 'slides' },
+        effortKind: 'session_duration', minutes: 60, unitCode: null, unitLabel: null, precision: 'exact' },
+    ];
+    const busy = (block: WeeklyPlanDraftBlock): Plan => ({ id: 'manual-busy', seriesId: 'manual-busy', userId: scope.ownerId,
+      title: '学校', subject: '', type: 'other', date: block.date, startTime: block.startTime, endTime: block.endTime,
+      repeat: 'none', repeatUntil: null, recurrenceRules: [], excludedDates: [], memo: '',
+      createdAt: '2026-11-02T09:00:00.000Z', updatedAt: '2026-11-02T09:00:00.000Z' });
+
+    it('approves only the latest displayed contents even when its previewId is unchanged', async () => {
+      const h = harness([interpreted({ add: work }), interpreted({})]);
+      h.ports.allowUnapprovedPreviewReplan = true;
+      const shown = await turn(h.ports, 't1', '数学120分の予定を作って');
+      h.ports.calendar = () => ({ plans: [busy(shown.preview!.blocks[0])], actuals: [], monthEvents: [], scheduleTemplates: [] });
+      const replanned = await turn(h.ports, 't2', 'カレンダーに合わせて作り直して');
+      expect(replanned.preview!.previewId).toBe(shown.preview!.previewId);
+      expect(replanned.graphRevision).toBe(shown.graphRevision);
+      expect(replanned.preview!.blocks).not.toEqual(shown.preview!.blocks);
+      expect(h.saveCalls()).toBe(0);
+      expect(await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports }))
+        .toMatchObject({ status: 'executed', operation: { status: 'completed' } });
+      expect([...h.saved.values()]).toEqual(replanned.preview!.blocks);
+      const calls = h.saveCalls();
+      await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports });
+      expect(h.saveCalls()).toBe(calls);
+    });
+
+    it.each([false, true])('keeps the original plan after approval starts (partial=%s), then resumes the same operation', async partial => {
+      const h = harness([interpreted({ add: work }), interpreted({})], partial ? { failSaveOnce: 2 } : {});
+      h.ports.allowUnapprovedPreviewReplan = true;
+      const shown = await turn(h.ports, 't1', '数学120分の予定を作って');
+      const approved = await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports });
+      expect(approved).toMatchObject({ status: 'executed', operation: { status: partial ? 'partially_saved' : 'completed' } });
+      const ledger = h.slots.get('ledger')!;
+      const originalOperation = parseWeeklyApprovalLedger(ledger)!.operations[0];
+      const calls = h.saveCalls();
+      h.ports.calendar = () => ({ plans: [busy(shown.preview!.blocks[0])], actuals: [], monthEvents: [], scheduleTemplates: [] });
+      const replanned = await turn(h.ports, 't2', 'カレンダーに合わせて作り直して');
+      expect(replanned.preview).toEqual(shown.preview);
+      expect(replanned.draftCandidates).toEqual([]);
+      expect(h.slots.get('ledger')).toBe(ledger);
+      expect(h.saveCalls()).toBe(calls);
+      const resumed = await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports });
+      expect(resumed).toMatchObject({ status: 'executed', operation: { status: 'completed', approvalOperationId: originalOperation.approvalOperationId } });
+      expect([...h.saved.values()]).toEqual(shown.preview!.blocks);
+    });
+
+    it.each([undefined, false])('keeps the old preview without an explicit unapproved confirmation (%s)', async permission => {
+      const h = harness([interpreted({ add: work }), interpreted({})]);
+      h.ports.allowUnapprovedPreviewReplan = permission;
+      const shown = await turn(h.ports, 't1', '数学120分の予定を作って');
+      h.ports.calendar = () => ({ plans: [busy(shown.preview!.blocks[0])], actuals: [], monthEvents: [], scheduleTemplates: [] });
+      expect((await turn(h.ports, 't2', '作り直して')).preview).toEqual(shown.preview);
+    });
+
+    it('keeps an approved-in-progress preview before the first save resolves', async () => {
+      const h = harness([interpreted({ add: work }), interpreted({})]);
+      h.ports.allowUnapprovedPreviewReplan = true;
+      const shown = await turn(h.ports, 't1', '数学120分の予定を作って');
+      let release!: () => void;
+      const wait = new Promise<void>(resolve => { release = resolve; });
+      const save = h.ports.plans.saveBlock;
+      h.ports.plans.saveBlock = async (...args) => { await wait; return save(...args); };
+      const pending = approveWeeklyPlanningVNextExperimentalPreview({ scope, ports: h.ports });
+      expect(parseWeeklyApprovalLedger(h.slots.get('ledger')!)!.operations[0].status).toBe('pending');
+      h.ports.calendar = () => ({ plans: [busy(shown.preview!.blocks[0])], actuals: [], monthEvents: [], scheduleTemplates: [] });
+      const replanned = await turn(h.ports, 't2', '作り直して');
+      expect(replanned.preview).toEqual(shown.preview);
+      release();
+      await pending;
+      expect([...h.saved.values()]).toEqual(shown.preview!.blocks);
+    });
+  });
+
   it('writes nothing when another turn saved while the model was reading', async () => {
     const h = harness([]);
     const releases: Array<() => void> = [];

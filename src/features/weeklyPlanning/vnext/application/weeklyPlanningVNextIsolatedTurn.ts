@@ -25,6 +25,7 @@ export async function executeIsolatedWeeklyPlanningVNextTurn(
     ...provider, checkpoint: { read: () => after, write: raw => { after = raw; } },
     legacyV5Checkpoint: { read: () => payload.legacyV5Checkpoint },
     approvalLedger: { read: () => null, write: unavailable },
+    allowUnapprovedPreviewReplan: payload.allowUnapprovedPreviewReplan === true,
     plans: { findExistingPlanId: async () => undefined, saveBlock: unavailable },
     calendar: () => ({ plans: input.plans, actuals: input.actuals ?? [], monthEvents: input.monthEvents ?? [],
       scheduleTemplates: input.scheduleTemplates, timetableTermId: input.timetableTermId }),

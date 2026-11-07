@@ -133,7 +133,9 @@ export function createWeeklyPlanningVNextLocalSession(params: {
     const conversationId = blocks[0]?.behaviorMetadata?.previewMetadata?.conversationId;
     if (userId !== ownerId) return { kind: 'owner_mismatch', stableV5: true, runtimeSnapshot: null };
     if (!accepted || accepted.conversationId !== conversationId || !accepted.vnext.preview
-      || blocks.some(block => !accepted.vnext.preview!.blocks.some(shown => shown.id === block.id))) {
+      // A same-revision replan keeps IDs; an earlier selected placement is no longer the shown plan (#1034).
+      || blocks.some(block => !accepted.vnext.preview!.blocks.some(shown => shown.id === block.id
+        && shown.date === block.date && shown.startTime === block.startTime && shown.endTime === block.endTime))) {
       return { kind: 'unavailable', stableV5: true, runtimeSnapshot: null };
     }
     return { kind: 'available', stableV5: true, runtimeSnapshot: { conversationId: accepted.conversationId,

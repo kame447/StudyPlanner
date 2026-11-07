@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handleDurableTurnApi, type DurableTurnApiEnv } from './durableTurnApi';
 import { DurableTurnJob, type DurableTurnRecord } from './durableTurnJob';
+import { decodeDurableTurnInput } from './durableTurnInput';
 import { executeDurableVNextJob, executeDurableVNextTurn } from './durableVNextTurn';
 import { serializeWeeklyPlanningTurnResult } from './weeklyPlanningTurnResult';
 import { createWeeklyPlanningTurnRequestContext } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningTemporalContext';
@@ -59,6 +60,46 @@ const providerFetch = (semantic: string = reading([addTask, addWork])) => vi.fn(
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('VNext durable execution', () => {
+  it.each([undefined, false, true])('#1034 only replans a retained preview with explicit unapproved permission (%s)', async permission => {
+    const create = (add: unknown[]) => reading(add).replace('"discuss"', '"create_plan"');
+    vi.stubGlobal('fetch', providerFetch(create([addTask, { ...addWork, amount: 60, unitCode: 'minute', unitLabel: '分' }])));
+    const first = await executeDurableVNextTurn(providerEnv, payload({ userText: '数学は60分で予定を作って' }), journal().dispatch);
+    const before = parseWeeklyPlanningVNextSessionCheckpoint({ raw: first.checkpointAfter!, ownerId: 'alice', weekStartDate: WEEK })!.vnext;
+    const block = before.preview!.blocks[0];
+    const next = payload({ requestId: 'chat:request:2', checkpoint: first.checkpointAfter, userText: 'カレンダーに合わせて予定を作り直して' });
+    next.input.inputStateRevision = before.state.graph.revision;
+    next.input.plans = [{ id: 'manual-busy', seriesId: 'manual-busy', userId: 'alice', title: '学校', subject: '', type: 'other',
+      date: block.date, startTime: block.startTime, endTime: block.endTime, repeat: 'none', repeatUntil: null,
+      recurrenceRules: [], excludedDates: [], memo: '', createdAt: STARTED, updatedAt: STARTED }];
+    if (permission !== undefined) next.allowUnapprovedPreviewReplan = permission;
+    const envelope = { conversationId: 'chat', requestId: 'chat:request:2', baseRevision: before.state.graph.revision,
+      startedAt: Date.parse(STARTED), payload: next };
+    const decoded = decodeDurableTurnInput(envelope, 'alice');
+    expect(decoded).not.toBeNull();
+    expect(decodeDurableTurnInput({ ...envelope, payload: { ...next, allowUnapprovedPreviewReplan: 'true' } }, 'alice')).toBeNull();
+    expect(decodeDurableTurnInput(envelope, 'other-owner')).toBeNull();
+    vi.stubGlobal('fetch', providerFetch(create([])));
+    let record: DurableTurnRecord | undefined;
+    const job = new DurableTurnJob({ read: async () => structuredClone(record),
+      write: async value => { record = structuredClone(value); }, alarmAt: async () => {} }, () => Date.parse(STARTED));
+    await job.accept(decoded!);
+    await job.run((raw, dispatch, ip, deadline) => executeDurableVNextJob(providerEnv, JSON.parse(raw), dispatch, ip, deadline));
+    expect(record?.status).toBe('completed');
+    const result = JSON.parse(record!.result!) as WeeklyPlanningVNextDurableTurnResult;
+    const after = parseWeeklyPlanningVNextSessionCheckpoint({ raw: result.checkpointAfter!, ownerId: 'alice', weekStartDate: WEEK })!.vnext;
+    expect(after.state.graph).toMatchObject({ revision: before.state.graph.revision, tasks: before.state.graph.tasks, workloads: before.state.graph.workloads });
+    expect(after.preview!.previewId).toBe(before.preview!.previewId);
+    expect(result.result.state.shouldSavePlan).toBe(false);
+    if (permission === true) {
+      expect(after.preview!.blocks.some(item => item.date === block.date && item.startTime < block.endTime && block.startTime < item.endTime)).toBe(false);
+      expect(result.result.draftCandidates.length).toBeGreaterThan(0);
+    } else {
+      expect(after.preview).toEqual(before.preview);
+      expect(result.result.preserveExistingPreview).toBe(true);
+      expect(result.result.draftCandidates).toEqual([]);
+    }
+  });
+
   it('#1005 grants the evidenced request through the production interpreter and replays without dispatch', async () => {
     const sends: string[] = [];
     const quote = 'この条件で今週の予定案を作って';

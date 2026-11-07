@@ -70,7 +70,8 @@ const checkpointText = (v: unknown) => v === null || (typeof v === 'string' && v
 
 /** The VNext envelope carries its own checkpoint as the only graph authority; V5 payload bytes are untouched. */
 function decodeVNextTurn(value: Record<string, unknown>, payload: Record<string, unknown>, ownerId: string): DurableTurnInput | null {
-  if (!only(payload, ['core', 'input', 'weekStartDate', 'checkpoint', 'legacyV5Checkpoint']) || !record(payload.input)
+  if (!only(payload, ['core', 'input', 'weekStartDate', 'checkpoint', 'legacyV5Checkpoint', 'allowUnapprovedPreviewReplan']) || !record(payload.input)
+    || (payload.allowUnapprovedPreviewReplan !== undefined && typeof payload.allowUnapprovedPreviewReplan !== 'boolean')
     || !date(payload.weekStartDate) || !checkpointText(payload.checkpoint) || !checkpointText(payload.legacyV5Checkpoint)
     || !validCommonTurnInput(value, payload.input, ownerId)) return null;
   if (payload.checkpoint !== null) {

@@ -9,6 +9,7 @@
 // checkpoint is read (never written) and migrated when the VNext slot is empty,
 // so rolling back to V5 finds its own data exactly as it was.
 import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
+import { parseWeeklyApprovalLedger } from '../../planning/weeklyPlanningApprovalCore';
 import { resolveVNextPlanningAuthorization, type VNextAuthorizationDecision } from './weeklyPlanningVNextPlanningAuthorization';
 import {
   createWeeklyPlanningPreviewBlocks,
@@ -127,6 +128,8 @@ export interface WeeklyPlanningVNextExperimentalPorts {
   /** The Stable V5 checkpoint slot, read-only. */
   legacyV5Checkpoint: Pick<WeeklyPlanningVNextStorageSlot, 'read'>;
   approvalLedger: WeeklyPlanningVNextStorageSlot;
+  /** The caller confirmed the shown preview has no started approval. Absent keeps it unchanged. */
+  allowUnapprovedPreviewReplan?: boolean;
   plans: {
     findExistingPlanId(sourceDraftBlockId: string): Promise<string | undefined>;
     saveBlock(block: WeeklyPlanDraftBlock, approvalOperationId: string): Promise<{ planId: string }>;
@@ -572,8 +575,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     provisionalTimeboxRequested: delta?.defer.some(item => item.allocation === 'provisional_timebox') ?? false });
   state = authorization.state;
   let question = projection.questions[0] ?? null;
-  // A shown preview belongs to its revision: while the revision is current it is
-  // exactly what the user saw (and may have approved), so it is not made again.
+  // A current shown preview stays fixed once approval starts. Before approval,
+  // an explicitly authorized create_plan may replace it using today's calendar (#1034).
   const shown = read.checkpoint.preview;
   const made = question || !accepted
     ? { preview: null, unplacedOwnerKeys: [], previewBlockedBy: [] }
@@ -584,10 +587,20 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
     question = optionalQuestion ?? before.questions[0];
     projection = { ...projection, questions: [question] };
   }
-  const authorizationRequired = !question && !(shown && shown.graphRevision === state.graph.revision)
+  let replaceShown = false;
+  if (!question && accepted && authorization.authorized && shown && shown.graphRevision === state.graph.revision
+    && made.preview && ports.allowUnapprovedPreviewReplan === true
+    && interpretation.status === 'interpreted' && interpretation.planningIntent === 'create_plan') {
+    const rawLedger = ports.approvalLedger.read();
+    const ledger = rawLedger === null ? { operations: [] } : parseWeeklyApprovalLedger(rawLedger);
+    replaceShown = ledger !== null && !ledger.operations.some(operation => operation.userId === scope.ownerId
+      && operation.previewId === shown.previewId && operation.previewStateRevision === shown.graphRevision);
+  }
+  const keepShown = !question && shown && shown.graphRevision === state.graph.revision && !replaceShown;
+  const authorizationRequired = !question && !keepShown
     && 'authorizationRequired' in made && made.authorizationRequired === true;
-  const { preview, unplacedOwnerKeys, previewBlockedBy } = !question && shown && shown.graphRevision === state.graph.revision
-    ? { preview: shown, unplacedOwnerKeys: made.unplacedOwnerKeys, previewBlockedBy: [] }
+  const { preview, unplacedOwnerKeys, previewBlockedBy } = keepShown
+    ? { preview: shown!, unplacedOwnerKeys: made.unplacedOwnerKeys, previewBlockedBy: [] }
     : made;
   // Mirrors V5 CompatibilityState's needs_scope/no-question closure at the application layer,
   // like draftGenerationIntent: one state, one checkpoint commit, no mutation on a rejected turn.
