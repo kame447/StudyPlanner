@@ -8,7 +8,7 @@ import { expect } from '@playwright/test';
 //                 so its key COUNT never grows on a first turn; the contract is its message count.
 //   <prefix>.core the accepted-fact checkpoint, written by every accepted turn, consultation included.
 // Only counts and booleans leave the page: never message bodies, ids or tokens.
-export const readVNextChatStorage = (page, userText = null) => page.evaluate(text => {
+export const readVNextChatStorage = (page, userText = null, weekStartDate = null) => page.evaluate(({ text, weekStartDate }) => {
   // Chats of the signed-out screen live under the owner 'anonymous' next to the signed-in owner's; their order in
   // localStorage is not stable, so only the signed-in owner's keys are read.
   const keys = Object.keys(localStorage).filter(key => !key.includes('.anonymous'));
@@ -19,7 +19,11 @@ export const readVNextChatStorage = (page, userText = null) => page.evaluate(tex
   const activeChatId = index?.activeChatId ?? null;
   const ui = vnext('.ui');
   const states = ui.map(key => readJson(key)?.payload?.state ?? null);
-  const activeKey = activeChatId ? ui.find(key => key.endsWith(`.${activeChatId}.ui`)) : undefined;
+  // One chat has a UI slot per week. Enumeration order cannot identify the planner's current week.
+  const activeKeys = activeChatId ? ui.filter(key => key.endsWith(`.${activeChatId}.ui`)
+    && (weekStartDate === null || key.endsWith(`.${weekStartDate}.${activeChatId}.ui`))) : [];
+  if (activeKeys.length > 1) throw new Error('Ambiguous active-chat storage: name the planning week.');
+  const activeKey = activeKeys[0];
   const activeMessages = (activeKey ? readJson(activeKey)?.payload?.state?.messages : null) ?? [];
   return {
     vnextUiKeys: ui.length,
@@ -33,7 +37,7 @@ export const readVNextChatStorage = (page, userText = null) => page.evaluate(tex
     previewSources: states.flatMap(state => state?.previewCandidates?.map(candidate => candidate.source) ?? []),
     draftBlocks: states.reduce((sum, state) => sum + (state?.draftBlocks?.length ?? 0), 0),
   };
-}, userText);
+}, { text: userText, weekStartDate });
 
 // A turn adds exactly the user's message and the assistant's reply to the active chat, persists its text, and writes the checkpoint.
 export function expectTurnPersisted(before, after) {

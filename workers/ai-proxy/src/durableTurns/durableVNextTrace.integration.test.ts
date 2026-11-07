@@ -11,7 +11,7 @@ import { readWeeklyPlanningStableV5DebugTrace, resetWeeklyPlanningStableV5DebugT
 import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from '../../../../src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime';
 import { listWeeklyPlanningTraceOutboxItems } from '../../../../src/features/weeklyPlanning/trace/weeklyPlanningTraceOutbox';
 import type { WeeklyPlanningTraceTurnDiagnosticEntry } from '../../../../src/features/weeklyPlanning/trace/weeklyPlanningTraceTypes';
-import { VNEXT_PROVIDER_RESPONSE_FORMAT } from '../../../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProviderSchema';
+import { VNEXT_PROVIDER_RESPONSE_FORMAT, VNEXT_RECURRENCE_REQUIREMENT } from '../../../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProviderSchema';
 import { parseWeeklyPlanningVNextSessionCheckpoint } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
 import type { WeeklyPlanningVNextDurableTurnInput, WeeklyPlanningVNextDurableTurnResult } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextDurableTurn';
 import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
@@ -53,12 +53,20 @@ beforeEach(() => {
 afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyPlanningStableV5DebugTraceForTest(); vi.unstubAllGlobals(); });
 
 it.each([
-  { oversized: false, recordOnly: false },
-  { oversized: true, recordOnly: false },
-  { oversized: false, recordOnly: true },
-])('carries a Worker-executed VNext turn through trace persistence (oversized=$oversized, recordOnly=$recordOnly)', async ({ oversized, recordOnly }) => {
-  const activeUserText = recordOnly ? '昨日は数学を30分勉強し、月曜は休みました。' : userText;
-  const activeReading = recordOnly ? JSON.stringify({ ...JSON.parse(reading), studyRecordQuestion: null, delta: empty }) : reading;
+  { oversized: false, recordOnly: false, recurring: false },
+  { oversized: true, recordOnly: false, recurring: false },
+  { oversized: false, recordOnly: true, recurring: false },
+  { oversized: false, recordOnly: false, recurring: true },
+  { oversized: true, recordOnly: false, recurring: true },
+])('carries a Worker-executed VNext turn through trace persistence (oversized=$oversized, recordOnly=$recordOnly, recurring=$recurring)', async ({ oversized, recordOnly, recurring }) => {
+  const activeUserText = recordOnly ? '昨日は数学を30分勉強し、月曜は休みました。' : recurring
+    ? `${userText}来週から毎週月曜日に数学を7ページ進めます。` : userText;
+  const recurringReading = JSON.parse(reading);
+  if (recurring) recurringReading.delta.add.push(
+    { kind: 'recurrence', localId: 'repeat', taskRef: { localId: 'task' }, targetRef: { localId: 'task' }, recurrenceKind: 'weekly', count: null, days: ['weekday:monday'] },
+    { kind: 'temporal_constraint', localId: 'start', taskRef: { localId: 'task' }, targetRef: { localId: 'task' }, constraintKind: 'earliest_start', constraintLevel: 'hard',
+      dateExpression: 'next_week', namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' });
+  const activeReading = recordOnly ? JSON.stringify({ ...JSON.parse(reading), studyRecordQuestion: null, delta: empty }) : recurring ? JSON.stringify(recurringReading) : reading;
   const payload: WeeklyPlanningVNextDurableTurnInput = { core: 'vnext', weekStartDate: '2026-10-12', checkpoint: null, legacyV5Checkpoint: null,
     input: { userId: 'alice', conversationId: ids.logicalConversationId, traceRequestId: 'chat:request:1', inputStateRevision: 0, messages: [],
       userText: activeUserText, selectedDate: '2026-10-13', plans: [], scheduleTemplates: [],
@@ -107,6 +115,11 @@ it.each([
   const queued = listWeeklyPlanningTraceOutboxItems({ userId: 'alice', conversationId: ids.logicalConversationId });
   expect(queued).toHaveLength(1);
   expect(JSON.stringify(queued)).toContain(sentinel);
+  if (recurring) {
+    expect(sent[0].messages[0].content).toContain(VNEXT_RECURRENCE_REQUIREMENT);
+    expect(JSON.stringify(queued)).toContain(VNEXT_RECURRENCE_REQUIREMENT);
+    expect(checkpoint!.vnext.state.graph.temporalConstraints).toEqual([expect.objectContaining({ kind: 'earliest_start', dateExpression: '2026-10-19/2026-10-25' })]);
+  }
   resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest(); repository.fail = false;
   await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'chat:request:1-retry', debugTraceEvents: [] });
   expect(repository.writes).toHaveLength(2);
@@ -132,6 +145,10 @@ it.each([
   expect(prepared.entries).toHaveLength(1);
   expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
   expect(JSON.stringify(prepared)).not.toContain('server-key');
+  if (recurring) {
+    expect(entry.aiInterpreter.rawResponses[1].text).toContain('earliest_start');
+    expect(JSON.stringify(prepared)).toContain('earliest_start');
+  }
   if (oversized) {
     // A large value never drops the turn: it is truncated with explicit evidence, before and after Worker preparation.
     expect(entry.diagnostics.truncation).toMatchObject({ applied: true });

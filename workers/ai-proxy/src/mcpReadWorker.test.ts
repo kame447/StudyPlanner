@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createScheduleRangeReader } from '../../../src/features/mcp/readScheduleRange';
+import { createScheduleEventPreparer } from '../../../src/features/mcp/prepareScheduleEvent';
 import type { Plan } from '../../../src/types/domain';
 import defaultWorker, { createMcpReadWorker, type McpReadPrincipal } from './mcpReadWorker';
 
@@ -92,7 +93,7 @@ describe('disabled private MCP read Worker entry', () => {
 
   it('rejects owner spoofing arguments, write tools and different actor capabilities without reading', async () => {
     const h = setup();
-    for (const params of [{ name: 'prepare_schedule_event', arguments: {} },
+    for (const params of [{ name: 'commit_schedule_event', arguments: {} },
       { name: 'read_schedule_range', arguments: { ...query, ownerId: 'other' } }]) {
       expect(await (await h.worker.fetch(rpc('tools/call', params), enabled)).json()).toMatchObject({ error: { code: -32602 } });
     }
@@ -124,5 +125,57 @@ describe('disabled private MCP read Worker entry', () => {
       expect(response.status).toBe(400); expect(await response.json()).toMatchObject({ error: { code } });
     }
     expect(h.snapshot).not.toHaveBeenCalled();
+  });
+
+  it('keeps prepare undiscoverable and forbidden for a read-only credential', async () => {
+    const h = setup();
+    const prepare = vi.fn();
+    const worker = createMcpReadWorker({ authenticate: h.authenticate, prepareScheduleEvent: prepare });
+    expect(await (await worker.fetch(rpc('tools/list'), enabled)).json())
+      .toMatchObject({ result: { tools: [{ name: 'read_schedule_range' }] } });
+    expect((await worker.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: {} }), enabled)).status).toBe(403);
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('discloses a non-destructive preview tool with prepare scope and invokes the real owner-bound adapter', async () => {
+    const actor = { ...principal, scopes: ['schedule:read', 'schedule:prepare'] };
+    const h = setup(actor);
+    const prepare = createScheduleEventPreparer({ ownerId: principal.ownerId, timeZone: query.timeZone,
+      range: query, authority: { getScheduleSnapshot: h.snapshot },
+      timetable: { getScheduleTemplates: async () => [], getTimetableTerms: async () => [] } });
+    const worker = createMcpReadWorker({ authenticate: h.authenticate, prepareScheduleEvent: prepare });
+    const list = await (await worker.fetch(rpc('tools/list'), enabled)).json() as { result: { tools: { name: string }[] } };
+    expect(list.result.tools).toHaveLength(2);
+    expect(list.result.tools[1]).toMatchObject({ name: 'prepare_schedule_event',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      inputSchema: { additionalProperties: false } });
+    const input = { title: plan.title, start: { date: query.startDate, time: '10:00' },
+      end: { date: query.endDate, time: '11:00' }, timeZone: query.timeZone };
+    const response = await worker.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: input }), enabled);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({ result: { structuredContent: {
+      status: 'unsaved_preview', ownerId: principal.ownerId, overlaps: [{ kind: 'possible_duplicate' }] } } });
+    expect(h.snapshot).toHaveBeenCalledExactlyOnceWith(principal.ownerId);
+    for (const invalid of [{ ...input, approved: true }, { ...input, start: { date: '2026-11-01', time: '10:00' } }]) {
+      expect(await (await worker.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: invalid }), enabled)).json())
+        .toMatchObject({ error: { code: -32602 } });
+    }
+    h.snapshot.mockRejectedValueOnce(new Error('private source details'));
+    expect(await (await worker.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: input }), enabled)).json())
+      .toEqual({ jsonrpc: '2.0', id: 1, result: { isError: true, content: [{ type: 'text', text: 'Schedule preview unavailable.' }] } });
+    expect(await (await worker.fetch(rpc('tools/call', { name: 'commit_schedule_event', arguments: input }), enabled)).json())
+      .toMatchObject({ error: { code: -32602 } });
+  });
+
+  it('does not turn prepare scope alone, enabling the flag, or a missing capability into access', async () => {
+    const prepare = vi.fn();
+    const noRead = createMcpReadWorker({ authenticate: async () => ({ ...principal, scopes: ['schedule:prepare'] }),
+      prepareScheduleEvent: prepare });
+    expect((await noRead.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: {} }), enabled)).status).toBe(403);
+    expect(prepare).not.toHaveBeenCalled();
+    const unconfigured = createMcpReadWorker({ authenticate: async () => ({ ...principal, scopes: [...principal.scopes, 'schedule:prepare'] }) });
+    expect(await (await unconfigured.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: {} }), enabled)).json())
+      .toMatchObject({ result: { isError: true, content: [{ text: 'Schedule preview unavailable.' }] } });
+    expect((await defaultWorker.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: {} }), enabled)).status).toBe(401);
   });
 });

@@ -231,6 +231,7 @@ describe('focused contextual Worker dispatch', () => {
     };
     expect(JSON.parse(payload.content)).toEqual({
       decision: 'quantity_role_answer',
+      hasAdditionalRequest: false,
       effortTarget: null,
       effortMeasurement: null,
       minutes: null,
@@ -253,6 +254,7 @@ describe('focused contextual Worker dispatch', () => {
     const payload = await (await response).json() as { content: string };
     expect(JSON.parse(payload.content)).toEqual({
       decision: 'fallback',
+      hasAdditionalRequest: true,
       effortTarget: null,
       effortMeasurement: null,
       minutes: null,
@@ -275,6 +277,7 @@ describe('focused contextual Worker dispatch', () => {
 
     expect(JSON.parse(payload.content)).toEqual({
       decision: 'quantity_role_answer',
+      hasAdditionalRequest: false,
       effortTarget: null,
       effortMeasurement: null,
       minutes: null,

@@ -28,7 +28,7 @@ function harness(id: string, add: VNextAddFact[]) {
         delta: { add, patch: [], remove: [], relate: [], defer: [] } });
     } else if (schema === FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5.json_schema.name) {
       focusedCalls++;
-      content = JSON.stringify({ decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
+      content = JSON.stringify({ decision: 'effort_answer', hasAdditionalRequest: false, effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
         minutes: 15, precision: 'exact', quantityRole: null });
     } else content = await successfulWeeklyPlanningRendererCompletion(body);
     return Response.json({ model: 'gpt-6-luna', choices: [{ message: { content } }] });

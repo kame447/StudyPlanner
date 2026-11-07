@@ -34,6 +34,8 @@ transaction内の作業用cloneを変更することは許容するが、呼出�
 
 質問への回答と独立した計画・previewの依頼を同じ発話で受けた場合、native providerは既存の`create_plan`に`planningRequestEvidence`を添える。根拠は現在の`userText`からの依頼節の引用と、実際に提示した質問の`questionKey`である。アプリは引用の完全一致、参照の解決、現在の提示質問との一致、回答の適用を検証する。依頼・否定・撤回・引用中の発言の意味はAIが判断し、コードが日本語から再判定しない。回答が受理され、readinessがreadyで必須質問が残らない場合だけ、同じturnで既存の計画生成認可を評価する。回答だけ・根拠なしの旧reading・未解決の必須質問は従来のguardを保つ。根拠はturn内と既存の診断traceに限り、checkpointへ新しい欄を保存しない。承認と保存の境界、モデル呼出経路・修復上限は変えない。
 
+focused の回答 schema は `hasAdditionalRequest` を必須とし、回答とは独立して、現在発話に有効な追加依頼があるかを AI が判定する。回答のみ・依頼の否定・同じ発話内の撤回・引用だけなら false とする。true、欠落、不正値は発話全体を既存の native 経路へ渡し、false の有効な回答だけを focused で適用する。Worker の Jev が既存の AI gate で受理した単独の数量回答にも false を添え、field 欠落による追加呼出を避ける。この信号自体は計画・保存の認可ではなく、checkpoint に保存しない。実際の request/response は既存の trace/outbox/Worker 境界で保持する。
+
 ## A transaction is ordered by dependencies, not by a convenient array loop
 
 期間の追加・訂正・取消をすべて反映して有効な期間を先に確定し、その同じ最終期間で同ターンの日付を固定する。取消だけで期間がなくなる場合には、変更前の期間と既定の選択週を混同しない。将来の依存事実も、途中状態ではなく依存先の確定状態を読む。

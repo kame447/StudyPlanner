@@ -1,7 +1,9 @@
 import { ScheduleRangeReadError, type ReadScheduleRange } from '../../../src/features/mcp/readScheduleRange';
+import { ScheduleEventPrepareError, type PrepareScheduleEvent } from '../../../src/features/mcp/prepareScheduleEvent';
 
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const READ_SCOPE = 'schedule:read';
+const PREPARE_SCOPE = 'schedule:prepare';
 export interface McpReadPrincipal { ownerId: string; scopes: readonly string[] }
 export interface McpReadEnvironment { MCP_READ_ENABLED?: string }
 export interface McpReadDependencies {
@@ -9,14 +11,25 @@ export interface McpReadDependencies {
   authenticate?: (request: Request) => Promise<McpReadPrincipal | null>;
   /** Composition must admit canonical authority before resolving an owner-bound read capability. */
   readScheduleRange?: ReadScheduleRange;
+  /** Unsaved confirmation only; this capability cannot approve or persist an event. */
+  prepareScheduleEvent?: PrepareScheduleEvent;
   allowedOrigins?: readonly string[];
 }
 
-const TOOL = { name: 'read_schedule_range', title: 'Read my schedule',
+const READ_TOOL = { name: 'read_schedule_range', title: 'Read my schedule',
   description: 'Read the authenticated owner’s schedule for inclusive calendar dates in their calendar time zone.',
   inputSchema: { type: 'object', properties: { startDate: { type: 'string', format: 'date' },
     endDate: { type: 'string', format: 'date' }, timeZone: { type: 'string', description: 'The owner calendar IANA time zone.' } },
   required: ['startDate', 'endDate', 'timeZone'], additionalProperties: false },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } };
+const POINT_SCHEMA = { type: 'object', properties: {
+  date: { type: 'string', format: 'date' }, time: { type: 'string', pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' },
+}, required: ['date', 'time'], additionalProperties: false };
+const PREPARE_TOOL = { name: 'prepare_schedule_event', title: 'Preview one schedule event',
+  description: 'Return an unsaved single general-event preview and overlapping events. Never approves or saves. Use explicit owner-local date/time endpoints; title and end time must be supplied, not guessed.',
+  inputSchema: { type: 'object', properties: { title: { type: 'string', minLength: 1 },
+    start: POINT_SCHEMA, end: POINT_SCHEMA, timeZone: { type: 'string', description: 'The owner calendar IANA time zone.' } },
+  required: ['title', 'start', 'end', 'timeZone'], additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } };
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 type RpcId = string | number;
@@ -70,20 +83,27 @@ export function createMcpReadWorker(dependencies: McpReadDependencies = {}) {
         capabilities: { tools: {} }, serverInfo: { name: 'laplance-schedule-read', version: '0.1.0' } });
     }
     if (message.method === 'ping') return result({});
-    if (message.method === 'tools/list') return result({ tools: [TOOL] });
+    if (message.method === 'tools/list') return result({ tools: principal.scopes.includes(PREPARE_SCOPE)
+      ? [READ_TOOL, PREPARE_TOOL] : [READ_TOOL] });
     if (message.method !== 'tools/call') return rpcError(id, -32601, 'Method not found');
-    if (!record(message.params) || message.params.name !== TOOL.name) return rpcError(id, -32602, 'Unknown tool');
+    if (!record(message.params) || ![READ_TOOL.name, PREPARE_TOOL.name].includes(message.params.name as string)) {
+      return rpcError(id, -32602, 'Unknown tool');
+    }
+    const prepare = message.params.name === PREPARE_TOOL.name;
+    if (prepare && !principal.scopes.includes(PREPARE_SCOPE)) return rpcError(id, -32001, 'Forbidden', 403);
     try {
-      if (!dependencies.readScheduleRange) throw new Error('Unconfigured reader');
-      const data = await dependencies.readScheduleRange(principal.ownerId, message.params.arguments);
+      const operation = prepare ? dependencies.prepareScheduleEvent : dependencies.readScheduleRange;
+      if (!operation) throw new Error('Unconfigured schedule capability');
+      const data = await operation(principal.ownerId, message.params.arguments);
       return result({ structuredContent: data, content: [{ type: 'text', text: JSON.stringify(data) }] });
     } catch (error) {
+      if (error instanceof ScheduleEventPrepareError) return rpcError(id, -32602, error.code);
       if (error instanceof ScheduleRangeReadError) {
         if (error.code === 'owner_mismatch') return rpcError(id, -32001, 'Forbidden', 403);
         if (error.code !== 'source_unavailable') return rpcError(id, -32602, error.code);
       }
       // A failed read is distinct from an empty calendar; never return repository error details or partial data.
-      return result({ isError: true, content: [{ type: 'text', text: 'Schedule read unavailable.' }] });
+      return result({ isError: true, content: [{ type: 'text', text: prepare ? 'Schedule preview unavailable.' : 'Schedule read unavailable.' }] });
     }
   } };
 }

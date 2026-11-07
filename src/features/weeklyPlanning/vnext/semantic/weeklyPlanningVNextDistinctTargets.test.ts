@@ -129,7 +129,7 @@ describe('explicit distinct targets in one quantity basis (Astra P03)', () => {
     const reading = await createWeeklyPlanningVNextFocusedInterpreter({ fullReading: async () => { throw new Error('missing relation-aware unit'); } })({
       state, projection, presentedQuestion: question, presentedText: presentWeeklyPlanningVNextQuestion(state, question).text,
       userText: '200分です', clock: { ...context, weekStartsOn: 'monday', defaultPlanningHorizon: horizon },
-      client: { createChatCompletion: async () => JSON.stringify({ decision: 'effort_answer', effortTarget: 'question_target',
+      client: { createChatCompletion: async () => JSON.stringify({ decision: 'effort_answer', hasAdditionalRequest: false, effortTarget: 'question_target',
         effortMeasurement: 'total_duration', minutes: 200, precision: 'exact', quantityRole: null }) },
     });
     if (reading.status !== 'interpreted') throw new Error(reading.status);

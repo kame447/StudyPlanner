@@ -143,6 +143,7 @@ describe('focused contextual dispatch', () => {
     expect(await response.json()).toEqual({
       content: JSON.stringify({
         decision: 'quantity_role_answer',
+        hasAdditionalRequest: false,
         effortTarget: null,
         effortMeasurement: null,
         minutes: null,
@@ -224,6 +225,7 @@ describe('focused contextual dispatch', () => {
     expect(await response.json()).toEqual({
       content: JSON.stringify({
         decision: 'fallback',
+        hasAdditionalRequest: true,
         effortTarget: null,
         effortMeasurement: null,
         minutes: null,
