@@ -6,15 +6,16 @@ import type { ScheduleEvent } from '../domain/scheduleEvent';
 import { migrateLegacyScheduleRecords, scheduleEventFromMonthEvent, scheduleEventFromPlan } from '../domain/scheduleEvent';
 import { createMonthEventDraftFromEvent } from '../domain/planner';
 import { createFirebaseScheduleEventAuthority } from './firebaseScheduleEventAuthority';
+import { createFirebasePlannerRepository } from './firebasePlannerRepository';
 import { createScheduleEventBackedPlannerRepository } from './scheduleEventAuthorityRepository';
 import { createUnavailablePlannerRepository } from './unavailableRepositories';
 import { deferred, event, plan } from './localPersistenceConcurrency.testUtils';
-import { usePlannerDataState, type UsePlannerDataStateResult } from '../hooks/usePlannerDataState';
+import { usePlannerDataState, type DeferredDayNotesPlannerDataStateResult } from '../hooks/usePlannerDataState';
 
 const boundary = vi.hoisted(() => ({
   repository: null as unknown as PlannerRepository,
-  getDocs: vi.fn(), getDocFromServer: vi.fn(), setDoc: vi.fn(), deleteDoc: vi.fn(),
-  runTransaction: vi.fn(),
+  getDocs: vi.fn(), getDocsFromServer: vi.fn(), getDocFromServer: vi.fn(), setDoc: vi.fn(), deleteDoc: vi.fn(),
+  runTransaction: vi.fn(), writeBatch: vi.fn(),
 }));
 vi.mock('../repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
@@ -24,9 +25,9 @@ vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, name: string, id: string) => ({ name, id }),
   where: (field: string, op: string, value: string) => ({ field, op, value }),
   query: (source: { name: string }, ...clauses: unknown[]) => ({ source, clauses }),
-  getDocs: boundary.getDocs, getDocFromServer: boundary.getDocFromServer,
+  getDocs: boundary.getDocs, getDocsFromServer: boundary.getDocsFromServer, getDocFromServer: boundary.getDocFromServer,
   setDoc: boundary.setDoc, deleteDoc: boundary.deleteDoc,
-  runTransaction: boundary.runTransaction, writeBatch: vi.fn(),
+  runTransaction: boundary.runTransaction, writeBatch: boundary.writeBatch,
 }));
 
 type Query = { source: { name: string }; clauses: { field: string; op: string; value: string }[] };
@@ -45,8 +46,9 @@ function history() {
   return { plans, monthEvents };
 }
 let renderer: ReactTestRenderer | undefined;
-let state: UsePlannerDataStateResult;
+let state: DeferredDayNotesPlannerDataStateResult;
 function Harness() { state = usePlannerDataState({ userId: 'owner', showNotice: vi.fn() }); return null; }
+function DeferredHarness() { state = usePlannerDataState({ userId: 'owner', showNotice: vi.fn(), deferDayNotes: true }); return null; }
 beforeEach(() => {
   vi.resetAllMocks(); records.clear(); reads.length = 0; actualQueries.length = 0;
   boundary.getDocFromServer.mockImplementation(async () => ({
@@ -83,6 +85,52 @@ beforeEach(() => {
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; });
 
 describe('canonical schedule projection query footprint', () => {
+  it('hydrates through real Firebase adapters once per group and keeps explicit refresh fresh', async () => {
+    history();
+    const readSchedule = boundary.getDocs.getMockImplementation()!;
+    const queries: Query[] = [];
+    boundary.getDocs.mockImplementation(async (query: Query) => {
+      queries.push(query);
+      if (query.source.name === 'schedule_events') return readSchedule(query);
+      expect(query.clauses).toEqual([{ field: 'userId', op: '==', value: 'owner' }]);
+      return { docs: [], metadata: { fromCache: false, hasPendingWrites: false } };
+    });
+    boundary.writeBatch.mockReturnValue({ set: vi.fn(), delete: vi.fn(), commit: vi.fn(async () => undefined) });
+    const db = {} as Firestore;
+    boundary.repository = createScheduleEventBackedPlannerRepository(
+      createFirebasePlannerRepository(db), createFirebaseScheduleEventAuthority(db),
+    );
+    boundary.getDocsFromServer.mockImplementation(query => boundary.getDocs(query));
+    await act(async () => { renderer = create(<DeferredHarness />); });
+    await act(async () => { await state.bootstrapPlannerData('owner'); });
+    expect(state.plannerDataAvailability.status).toBe('ready');
+    expect(state.plans).toHaveLength(1_000);
+    expect(state.monthEvents).toHaveLength(20);
+    expect(queries.map(query => query.source.name).sort()).toEqual([
+      'actuals', 'schedule_events', 'schedule_templates', 'study_materials',
+      'study_subjects', 'timetable_periods', 'timetable_terms', 'todos',
+    ]);
+    expect(boundary.getDocFromServer).toHaveBeenCalledOnce();
+    expect(reads.map(read => read.ids.length)).toEqual([1_020]);
+    expect(state.dayNotes).toBeNull();
+    expect(boundary.getDocsFromServer).not.toHaveBeenCalled();
+
+    queries.length = 0;
+    await act(async () => { state.openDay('2026-10-08'); state.openWeek('2026-10-05'); state.setViewMode('month'); });
+    expect(queries).toEqual([]);
+    const row = records.get('plan:plan-0')!;
+    records.set(row.id, { ...row, title: 'Other device edit' });
+    await act(async () => { await state.loadPlannerData('owner'); });
+    expect(queries).toHaveLength(9);
+    expect(queries.filter(query => query.source.name === 'schedule_events')).toHaveLength(1);
+    expect(queries.filter(query => query.source.name === 'day_notes')).toHaveLength(1);
+    expect(boundary.getDocsFromServer).toHaveBeenCalledOnce();
+    expect(boundary.getDocFromServer).toHaveBeenCalledOnce();
+    expect(state.plans.find(plan => plan.id === 'plan-0')?.title).toBe('Other device edit');
+    expect(state.dayNotes).toEqual([]);
+    expect(state.plannerDataAvailability.status).toBe('ready');
+  });
+
   it('returns only the requested provenance while full refresh still returns all history', async () => {
     history(); const repo = repository();
     expect((await repo.getMonthEvents('owner')).length).toBe(20);
