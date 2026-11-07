@@ -147,6 +147,110 @@ describe('VNext native fixed-event registration through the unchanged V5 project
   });
 
   it.each([
+    { name: 'fixed interval alone', quantity: false, estimate: false },
+    { name: 'fixed interval with page count', quantity: true, estimate: false },
+    { name: 'fixed interval with page count and estimate', quantity: true, estimate: true },
+  ])('Stage B: does not ask an effort question to register a fully stated interval ($name)', async ({ quantity, estimate }) => {
+    const add: VNextAddFact[] = [...event('seminar', 'study', '10:00', '11:00')];
+    if (quantity) add.push({ kind: 'workload', localId: 'pages', taskRef: { localId: 'seminar' }, componentRef: null,
+      quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: '枚', rangeStart: null, rangeEnd: null,
+      perOccurrence: false, periodExpression: null });
+    if (estimate) add.push({ kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'seminar' },
+      targetRef: { localId: 'pages' }, effortKind: 'duration_per_unit', minutes: 6,
+      unitCode: 'page', unitLabel: '枚', precision: 'exact' });
+    const h = harness([wire(add, [request()])]);
+    const result = await h.turn('火曜10時から11時までゼミです。'
+      + (quantity ? 'その枠でプリント10枚に取り組みます。' : '')
+      + (estimate ? '1枚6分です。' : '') + 'この予定を登録してください。');
+    expect(result.outcome).toBe('applied');
+    expect(h.calls()).toBe(1);
+    expect(h.state().graph.workloads).toHaveLength(quantity ? 1 : 0);
+    expect(h.state().graph.effortEstimates).toHaveLength(estimate ? 1 : 0);
+    const candidates = h.oracle('turn-1').candidates;
+    expect(candidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
+      date: '2026-11-03', startTime: '10:00', endTime: '11:00', durationMinutes: 60 })]);
+    expect(h.saves()).toBe(0);
+    expect(h.saved.size).toBe(0);
+    expect({ questionCode: result.question?.code ?? null, previewCount: result.preview?.blocks.length ?? 0,
+      draftCount: result.draftCandidates?.length ?? 0 }).toEqual({ questionCode: null, previewCount: 1, draftCount: 1 });
+    expect(result.draftCandidates).toEqual(candidates);
+    expect(result.preview?.blocks).toHaveLength(1);
+  });
+
+  it.each(['other_task', 'missing_date', 'effort_conflict'] as const)(
+    'Stage B: retains the registration safety boundary for %s', async mode => {
+      const add: VNextAddFact[] = [...event('seminar', 'study', '10:00', '11:00'),
+        { kind: 'workload', localId: 'pages', taskRef: { localId: 'seminar' }, componentRef: null,
+          quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: '枚', rangeStart: null, rangeEnd: null,
+          perOccurrence: false, periodExpression: null }];
+      if (mode === 'other_task') add.push({ kind: 'task', localId: 'other', category: 'study', title: '英語' },
+        { kind: 'workload', localId: 'other-pages', taskRef: { localId: 'other' }, componentRef: null,
+          quantityRole: 'target', amount: 5, unitCode: 'page', unitLabel: '枚', rangeStart: null, rangeEnd: null,
+          perOccurrence: false, periodExpression: null });
+      if (mode === 'missing_date') {
+        const bound = add.find(fact => fact.kind === 'temporal_constraint')!;
+        if (bound.kind !== 'temporal_constraint') throw new Error('missing fixed interval');
+        bound.dateExpression = null;
+      }
+      if (mode === 'effort_conflict') add.push(
+        { kind: 'effort_estimate', localId: 'rate', taskRef: { localId: 'seminar' }, targetRef: { localId: 'pages' },
+          effortKind: 'duration_per_unit', minutes: 6, unitCode: 'page', unitLabel: '枚', precision: 'exact' },
+        { kind: 'effort_estimate', localId: 'total', taskRef: { localId: 'seminar' }, targetRef: { localId: 'pages' },
+          effortKind: 'total_duration', minutes: 50, unitCode: null, unitLabel: null, precision: 'exact' });
+      const h = harness([wire(add, [request({ localId: 'seminar' })])]);
+      const result = await h.turn('固定予定の登録です。ほかの条件は入力のとおりです。');
+      expect(result.outcome).toBe('applied');
+      expect(result.preview).toBeNull();
+      expect(result.draftCandidates ?? []).toEqual([]);
+      expect(h.saves()).toBe(0);
+      if (mode === 'other_task') {
+        expect(result.question).toMatchObject({ code: 'missing_effort_estimate',
+          taskId: h.state().graph.tasks.find(task => task.title === '英語')!.id });
+      } else if (mode === 'effort_conflict') expect(result.question?.code).toBe('effort_inconsistent');
+      else expect(result.previewBlockedBy).not.toEqual([]);
+    });
+
+  it('Stage B: rejects an incomplete fixed interval atomically instead of admitting its quantity', async () => {
+    const add: VNextAddFact[] = [...event('seminar', 'study', '10:00', '11:00'),
+      { kind: 'workload', localId: 'pages', taskRef: { localId: 'seminar' }, componentRef: null,
+        quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: '枚', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null }];
+    const bound = add.find(fact => fact.kind === 'temporal_constraint')!;
+    if (bound.kind !== 'temporal_constraint') throw new Error('missing fixed interval');
+    bound.endTime = null;
+    const invalid = wire(add, [request()]);
+    const h = harness([invalid, invalid]);
+    const result = await h.turn('火曜10時から、終了時刻未定の予定を登録して');
+    expect(result.outcome).toBe('interpretation_failed');
+    expect(h.calls()).toBe(2);
+    expect(result.preview).toBeNull();
+    expect(h.state().graph.workloads).toEqual([]);
+    expect(h.state().graph.temporalConstraints).toEqual([]);
+    expect(h.saves()).toBe(0);
+  });
+
+  it('Stage B: keeps fixed scope after a rename and asks again when its interval is withdrawn', async () => {
+    const h = harness([wire([...event('seminar', 'study', '10:00', '11:00'),
+      { kind: 'workload', localId: 'pages', taskRef: { localId: 'seminar' }, componentRef: null,
+        quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: '枚', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null }], [request()]),
+    (context: Context) => wire([], [request({ factId: context.activeFacts.tasks[0].id })], 'discuss', {
+      patch: [{ kind: 'task', localId: 'rename', targetFactId: context.activeFacts.tasks[0].id,
+        changes: { category: null, title: '数学ゼミ' } }],
+    }), (context: Context) => wire([], [], 'create_plan', { remove: [{ targetFactId: context.activeFacts.temporalConstraints[0].id }] })]);
+    expect((await h.turn('火曜10時から11時にプリント10枚。予定を登録して')).preview).not.toBeNull();
+    const renamed = await h.turn('予定の名前を数学ゼミに変えて登録して');
+    expect(renamed.question).toBeNull();
+    expect(renamed.draftCandidates).toEqual([expect.objectContaining({ title: '数学ゼミ', startTime: '10:00', endTime: '11:00' })]);
+    const withdrawn = await h.turn('固定の時間を取り消して、空いている時間に組んで');
+    expect(withdrawn.outcome).toBe('applied');
+    expect(withdrawn.question).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 10 } });
+    expect(withdrawn.preview).toBeNull();
+    expect(h.state().graph.effortEstimates).toEqual([]);
+    expect(h.saves()).toBe(0);
+  });
+
+  it.each([
     { name: 'busy non-study', category: 'non_study' as const, requested: false, movable: false, expected: 'fixed_event_manual_entry' },
     { name: 'registration priority', category: 'non_study' as const, requested: true, movable: false, expected: 'fixed_event_registration_preview' },
     { name: 'movable work', category: 'non_study' as const, requested: false, movable: true, expected: undefined },
@@ -425,8 +529,13 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     expect(result.preview).toBeNull(); expect(h.state().graph.tasks).toEqual([]);
   });
 
-  it('reloads exactly the shown registration and resumes the existing approval ledger without duplicate saves', async () => {
-    const h = harness([wire(event(), [request()])], 1); const result = await h.turn('部活を登録して');
+  it.each([false, true])('reloads exactly the shown registration and resumes the existing approval ledger without duplicate saves (quantity=%s)', async quantity => {
+    const add = event('club', quantity ? 'study' : 'non_study');
+    if (quantity) add.push({ kind: 'workload', localId: 'pages', taskRef: { localId: 'club' }, componentRef: null,
+      quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: '枚', rangeStart: null, rangeEnd: null,
+      perOccurrence: false, periodExpression: null });
+    const h = harness([wire(add, [request()])], 1); const result = await h.turn('その固定予定を登録して');
+    expect(result.preview?.blocks).toHaveLength(1); expect(h.saves()).toBe(0);
     const raw = h.local.checkpoint.read(); h.slots.set('v5', 'untouched-v5-checkpoint');
     const reloaded = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: h.memory.storage });
     expect(reloaded.readCheckpoint()!.vnext.preview).toEqual(result.preview);
@@ -436,7 +545,7 @@ describe('VNext native fixed-event registration through the unchanged V5 project
     expect(h.slots.get('ledger')).toBeTruthy();
     const resumed = await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports });
     expect(resumed).toMatchObject({ status: 'executed', operation: { status: 'completed' } });
-    expect(h.saved.size).toBe(1); expect([...h.saved.values()][0]).toMatchObject({ date: '2026-11-03', startTime: '16:00', endTime: '17:30', type: 'other' });
+    expect(h.saved.size).toBe(1); expect([...h.saved.values()][0]).toMatchObject({ date: '2026-11-03', startTime: '16:00', endTime: '17:30', type: quantity ? 'study' : 'other' });
     const saves = h.saves(); await approveWeeklyPlanningVNextExperimentalPreview({ scope, ports });
     expect(h.saves()).toBe(saves); expect(h.local.checkpoint.read()).toBe(raw); expect(h.slots.get('v5')).toBe('untouched-v5-checkpoint');
   });

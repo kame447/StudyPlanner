@@ -555,13 +555,18 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   }
 
   const accepted = outcome === 'applied' || outcome === 'noop';
+  let projection: WeeklyPlanningVNextProjection = projectWeeklyPlanningVNext(state, observedMemoryPace(state, calendar));
+  // A required question actually deferred by this accepted turn no longer blocks an independent
+  // explicit preview request once all work is ready. Bare answers and unresolved questions retain
+  // the turn-start guard (StageBEarlyPreview / PlanningAuthorization integration).
+  const requiredQuestionDeferred = accepted && projection.readiness === 'ready'
+    && delta?.defer.some(item => before.questions.some(question => !question.optionalInvitation && question.key === item.questionKey));
   const authorization = resolveVNextPlanningAuthorization({ state, accepted,
     previousStatus: read.checkpoint.preview ? 'draft_ready' : before.questions.length ? 'revision_pending' : 'needs_scope',
     planningIntent: interpretation.status === 'interpreted' ? interpretation.planningIntent : null,
-    hadMachinePendingQuestion: hadRequiredQuestion, semanticChanged,
+    hadMachinePendingQuestion: hadRequiredQuestion && !requiredQuestionDeferred, semanticChanged,
     provisionalTimeboxRequested: delta?.defer.some(item => item.allocation === 'provisional_timebox') ?? false });
   state = authorization.state;
-  let projection: WeeklyPlanningVNextProjection = projectWeeklyPlanningVNext(state, observedMemoryPace(state, calendar));
   let question = projection.questions[0] ?? null;
   // A shown preview belongs to its revision: while the revision is current it is
   // exactly what the user saw (and may have approved), so it is not made again.
