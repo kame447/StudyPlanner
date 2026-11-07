@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createScheduleRangeReader } from '../../../src/features/mcp/readScheduleRange';
 import { createScheduleEventPreparer } from '../../../src/features/mcp/prepareScheduleEvent';
+import { ScheduleEventCommitError, createScheduleEventCommitter } from '../../../src/features/mcp/commitScheduleEvent';
 import type { Plan } from '../../../src/types/domain';
 import defaultWorker, { createMcpReadWorker, type McpReadPrincipal } from './mcpReadWorker';
 
@@ -93,10 +94,10 @@ describe('disabled private MCP read Worker entry', () => {
 
   it('rejects owner spoofing arguments, write tools and different actor capabilities without reading', async () => {
     const h = setup();
-    for (const params of [{ name: 'commit_schedule_event', arguments: {} },
-      { name: 'read_schedule_range', arguments: { ...query, ownerId: 'other' } }]) {
-      expect(await (await h.worker.fetch(rpc('tools/call', params), enabled)).json()).toMatchObject({ error: { code: -32602 } });
-    }
+    expect(await (await h.worker.fetch(rpc('tools/call', { name: 'read_schedule_range', arguments: { ...query, ownerId: 'other' } }), enabled)).json())
+      .toMatchObject({ error: { code: -32602 } });
+    // A write tool is forbidden, not merely unknown, without its own scope.
+    expect((await h.worker.fetch(rpc('tools/call', { name: 'commit_schedule_event', arguments: {} }), enabled)).status).toBe(403);
     const other = setup({ ...principal, ownerId: 'other' });
     expect((await other.worker.fetch(rpc('tools/call', { name: 'read_schedule_range', arguments: query }), enabled)).status).toBe(403);
     expect(h.snapshot).not.toHaveBeenCalled(); expect(other.snapshot).not.toHaveBeenCalled();
@@ -163,8 +164,8 @@ describe('disabled private MCP read Worker entry', () => {
     h.snapshot.mockRejectedValueOnce(new Error('private source details'));
     expect(await (await worker.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: input }), enabled)).json())
       .toEqual({ jsonrpc: '2.0', id: 1, result: { isError: true, content: [{ type: 'text', text: 'Schedule preview unavailable.' }] } });
-    expect(await (await worker.fetch(rpc('tools/call', { name: 'commit_schedule_event', arguments: input }), enabled)).json())
-      .toMatchObject({ error: { code: -32602 } });
+    // Prepare scope is not commit scope.
+    expect((await worker.fetch(rpc('tools/call', { name: 'commit_schedule_event', arguments: input }), enabled)).status).toBe(403);
   });
 
   it('does not turn prepare scope alone, enabling the flag, or a missing capability into access', async () => {
@@ -177,5 +178,66 @@ describe('disabled private MCP read Worker entry', () => {
     expect(await (await unconfigured.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: {} }), enabled)).json())
       .toMatchObject({ result: { isError: true, content: [{ text: 'Schedule preview unavailable.' }] } });
     expect((await defaultWorker.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: {} }), enabled)).status).toBe(401);
+  });
+
+  describe('commit_schedule_event', () => {
+    const commitEnabled = { ...enabled, MCP_COMMIT_ENABLED: 'true' };
+    const commitScopes = ['schedule:read', 'schedule:prepare', 'schedule:commit'];
+    const args = { title: 'ゼミ', start: { date: '2026-11-09', time: '14:00' }, end: { date: '2026-11-09', time: '15:00' },
+      timeZone: query.timeZone, idempotencyKey: 'request-0001' };
+    const call = (worker: ReturnType<typeof createMcpReadWorker>, environment: Record<string, string>, params: unknown = args) =>
+      worker.fetch(rpc('tools/call', { name: 'commit_schedule_event', arguments: params }), environment);
+
+    it('is forbidden without its own scope, and stays hidden and unknown while the flag is off', async () => {
+      const commit = vi.fn();
+      for (const scopes of [['schedule:read'], ['schedule:read', 'schedule:prepare']]) {
+        const worker = createMcpReadWorker({ authenticate: async () => ({ ...principal, scopes }), commitScheduleEvent: commit });
+        expect((await call(worker, commitEnabled)).status).toBe(403);
+        expect((await (await worker.fetch(rpc('tools/list'), commitEnabled)).json() as { result: { tools: { name: string }[] } })
+          .result.tools.map(tool => tool.name)).not.toContain('commit_schedule_event');
+      }
+      const worker = createMcpReadWorker({ authenticate: async () => ({ ...principal, scopes: commitScopes }), commitScheduleEvent: commit });
+      expect(await (await call(worker, enabled)).json()).toMatchObject({ error: { code: -32602, message: 'Unknown tool' } });
+      expect((await (await worker.fetch(rpc('tools/list'), enabled)).json() as { result: { tools: { name: string }[] } })
+        .result.tools.map(tool => tool.name)).not.toContain('commit_schedule_event');
+      expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('requires authentication, and an unconfigured default entry cannot save', async () => {
+      expect((await defaultWorker.fetch(rpc('tools/call', { name: 'commit_schedule_event', arguments: args }), commitEnabled)).status).toBe(401);
+      const unconfigured = createMcpReadWorker({ authenticate: async () => ({ ...principal, scopes: commitScopes }) });
+      expect(await (await call(unconfigured, commitEnabled)).json()).toMatchObject({ result: { isError: true } });
+    });
+
+    it('saves through the owner-bound adapter, resends idempotently, and reports an unknown outcome without claiming it saved', async () => {
+      const commit = vi.fn()
+        .mockResolvedValueOnce({ status: 'saved', event: { id: 'mcp-1' } })
+        .mockRejectedValueOnce(new ScheduleEventCommitError('save_outcome_unknown'));
+      const worker = createMcpReadWorker({ authenticate: async () => ({ ...principal, scopes: commitScopes }), commitScheduleEvent: commit });
+      const list = await (await worker.fetch(rpc('tools/list'), commitEnabled)).json() as { result: { tools: { name: string; annotations: unknown }[] } };
+      expect(list.result.tools[2]).toMatchObject({ name: 'commit_schedule_event',
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } });
+      expect(await (await call(worker, commitEnabled)).json()).toMatchObject({ result: { structuredContent: { status: 'saved' } } });
+      expect(commit).toHaveBeenCalledWith(principal.ownerId, args);
+      const unknown = await (await call(worker, commitEnabled)).json();
+      expect(unknown).toMatchObject({ result: { isError: true, content: [{ text: expect.stringContaining('not confirmed saved') }] } });
+      expect(JSON.stringify(unknown)).not.toContain('"status":"saved"');
+    });
+
+    it('re-checks the owner’s canonical schedule at call time through the real committer', async () => {
+      const events: Record<string, unknown>[] = [];
+      const authority = { getScheduleSnapshot: vi.fn(async (_owner: string) => ({ plans: [], monthEvents: events as never[] })),
+        upsertMonthEvent: vi.fn(async (event: never) => { events.push(event); return event; }) };
+      const committer = createScheduleEventCommitter({ ownerId: principal.ownerId, timeZone: query.timeZone,
+        range: { startDate: '2026-11-01', endDate: '2026-11-30' }, authority, now: () => '2026-11-08T00:00:00.000Z',
+        timetable: { getScheduleTemplates: async () => [], getTimetableTerms: async () => [] } });
+      const worker = createMcpReadWorker({ authenticate: async () => ({ ...principal, scopes: commitScopes }), commitScheduleEvent: committer });
+      expect(await (await call(worker, commitEnabled)).json()).toMatchObject({ result: { structuredContent: { status: 'saved' } } });
+      expect(await (await call(worker, commitEnabled)).json()).toMatchObject({ result: { structuredContent: { status: 'already_saved' } } });
+      expect(authority.upsertMonthEvent).toHaveBeenCalledTimes(1);
+      expect(await (await call(worker, commitEnabled, { ...args, idempotencyKey: 'request-0002' })).json())
+        .toMatchObject({ error: { code: -32602, message: 'possible_duplicate' } });
+      expect(authority.upsertMonthEvent).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -50,3 +50,15 @@ Exit: 重複候補、隣接と日跨ぎの半開区間、タイムゾーン、ow
 2026-11-08: focused 67/67 (3 files)、Worker 全体＋MCP/occurrence/authority repository の統合 1820/1820 (137 files)、app/Worker typecheck exit0、production app build exit0、独立Worker bundle 7.2kB と無効404/認証未構成401の実行確認2/2が通過。型生成時の Wrangler debug log は sandbox の `~/.wrangler/logs` EPERM が出たが、runtime types生成と tsc は完了・exit0。共有fixture / runner / provider / trace / 保存schema / 本番entryには変更がなく、新規moduleのimportは独立MCP entry内に限られるため、VNext全体の再実行は統合owner側のCIへ委ねる。
 
 保存形状の追加keyはない。Pages/Workerの本番配信順序変更は不要（両本番entry・deploy設定は無変更）。差分の適用基点は #1047。OAuth、実authority admission/composition、公開、保存・承認・冪等commitは引き続き後続範囲であり、現在の仮確認をその代用にしない。実行証拠とexact contentは `.handoff/355-prepare-summary.md` / `.handoff/355-prepare-snapshot.json` に記録する。
+
+## Follow-up: single-event commit (default disabled)
+
+Branch `feat/issue355-commit-slice`, base `d3ca395a`. Status: locally verified; patch handoff to PluckyTuring. Not published; no OAuth, client registration, deploy config or production flag.
+
+`commit_schedule_event`（title / start / end / timeZone / `idempotencyKey` / 任意の `acceptOverlaps`）は、既存 authority の `upsertMonthEvent`（UI の手動予定追加と同じ保存境界。Firestore 直書き・新 collection・Rules 変更なし）を1回だけ呼ぶ。prepare の結果は信頼せず、commit ごとに prepare と同じ検証（owner / timezone / 許可期間 / 型付き端点）と canonical read による重複・重なりの再確認を行う。重複（同題・同端点）は保存しない。重なりは `acceptOverlaps: true` の明示がある場合だけ保存する。
+
+冪等性: event id は `sha256(ownerId + idempotencyKey)` から決まる。同じ key の再送は既存 record を読み、同内容なら書かずに `already_saved`（後で UI から編集された内容も上書きしない）、別内容なら `idempotency_conflict`。保存後は read-back で一致を確認できた場合だけ `saved`。書込みが例外でも read-back で存在が確認できれば `saved`、確認できない（read 失敗を含む）場合は `save_outcome_unknown` とし、「保存済み」とも「未保存」とも言わず同じ key での再試行を促す。
+
+Worker: scope `schedule:commit` を新設。scope が無ければ 403、`MCP_COMMIT_ENABLED=true` でなければ tools/list に出さず呼出しは unknown tool（既定は無効）。認証未構成は従来どおり 401。read/prepare scope だけでは呼べない。
+
+限界: ScheduleEvent に revision field は無く、`setDoc` による保存のため、別 key の同時 commit 同士の重なりを transaction では防げない（同じ key の並行は同じ doc なので二重にならない）。実際の authority admission / 認証 composition は後続。
