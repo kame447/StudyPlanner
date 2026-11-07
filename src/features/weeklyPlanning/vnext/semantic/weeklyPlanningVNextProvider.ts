@@ -6,6 +6,8 @@ import { applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_ESTIMATE_ANSWER_REQUIREMENT,
   VNEXT_PROVIDER_RESPONSE_FORMAT, type VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
+import { VNEXT_LABEL_REPAIR_RESPONSE_FORMAT } from './weeklyPlanningVNextProviderSchema';
+import { validateVNextProviderLabelEvidence } from './weeklyPlanningVNextProviderLabelEvidence';
 import { applyVNextStudyRecords } from '../weeklyPlanningVNextStudyRecords';
 import { resolveVNextEventRegistrationActs } from '../weeklyPlanningVNextEventRegistration';
 import { createVNextProviderReferences } from './weeklyPlanningVNextProviderReferences';
@@ -77,6 +79,8 @@ function spliceRepair(original: unknown, repaired: unknown, errors: VNextTurnErr
 // same clock/horizons. A second validity rule here would admit readings the session
 // rejects. Provider.test.ts guards answer conflicts and dry-run/final date agreement.
 function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading: VNextProviderReading): VNextTurnError[] {
+  const labelErrors = validateVNextProviderLabelEvidence(input, reading, reading.labelEvidence);
+  if (labelErrors.length) return labelErrors;
   if (reading.answer) {
     const resolved = resolveWeeklyPlanningVNextTurnDelta({ presentationFresh: true,
       presented: input.presentedQuestion
@@ -121,13 +125,15 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
       ({ ...result, metrics: { ...metrics, latencyMs: Math.max(0, Date.now() - started) } });
     const references = createVNextProviderReferences();
     const messages = buildWeeklyPlanningVNextProviderMessages(input, references);
-    const decode = (value: unknown) => {
-      const shaped = decodeVNextProviderOutput(value);
+    const accept = ({ labelEvidence: _labelEvidence, ...reading }: VNextProviderReading) =>
+      finish({ status: 'interpreted', ...reading });
+    const decode = (value: unknown, allowLabelEvidence = false) => {
+      const shaped = decodeVNextProviderOutput(value, allowLabelEvidence);
       return shaped.status === 'decoded' ? references.decodeReading(shaped.reading) : shaped;
     };
-    const request = async () => {
+    const request = async (responseFormat = VNEXT_PROVIDER_RESPONSE_FORMAT) => {
       metrics.calls++;
-      return input.client.createChatCompletion({ messages, responseFormat: VNEXT_PROVIDER_RESPONSE_FORMAT,
+      return input.client.createChatCompletion({ messages, responseFormat,
         purpose: 'weekly_planning_semantic_normalizer', maxCompletionTokens: VNEXT_PROVIDER_MAX_COMPLETION_TOKENS });
     };
     let raw: string;
@@ -138,7 +144,8 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
     catch { return finish({ status: 'failed', reason: 'unparseable', errors: [] }); }
     const decoded = decode(original);
     const errors = decoded.status === 'rejected' ? decoded.errors : validateReading(input, decoded.reading);
-    if (!errors.length && decoded.status === 'decoded') return finish({ status: 'interpreted', ...decoded.reading });
+    if (!errors.length && decoded.status === 'decoded') return accept(decoded.reading);
+    const labelRepair = errors.some(error => error.path === 'labelEvidence');
     const formal = record(original) && errors.every(error => repairAddress(error, original));
     messages.push({ role: 'assistant', content: raw }, { role: 'user', content: JSON.stringify({
       instruction: formal
@@ -150,20 +157,20 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
       }),
     }) });
     metrics.repairs++;
-    try { raw = await request(); }
+    try { raw = await request(labelRepair ? VNEXT_LABEL_REPAIR_RESPONSE_FORMAT : VNEXT_PROVIDER_RESPONSE_FORMAT); }
     catch { return finish({ status: 'failed', reason: 'provider_error', errors }); }
     let repaired: unknown;
     try { repaired = JSON.parse(raw); }
     catch { return finish({ status: 'failed', reason: 'unparseable', errors }); }
     const spliced = formal ? spliceRepair(original, repaired, errors) : repaired;
     if (!spliced) return finish({ status: 'failed', reason: 'rejected_after_repair', errors });
-    const final = decode(spliced);
+    const final = decode(spliced, labelRepair);
     if (!formal && final.status === 'decoded' && hasContributions(original) && !hasContributions(final.reading)) {
       return finish({ status: 'failed', reason: 'rejected_after_repair', errors });
     }
     const finalErrors = final.status === 'rejected' ? final.errors : validateReading(input, final.reading);
     return final.status === 'decoded' && !finalErrors.length
-      ? finish({ status: 'interpreted', ...final.reading })
+      ? accept(final.reading)
       : finish({ status: 'failed', reason: 'rejected_after_repair', errors: finalErrors });
   };
 }

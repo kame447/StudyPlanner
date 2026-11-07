@@ -103,7 +103,7 @@ describe('V5 authorization policy through the VNext native/session boundary', ()
   it.each([true, false])('does not turn a machine answer into new consent (prior consent=%s)', async prior => {
     const h = harness([wire(prior ? 'create_plan' : 'discuss', { add: [task, workload('page')] }),
       wire('create_plan', {}, { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' })]);
-    expect((await h.turn(prior ? '残り8枚で予定を作って' : '数学は残り8枚です')).question?.code).toBe('missing_effort_estimate');
+    expect((await h.turn(prior ? '数学は残り8枚で予定を作って' : '数学は残り8枚です')).question?.code).toBe('missing_effort_estimate');
     const result = await h.turn('全部で40分');
     expect(result.preview !== null).toBe(prior);
     expect(h.local.readCheckpoint()!.vnext.state.graph.effortEstimates[0].minutes).toBe(40);

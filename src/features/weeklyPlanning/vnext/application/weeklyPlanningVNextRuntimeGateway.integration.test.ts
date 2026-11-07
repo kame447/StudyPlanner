@@ -105,7 +105,7 @@ const diagnosticEntries = () => writes.flatMap(write => write.entries).filter(en
 
 describe('VNext session → gateway → existing controller and trace owner', () => {
   it.each([false, true])('persists an inherited session duration and its accepted preview through outbox reload and Worker (large=%s)', async large => {
-    const initial = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [task,
+    const initial = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [{ ...task, title: '暗記' },
       { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
         activityKind: 'memorization_retrieval', contextLabel: null },
       { ...work('words', 'remaining', 100), unitCode: 'word', unitLabel: '語' },
@@ -557,6 +557,66 @@ describe('VNext session → gateway → existing controller and trace owner', ()
         jsonHead: expect.any(String), jsonTail: expect.any(String) });
       expect(saved).not.toContain('z'.repeat(48 * 1024));
     }
+  });
+
+  it.each([false, true])('persists #951 label repair requests and quotations through outbox reload and Worker (large=%s)', async large => {
+    const native = (title: string, unitLabel: string) => ({ planningIntent: 'create_plan', conversationActs: [], answer: null,
+      delta: { ...EMPTY, add: [{ kind: 'task', localId: 'cards', category: 'study', title },
+        { kind: 'workload', localId: 'cards-left', taskRef: { localId: 'cards' }, componentRef: null,
+          quantityRole: 'remaining', amount: 10, unitCode: 'custom', unitLabel, rangeStart: null, rangeEnd: null,
+          perOccurrence: false, periodExpression: null },
+        { kind: 'effort_estimate', localId: 'cards-rate', taskRef: { localId: 'cards' }, targetRef: { localId: 'cards-left' },
+          effortKind: 'duration_per_unit', minutes: 8, unitCode: 'custom', unitLabel, precision: 'exact' }] } });
+    const initial = native('卡片', '张');
+    const repaired = { ...native('カードを進める作業', '枚'), labelEvidence: [{ localId: 'cards', quote: 'カード' }] };
+    const interpret = createWeeklyPlanningVNextProviderInterpreter();
+    const h = harness({ nativeReadings: [initial, repaired], interpret: async input => {
+      const result = await interpret(input);
+      Object.assign(result.metrics, { futureLabelEvidenceSentinel: 'retain-future-label-evidence',
+        ...(large ? { futureLargeLabelDiagnostic: 'x'.repeat(48 * 1024) } : {}) });
+      return result;
+    } });
+    failAppend = true;
+    await h.submit('カードは残り10枚で、1枚8分です。この内容で今週の計画を作ってください。');
+    const accepted = h.local.readCheckpoint()!.vnext;
+    expect(accepted.state.graph.tasks).toMatchObject([{ title: 'カードを進める作業' }]);
+    expect(JSON.stringify(accepted)).not.toContain('labelEvidence');
+    expect(h.requests).toHaveLength(2);
+    const requests = h.requests as { messages: unknown[]; responseFormat: { json_schema: { name: string } } }[];
+    expect(requests.map(request => request.responseFormat.json_schema.name))
+      .toEqual(['weekly_planning_vnext_native_v1', 'weekly_planning_vnext_label_repair_v1']);
+    const events = h.results[0].debugTraceEvents!;
+    const sent = events.filter(event => event.stage === 'semantic_provider_request');
+    expect(sent).toHaveLength(2);
+    sent.forEach((event, index) => expect(event.data).toMatchObject({ request: { messages: requests[index].messages },
+      requestBytes: new TextEncoder().encode(JSON.stringify(requests[index])).byteLength }));
+    expect(events.filter(event => event.stage === 'semantic_provider_response').map(event => (event.data as { rawResponse: string }).rawResponse))
+      .toEqual([JSON.stringify(initial), JSON.stringify(repaired)]);
+    const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toHaveLength(1);
+    expect(queued[0].input.debugTraceEvents).toEqual(events);
+    const failed = appendAttempts[0];
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued[0].input, requestId: 'label-repair-retry', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes[0];
+    expect(write.entries).toEqual(failed.entries);
+    const entry = write.entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing label repair diagnostic');
+    expect(entry.aiInterpreter.input.requests).toHaveLength(2);
+    requests.forEach((request, index) => expect(entry.aiInterpreter.input.requests[index])
+      .toMatchObject({ requestBytes: new TextEncoder().encode(JSON.stringify(request)).byteLength }));
+    expect(entry.aiInterpreter.rawResponses.map(response => response.text)).toEqual([JSON.stringify(initial), JSON.stringify(repaired)]);
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    const persisted = JSON.stringify(server.entries[0]);
+    expect(persisted).toContain('labelEvidence');
+    expect(persisted).toContain('retain-future-label-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(persisted).toContain('truncat');
   });
 
   it.each([false, true])('persists actual intent and authorization presentation through append failure/reload/Worker (large=%s)', async large => {

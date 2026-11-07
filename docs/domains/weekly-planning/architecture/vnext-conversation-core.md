@@ -58,6 +58,14 @@ domainに未解決の質問があることと、利用者に質問を表示し�
 
 同じ語彙・必須欄はschema、promptとvalidatorの共通定義から渡す。正常な意味を表せる表記の違いを不合格にするテストと、実際の誤更新を拒否するテストを区別する。修復・再試行は既存の有限回数契約を守り、失敗ごとに増やさない。
 
+### Label spelling evidence (#951)
+
+The native provider preserves the source spelling of task names and custom workload/effort units. Before acceptance, code checks literal evidence in the current user text, bounded user conversation, supplied attachment/reference data, or active accepted labels. These checks establish spelling support, not whether a source is relevant or a new fact/action is authorized; those semantic and application boundaries remain separate. Renderer prose is not evidence and the UI does not translate or repair accepted labels.
+
+The first provider schema and prompt remain unchanged. If a title or custom unit lacks literal support, the existing single semantic repair uses an extended response schema with turn-only `labelEvidence` quotations. A paraphrased task title must contain a nonempty naming fragment quoted from the supplied evidence; custom units retain the literal unit word, while percentages keep their existing canonical `%` unit. This preserves generated activity wording without requiring the entire title verbatim. A legitimate paraphrase can therefore consume the one repair call; no third call is added. Invalid repaired labels fail before graph acceptance, preview or save.
+
+Quotation metadata is validated and removed before the interpretation enters the session; it adds no checkpoint or saved-payload key. Actual provider requests and responses, including repair quotations, pass through the existing bounded trace/outbox/Worker path. Literal quotation alone cannot prove the model chose the right naming fragment or preserved all surrounding meaning; that remains part of semantic evaluation.
+
 ## Adding a fact family without adding another pipeline
 
 まずV5の型、validator、calendar、scheduler、既存試験に対応する意味があるか確認する。必要な事実種類をtyped deltaとschemaへ足し、同じtransactionを通す。新しい権限・更新エンジン・別の正本は作らない。

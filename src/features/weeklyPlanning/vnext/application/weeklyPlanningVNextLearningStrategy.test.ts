@@ -310,7 +310,8 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     let shownRevision: number | null = null;
     const results = [];
     for (let i = 0; i < 4; i++) {
-      const result = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: `t${i}`, userText: 'synthetic typed step', shownRevision });
+      const result = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports, turnId: `t${i}`,
+        userText: i === 0 ? '暗記学習を100項目、今週の計画にしてください。' : 'synthetic typed step', shownRevision });
       expect(result.outcome).toBe('applied');
       shownRevision = result.graphRevision;
       results.push(result);
@@ -370,7 +371,7 @@ describe('VNext learning strategy adapters use V5 policy', () => {
       const scope = { ownerId: 'owner', conversationId: `prior-session-${target}`,
         weekStartDate: context.currentDate, clock, notBeforeTime: '09:00' };
       const first = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports,
-        turnId: 'initial', userText: 'synthetic typed request with known pace and session duration', shownRevision: null });
+        turnId: 'initial', userText: '暗記学習を100項目、1項目2分、1回20分で今週の計画にしてください。', shownRevision: null });
       expect(first.outcome).toBe('applied');
       expect(first.question?.proposal?.kind).toBe('spaced_memory_practice');
       const accepted = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports,

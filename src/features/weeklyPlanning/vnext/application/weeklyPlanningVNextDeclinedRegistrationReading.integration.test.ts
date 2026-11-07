@@ -136,7 +136,7 @@ describe('a fixed time the user declines to register is read as busy time (relea
 
   it('boundary: an explicit registration request still yields the registration candidate', async () => {
     const h = harness([wire(event('seminar'), [request({ localId: 'seminar' })], 'discuss')]);
-    const result = await h.turn('11月3日16時から17時半までゼミがあります。予定表に載せといて。');
+    const result = await h.turn('11月3日16時から17時半までseminarがあります。予定表に載せといて。');
     expect(result.draftCandidates).toHaveLength(1); expect(result.draftCandidates?.[0]).toMatchObject({ source: 'fixed_event_registration' });
     expect(h.saves()).toBe(0);
   });
