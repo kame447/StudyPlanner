@@ -5,6 +5,7 @@ import { scheduleEventToMonthEvent } from '../../../src/domain/scheduleEvent';
 import { createAuthRepository } from '../../../src/repositories/authRepository';
 import { createLocalAuthStorageGateway } from '../../../src/repositories/localStorageGateway';
 import { createLocalPlannerRepository } from '../../../src/repositories/createLocalPlannerRepository';
+import { createLocalClassAttendanceRepository } from '../../../src/repositories/classAttendanceRepository';
 
 const real = createLocalPlannerRepository();
 const authStorage = createLocalAuthStorageGateway();
@@ -90,6 +91,17 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
+  async seedTimetableClassDetail({ userId, templateId, date }) {
+    await createLocalClassAttendanceRepository(localStorage, plannerRepository)
+      .save({ userId, templateId, date, status: 'absent' });
+    const now = new Date().toISOString();
+    const id = 'lesson-related-schedule';
+    await plannerRepository.upsertPlan({ id, seriesId: id, userId,
+      title: '論理レポート提出', subject: 'Math', date, startTime: '17:00', endTime: '17:15',
+      repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [],
+      type: 'study', category: 'deadline', classTemplateId: templateId,
+      sourceType: 'manual', sourceId: null, memo: '', createdAt: now, updatedAt: now });
+  },
   failNextProfileWrite() { failProfileWrite = true; },
   holdNextProfileResponse() { holdProfileResponse = true; },
   profileResponseState() { return { pending: Boolean(heldProfileResponse), returned: profileResponsesReturned }; },
