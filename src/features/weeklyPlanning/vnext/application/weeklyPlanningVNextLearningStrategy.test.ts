@@ -318,7 +318,10 @@ describe('VNext learning strategy adapters use V5 policy', () => {
       const ports: WeeklyPlanningVNextExperimentalPorts = {
         client: { async createChatCompletion(request) {
           const input = JSON.parse(request.messages[1].content);
-          const initial = call++ === 0;
+          const step = call++;
+          if (step === 2) return JSON.stringify({ planningIntent: 'discuss', delta: empty(), answer: null,
+            conversationActs: [{ kind: 'request_event_registration', targetRef: { factId: input.activeFacts.tasks[0].id } }] });
+          const initial = step === 0;
           return JSON.stringify({ planningIntent: initial ? 'create_plan' : 'unknown', conversationActs: [],
             delta: initial ? { ...empty(), add: [
               { kind: 'task', localId: 't', category: 'study', title: '暗記学習' },
@@ -380,6 +383,20 @@ describe('VNext learning strategy adapters use V5 policy', () => {
       const items = compile(state).input!.movableWorkItems;
       expect(items.every(item => item.estimatedMinutes === 20)).toBe(true);
       expect(items.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(100);
+      if (target === 'task') {
+        // A later fixed registration still needs actual clocks; the known sitting length cannot supply them.
+        const registration = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports,
+          turnId: 'fixed-registration', userText: 'synthetic explicit fixed registration without clocks', shownRevision: accepted.graphRevision });
+        expect(registration.outcome).toBe('applied');
+        expect(registration.question).toMatchObject({ code: 'invalid_commitment_interval', taskId: state.graph.tasks[0].id });
+        expect(registration.preview).toBeNull();
+        const reloaded = readWeeklyPlanningVNextExperimentalSession(scope, ports);
+        if (reloaded.status !== 'ready') throw new Error('checkpoint did not round-trip');
+        expect(reloaded.checkpoint.state.pendingEventRegistrationTargetIds).toEqual([state.graph.tasks[0].id]);
+        expect(reloaded.checkpoint.state.graph.effortEstimates.filter(fact => fact.kind === 'session_duration')).toEqual(
+          state.graph.effortEstimates.filter(fact => fact.kind === 'session_duration'));
+        expect({ saves, approvals, call }).toEqual({ saves: 0, approvals: 0, call: 3 });
+      }
     });
 
   it.each(['other-task', 'conflict'] as const)('keeps a necessary session question when scope is unresolved (%s)', scope => {
