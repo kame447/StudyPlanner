@@ -1,10 +1,54 @@
 # Firestore read load and startup investigation
 
-Status: active draft PR #546; full-length video main integrated locally; 174 focused tests, fresh app/Worker checks and build/bundle passed; new exact-head CI pending
-Updated: 2026-10-08 UTC
+Status: active investigation; 2026-11-08 remeasurement confirms existing read reductions; no new runtime change
+Updated: 2026-11-08 JST
 Owner: [Issue #542](https://github.com/kame447/StudyPlanner/issues/542)
 
 ## Current checkpoint
+
+- Measurement base: main `856dbe11fd4a34c24fbe3d6f79d07b109152e176`; work branch `perf/issue542-firestore-reads`. PR #546's combined schedule snapshot and approval projection update are already merged. [PR #1016](https://github.com/kame447/StudyPlanner/pull/1016) also merged 13 read-footprint/freshness regressions. The older draft/publication statements below describe October's checkpoint, not current pending work.
+- Ran the existing `tests/performance/firestoreReadLoad.measurement.test.tsx` harness on this base: **5 passed**, three synthetic dataset sizes, 17 phases each. It executes real App/data hooks, repository facade and Firebase adapters/persistence policy, substituting only the SDK transport and explicitly isolated auth/profile/catalog/notice boundaries. Network attempts fail closed. These are **logical SDK calls and returned fixture documents**, not Emulator RPCs, production traffic or billed reads. Conversation sync and other component-owned startup reads are outside this measurement.
+- Installation: Node 24.22.1, Vitest 5.0.5, Vite 6.4.4, Firebase 12.14.0, React/react-test-renderer 18.3.1. Reused the parent-provided dependency symlink without installing or changing it. Local wrapper configs changed only cache placement/result caching so the shared `node_modules` target was not written.
+
+### Operation counts at the current base
+
+The datasets use scales 1 / 10 / 100. All call counts below are identical across those sizes. Cold means a new repository/migration gate; warm means a new hook mount using the same repository and owner. The migration marker is already completed in these fixtures.
+
+| Operation | Query calls | Non-transaction doc calls | Transaction doc calls | Transactions | Returned documents, small / medium / large |
+|---|---:|---:|---:|---:|---:|
+| Cold planner bootstrap | 8 | 1 server-only marker read | 0 | 0 | 60 / 519 / 5,109 |
+| Warm planner bootstrap | 8 | 0 | 0 | 0 | 59 / 518 / 5,108 |
+| Approve 1 item + complete operation | 0 | 2 capability probes | 8 | 2 | 7 / 7 / 7 |
+| Approve 5 items + complete operation | 0 | 6 capability probes | 32 | 6 | 27 / 27 / 27 |
+| Ordinary day/week/month navigation, six phases | 0 | 0 | 0 | 0 | 0 / 0 / 0 in every phase |
+| Ordinary Plan save | 0 | 0 | 0 | 0 | 0 / 0 / 0 |
+
+Cold bootstrap reads `schedule_event_migrations/{owner}` once via `getDocFromServer`. Each of these owner-filtered queries runs once: `schedule_events`, `actuals`, `todos`, `study_subjects`, `study_materials`, `schedule_templates`, `timetable_terms`, `timetable_periods`. The schedule query returns 32 / 320 / 3,200 documents and supplies both Plan and MonthEvent projections. There is no second schedule query for the other projection. Deferred DayNotes are `null` until requested; first use performs its one server-confirmed query. No date truncation or history cache was added.
+
+### Exact document repetition in a five-item approval
+
+| Document target | Distinct docs | `getDoc` probes | `transaction.get` calls |
+|---|---:|---:|---:|
+| `schedule_event_migrations/{owner}` | 1 | 6 | 6 |
+| `weekly_planning_approval_operations/{operation}` | 1 | 0 | 6 |
+| `weekly_planning_approval_items/{item}` | 5 | 0 | 10 total, twice per item |
+| `schedule_events/{plan}` | 5 | 0 | 10 total, twice per Plan |
+| Total | 12 | 6 | 32 |
+
+The save transactions read their migration/operation/item/Plan; the completion transaction rereads the migration/operation and each item/Plan. Returned documents are fewer than calls because initially absent operation/item/Plan documents are still read attempts. Separate callbacks are not one atomic operation: sharing their previously read rows would alter ownership, cutover, concurrent-edit and idempotency checks.
+
+### Disposition and verification
+
+- No additional safely removable duplicate was demonstrated. The two original amplification paths are already fixed; this remeasurement changes their counts by **zero**, rather than claiming a new reduction. Existing regression assertions continue to pin one schedule query, zero full queries during approval, full-history reads, external-edit freshness, owner changes, failed-read recovery and idempotent approval replay. No production cache, new abstraction or test assertion was added or weakened.
+- Preserve the capability probe and transaction marker read in `weeklyPlanningApprovalFirestoreRepository.ts`. The probe selects the old-Rules compatibility path; only the transaction snapshot decides legacy/canonical cutover. The existing test with a missing probe snapshot followed by a completed transaction marker protects that distinction.
+- Preserve #998's `getDocFromServer`/`getDocsFromServer` in `weeklyPlanningConversationFirestore.ts`. They fetch authoritative consent, current shared revisions/receipts and expiry state; the workspace uses fresh lists before ingest/flush to detect conflicting remote changes. These are separate freshness responsibilities, not evidence of a redundant planner bootstrap query. They were inspected, not included in the counts above.
+- The measurement's `explicit-planner-reload` phase invokes the saved **bootstrap** callback, so it still makes eight queries. The independent real-Firebase-adapter hook regression invokes `loadPlannerData` and proves **nine** queries, including the deferred DayNotes server query. Do not present the former as the footprint of the full loader or reuse its count to skip note hydration.
+- Focused verification: **6 files / 71 tests passed**, covering `firebaseScheduleProjectionReads`, `weeklyPlanningApprovalFirestoreRepository`, `weeklyApprovalNative.issue542Audit`, `usePlannerAppState.weeklyApprovalProjection`, `confirmedStudyHistory` and `scheduleEventAuthorityRepository`. Together with the executable measurement: **76 passed**, zero failures. The integrated tree is this exact main plus this documentation update; runtime/test/config inputs are unchanged.
+- The broader VNext/Worker run is omitted under the task's related-scope exception: this patch changes only this work record and does not touch interpretation, scheduling, Worker or shared runtime types. The tests above execute the affected client read/approval boundaries. Full verify, live providers, Emulator/server billing and physical-device speed are not claimed by this run. Issue #542 stays open for those distinct investigation scopes.
+
+Reproduction uses `FIRESTORE_READ_LOAD_OUTPUT=<output.json> node node_modules/vitest/vitest.mjs run --config scripts/performance/vitest.firestore-read-load.config.mjs --maxWorkers=1`. The local cache-isolated invocation and raw JSON/logs are retained in the task clone's `.handoff/542-measurement.*`; regressions are `.handoff/542-focused.log`. A cache-only wrapper and `--configLoader=native` kept writes inside this clone because its dependencies are shared with another worktree.
+
+## Historical checkpoint (2026-10-08 UTC)
 
 - Active branch: `perf/firestore-read-load`.
 - Original base: `22847120386987329e2f034d6062d59694ef1180`. Initial verified implementation commit: `d48ad6c7d741d26db51eda03ef51f101a8c01614`, tree `631aec9f01a5ddfbffaed75ff343dcb17b2381dc`. Its initial publication added only a documentation checkpoint; the 1,855 runtime/test/config input hashes and 336 installed-package identities matched that full run. The subsequent three-file E2E correction described below changes the test-input snapshot and requires fresh verification.

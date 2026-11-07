@@ -326,6 +326,7 @@ export function useWeeklyPlanningVNextApplication(
     get legacyV5Checkpoint() { return runtime.local.legacyV5Checkpoint; } }), [runtime]);
   const gateway = useMemo(() => createWeeklyPlanningVNextRuntimeGateway({ session: liveSession,
     savingActualRecordIds: () => savingActualRecordIds.current,
+    approvalOperations: () => runtime.operations,
     ports: async turn => {
       await services.preload?.();
       const local = runtime.local;

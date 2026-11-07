@@ -20,6 +20,8 @@ V5の機能を全面的に再実装するためではない。意味の再解釈
 
 処理の方向は「AIの意味解釈 → 型付きの差分 → 一回の原子的更新 → 一つの投影 → 既存の配置・表示・承認・保存」。rendererとJevは状態や保存の権限を持たない。副作用を伴うprovider・clock・calendar・checkpoint・plan repositoryはsessionの境界から注入し、domainの変換と投影は同じ入力に同じ結果を返す。
 
+表示済みの未承認案は、承認operationが未開始と確認でき、native `create_plan`が認可されて質問も残らない明示再生成turnに限り、同じFact Graph revisionでも現在のカレンダーで置き換えられる。開始済みoperation（部分保存を含む）の案と通常の非生成turnは保持する。IDが同じでも承認時は現在表示中の日付・開始/終了時刻を照合し、再生成前に選択した旧配置を保存しない。Workerへは既存operation一覧を所有するPagesが確認したoptional booleanだけを渡し、未指定なら旧案を維持する。checkpointとsaved-dataの形式は変えず、配信は新しいWorker readerを先、Pages producerを後に行う。
+
 transaction内の作業用cloneを変更することは許容するが、呼出元のstateを変更してはいけない。拒否時は元のstate、同じturn keyの再適用は重複として扱う。純粋性を保つためだけに使い回さない小関数を大量に作る必要はない。
 
 ## Meaning belongs to the interpreter, mechanics to the application

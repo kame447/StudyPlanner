@@ -235,42 +235,34 @@ function applyFixture(state: WeeklyPlanningVNextState, fixture: ComparisonFixtur
   return current;
 }
 
+function assertFixtureOracle(fixture: ComparisonFixture): void {
+  const state = applyFixture(createEmptyWeeklyPlanningVNextState(), fixture);
+  const projection = projectWeeklyPlanningVNext(state);
+  const expected = fixture.oracle;
+  // An empty projection must never satisfy any outcome (`every` on [] is true).
+  expect(projection.owners.length, `${fixture.id}: projection has no owner`).toBeGreaterThan(0);
+  if (expected.outcome === 'question') {
+    const asked = projection.owners.filter((owner) => owner.status === 'question' && owner.question?.code === expected.question);
+    expect(asked.length, `${fixture.id}: ${JSON.stringify(projection.owners)}`).toBeGreaterThan(0);
+    // The question belongs to a task that exists in the accepted graph, not to a stray owner.
+    for (const owner of asked) expect(state.graph.tasks.map((task) => task.id), `${fixture.id}: question owner task`).toContain(owner.taskId);
+  } else if (expected.outcome === 'ready') {
+    const ready = projection.owners.filter((owner) => owner.status === 'ready');
+    expect(ready.length, fixture.id).toBeGreaterThan(0);
+    for (const owner of ready) expect(owner.work.length, `${fixture.id}: ready owner ${owner.ownerKey} has no work`).toBeGreaterThan(0);
+    if (expected.minutes !== undefined) expect(ready.flatMap((owner) => owner.work).reduce((sum, work) => sum + (work.minutes ?? 0), 0), fixture.id).toBe(expected.minutes);
+  } else {
+    expect(projection.owners.every((owner) => owner.status === 'nothing_to_schedule'), fixture.id).toBe(true);
+  }
+  expect(fixture.knownVNextGaps, `${fixture.id}: stale known VNext gap`).toBeUndefined();
+}
+
 describe('VNext 21 revised-prototype cases', () => {
-  it.each(prototypeFixtures)('$id: $name', (fixture) => {
-    const state = applyFixture(createEmptyWeeklyPlanningVNextState(), fixture);
-    const projection = projectWeeklyPlanningVNext(state);
-    const expected = fixture.oracle;
-    if (expected.outcome === 'question') {
-      const matchesOracle = projection.owners.some((owner) => owner.status === 'question' && owner.question?.code === expected.question);
-      expect(matchesOracle, `${fixture.id}: ${JSON.stringify(projection.owners)}`).toBe(true);
-    } else if (expected.outcome === 'ready') {
-      const ready = projection.owners.filter((owner) => owner.status === 'ready');
-      expect(ready.length, fixture.id).toBeGreaterThan(0);
-      if (expected.minutes !== undefined) expect(ready.flatMap((owner) => owner.work).reduce((sum, work) => sum + (work.minutes ?? 0), 0), fixture.id).toBe(expected.minutes);
-    } else {
-      expect(projection.owners.every((owner) => owner.status === 'nothing_to_schedule'), fixture.id).toBe(true);
-    }
-    expect(fixture.knownVNextGaps, `${fixture.id}: stale known VNext gap`).toBeUndefined();
-  });
+  it.each(prototypeFixtures)('$id: $name', assertFixtureOracle);
 });
 
 describe('VNext recorded and contract regressions', () => {
-  it.each(regressionFixtures)('$id: $name', (fixture) => {
-    const state = applyFixture(createEmptyWeeklyPlanningVNextState(), fixture);
-    const projection = projectWeeklyPlanningVNext(state);
-    const expected = fixture.oracle;
-    if (expected.outcome === 'question') {
-      const matchesOracle = projection.owners.some((owner) => owner.status === 'question' && owner.question?.code === expected.question);
-      expect(matchesOracle, `${fixture.id}: ${JSON.stringify(projection.owners)}`).toBe(true);
-    } else if (expected.outcome === 'ready') {
-      const ready = projection.owners.filter((owner) => owner.status === 'ready');
-      expect(ready.length, fixture.id).toBeGreaterThan(0);
-      if (expected.minutes !== undefined) expect(ready.flatMap((owner) => owner.work).reduce((sum, work) => sum + (work.minutes ?? 0), 0), fixture.id).toBe(expected.minutes);
-    } else {
-      expect(projection.owners.every((owner) => owner.status === 'nothing_to_schedule'), fixture.id).toBe(true);
-    }
-    expect(fixture.knownVNextGaps, `${fixture.id}: stale known VNext gap`).toBeUndefined();
-  });
+  it.each(regressionFixtures)('$id: $name', assertFixtureOracle);
 });
 
 describe('V5 saved-graph baseline comparisons', () => {

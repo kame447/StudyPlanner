@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Plan } from '../../../../types/domain';
 import { isWeeklyPlanningStableV5PreviewAuthorized } from '../../application/weeklyPlanningStableV5PlanningEvaluation';
 import { createMemoryStorageHarness } from '../../testUtils/weeklyPlanningApplicationTestHarness';
 import { successfulWeeklyPlanningRendererCompletion } from '../../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
@@ -8,7 +9,7 @@ import { createWeeklyPlanningVNextProviderInterpreter } from '../semantic/weekly
 import type { VNextAddFact, VNextPlanningIntent, VNextTurnDelta } from '../weeklyPlanningVNextTypes';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../weeklyPlanningVNextV5Boundary';
 import { createWeeklyPlanningVNextLocalSession } from './weeklyPlanningVNextLocalSession';
-import { submitWeeklyPlanningVNextExperimentalTurn } from './weeklyPlanningVNextExperimentalSession';
+import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 import { resolveVNextPlanningAuthorization } from './weeklyPlanningVNextPlanningAuthorization';
 
 const OWNER = 'authorization-owner'; const WEEK = '2026-11-02'; const CONVERSATION = 'authorization-conversation';
@@ -24,7 +25,8 @@ const wire = (planningIntent: VNextPlanningIntent, delta: Partial<VNextTurnDelta
 type ProviderContext = { activeFacts: { workloads: { id: string }[] }; openQuestions: { key: string }[];
   recentConversation: { role: string; content: string }[]; userText: string };
 
-function harness(responses: Array<unknown | ((context: ProviderContext) => unknown)>) {
+function harness(responses: Array<unknown | ((context: ProviderContext) => unknown)>,
+  options: { calendar?: WeeklyPlanningVNextExperimentalPorts['calendar']; allowUnapprovedPreviewReplan?: boolean } = {}) {
   const memory = createMemoryStorageHarness();
   const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: memory.storage });
   const inputs: ProviderContext[] = []; const rendered: Record<string, unknown>[] = [];
@@ -43,7 +45,8 @@ function harness(responses: Array<unknown | ((context: ProviderContext) => unkno
         } },
         approvalLedger: { read: () => null, write: () => { throw new Error('no approval in this test'); } },
         plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { throw new Error('no save in this test'); } },
-        calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }), now: () => NOW,
+        calendar: options.calendar ?? (() => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] })), now: () => NOW,
+        allowUnapprovedPreviewReplan: options.allowUnapprovedPreviewReplan,
         createRenderer: () => createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
           const prompt = JSON.parse(request.messages[1].content); rendered.push(prompt);
           if (!prompt.applicationDecision) return '{}'; // Synthetic unavailable recovery verifier.
@@ -77,6 +80,30 @@ describe('V5 authorization policy through the VNext native/session boundary', ()
     expect(withoutHistory.preview).not.toBeNull();
     expect(result.question).toBeNull();
     expect(result.preview).toEqual(withoutHistory.preview);
+  });
+
+  it('honors an explicit replan after calendar changes without requiring the work facts again', async () => {
+    let plans: Plan[] = [];
+    const calendar = () => ({ plans, actuals: [], monthEvents: [], scheduleTemplates: [] });
+    const first = wire('create_plan', { add: [task, workload()] });
+    const h = harness([first, wire('create_plan')], { calendar, allowUnapprovedPreviewReplan: true });
+    const before = await h.turn('数学60分の予定案を作って');
+    expect(before.preview).not.toBeNull();
+    const block = before.preview!.blocks[0];
+    plans = [{ id: 'manual-busy', seriesId: 'manual-busy', userId: OWNER, title: '新しい学校の予定', subject: '', type: 'other',
+      date: block.date, startTime: block.startTime, endTime: block.endTime, repeat: 'none', repeatUntil: null,
+      recurrenceRules: [], excludedDates: [], memo: '', createdAt: NOW, updatedAt: NOW, sourceType: 'manual' }];
+    const control = harness([first], { calendar });
+    const fresh = await control.turn('数学60分の予定案を作って');
+    expect(fresh.preview).not.toBeNull();
+    expect(fresh.preview!.blocks.some(item => item.date === block.date
+      && item.startTime < block.endTime && block.startTime < item.endTime)).toBe(false);
+    const after = await h.turn('予定が変わったので、今のカレンダーに合わせてもう一度予定案を作って');
+    expect(after.authorizationRequired).toBe(false);
+    expect(after.graphRevision).toBe(before.graphRevision);
+    expect(h.local.readCheckpoint()!.vnext.state.graph.tasks).toEqual(control.local.readCheckpoint()!.vnext.state.graph.tasks);
+    expect(h.local.readCheckpoint()!.vnext.state.graph.workloads).toEqual(control.local.readCheckpoint()!.vnext.state.graph.workloads);
+    expect(after.preview).toEqual(fresh.preview);
   });
 
   it.each(['create_plan', 'discuss'] as const)('uses component totals without another quantity question ($intent)', async intent => {
