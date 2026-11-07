@@ -7,7 +7,7 @@ import { compareRealApiDateMeaning, type RealApiDateMeaningOracle } from './vnex
 
 const task: VNextAddFact = { kind: 'task', localId: 't', title: '英語', category: 'study' };
 const window = (value: string): VNextAddFact => ({ kind: 'planning_window', localId: 'window',
-  windowKind: 'absolute', value, start: value.split('/')[0], end: value.split('/')[1] });
+  windowKind: 'absolute', value, start: value.split('/')[0], end: value.split('/')[1], yearBasis: null });
 const bound = (kind: 'earliest_start' | 'latest_end' | 'deadline', date: string, target = 't'): VNextAddFact => ({
   kind: 'temporal_constraint', localId: `bound-${target}`, taskRef: { localId: target }, targetRef: { localId: target },
   constraintKind: kind, constraintLevel: 'hard', dateExpression: date, namedTimePeriod: null,
