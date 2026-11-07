@@ -1,6 +1,6 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserPlanningContextProvider, useUserPlanningContextV1 } from './UserPlanningContextContext';
+import { UserPlanningContextProvider, useUserPlanningContextV1, type UserPlanningContextContextValueV1 } from './UserPlanningContextContext';
 import {
   finalizeStagedUserPlanningContextV1,
   hasStagedUserPlanningContextV1,
@@ -12,9 +12,14 @@ import {
 import { selectUserPlanningContextPromptRecordsV2, userPlanningContextPromptSelectionV2 } from './userPlanningContextPromptSelectionV2';
 import { createEmptyUserPlanningContextSnapshotV1, type UserPlanningContextRecordV1 } from './userPlanningContextTypes';
 
-const repository = vi.hoisted(() => ({ initialize: vi.fn(), subscribe: vi.fn() }));
+const repository = vi.hoisted(() => ({ initialize: vi.fn(), subscribe: vi.fn(), saveUserConfirmedRecord: vi.fn(), removeRecord: vi.fn() }));
+const interpret = vi.hoisted(() => vi.fn());
 vi.mock('./userPlanningContextRepository', () => ({
   getUserPlanningContextRepositoryV1: () => repository,
+}));
+vi.mock('./userPlanningContextNaturalLanguageV2', () => ({
+  interpretUserPlanningContextNaturalLanguageV2: interpret,
+  userPlanningContextExternalOwnerMessageV2: () => '別の保存先です。',
 }));
 
 const ownerId = 'memory-owner';
@@ -23,9 +28,10 @@ const params = { ownerId, currentDate: '2026-11-08' };
 let raw: Map<string, string>;
 let storage: { getItem: ReturnType<typeof vi.fn>; setItem: ReturnType<typeof vi.fn>; removeItem: ReturnType<typeof vi.fn> };
 let renderer: ReactTestRenderer | undefined;
+let memory: UserPlanningContextContextValueV1;
 
 function Consumer() {
-  const memory = useUserPlanningContextV1();
+  memory = useUserPlanningContextV1();
   return <><span>{memory.error ?? 'ready'}</span><output>{memory.records.map(item => item.id).join(',')}</output></>;
 }
 
@@ -48,8 +54,21 @@ beforeEach(() => {
   };
   vi.stubGlobal('window', { localStorage: storage });
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
-  repository.initialize.mockReset().mockImplementation(async (_owner, snapshot) => ({ snapshot, revision: 1, shared: true }));
+  let remote = createEmptyUserPlanningContextSnapshotV1(ownerId);
+  repository.initialize.mockReset().mockImplementation(async (_owner, snapshot) => {
+    remote = snapshot;
+    return { snapshot, revision: 1, shared: true };
+  });
   repository.subscribe.mockReset().mockReturnValue(() => undefined);
+  repository.saveUserConfirmedRecord.mockReset().mockImplementation(async (_owner, item) => {
+    remote = { ...remote, records: [...remote.records.filter(entry => entry.id !== item.id), item] };
+    return { snapshot: remote, revision: 2, shared: true };
+  });
+  repository.removeRecord.mockReset().mockImplementation(async (_owner, id) => {
+    remote = { ...remote, records: remote.records.filter(item => item.id !== id) };
+    return { snapshot: remote, revision: 2, shared: true };
+  });
+  interpret.mockReset().mockResolvedValue({ targetDomain: 'user_context', kind: 'concern', label: '英語', value: '復習', dateExpression: null, displayText: '英語を復習したい' });
 });
 
 afterEach(() => {
@@ -109,19 +128,21 @@ describe('existing-format memory reads', () => {
     expect(storage.removeItem).not.toHaveBeenCalled();
   });
 
-  it.each(['invalid', 'unavailable'])('refuses to merge staged memory into an %s source and permits recovery', (failure) => {
+  it.each(['invalid', 'unavailable'])('skips only staged memory when its source is %s and preserves the original bytes', (failure) => {
     const turn = { ownerId, conversationId: 'new-session', requestId: 'new-turn' };
     stageUserPlanningContextFactsV1({ ...turn, observedDate: params.currentDate, now: '2026-11-08T09:00:00.000Z',
       facts: [{ localId: 'new-concern', kind: 'concern', label: '英語', value: '復習したい', dateExpression: null, sourceText: '英語を復習したい' }] });
     raw.set(key, '{unfinished');
     if (failure === 'unavailable') storage.getItem.mockImplementation(() => { throw new Error('storage unavailable'); });
-    expect(() => finalizeStagedUserPlanningContextV1(turn)).toThrow('refusing to overwrite');
-    expect(hasStagedUserPlanningContextV1(turn)).toBe(true);
+    expect(finalizeStagedUserPlanningContextV1(turn)).toBeNull();
+    expect(hasStagedUserPlanningContextV1(turn)).toBe(false);
     expect(raw.get(key)).toBe('{unfinished');
     expect(storage.setItem).not.toHaveBeenCalled();
     expect(storage.removeItem).not.toHaveBeenCalled();
     raw.set(key, JSON.stringify({ ...createEmptyUserPlanningContextSnapshotV1(ownerId), records: [record()] }));
     storage.getItem.mockImplementation((name: string) => raw.get(name) ?? null);
+    stageUserPlanningContextFactsV1({ ...turn, observedDate: params.currentDate, now: '2026-11-08T09:00:00.000Z',
+      facts: [{ localId: 'new-concern', kind: 'concern', label: '英語', value: '復習したい', dateExpression: null, sourceText: '英語を復習したい' }] });
     expect(finalizeStagedUserPlanningContextV1(turn)?.committedRecords).toHaveLength(1);
     expect(loadUserPlanningContextSnapshotV1(params).records.map(item => item.label).sort()).toEqual(['数学', '英語']);
     expect(finalizeStagedUserPlanningContextV1(turn)).toBeNull();
@@ -144,6 +165,46 @@ describe('existing-format memory reads', () => {
     expect(repository.initialize).toHaveBeenCalledWith(ownerId, createEmptyUserPlanningContextSnapshotV1(ownerId));
     expect(repository.subscribe).toHaveBeenCalledOnce();
     expect(renderer!.root.findByType('span').children.join('')).toBe('ready');
+  });
+
+  it.each(['saveRecord', 'saveNaturalLanguage', 'removeRecord'] as const)('keeps unreadable bytes and the error after settings %s, then permits a reload from repaired data', async (operation) => {
+    raw.set(key, '{unfinished');
+    await act(async () => { renderer = create(<UserPlanningContextProvider ownerId={ownerId}><Consumer /></UserPlanningContextProvider>); });
+    const error = memory.error;
+    const mutate = () => operation === 'saveRecord' ? memory.saveRecord({ kind: 'concern', label: '英語', value: '復習' })
+      : operation === 'saveNaturalLanguage' ? memory.saveNaturalLanguage({ text: '英語を復習したい' }) : memory.removeRecord('prior-concern');
+    await act(async () => { await mutate().catch(() => undefined); });
+    expect(raw.get(key)).toBe('{unfinished');
+    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(storage.removeItem).not.toHaveBeenCalled();
+    expect(repository.saveUserConfirmedRecord).not.toHaveBeenCalled();
+    expect(repository.removeRecord).not.toHaveBeenCalled();
+    expect(interpret).not.toHaveBeenCalled();
+    expect(memory.error).toBe(error);
+    expect(memory.unavailable).toBe(true);
+    act(() => renderer!.unmount());
+    raw.set(key, JSON.stringify({ ...createEmptyUserPlanningContextSnapshotV1(ownerId), records: [record()] }));
+    await act(async () => { renderer = create(<UserPlanningContextProvider ownerId={ownerId}><Consumer /></UserPlanningContextProvider>); });
+    expect(memory.unavailable).toBe(false);
+    expect(memory.error).toBeNull();
+    await act(async () => { await mutate(); });
+    expect(operation === 'removeRecord' ? repository.removeRecord : repository.saveUserConfirmedRecord).toHaveBeenCalledOnce();
+    expect(storage.setItem).toHaveBeenCalled();
+  });
+
+  it('also checks the source before a settings save if it becomes unreadable after initialization', async () => {
+    await act(async () => { renderer = create(<UserPlanningContextProvider ownerId={ownerId}><Consumer /></UserPlanningContextProvider>); });
+    storage.setItem.mockClear();
+    const source = JSON.stringify({ ...createEmptyUserPlanningContextSnapshotV1(ownerId), records: [record()] });
+    raw.set(key, source);
+    storage.getItem.mockImplementation(() => { throw new Error('storage denied'); });
+    await act(async () => { await memory.saveNaturalLanguage({ text: '英語を復習したい' }).catch(() => undefined); });
+    expect(raw.get(key)).toBe(source);
+    expect(repository.saveUserConfirmedRecord).not.toHaveBeenCalled();
+    expect(interpret).not.toHaveBeenCalled();
+    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(memory.error).toBeTruthy();
+    expect(memory.unavailable).toBe(true);
   });
 
   it('initializes existing memory intact and clears that display if the next owner cannot be read', async () => {

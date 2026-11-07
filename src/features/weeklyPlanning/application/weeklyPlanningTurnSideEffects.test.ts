@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   exportUserPlanningContextSnapshotV1,
   finalizeStagedUserPlanningContextV1,
+  hasStagedUserPlanningContextV1,
   resetUserPlanningContextRuntimeForTestV1,
   stageUserPlanningContextFactsV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
@@ -58,8 +59,29 @@ function createServices(
 }
 
 describe('weeklyPlanningTurnStagingLifecycle', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
   beforeEach(() => {
     resetUserPlanningContextRuntimeForTestV1();
+  });
+
+  it.each(['invalid', 'unavailable'])('commits the graph while skipping optional memory with an %s source', (failure) => {
+    const original = '{unfinished';
+    const storage = { getItem: vi.fn(() => original), setItem: vi.fn(), removeItem: vi.fn() };
+    if (failure === 'unavailable') storage.getItem.mockImplementation(() => { throw new Error('storage denied'); });
+    vi.stubGlobal('window', { localStorage: storage });
+    stageUserPlanningContextFactsV1({ ownerId: 'user-1', conversationId: pending.conversationId, requestId: pending.requestId,
+      observedDate: '2026-07-24', now: pending.startedAt,
+      facts: [{ localId: 'context', kind: 'concern', label: '数学', value: '優先', dateExpression: null, sourceText: '数学を優先したい' }] });
+    const services = createServices();
+    const prepared = createWeeklyPlanningTurnStagingLifecycle(services).prepare({ ownerId: 'user-1', pending });
+    expect(prepared).toBeDefined();
+    prepared!.complete();
+    expect(services.finalizeRuntimeGraph).toHaveBeenCalledOnce();
+    expect(services.rollbackRuntimeGraph).not.toHaveBeenCalled();
+    expect(hasStagedUserPlanningContextV1(pending)).toBe(false);
+    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(storage.removeItem).not.toHaveBeenCalled();
+    if (failure === 'invalid') expect(storage.getItem()).toBe(original);
   });
 
   it('prepares only an existing staged graph and completes it without rollback', () => {

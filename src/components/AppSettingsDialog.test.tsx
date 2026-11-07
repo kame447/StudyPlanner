@@ -4,7 +4,7 @@ import { AppSettingsDialog } from './AppSettingsDialog';
 import type { UserPlanningContextRecordV1 } from '../features/userPlanningContext/userPlanningContextTypes';
 
 const state = vi.hoisted(() => ({
-  memory: { records: [] as UserPlanningContextRecordV1[], shared: true, syncing: false, error: null,
+  memory: { records: [] as UserPlanningContextRecordV1[], shared: true, syncing: false, unavailable: false, error: null as string | null,
     saveNaturalLanguage: vi.fn(async () => undefined), removeRecord: vi.fn(async () => undefined) },
   weekStartsOn: 'monday', setWeekStartsOn: vi.fn(async () => true), resetProfile: vi.fn(async () => true),
 }));
@@ -17,10 +17,30 @@ const focus = vi.fn();
 function mount() { act(() => { renderer = create(<AppSettingsDialog {...props} />, { createNodeMock: () => ({ focus, scrollTop: 0 }) }); }); }
 const button = (text: string) => renderer.root.findAllByType('button').find(node => node.children.includes(text))!;
 function selectTab(id: string) { act(() => renderer.root.findByProps({ id: `app-settings-tab-${id}` }).props.onClick()); }
-beforeEach(() => { vi.clearAllMocks(); state.memory.records = []; state.memory.syncing = false; state.memory.saveNaturalLanguage.mockResolvedValue(undefined); });
+beforeEach(() => { vi.clearAllMocks(); state.memory.records = []; state.memory.syncing = false; state.memory.unavailable = false; state.memory.error = null; state.memory.saveNaturalLanguage.mockResolvedValue(undefined); });
 afterEach(() => { act(() => renderer?.unmount()); vi.unstubAllGlobals(); });
 
 describe('standalone readable settings', () => {
+  it('disables memory changes and preserves the error while memory is unavailable', () => {
+    state.memory.records = [{ id: 'memory-1', sourceText: '数学が苦手', origin: 'user_confirmed', status: 'active' } as UserPlanningContextRecordV1];
+    mount(); selectTab('memory');
+    act(() => button('追加').props.onClick());
+    act(() => renderer.root.findByType('textarea').props.onChange({ target: { value: '数学を復習したい' } }));
+    expect(button('覚えておく').props.disabled).toBe(false);
+    state.memory.unavailable = true; state.memory.error = 'AIが覚えている情報を同期できませんでした。';
+    act(() => renderer.update(<AppSettingsDialog {...props} />));
+    expect(button('追加').props.disabled).toBe(true);
+    expect(button('覚えておく').props.disabled).toBe(true);
+    expect(renderer.root.findByType('textarea').props.disabled).toBe(true);
+    for (const label of ['この内容を編集', 'この内容を忘れる']) {
+      expect(renderer.root.findByProps({ 'aria-label': label }).props.disabled).toBe(true);
+    }
+    expect(renderer.root.findByProps({ role: 'alert' }).children.join('')).toBe(state.memory.error);
+    state.memory.records = [];
+    act(() => renderer.update(<AppSettingsDialog {...props} />));
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('まだ覚えていることはありません');
+  });
+
   it('exposes a named page, focusable heading, grouped settings and a Back action without a modal', () => {
     mount();
     expect(renderer.root.findByType('main').props['aria-labelledby']).toBe('app-settings-title');

@@ -543,7 +543,10 @@ export function finalizeStagedUserPlanningContextV1(params: {
     currentDate: staged.observedDate,
   });
   if (current.kind === 'unavailable') {
-    throw new Error('User planning context is unavailable; refusing to overwrite it.');
+    // Memory is optional to the conversation commit. Do not overwrite an unreadable source
+    // or leave this turn's skipped memory staged for a later, unrelated commit.
+    stagedContexts.delete(key);
+    return null;
   }
   const previousRaw = readRaw(params.ownerId);
   const merged = mergeFacts({

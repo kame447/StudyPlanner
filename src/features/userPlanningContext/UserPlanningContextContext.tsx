@@ -50,6 +50,7 @@ export interface UserPlanningContextContextValueV1 {
   records: UserPlanningContextRecordV1[];
   loading: boolean;
   syncing: boolean;
+  unavailable: boolean;
   shared: boolean;
   error: string | null;
   saveRecord(input: UserPlanningContextEditorInputV1): Promise<void>;
@@ -90,6 +91,7 @@ export function UserPlanningContextProvider({
     loadUserPlanningContextSnapshotV1({ ownerId, currentDate: currentDateInJapan() }));
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [shared, setShared] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,6 +116,7 @@ export function UserPlanningContextProvider({
     const initialize = async () => {
       setLoading(true);
       const local = readUserPlanningContextSnapshotV1({ ownerId, currentDate: currentDateInJapan() });
+      setUnavailable(local.kind === 'unavailable');
       setSnapshot(local.kind === 'available' ? local.snapshot : createEmptyUserPlanningContextSnapshotV1(ownerId));
       try {
         if (local.kind === 'unavailable') {
@@ -164,7 +167,18 @@ export function UserPlanningContextProvider({
     };
   }, [applyRepositoryState, ownerId, repository]);
 
+  const assertWritable = useCallback(() => {
+    // Only a successful initialization releases the latch. A repaired source can be retried on reload.
+    if (unavailable || readUserPlanningContextSnapshotV1({ ownerId, currentDate: currentDateInJapan() }).kind === 'unavailable') {
+      const message = 'AIが覚えている情報を読み取れないため変更できません。再読み込み後にもう一度お試しください。';
+      setUnavailable(true);
+      setError(current => current ?? message);
+      throw new Error(message);
+    }
+  }, [ownerId, unavailable]);
+
   const saveRecord = useCallback(async (input: UserPlanningContextEditorInputV1) => {
+    assertWritable();
     const existing = input.existingRecordId
       ? snapshot.records.find((record) => record.id === input.existingRecordId) ?? null
       : null;
@@ -192,9 +206,10 @@ export function UserPlanningContextProvider({
     } finally {
       setSyncing(false);
     }
-  }, [applyRepositoryState, ownerId, repository, snapshot.records]);
+  }, [applyRepositoryState, assertWritable, ownerId, repository, snapshot.records]);
 
   const saveNaturalLanguage = useCallback(async (input: UserPlanningContextNaturalLanguageInputV2) => {
+    assertWritable();
     const existing = input.existingRecordId
       ? snapshot.records.find((record) => record.id === input.existingRecordId) ?? null
       : null;
@@ -221,6 +236,7 @@ export function UserPlanningContextProvider({
         sourceText: interpreted.displayText,
         existingId: existing?.id,
       });
+      assertWritable();
       try {
         const next = await repository.saveUserConfirmedRecord(ownerId, record, existing?.id ?? null);
         applyRepositoryState(next);
@@ -232,9 +248,10 @@ export function UserPlanningContextProvider({
     } finally {
       setSyncing(false);
     }
-  }, [applyRepositoryState, ownerId, repository, snapshot.records]);
+  }, [applyRepositoryState, assertWritable, ownerId, repository, snapshot.records]);
 
   const removeRecord = useCallback(async (recordId: string) => {
+    assertWritable();
     setSyncing(true);
     setError(null);
     try {
@@ -247,7 +264,7 @@ export function UserPlanningContextProvider({
     } finally {
       setSyncing(false);
     }
-  }, [applyRepositoryState, ownerId, repository]);
+  }, [applyRepositoryState, assertWritable, ownerId, repository]);
 
   const visibleRecords = useMemo(
     () => snapshot.records.filter(isUserPlanningContextVisibleV1),
@@ -259,12 +276,13 @@ export function UserPlanningContextProvider({
     records: visibleRecords,
     loading,
     syncing,
+    unavailable,
     shared,
     error,
     saveRecord,
     saveNaturalLanguage,
     removeRecord,
-  }), [error, loading, removeRecord, saveNaturalLanguage, saveRecord, shared, snapshot, syncing, visibleRecords]);
+  }), [error, loading, removeRecord, saveNaturalLanguage, saveRecord, shared, snapshot, syncing, unavailable, visibleRecords]);
 
   if (loading) return null;
 
