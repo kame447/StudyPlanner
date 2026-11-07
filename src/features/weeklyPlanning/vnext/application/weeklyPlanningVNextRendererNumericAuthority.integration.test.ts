@@ -16,7 +16,7 @@ const empty = () => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const reply = '残り10枚は約96分という計算になります。その時間でよいですか？';
 const fallback = { decision: 'fallback', effortTarget: null, effortMeasurement: null,
   minutes: null, precision: null, quantityRole: null };
-const perUnit = { decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
+const perUnit = { decision: 'effort_answer', hasAdditionalRequest: false, effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
   minutes: 8, precision: 'exact', quantityRole: null };
 const initialReading = {
   planningIntent: 'create_plan', conversationActs: [], answer: null,

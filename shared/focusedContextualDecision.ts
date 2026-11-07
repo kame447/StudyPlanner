@@ -88,6 +88,7 @@ export type FocusedDecisionContext =
 
 export type FocusedContextualDecisionResponse = {
   decision: 'quantity_role_answer';
+  hasAdditionalRequest: false;
   effortTarget: null;
   effortMeasurement: null;
   minutes: null;
@@ -95,6 +96,7 @@ export type FocusedContextualDecisionResponse = {
   quantityRole: 'target' | 'remaining' | 'completed';
 } | {
   decision: 'fallback';
+  hasAdditionalRequest: true;
   effortTarget: null;
   effortMeasurement: null;
   minutes: null;

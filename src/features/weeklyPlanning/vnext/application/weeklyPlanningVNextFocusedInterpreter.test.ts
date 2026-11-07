@@ -36,13 +36,36 @@ function input(state = seed(), userText = '40分くらい') : WeeklyPlanningVNex
 }
 const fullResult: WeeklyPlanningVNextInterpretation = { status: 'interpreted', planningIntent: 'unknown' as const, delta: empty(), answer: null,
   metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
-const decision = (kind: 'effort_answer' | 'quantity_role_answer' | 'fallback', per = false) => ({ decision: kind,
+const decision = (kind: 'effort_answer' | 'quantity_role_answer' | 'fallback', per = false) => ({ decision: kind, hasAdditionalRequest: false,
   effortTarget: kind === 'effort_answer' ? 'question_target' : null,
   effortMeasurement: kind === 'effort_answer' ? per ? 'duration_per_unit' : 'total_duration' : null,
   minutes: kind === 'effort_answer' ? per ? 5 : 40 : null, precision: kind === 'effort_answer' ? 'approximate' : null,
   quantityRole: kind === 'quantity_role_answer' ? 'remaining' : null });
 
 describe('VNext uses existing focused contextual purpose and native fallback', () => {
+  it.each(['effort_answer', 'quantity_role_answer'] as const)('#1005 preserves the whole input when %s also reports an independent request', async kind => {
+    const params = kind === 'effort_answer' ? input() : input(seed([work('declared', 'declared', 8), work('left', 'remaining', 5)]));
+    const fullReading = vi.fn(async () => fullResult);
+    params.client = { createChatCompletion: vi.fn(async () => JSON.stringify({ ...decision(kind), hasAdditionalRequest: true })) };
+    expect(await createWeeklyPlanningVNextFocusedInterpreter({ fullReading })(params)).toMatchObject({ metrics: { calls: 2 } });
+    expect(fullReading).toHaveBeenCalledExactlyOnceWith(params);
+    expect(params.state.graph.effortEstimates).toEqual([]);
+  });
+
+  it.each([undefined, null, 'false'])('#1005 requires an explicit boolean before binding (received %s)', async hasAdditionalRequest => {
+    const params = input();
+    const fullReading = vi.fn(async () => fullResult);
+    params.client = { createChatCompletion: async () => JSON.stringify({ ...decision('effort_answer'), hasAdditionalRequest }) };
+    expect(await createWeeklyPlanningVNextFocusedInterpreter({ fullReading })(params)).toMatchObject({ metrics: { calls: 2 } });
+    expect(fullReading).toHaveBeenCalledExactlyOnceWith(params);
+  });
+
+  it('#1005 asks the provider for the independent-request decision on every focused output', () => {
+    const schema = FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5.json_schema.schema as { required: string[]; properties: Record<string, unknown> };
+    expect(schema.required).toContain('hasAdditionalRequest');
+    expect(schema.properties.hasAdditionalRequest).toMatchObject({ type: 'boolean', description: expect.any(String) });
+  });
+
   it.each([false, true])('binds an exact pending total/per-unit answer (per unit=%s) through V5 prompt/schema/parser', async per => {
     const params = input();
     const fullReading = vi.fn(async () => fullResult);

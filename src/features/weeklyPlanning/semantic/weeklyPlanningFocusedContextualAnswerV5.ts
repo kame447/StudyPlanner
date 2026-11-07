@@ -29,6 +29,7 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
       additionalProperties: false,
       required: [
         'decision',
+        'hasAdditionalRequest',
         'effortTarget',
         'effortMeasurement',
         'minutes',
@@ -36,6 +37,10 @@ export const FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
         'quantityRole',
       ],
       properties: {
+        hasAdditionalRequest: {
+          type: 'boolean',
+          description: 'Classify independently of the answer fields. True when currentUserText also contains an active request beyond answering the pending question, including creating/showing a plan or preview, or another action. A clear effort/quantity answer does not remove that request. False for an answer alone, a negated request, a request withdrawn in the same utterance, or a merely quoted request; a clear pending answer with only such inactive wording may remain effort_answer or quantity_role_answer. True delegates the complete utterance to the general semantic reader; this flag never authorizes a plan or save.',
+        },
         decision: {
           type: 'string',
           enum: ['effort_answer', 'quantity_role_answer', 'fallback'],
@@ -121,6 +126,8 @@ export interface FocusedContextualTargetV5 extends FocusedContextualWorkloadV5 {
 
 export interface FocusedContextualAnswerDecisionV5 {
   decision: 'effort_answer' | 'quantity_role_answer' | 'fallback';
+  /** Required by the VNext schema; absent in the separate legacy V5 provisional schema. */
+  hasAdditionalRequest?: boolean;
   effortTarget: FocusedContextualEffortTargetV5 | null;
   effortMeasurement: FocusedContextualEffortMeasurementV5 | null;
   minutes: number | null;
@@ -359,6 +366,9 @@ export function parseFocusedContextualAnswerDecisionV5(
     const value = JSON.parse(raw) as unknown;
     if (!isRecord(value)) return null;
     const decision = value.decision;
+    const hasAdditionalRequest = value.hasAdditionalRequest;
+    if (hasAdditionalRequest !== undefined && typeof hasAdditionalRequest !== 'boolean') return null;
+    const additionalRequest = hasAdditionalRequest === undefined ? {} : { hasAdditionalRequest };
     const effortTarget = value.effortTarget;
     const effortMeasurement = value.effortMeasurement;
     const minutes = value.minutes;
@@ -384,6 +394,7 @@ export function parseFocusedContextualAnswerDecisionV5(
       if (parsedQuantityRole !== null) return null;
       return {
         decision,
+        ...additionalRequest,
         effortTarget,
         effortMeasurement,
         minutes,
@@ -406,6 +417,7 @@ export function parseFocusedContextualAnswerDecisionV5(
       ) return null;
       return {
         decision,
+        ...additionalRequest,
         effortTarget: null,
         effortMeasurement: null,
         minutes: null,
@@ -423,6 +435,7 @@ export function parseFocusedContextualAnswerDecisionV5(
     ) return null;
     return {
       decision: 'fallback',
+      ...additionalRequest,
       effortTarget: null,
       effortMeasurement: null,
       minutes: null,
@@ -553,7 +566,7 @@ export function createFocusedContextualAnswerDocumentV5(params: {
   decision: FocusedContextualAnswerDecisionV5;
 }): WeeklyPlanningSemanticDocumentV5 | null {
   const target = focusedContextualTargetV5(params.input);
-  if (!target || params.decision.decision === 'fallback') return null;
+  if (!target || params.decision.decision === 'fallback' || params.decision.hasAdditionalRequest) return null;
 
   const sourceText = params.input.userText;
   if (params.decision.decision === 'effort_answer') {

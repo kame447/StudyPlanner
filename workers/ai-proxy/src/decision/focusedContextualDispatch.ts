@@ -121,6 +121,7 @@ function responseForDecision(
   if (decision === 'fallback') {
     return {
       decision,
+      hasAdditionalRequest: true,
       effortTarget: null,
       effortMeasurement: null,
       minutes: null,
@@ -130,6 +131,9 @@ function responseForDecision(
   }
   return {
     decision: 'quantity_role_answer',
+    // The existing AI gate admitted only the pending answer; do not make VNext
+    // pay for a native fallback merely because this producer omitted its signal.
+    hasAdditionalRequest: false,
     effortTarget: null,
     effortMeasurement: null,
     minutes: null,

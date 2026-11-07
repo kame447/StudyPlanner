@@ -76,7 +76,9 @@ export function createWeeklyPlanningVNextFocusedInterpreter(params: { fullReadin
     const current = contextualInput(input, requestId);
     if (!current || !isFocusedContextualBindingCurrentV5(snapshot, current)) return fallback();
     const decision = parseFocusedContextualAnswerDecisionV5(raw);
-    if (!decision || decision.decision === 'fallback') return fallback();
+    // Bind a focused answer only when AI explicitly ruled out independent requests.
+    // A missing signal also needs the full reading; this flag never grants authority.
+    if (!decision || decision.decision === 'fallback' || decision.hasAdditionalRequest !== false) return fallback();
     const question = input.presentedQuestion!;
     let delta: VNextTurnDelta;
     if (decision.decision === 'effort_answer') {

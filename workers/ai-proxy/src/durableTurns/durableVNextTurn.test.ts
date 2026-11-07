@@ -45,7 +45,7 @@ function journal() {
   };
 }
 /** Reading for the semantic purpose; the real renderer schema is answered by the shared healthy fixture. */
-const focused = JSON.stringify({ decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
+const focused = JSON.stringify({ decision: 'effort_answer', hasAdditionalRequest: false, effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
   minutes: 5, precision: 'approximate', quantityRole: null });
 const providerFetch = (semantic: string = reading([addTask, addWork])) => vi.fn(async (_url: unknown, init?: RequestInit) => {
   const body = JSON.parse(init!.body as string) as { response_format?: { json_schema?: { name?: string } }; messages: { content: string }[] };

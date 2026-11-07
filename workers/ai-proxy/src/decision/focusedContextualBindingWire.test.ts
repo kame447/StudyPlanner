@@ -7,6 +7,7 @@ import { createFocusedContextualBindingSnapshotV5 } from '../../../../src/featur
 import { createFocusedContextualBindingGraphFixtureV5, createFocusedContextualBindingInputFixtureV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5.testUtils';
 import { createExtendedContextualMessagesV5, FOCUSED_CONTEXTUAL_ANSWER_WITH_PROVISIONAL_RESPONSE_FORMAT_V5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningSemanticFocusedPreRoutesV5';
 import type { WeeklyPlanningFactGraphV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFactGraphV5';
+import { FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5, parseFocusedContextualAnswerDecisionV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualAnswerV5';
 
 type Mode = 'off' | 'shadow' | 'canary';
 let oldWorker: typeof worker;
@@ -77,6 +78,17 @@ async function execute(version: 'old' | 'new', mode: Mode, body: unknown) {
 }
 
 describe('J1 actual old/new Worker wire compatibility', () => {
+  it('#1005 preserves a one-call Jev quantity answer for the new required-field schema', async () => {
+    const body = { ...payload(), response_format: FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5 };
+    const response = await execute('new', 'canary', body);
+    expect(response.status).toBe(200);
+    const raw = (await response.json()).content as string;
+    expect(parseFocusedContextualAnswerDecisionV5(raw)).toMatchObject({ decision: 'quantity_role_answer',
+      hasAdditionalRequest: false, quantityRole: 'remaining' });
+    expect(jevBodies).toHaveLength(1);
+    expect(lunaBodies).toHaveLength(0);
+  });
+
   for (const client of ['old', 'new'] as const) for (const server of ['old', 'new'] as const) {
     it.each(['off', 'shadow', 'canary'] as const)(`${client} client / ${server} Worker / %s`, async mode => {
       const response = await execute(server, mode, payload(client));
