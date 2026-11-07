@@ -17,6 +17,7 @@ import {
   hydrateUserPlanningContextSnapshotV1,
   isUserPlanningContextVisibleV1,
   loadUserPlanningContextSnapshotV1,
+  readUserPlanningContextSnapshotV1,
 } from './userPlanningContextSpace';
 import {
   interpretUserPlanningContextNaturalLanguageV2,
@@ -29,6 +30,7 @@ import type {
   UserPlanningContextSemanticKindV1,
   UserPlanningContextSnapshotV1,
 } from './userPlanningContextTypes';
+import { createEmptyUserPlanningContextSnapshotV1 } from './userPlanningContextTypes';
 
 export interface UserPlanningContextEditorInputV1 {
   existingRecordId?: string | null;
@@ -110,14 +112,14 @@ export function UserPlanningContextProvider({
     let unsubscribeCommitted: () => void = () => undefined;
 
     const initialize = async () => {
-      const localSnapshot = loadUserPlanningContextSnapshotV1({
-        ownerId,
-        currentDate: currentDateInJapan(),
-      });
-      setSnapshot(localSnapshot);
       setLoading(true);
+      const local = readUserPlanningContextSnapshotV1({ ownerId, currentDate: currentDateInJapan() });
+      setSnapshot(local.kind === 'available' ? local.snapshot : createEmptyUserPlanningContextSnapshotV1(ownerId));
       try {
-        const initial = await startupTiming.measure('memory', () => repository.initialize(ownerId, localSnapshot));
+        if (local.kind === 'unavailable') {
+          throw new Error(`Long-term memory read failed: ${local.reason}`);
+        }
+        const initial = await startupTiming.measure('memory', () => repository.initialize(ownerId, local.snapshot));
         if (!active) return;
         applyRepositoryState(initial);
         unsubscribeRemote = repository.subscribe(
