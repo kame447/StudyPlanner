@@ -143,6 +143,7 @@ export interface PlannerRepository {
     mutation: RecurringPlanMutation,
   ): Promise<void>;
   deletePlanWithDependents(mutation: PlanDeleteWithDependentsMutation): Promise<void>;
+  deletePlanRetainingActuals(mutation: PlanDeleteWithDependentsMutation): Promise<import('../domain/actualProgressSource').PlanActualDetachment>;
   restorePlanWithDependents(mutation: PlanRestoreWithDependentsMutation): Promise<void>;
   scheduleTodoPlan(mutation: TodoPlanScheduleMutation): Promise<void>;
   upsertActualWithMaterialProgress(

@@ -1,5 +1,5 @@
 import { runRecoverableMutation } from './runRecoverableMutation';
-import { preserveMonthEventActualSources } from '../domain/actualProgressSource';
+import { detachPlanActuals, preserveMonthEventActualSources } from '../domain/actualProgressSource';
 import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import {
@@ -243,6 +243,27 @@ export function createLocalScheduleEventAuthority(
       );
     },
 
+    async deletePlanRetainingActuals(mutation) {
+      assertOwnedRecords(mutation.userId, mutation.todo ? [mutation.plan, mutation.todo] : [mutation.plan], '予定削除');
+      const previousEvents = readScheduleEvents(storage);
+      const previousActuals = await plannerStorageGateway.readActuals();
+      const previousTodos = mutation.todo ? await plannerStorageGateway.readTodos() : null;
+      const detached = detachPlanActuals(previousActuals, mutation.plan);
+      const detachedById = new Map(detached.afterActuals.map(actual => [actual.id, actual]));
+      const nextActuals = previousActuals.map(actual => actual.userId === mutation.userId
+        ? detachedById.get(actual.id) ?? actual : actual);
+      const eventId = scheduleEventIdForLegacy({ kind: 'plan', id: mutation.plan.id });
+      await runRecoverableMutation(async () => {
+        writeScheduleEvents(storage, previousEvents.filter(event => !(event.userId === mutation.userId && event.id === eventId)));
+        await plannerStorageGateway.writeActuals(nextActuals);
+        if (previousTodos && mutation.todo) await plannerStorageGateway.writeTodos(replaceById(previousTodos, mutation.todo));
+      }, async () => {
+        writeScheduleEvents(storage, previousEvents);
+        await plannerStorageGateway.writeActuals(previousActuals);
+        if (previousTodos) await plannerStorageGateway.writeTodos(previousTodos);
+      }, '予定削除');
+      return detached;
+    },
     async deletePlanWithDependents(mutation) {
       assertOwnedRecords(
         mutation.userId,

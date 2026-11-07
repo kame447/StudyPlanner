@@ -7,6 +7,19 @@ export interface ActualProgressSources {
   monthEvents: readonly MonthEvent[];
 }
 
+export interface PlanActualDetachment {
+  beforeActuals: Actual[];
+  afterActuals: Actual[];
+}
+
+// Keep the recorded work and its reporting provenance when its one-off plan is removed.
+export function detachPlanActuals(actuals: readonly Actual[], plan: Plan): PlanActualDetachment {
+  const beforeActuals = actuals.filter(actual => actual.userId === plan.userId && actual.planId === plan.id);
+  return { beforeActuals, afterActuals: beforeActuals.map(actual => prepareActualProgressSource({
+    ...actual, planId: null, title: actual.title?.trim() ? actual.title : plan.title, isAlignedToPlan: false,
+  }, { plans: [plan], monthEvents: [] }, actual)) };
+}
+
 // Only persisted, same-owner schedule records establish provenance. Labels and
 // ID prefixes never establish a source kind, and caller-supplied snapshots are
 // not accepted by this write preparation boundary.
