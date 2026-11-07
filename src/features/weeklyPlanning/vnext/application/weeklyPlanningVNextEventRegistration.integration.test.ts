@@ -74,6 +74,30 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>, fa
 }
 
 describe('VNext native fixed-event registration through the unchanged V5 projection and approval', () => {
+  it.each([
+    { explicit: false, taskTotal: false }, { explicit: true, taskTotal: false },
+    { explicit: false, taskTotal: true }, { explicit: true, taskTotal: true },
+  ])('keeps movable work independent of a broad registration while honoring its explicit target (explicit=$explicit, taskTotal=$taskTotal)', async ({ explicit, taskTotal }) => {
+    const math: VNextAddFact[] = taskTotal ? [work[0], { kind: 'effort_estimate', localId: 'math-total',
+      taskRef: { localId: 'math' }, targetRef: { localId: 'math' }, effortKind: 'total_duration', minutes: 60,
+      unitCode: null, unitLabel: null, precision: 'exact' }] : work;
+    const h = harness([wire([...event(), ...math], [request(explicit ? { localId: 'math' } : null)], 'create_plan')]);
+    const result = await h.turn(explicit ? '部活は固定予定です。数学60分も固定枠として登録したいです'
+      : '部活の固定予定を登録して。数学は60分、空き時間に予定を作って');
+    const mathId = h.state().graph.tasks.find(task => task.title === '数学')!.id;
+    if (explicit) {
+      expect(result.question).toMatchObject({ code: 'invalid_commitment_interval', taskId: mathId });
+      expect(h.state().pendingEventRegistrationTargetIds).toEqual([mathId]);
+      expect(result.preview).toBeNull();
+    } else {
+      expect(result.question).toBeNull();
+      expect(result.draftCandidates?.filter(candidate => candidate.source === 'fixed_event_registration')).toHaveLength(1);
+      expect(result.draftCandidates?.filter(candidate => candidate.source === 'weekly_exam_prep')).toHaveLength(1);
+      expect(h.state()).not.toHaveProperty('pendingEventRegistrationTargetIds');
+    }
+    expect(h.saves()).toBe(0);
+  });
+
   it('retains one requested event through unknown answers, reload and another question, then consumes only its captured preview', async () => {
     const conference: VNextAddFact[] = [
       { kind: 'task', localId: 'conference', title: 'カンファレンス', category: 'non_study' },
