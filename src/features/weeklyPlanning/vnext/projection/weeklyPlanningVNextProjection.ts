@@ -33,6 +33,7 @@ import {
   vnextQuantityBasisKey,
   vnextMinutesPerQuantityUnit,
   vnextUnitIdentity,
+  isVNextPercentUnit,
   type VNextLineageResolver,
   type VNextWorkUnit,
   type VNextWorkUnitIssue,
@@ -518,13 +519,19 @@ export function projectWeeklyPlanningVNext(
           ownerKey, taskId: task.id, componentId: null, subjectLineageIds: [taskLineage], forWork: null, options: [] } });
       continue;
     }
-    if (activeWorkloads.some((workload) => resolver.lineageOf(workload.taskId) === taskLineage)) continue;
+    const taskWorkloads = activeWorkloads.filter(workload => resolver.lineageOf(workload.taskId) === taskLineage);
+    // Unbounded completed progress states no future quantity; a percentage already implies a total of 100.
+    if (taskWorkloads.some(workload => workload.quantityRole !== 'completed' || isVNextPercentUnit(workload))) continue;
     const totals = context.efforts.filter((effort) => effort.kind === 'total_duration'
       && resolver.lineageOf(effort.taskId) === taskLineage && resolver.lineageOf(effort.targetFactId) === taskLineage);
     if (totals.length > 0) {
-      owners.push(projectTotalOwner(context, task.id, null, totals));
+      const projected = projectTotalOwner(context, task.id, null, totals);
+      const existing = owners.findIndex(owner => owner.ownerKey === projected.ownerKey);
+      if (existing < 0) owners.push(projected);
+      else if (owners[existing].status === 'nothing_to_schedule') owners[existing] = projected;
       continue;
     }
+    if (taskWorkloads.length > 0) continue;
     // A component's stated total is already enough work, just like a task's total.
     // Do not require an invented quantity or merge independent component budgets.
     const componentOwners = filterActiveWeeklyPlanningFactsV5(graph, graph.components)

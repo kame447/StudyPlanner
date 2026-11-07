@@ -281,6 +281,42 @@ describe('projectWeeklyPlanningVNext', () => {
     });
   });
 
+  it('keeps past progress while projecting a new owner-wide time budget exactly once', () => {
+    let state = withTask([W('done', 'completed', 10, 'page', 'ページ')]);
+    state = turn(state, { add: [total(state, 'future-budget', taskId(state), 60)] });
+    const before = structuredClone(state);
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection).toMatchObject({ readiness: 'ready', questions: [], owners: [{ status: 'ready',
+      work: [{ amount: 60, unitCode: 'minute', minutes: 60, estimateBasis: 'task_total' }] }] });
+    expect(projection.owners).toHaveLength(1);
+    expect(state.graph.effortEstimates[0].workBinding).toBeNull();
+    expect(state).toEqual(before);
+  });
+
+  it('does not turn time observed for completed work into a future budget', () => {
+    let state = withTask([W('done', 'completed', 10, 'page', 'ページ')]);
+    state = turn(state, { add: [total(state, 'observed', active(state, 'completed'), 60)] });
+    expect(state.graph.effortEstimates[0].workBinding).toMatchObject({ kind: 'observed_pace', boundAmount: 10 });
+    expect(projectWeeklyPlanningVNext(state)).toMatchObject({ readiness: 'empty', questions: [],
+      owners: [{ status: 'nothing_to_schedule', work: [] }] });
+  });
+
+  it.each([false, true])('does not resurrect fully completed bounded work from an estimate (percentage=%s)', percentage => {
+    let state = withTask(percentage ? [W('done', 'completed', 100, 'custom', '%')]
+      : [W('total', 'scope_total', 20), W('done', 'completed', 20)]);
+    state = turn(state, { add: [total(state, 'budget', taskId(state), 60)] });
+    expect(projectWeeklyPlanningVNext(state)).toMatchObject({ readiness: 'empty', questions: [],
+      owners: [{ status: 'nothing_to_schedule', work: [] }] });
+  });
+
+  it('keeps a stated future quantity when past progress and an owner budget coexist', () => {
+    let state = withTask([W('done', 'completed', 10, 'page', 'ページ'), W('future', 'target', 8, 'page', 'ページ')]);
+    state = turn(state, { add: [total(state, 'budget', taskId(state), 60)] });
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection.owners).toHaveLength(1);
+    expect(projection.owners[0]).toMatchObject({ status: 'ready', work: [{ amount: 8, unitCode: 'page', minutes: 60 }] });
+  });
+
   it('keeps component totals independent without storing derived workloads', () => {
     const state = withTask(['a', 'b'].flatMap((localId, index): VNextAddFact[] => [
       { kind: 'component', localId, taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: localId },
