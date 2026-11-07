@@ -10,6 +10,7 @@ import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVN
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
 import { presentWeeklyPlanningVNextQuestion } from '../application/weeklyPlanningVNextQuestionText';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
+import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts } from '../application/weeklyPlanningVNextExperimentalSession';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const run = shouldRun ? describe : describe.skip;
@@ -106,4 +107,54 @@ run('VNext native provider synthetic real API observations', () => {
       }
     }, Number(process.env.WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS ?? 420_000));
   }
+});
+
+run('#868-6 compound date scope through the native provider and placement', () => {
+  it.each([
+    { id: 'compound-date-implicit', text: '明日の13時から15時のゼミを予定に入れて。あと数学の問題集を1時間やりたいので、それも予定を作って', mathDate: '2026-11-03' },
+    { id: 'compound-date-shared', text: '明日の予定を作って。13時から15時のゼミを入れて、あと数学の問題集を1時間やりたい', mathDate: '2026-11-03' },
+    { id: 'compound-date-independent', text: '明日の13時から15時のゼミを予定に入れて。数学の問題集は今日1時間やりたいので、それも予定を作って', mathDate: '2026-11-02' },
+  ])('$id', async ({ id, text, mathDate }) => {
+    const clock = { ...defaultClock, currentDate: '2026-11-02' };
+    const receipts: Array<{ request: unknown; response?: string; transportFailure?: boolean }> = [];
+    const artifact: Record<string, unknown> = { id, syntheticOnly: true, text, clock, expectedMathDate: mathDate, receipts, completed: false };
+    let raw: string | null = null;
+    let saves = 0;
+    try {
+      if (requiredEnv('VITE_AI_PROVIDER') !== 'openai') throw new Error('Authorized provider required');
+      const actual = createOpenAiCompatibleClient({ provider: 'openai', baseUrl: requiredEnv('VITE_AI_BASE_URL'),
+        model: requiredEnv('VITE_AI_MODEL'), apiKey: requiredEnv('VITE_AI_API_KEY'), requestTimeoutMs: 90_000 });
+      const client: OpenAiCompatibleClient = { async createChatCompletion(request) {
+        const receipt: typeof receipts[number] = { request: structuredClone(request) };
+        receipts.push(receipt);
+        try { const response = await actual.createChatCompletion(request); receipt.response = response; return response; }
+        catch { receipt.transportFailure = true; throw new Error('Synthetic observation transport failed'); }
+      } };
+      const ports: WeeklyPlanningVNextExperimentalPorts = { client, interpret: createWeeklyPlanningVNextProviderInterpreter(),
+        checkpoint: { read: () => raw, write: value => { raw = value; } }, legacyV5Checkpoint: { read: () => null },
+        approvalLedger: { read: () => null, write: () => { throw new Error('Observation must never approve'); } },
+        plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { saves++; throw new Error('Observation must never save'); } },
+        calendar: () => ({ plans: [], actuals: [], monthEvents: [], scheduleTemplates: [] }),
+        now: () => '2026-11-02T00:00:00.000Z',
+        createRenderer: () => ({ render: async () => ({ status: 'rendered', text: '合成の候補説明', rawResponse: '' }) }),
+      };
+      const result = await submitWeeklyPlanningVNextExperimentalTurn({
+        scope: { ownerId: 'synthetic-868', conversationId: id, weekStartDate: '2026-11-02', notBeforeTime: '09:00', clock },
+        ports, turnId: 'compound', userText: text, shownRevision: null,
+      });
+      artifact.result = result;
+      artifact.checkpoint = raw ? JSON.parse(raw) : null;
+      artifact.saves = saves;
+      artifact.completed = true;
+      const math = result.draftCandidates?.filter(candidate => candidate.title.includes('数学')) ?? [];
+      expect(math.length, 'The explicitly requested study preview must exist').toBeGreaterThan(0);
+      expect(math.every(candidate => candidate.date === mathDate), 'The study candidates keep the interpreted day scope').toBe(true);
+      expect(result.draftCandidates?.some(candidate => candidate.source === 'fixed_event_registration'
+        && candidate.date === '2026-11-03' && candidate.startTime === '13:00' && candidate.endTime === '15:00')).toBe(true);
+      expect(saves).toBe(0);
+    } finally {
+      mkdirSync(outputDir, { recursive: true });
+      writeFileSync(join(outputDir, `${id}.json`), JSON.stringify(artifact, null, 2), 'utf8');
+    }
+  }, Number(process.env.WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS ?? 420_000));
 });
