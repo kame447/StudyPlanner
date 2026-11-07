@@ -8,6 +8,12 @@ export const DURABLE_TURN_LIMITS = {
   acceptanceAgeMs: 5 * 60_000,
   executionMs: 14 * 60_000,
   retentionMs: 24 * 60 * 60_000,
+  /**
+   * How long the identifier-only expired record outlives its content. Acceptance rejects any
+   * request whose startedAt is older than acceptanceAgeMs, so once that long has passed since
+   * expiry, no request that could collide with the record can still be accepted.
+   */
+  expiredRecordRetentionMs: 5 * 60_000,
 } as const;
 
 export interface DurableTurnIdentity {
@@ -50,6 +56,8 @@ export interface DurableTurnStorage {
   /** A complete snapshot is committed atomically. A thrown write may already have committed. */
   write(record: DurableTurnRecord, alarmAt?: number): Promise<void>;
   alarmAt(timestamp: number): Promise<void>;
+  /** Deletes this job's own records only, irreversibly. */
+  remove(): Promise<void>;
 }
 
 export interface DurableTurnResult {
@@ -96,6 +104,8 @@ function sameScope(a: DurableTurnIdentity, b: Pick<DurableTurnIdentity, 'ownerId
   return a.ownerId === b.ownerId && a.conversationId === b.conversationId;
 }
 
+const purgeAt = (record: DurableTurnRecord) => record.expiresAt + DURABLE_TURN_LIMITS.expiredRecordRetentionMs;
+
 function expiredRecord(record: DurableTurnRecord): DurableTurnRecord {
   const { payload: _payload, sourceIp: _sourceIp, journal: _journal, result: _result, failure: _failure, ...guard } = record;
   return { ...guard, status: 'expired' };
@@ -114,6 +124,7 @@ export class DurableTurnJob {
       read: () => guarded(() => storage.read()),
       write: (record, alarmAt) => guarded(() => storage.write(record, alarmAt)),
       alarmAt: (timestamp) => guarded(() => storage.alarmAt(timestamp)),
+      remove: () => guarded(() => storage.remove()),
     };
   }
 
@@ -135,7 +146,7 @@ export class DurableTurnJob {
       let current = await this.storage.read();
       if (current && current.expiresAt <= this.now() && current.status !== 'expired') {
         current = expiredRecord(current);
-        await this.storage.write(current);
+        await this.storage.write(current, purgeAt(current));
       }
       if (current && !sameScope(current.identity, input)) throw new DurableTurnConflict('owner_mismatch');
       if (current?.identity.requestId === input.requestId) {
@@ -205,7 +216,8 @@ export class DurableTurnJob {
       if (!record || record.identity.requestId !== requestId || record.expiresAt > this.now()) return;
       // No raw input, provider output, or generated result survives retention. The single compact
       // watermark fences old revisions/IDs; it is not an indefinitely growing request ledger.
-      await this.storage.write(expiredRecord(record));
+      const expired = expiredRecord(record);
+      await this.storage.write(expired, purgeAt(expired));
     });
   }
 
@@ -227,11 +239,15 @@ export class DurableTurnJob {
     const record = await this.serialized(async () => {
       const current = await this.storage.read();
       if (!current) return null;
+      if (this.now() >= purgeAt(current)) {
+        await this.storage.remove(); return null;
+      }
       if (current.expiresAt <= this.now()) {
-        await this.storage.write(expiredRecord(current)); return null;
+        const expired = expiredRecord(current);
+        await this.storage.write(expired, purgeAt(expired)); return null;
       }
       if (current.status === 'completed' || current.status === 'failed' || current.status === 'expired') {
-        if (current.status !== 'expired') await this.storage.alarmAt(current.expiresAt);
+        await this.storage.alarmAt(current.expiresAt);
         return null;
       }
       const running: DurableTurnRecord = { ...current, status: 'running' };

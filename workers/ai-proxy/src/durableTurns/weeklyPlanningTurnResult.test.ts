@@ -17,7 +17,7 @@ function addTrace(output: IsolatedWeeklyPlanningTurnResult): void {
 async function execute(output: IsolatedWeeklyPlanningTurnResult) {
   let saved: DurableTurnRecord | undefined;
   const storage: DurableTurnStorage = { read: async () => saved,
-    write: async record => { saved = structuredClone(record); }, alarmAt: async () => {} };
+    write: async record => { saved = structuredClone(record); }, alarmAt: async () => {}, remove: async () => { saved = undefined; } };
   const identity = { ownerId: 'alice', conversationId: 'chat', requestId: 'turn', baseRevision: 0, startedAt: 1_000_000 };
   const job = new DurableTurnJob(storage, () => identity.startedAt);
   await job.accept({ ...identity, payload: '{}' });
