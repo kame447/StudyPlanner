@@ -213,6 +213,8 @@ Learning-method proposals apply to movable learning work. Work excluded by its h
 
 In VNext, an owner already resolved to `nothing_to_schedule` does not create or select a memory-method proposal. Its completed facts and proposal history remain intact; an unfinished owner in the same task still keeps its method question, and independent ready work can proceed.
 
+VNext minute/hour workloads already express the requested time budget and do not create or select a required memory-method proposal. Earlier method records remain history; quantity-based memorization in the same task retains its ordinary question. Intrinsic minutes and explicit approval remain authoritative.
+
 ## Proposal / readiness / scheduler
 
 A proposal is not a command.

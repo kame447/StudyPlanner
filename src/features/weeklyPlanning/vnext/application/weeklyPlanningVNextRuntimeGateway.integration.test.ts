@@ -421,13 +421,17 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
   });
 
-  it.each([false, true].flatMap(completed => [false, true].map(large => ({ completed, large }))))
-  ('Stage B: persists ready memory planning through failed append, reload and Worker (completed=$completed, large=$large)', async ({ completed, large }) => {
-    const wire = completed ? { planningIntent: 'create_plan', conversationActs: [], answer: null,
+  it.each(['fixed', 'completed', 'time_budget'].flatMap(kind => [false, true].map(large => ({ kind, large }))))
+  ('Stage B: persists ready memory planning through failed append, reload and Worker (kind=$kind, large=$large)', async ({ kind, large }) => {
+    const completed = kind === 'completed';
+    const timeBudget = kind === 'time_budget';
+    const wire = completed || timeBudget ? { planningIntent: 'create_plan', conversationActs: [], answer: null,
       delta: { ...EMPTY, add: [
         { ...task, title: '英単語' },
-        { ...work('scope', 'scope_total', 100, 'word'), unitLabel: '語' },
-        { ...work('done', 'completed', 100, 'word'), unitLabel: '語' },
+        ...(completed ? [
+          { ...work('scope', 'scope_total', 100, 'word'), unitLabel: '語' },
+          { ...work('done', 'completed', 100, 'word'), unitLabel: '語' },
+        ] : [work('time-budget', 'remaining', 60, 'minute')]),
         { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
           activityKind: 'memorization_retrieval', contextLabel: null },
         { kind: 'task', localId: 'math', category: 'study', title: '数学' },
@@ -450,12 +454,13 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       } };
     } });
     failAppend = true;
-    const submitted = await h.submit(completed ? '英単語100語は全部終わった。今週は数学60分の予定案を作って'
+    const submitted = await h.submit(timeBudget ? '今週は英単語60分と数学60分の予定案を作って'
+      : completed ? '英単語100語は全部終わった。今週は数学60分の予定案を作って'
       : '火曜10時から11時に数学の残り10枚を進める予定を入れて');
-    if (completed) {
-      expect(h.local.readCheckpoint()!.vnext.state.graph.workloads.map(fact => fact.amount)).toEqual([100, 100, 60]);
+    if (completed || timeBudget) {
+      expect(h.local.readCheckpoint()!.vnext.state.graph.workloads.map(fact => fact.amount)).toEqual(completed ? [100, 100, 60] : [60, 60]);
       expect(submitted.draftCandidates.reduce((minutes, candidate) => minutes
-        + getEntryDurationMinutes(candidate.startTime, candidate.endTime), 0)).toBe(60);
+        + getEntryDurationMinutes(candidate.startTime, candidate.endTime), 0)).toBe(timeBudget ? 120 : 60);
     } else {
       expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
         date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
@@ -491,7 +496,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(rendererInputs[0]);
     else {
       const originalBytes = new TextEncoder().encode(JSON.stringify(rendererInputs[0])).byteLength;
-      if (completed) {
+      if (completed || timeBudget) {
         // This ready-turn document fits after one source-value truncation.
         const truncated = diagnostic.dialogueRenderer.request.promptContext as { jsonHead: string; jsonTail: string };
         expect(truncated).toMatchObject({ traceTruncated: true, originalBytes,
