@@ -12,6 +12,7 @@ import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5Trace
 import { listWeeklyPlanningTraceOutboxItems } from '../../../../src/features/weeklyPlanning/trace/weeklyPlanningTraceOutbox';
 import type { WeeklyPlanningTraceTurnDiagnosticEntry } from '../../../../src/features/weeklyPlanning/trace/weeklyPlanningTraceTypes';
 import { VNEXT_PROVIDER_RESPONSE_FORMAT } from '../../../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProviderSchema';
+import { parseWeeklyPlanningVNextSessionCheckpoint } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
 import type { WeeklyPlanningVNextDurableTurnInput, WeeklyPlanningVNextDurableTurnResult } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextDurableTurn';
 import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
 import type { AiProxyWorkerEnv } from '../worker';
@@ -29,10 +30,15 @@ vi.mock('../../../../src/features/weeklyPlanning/trace/weeklyPlanningTraceReposi
 }));
 const ids = { sessionId: 'weekly-trace-123e4567-e89b-52d3-a456-426614174000', logicalConversationId: 'weekly-conversation-123e4567-e89b-52d3-a456-426614174000' };
 const STARTED = '2026-10-13T20:00:00.000Z';
-const userText = '数学を7ページ';
+const userText = '昨日は数学を30分勉強し、月曜は休みました。英語は時間を覚えていません。来週は数学を7ページ進めたい。';
 const sentinel = 'future-vnext-durable-trace-safe-field';
+const studyRecord = { dateExpression: '2026-10-13', subject: '数学', minutes: 30 };
+const restDay = '2026-10-12';
+const studyRecordQuestion = { reason: 'missing_minutes', label: '英語' };
+const derivedActualId = 'wp-actual-alice-2026-10-13-数学';
 const empty = { add: [], patch: [], remove: [], relate: [], defer: [] };
-const reading = JSON.stringify({ planningIntent: 'discuss', conversationActs: [], answer: null, delta: { ...empty, add: [
+const reading = JSON.stringify({ planningIntent: 'discuss', conversationActs: [], answer: null,
+  studyRecords: [studyRecord], studyRestDays: [restDay], studyRecordQuestion, delta: { ...empty, add: [
   { kind: 'task', localId: 'task', category: 'study', title: '数学' },
   { kind: 'workload', localId: 'work', taskRef: { localId: 'task' }, componentRef: null, quantityRole: 'remaining', amount: 7,
     unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null }] } });
@@ -46,12 +52,18 @@ beforeEach(() => {
 });
 afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyPlanningStableV5DebugTraceForTest(); vi.unstubAllGlobals(); });
 
-it.each([false, true])('carries a Worker-executed VNext turn\'s provider and renderer evidence through the existing trace persistence boundary (oversized=%s)', async oversized => {
+it.each([
+  { oversized: false, recordOnly: false },
+  { oversized: true, recordOnly: false },
+  { oversized: false, recordOnly: true },
+])('carries a Worker-executed VNext turn through trace persistence (oversized=$oversized, recordOnly=$recordOnly)', async ({ oversized, recordOnly }) => {
+  const activeUserText = recordOnly ? '昨日は数学を30分勉強し、月曜は休みました。' : userText;
+  const activeReading = recordOnly ? JSON.stringify({ ...JSON.parse(reading), studyRecordQuestion: null, delta: empty }) : reading;
   const payload: WeeklyPlanningVNextDurableTurnInput = { core: 'vnext', weekStartDate: '2026-10-12', checkpoint: null, legacyV5Checkpoint: null,
     input: { userId: 'alice', conversationId: ids.logicalConversationId, traceRequestId: 'chat:request:1', inputStateRevision: 0, messages: [],
-      userText, selectedDate: '2026-10-13', plans: [], scheduleTemplates: [],
+      userText: activeUserText, selectedDate: '2026-10-13', plans: [], scheduleTemplates: [],
       requestContext: createWeeklyPlanningTurnRequestContext({ startedAtIso: STARTED, timeZone: 'Asia/Tokyo', weekStartsOn: 'monday' }) } };
-  const semantic = ['{}', reading];
+  const semantic = ['{}', activeReading];
   const sent: Array<{ messages: { content: string }[]; response_format?: { json_schema?: { name?: string } } }> = [];
   vi.stubGlobal('fetch', async (_url: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as (typeof sent)[number];
@@ -62,6 +74,11 @@ it.each([false, true])('carries a Worker-executed VNext turn\'s provider and ren
   });
   const executed = await executeDurableVNextTurn(env, payload, async (_request, send) => send());
   expect(semantic).toEqual([]);
+  const checkpoint = parseWeeklyPlanningVNextSessionCheckpoint({ raw: executed.checkpointAfter!, ownerId: 'alice', weekStartDate: '2026-10-12' });
+  expect(checkpoint?.vnext.actualRecords).toEqual([expect.objectContaining({
+    id: derivedActualId, occurrenceDate: studyRecord.dateExpression, subject: studyRecord.subject, minutes: studyRecord.minutes, status: 'pending',
+  })]);
+  expect(checkpoint?.vnext.pendingStudyRecordQuestion).toEqual(recordOnly ? undefined : studyRecordQuestion);
   expect(readWeeklyPlanningStableV5DebugTrace('chat:request:1')).toEqual([]);
   const events = executed.result.debugTraceEvents!;
   expect(events.map(event => event.stage)).toEqual(expect.arrayContaining(['semantic_provider_request', 'semantic_provider_response', 'semantic_validation_result']));
@@ -85,7 +102,7 @@ it.each([false, true])('carries a Worker-executed VNext turn\'s provider and ren
   expect(completed.core).toBe('vnext');
   expect(completed.result.debugTraceEvents).toEqual(events);
 
-  await recordCommittedWeeklyPlanningApplicationTurn({ ownerId: 'alice', pending, userText, result: completed.result });
+  await recordCommittedWeeklyPlanningApplicationTurn({ ownerId: 'alice', pending, userText: activeUserText, result: completed.result });
   expect(repository.writes).toEqual([]);
   const queued = listWeeklyPlanningTraceOutboxItems({ userId: 'alice', conversationId: ids.logicalConversationId });
   expect(queued).toHaveLength(1);
@@ -101,6 +118,16 @@ it.each([false, true])('carries a Worker-executed VNext turn\'s provider and ren
   expect(entry.aiInterpreter.input.requests[0].messages.slice(-1)[0]?.content).toBe(sent[0].messages.slice(-1)[0]?.content);
   expect(entry.aiInterpreter.rawResponses[0].text).toBe('{}');
   expect(entry.aiInterpreter.structuredResults.map(result => result.accepted)).toContain(true);
+  if (!oversized) {
+    expect(entry.aiInterpreter.rawResponses[1].text).toContain(JSON.stringify([restDay]));
+    const structured = JSON.stringify(entry.aiInterpreter.structuredResults);
+    expect(structured).toContain(JSON.stringify(studyRecord));
+    expect(structured).toContain(JSON.stringify([restDay]));
+    if (!recordOnly) expect(structured).toContain(JSON.stringify(studyRecordQuestion));
+    // The trace captures the provider reading, without copying this turn's derived checkpoint ID/status.
+    expect(JSON.stringify(entry)).not.toContain(derivedActualId);
+    expect(JSON.stringify(entry.decision.stateDiff)).not.toContain('pendingStudyRecordQuestion');
+  }
   const prepared = prepareWeeklyPlanningTraceServerWrite(retried, { token: `wpt_${'a'.repeat(43)}`, epoch: '100' }, ids, '2026-10-14T00:00:00Z');
   expect(prepared.entries).toHaveLength(1);
   expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
@@ -112,5 +139,15 @@ it.each([false, true])('carries a Worker-executed VNext turn\'s provider and ren
     expect((prepared.entries[0].diagnostics as Record<string, unknown>).truncation).toMatchObject({ applied: true });
   } else {
     expect(JSON.stringify(prepared)).toContain(sentinel);
+    expect(JSON.stringify(prepared)).toContain(JSON.stringify(studyRecord));
+    expect(JSON.stringify(prepared)).toContain(JSON.stringify([restDay]));
+    if (!recordOnly) expect(JSON.stringify(prepared)).toContain(JSON.stringify(studyRecordQuestion));
+    if (recordOnly) {
+      expect(entry.assistantOutput.text).toContain('仮実績として整理しました（まだ保存していません）');
+      expect(entry.assistantOutput.text).toContain('この内容を学習実績に反映してよいですか？');
+      expect(prepared.entries[0].assistantOutput).toEqual(entry.assistantOutput);
+    }
+    expect(JSON.stringify(prepared)).not.toContain(derivedActualId);
+    expect(JSON.stringify(prepared.entries[0].decision.stateDiff)).not.toContain('pendingStudyRecordQuestion');
   }
 });

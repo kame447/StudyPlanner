@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Actual, Plan } from '../types/domain';
+import type { Plan, TimedActual } from '../types/domain';
 import { buildHomeDashboardModel } from './homeDashboard';
 
 const TIMESTAMP = '2026-09-05T00:00:00.000Z';
@@ -26,7 +26,7 @@ function plan(overrides: Partial<Plan> = {}): Plan {
   };
 }
 
-function actual(overrides: Partial<Actual> = {}): Actual {
+function actual(overrides: Partial<TimedActual> = {}): TimedActual {
   return {
     id: 'actual-1',
     userId: 'user-1',

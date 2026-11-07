@@ -4,6 +4,7 @@
 import {
   createInitialPlanningIntakeState,
   evaluateWeeklyPlanningLearningStrategyProposalsV5,
+  isWeeklyPlanningWorkItemFixedByTemporalScopeV5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningVNextV5Boundary';
@@ -21,6 +22,10 @@ export function evaluateVNextLearningStrategy(params: {
   const active = new Set(graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
   const contexts = graph.studyContexts.filter(fact => active.has(fact.id));
   const workloads = graph.workloads.filter(fact => active.has(fact.id));
+  const temporalConstraints = graph.temporalConstraints.filter(fact => active.has(fact.id));
+  const fixedWorkloads = workloads.filter(item => isWeeklyPlanningWorkItemFixedByTemporalScopeV5({
+    graph: { temporalConstraints }, item,
+  }));
   const changedTasks = new Set([...contexts, ...workloads].filter(fact => fact.createdRevision === graph.revision).map(fact => fact.taskId));
   const document: WeeklyPlanningSemanticDocumentV5 = {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, planningIntent: 'discuss', planningWindow: null,
@@ -44,8 +49,12 @@ export function evaluateVNextLearningStrategy(params: {
     previousState: { ...createInitialPlanningIntakeState(), learningStrategyProposalRecords: params.state.learningStrategyProposalRecords },
     document, localToFactId: Object.fromEntries(identities),
     compilation: { status: 'needs_resolution', input: null,
-      issues: params.projection.owners.flatMap(owner => owner.question?.code === 'missing_effort_estimate' && owner.question.forWork
-        ? [{ domain: 'work_item' as const, code: 'missing_effort_estimate', blocking: true, factId: owner.question.forWork.definingFactId }] : []) },
+      issues: [
+        ...fixedWorkloads.map(workload => ({ domain: 'deduplication', code: 'fixed_task_movable_work_suppressed',
+          blocking: false, factId: workload.id, details: { taskId: workload.taskId, workItemId: workload.id } } as const)),
+        ...params.projection.owners.flatMap(owner => owner.question?.code === 'missing_effort_estimate' && owner.question.forWork
+          ? [{ domain: 'work_item', code: 'missing_effort_estimate', blocking: true, factId: owner.question.forWork.definingFactId } as const] : []),
+      ] },
     effortEstimates: graph.effortEstimates.filter(fact => active.has(fact.id)),
     workloadSupersessions: Object.fromEntries(graph.factLifecycles.flatMap(entry => entry.supersededByFactId ? [[entry.factId, entry.supersededByFactId]] : [])),
     graphRevision: graph.revision, turnId: params.turnId, presentedProposalId: params.decision?.proposalId ?? null,

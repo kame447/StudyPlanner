@@ -9,6 +9,23 @@ import type { PlanningState } from '../../types';
 import { parseWeeklyPlanningVNextSessionCheckpoint, serializeWeeklyPlanningVNextSessionCheckpoint } from './weeklyPlanningVNextSessionCheckpoint';
 import { readWeeklyPlanningVNextExperimentalSession } from './weeklyPlanningVNextSessionRead';
 import { createWeeklyPlanningApplicationRequestId } from '../../application/weeklyPlanningApplicationIdentity';
+import { UNKNOWN_ACTUAL_SAVE_RESULT_REPLY } from '../../application/weeklyPlanningActualRecords';
+
+export interface WeeklyPlanningActualSaveAttempt {
+  readonly attemptedAt: string;
+  readonly records: readonly { readonly id: string; readonly minutes: number }[];
+}
+
+function parseActualSaveAttempt(value: unknown): WeeklyPlanningActualSaveAttempt | null {
+  if (!value || typeof value !== 'object') return null;
+  const attempt = value as Partial<WeeklyPlanningActualSaveAttempt>;
+  return typeof attempt.attemptedAt === 'string' && attempt.attemptedAt.length > 0
+    && Array.isArray(attempt.records) && attempt.records.length > 0
+    && attempt.records.every(record => record && typeof record.id === 'string' && record.id.length > 0
+      && Number.isInteger(record.minutes) && record.minutes > 0)
+    ? { attemptedAt: attempt.attemptedAt, records: attempt.records.map(record => ({ id: record.id, minutes: record.minutes })) }
+    : null;
+}
 
 export function createWeeklyPlanningVNextLocalSession(params: {
   ownerId: string;
@@ -54,6 +71,13 @@ export function createWeeklyPlanningVNextLocalSession(params: {
         conversationId: value.conversationId, graphRevision: accepted?.vnext.state.graph.revision ?? 0 })
         || value.ownerId !== ownerId || typeof value.conversationId !== 'string' || !value.conversationId
         || (accepted && accepted.conversationId !== value.conversationId)) throw new Error('VNext UI checkpoint is unreadable; existing bytes were retained.');
+      const attempt = parseActualSaveAttempt(value.actualSaveAttempt);
+      if (attempt && accepted?.vnext.actualRecords?.some(record => record.status !== 'saved'
+        && attempt.records.some(sent => sent.id === record.id && sent.minutes === record.minutes))) {
+        const id = `${value.conversationId}:actual-save-result-unknown:${attempt.attemptedAt}`;
+        if (!state.messages.some(message => message.id === id)) state.messages = [...state.messages,
+          { id, role: 'assistant', content: UNKNOWN_ACTUAL_SAVE_RESULT_REPLY, createdAt: attempt.attemptedAt }];
+      }
       return { conversationId: value.conversationId, state };
     }
     const state = createInitialPlanningState(weekStartDate);
@@ -77,12 +101,32 @@ export function createWeeklyPlanningVNextLocalSession(params: {
       // Old previews/questions used a different revision. Keep the conversation visible,
       // while the migrated core derives a fresh question or preview on the next turn.
       state.messages = legacy.planningState.messages;
+      state.draftBlocks = legacy.planningState.draftBlocks.filter(block => block.status === 'draft');
+      save(legacy.conversationId, state);
       return { conversationId: legacy.conversationId, state };
       }
     return { conversationId: createWeeklyPlanningApplicationRequestId('vnext-conversation'), state };
   }
-  function save(conversationId: string, state: PlanningState): void {
-    storage.setItem(`${prefix}.ui`, JSON.stringify({ ownerId, conversationId, payload: { version: 2, state } }));
+  function readActualSaveAttempt(conversationId: string): WeeklyPlanningActualSaveAttempt | null {
+    const raw = storage.getItem(`${prefix}.ui`);
+    if (raw === null) return null;
+    const value = JSON.parse(raw);
+    return value.ownerId === ownerId && value.conversationId === conversationId
+      ? parseActualSaveAttempt(value.actualSaveAttempt) : null;
+  }
+  function save(conversationId: string, state: PlanningState, attempt?: WeeklyPlanningActualSaveAttempt | null): void {
+    const actualSaveAttempt = attempt === undefined ? readActualSaveAttempt(conversationId) : attempt;
+    storage.setItem(`${prefix}.ui`, JSON.stringify({ ownerId, conversationId, payload: { version: 2, state },
+      ...(actualSaveAttempt ? { actualSaveAttempt } : {}) }));
+  }
+  function clearActualSaveAttempt(conversationId: string, attemptedAt: string): void {
+    const raw = storage.getItem(`${prefix}.ui`);
+    if (raw === null) return;
+    const value = JSON.parse(raw);
+    if (value.ownerId !== ownerId || value.conversationId !== conversationId
+      || parseActualSaveAttempt(value.actualSaveAttempt)?.attemptedAt !== attemptedAt) return;
+    delete value.actualSaveAttempt;
+    storage.setItem(`${prefix}.ui`, JSON.stringify(value));
   }
   const resolveRuntime: typeof resolveWeeklyPlanningApprovalRuntime = ({ blocks, userId }) => {
     const accepted = core();
@@ -95,7 +139,7 @@ export function createWeeklyPlanningVNextLocalSession(params: {
     return { kind: 'available', stableV5: true, runtimeSnapshot: { conversationId: accepted.conversationId,
       stateRevision: accepted.vnext.state.graph.revision, proposalRecords: [] } };
   };
-  return { load, save, checkpoint, legacyV5Checkpoint, resolveRuntime,
+  return { load, save, readActualSaveAttempt, clearActualSaveAttempt, checkpoint, legacyV5Checkpoint, resolveRuntime,
     readCheckpoint: core,
     clear: () => { checkpoint.remove(); storage.removeItem(`${prefix}.ui`); } };
 }

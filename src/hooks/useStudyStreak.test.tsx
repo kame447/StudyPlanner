@@ -4,6 +4,7 @@ import { useStudyStreak } from './useStudyStreak';
 import { actual, deferred, event } from '../repositories/localPersistenceConcurrency.testUtils';
 import { addDays } from '../lib/date';
 import type { StudyStreakHistory, StudyStreakRepository } from '../repositories/studyStreakRepository';
+import type { TimedActual } from '../types/domain';
 
 const history = (userId = 'owner'): StudyStreakHistory => ({ userId, plans: [], monthEvents: [], restDays: [], historyComplete: true,
   actuals: Array.from({ length: 7 }, (_, index) => actual({ id: `a${index}`, userId, planId: null, occurrenceDate: addDays('2026-10-01', index) })) });
@@ -146,7 +147,7 @@ describe('automatic streak protection and display lifetime', () => {
 it('aborts an in-flight automatic spend when only authoritative major-event sources change', async () => {
   const repo = repository(), reload = deferred<StudyStreakHistory>(), save = deferred<StudyStreakHistory>();
   const source = history();
-  source.actuals[6] = { ...source.actuals[6], planId: 'job' };
+  source.actuals[6] = { ...(source.actuals[6] as TimedActual), planId: 'job' };
   vi.mocked(repo.read).mockResolvedValueOnce(source);
   vi.mocked(repo.useRestDay).mockReturnValueOnce(save.promise);
   let state!: ReturnType<typeof useStudyStreak>;

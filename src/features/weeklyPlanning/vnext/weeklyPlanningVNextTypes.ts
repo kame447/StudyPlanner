@@ -92,6 +92,8 @@ export interface WeeklyPlanningVNextState {
   draftGenerationIntent: PlanningDraftGenerationIntent;
   /** V5's optional invitation ended; unchanged turns do not invite again. */
   optionalInvitationClosed: boolean;
+  /** Formally bound task/component references awaiting registration details; absent in older checkpoints. */
+  pendingEventRegistrationTargetIds?: string[];
 }
 
 export type VNextPlanningIntent = WeeklyPlanningSemanticDocumentV5['planningIntent'];
@@ -390,6 +392,8 @@ export type VNextQuestionCode =
   | 'same_or_distinct_work'
   | 'missing_effort_estimate'
   | 'effort_inconsistent'
+  /** A requested fixed event needs its actual start/end clocks, never a movable-work estimate. */
+  | 'invalid_commitment_interval'
   /** A stated task with no work, no total time and no fixed time: how much is to be done. */
   | 'missing_schedulable_work';
 

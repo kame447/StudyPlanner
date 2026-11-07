@@ -90,6 +90,9 @@ import type {
 } from '../types/domain';
 import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import type { ShowNotice } from './useNoticeState';
+import { isDurationActual } from '../lib/actualDuration';
+import { buildDurationActuals, type DurationActualInput } from '../domain/durationActuals';
+import type { DurationActual } from '../types/domain';
 
 interface UsePlannerDataStateOptions {
   userId: string | null;
@@ -216,6 +219,7 @@ export interface UsePlannerDataStateResult {
   getActualActionBlockReason: (target: ActualActionTarget) => string | null;
   saveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   saveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
+  saveDurationActualsBatch: (records: readonly DurationActualInput[]) => Promise<void>;
   linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
@@ -1441,6 +1445,37 @@ export function usePlannerDataState({
     } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
+  /** Saves time-only actuals (one batch, all or none, deterministic ids so a repeat rewrites the same rows). */
+  async function saveDurationActualsBatch(records: readonly DurationActualInput[]) {
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    if (!userId) throw new UserFacingError('ログイン状態を確認できませんでした。');
+    let nextActuals: DurationActual[];
+    try {
+      nextActuals = buildDurationActuals(userId, records, new Date().toISOString());
+    } catch (error) {
+      const userFacingError = resolveUserFacingError(error, '記録を保存できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
+    }
+    const releaseAdmission = admitActualMutation(nextActuals, [], []);
+    const nextIds = new Set(nextActuals.map((actual) => actual.id));
+    const merge = (current: Actual[], saved: readonly Actual[]) => [...current.filter((actual) => !nextIds.has(actual.id)), ...saved];
+    const actualOperation = actualState.begin((current) => merge(current, nextActuals));
+    try {
+      const saved = await plannerRepository.saveDurationActualsBatch(userId, records);
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setActuals((current) => merge(current, saved));
+      }
+      actualState.commit(actualOperation);
+      showNotice('記録を保存しました。', 'success');
+    } catch (error) {
+      actualState.reject(actualOperation);
+      const userFacingError = resolveUserFacingError(error, '記録を保存できませんでした。');
+      showNotice(userFacingError.message, 'error');
+      throw userFacingError;
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], false); }
+  }
+
   async function linkStandaloneActualToPlan(actual: Actual, plan: Plan) {
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     if (!userId) {
@@ -1451,6 +1486,10 @@ export function usePlannerDataState({
     if (sourceActual.planId) {
       showNotice('この記録はすでに予定に紐づいています。', 'error');
       throw new UserFacingError('この記録はすでに予定に紐づいています。');
+    }
+    if (isDurationActual(sourceActual) || isDurationActual(actual)) {
+      showNotice('時刻のない記録は予定に紐づけられません。', 'error');
+      throw new UserFacingError('時刻のない記録は予定に紐づけられません。');
     }
 
     const occurrenceDate = actual.occurrenceDate;
@@ -2480,6 +2519,7 @@ export function usePlannerDataState({
     getActualActionBlockReason: actualAdmission.reason,
     saveActual: trackMutation(saveActual),
     saveStandaloneActual: trackMutation(saveStandaloneActual),
+    saveDurationActualsBatch: trackMutation(saveDurationActualsBatch),
     linkStandaloneActualToPlan: trackMutation(linkStandaloneActualToPlan),
     deleteActual: trackMutation(deleteActual),
     saveDayNote: saveDayNoteAfterLoad,

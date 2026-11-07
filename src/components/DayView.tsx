@@ -41,10 +41,13 @@ import { ScheduleMoveDialog } from './ScheduleMoveDialog';
 import { ScheduleMoveModeBanner } from './ScheduleMoveModeBanner';
 import { useScheduleOccurrenceActions } from '../hooks/useScheduleOccurrenceActions';
 import { createMonthEventActualPlan } from '../lib/scheduleItemActions';
+import { isDurationActual, isTimedActual } from '../lib/actualDuration';
+import { DurationActualList } from './DurationActualList';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
   Actual,
   ActualDraft,
+  DurationActual,
   MonthEvent,
   Plan,
   PlanDraft,
@@ -226,7 +229,12 @@ export function DayView({
     [dayMonthEvents, selectedDate, userId],
   );
   const dayActuals = useMemo(
-    () => actuals.filter(actual => actual.userId === userId && entryTimeRangeForDate(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, selectedDate)),
+    () => actuals.filter(isTimedActual).filter(actual => actual.userId === userId && entryTimeRangeForDate(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, selectedDate)),
+    [actuals, selectedDate, userId],
+  );
+  const dayDurationActuals = useMemo(
+    () => actuals.filter((actual): actual is DurationActual => isDurationActual(actual)
+      && actual.userId === userId && actual.occurrenceDate === selectedDate),
     [actuals, selectedDate, userId],
   );
   const actualPlanSources = useMemo(() => dayActuals.flatMap(actual => {
@@ -629,6 +637,15 @@ export function DayView({
         onPrint={() => window.print()}
         onImportTimetable={() => setIsTimetableImportOpen(true)}
         timetableImportCount={timetableImportCandidates.length}
+      />
+
+      <DurationActualList
+        actuals={dayDurationActuals}
+        onSelect={(actual) => {
+          const reason = getActualActionBlockReason?.(actual);
+          setActualOpenError(reason ?? '');
+          if (!reason) setModalState({ type: 'standalone-actual-detail', actual: structuredClone(actual) });
+        }}
       />
 
       <DailyMaterialShelf

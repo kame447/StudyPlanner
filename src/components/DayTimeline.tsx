@@ -24,11 +24,11 @@ import { useTimelineTouchMoveGuard } from "../hooks/useTimelineTouchMoveGuard";
 import { useUndoRedoHistory } from "../hooks/useUndoRedoHistory";
 import type { WeeklyPlanDraftBlock } from "../features/weeklyPlanning/types";
 import type {
-  Actual,
   MonthEvent,
   Plan,
   PlanSourceType,
   PlanType,
+  TimedActual,
 } from "../types/domain";
 import { DragUndoRedoControls } from "./DragUndoRedoControls";
 import { TimelineDragOverlay } from "./TimelineDragOverlay";
@@ -39,7 +39,8 @@ interface DayTimelineProps {
   plans: Plan[];
   monthEvents: MonthEvent[];
   scheduleOccurrences: ScheduleOccurrence[];
-  actuals: Actual[];
+  /** Timed actuals only: a duration actual has no time of day and is listed outside the timeline. */
+  actuals: TimedActual[];
   actualPlanSources?: Plan[];
   actualMonthEventSources?: MonthEvent[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];

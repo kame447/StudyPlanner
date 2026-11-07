@@ -1,3 +1,4 @@
+import { buildHourOptions, buildMinuteOptions, clampPickerMinutes, normalizeToWheelMinutes, MINUTES_PER_DAY, type TimePickerRole } from '../lib/timeWheelOptions';
 import { getEntryDurationMinutes, resolveEntryEndTime } from '../lib/entryTimeRange';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -10,11 +11,8 @@ import {
 } from '../lib/date';
 
 type TimeRangeMode = 'create' | 'edit';
-type TimePickerRole = 'start' | 'end';
 type TimeWheelColumn = 'hour' | 'minute';
 
-const MINUTES_PER_DAY = 24 * 60;
-const MINUTE_STEP = 5;
 const PICKER_SCROLL_SETTLE_MS = 90;
 const PROGRAMMATIC_SCROLL_IGNORE_MS = 140;
 
@@ -42,58 +40,6 @@ interface TimeWheelPickerProps {
 
 function padTimePart(value: number): string {
   return value.toString().padStart(2, '0');
-}
-
-function clampPickerMinutes(
-  minutes: number,
-  role: TimePickerRole,
-  minMinutes = 0,
-): number {
-  const maxMinutes = role === 'end' ? MINUTES_PER_DAY : MINUTES_PER_DAY - 1;
-  return Math.min(Math.max(minutes, minMinutes), maxMinutes);
-}
-
-function buildHourOptions(role: TimePickerRole, minMinutes = 0): number[] {
-  const maxHour = role === 'end' ? 24 : 23;
-  const minHour = role === 'end' ? Math.floor(minMinutes / 60) : 0;
-
-  const hours = Array.from(
-    { length: maxHour - minHour + 1 },
-    (_, index) => minHour + index,
-  );
-
-  if (role === 'start') {
-    return hours;
-  }
-
-  return hours.filter(
-    (hour) => buildMinuteOptions(hour, role, minMinutes).length > 0,
-  );
-}
-
-function buildMinuteOptions(
-  hour: number,
-  role: TimePickerRole,
-  minMinutes = 0,
-): number[] {
-  if (role === 'end' && hour === 24) {
-    return [0];
-  }
-
-  const hourStartMinutes = hour * 60;
-  const minMinute =
-    role === 'end' && Math.floor(minMinutes / 60) === hour
-      ? Math.ceil((minMinutes - hourStartMinutes) / MINUTE_STEP) * MINUTE_STEP
-      : 0;
-
-  if (minMinute >= 60) {
-    return [];
-  }
-
-  return Array.from(
-    { length: Math.floor((60 - minMinute - 1) / MINUTE_STEP) + 1 },
-    (_, index) => minMinute + index * MINUTE_STEP,
-  );
 }
 
 function findClosestWheelValue(
@@ -227,41 +173,13 @@ export function TimeWheelPicker({
     );
   }
 
-  function normalizeToWheelMinutes(minutes: number): number {
-    const clampedMinutes = clampPickerMinutes(
-      minutes,
-      role,
-      normalizedMinMinutes,
-    );
-    const hours = buildHourOptions(role, normalizedMinMinutes);
-    const rawHour = Math.floor(clampedMinutes / 60);
-    const nextHour = hours.includes(rawHour)
-      ? rawHour
-      : hours.find((hour) => hour > rawHour) ?? hours[hours.length - 1];
-    const minuteOptionsForHour = buildMinuteOptions(
-      nextHour,
-      role,
-      normalizedMinMinutes,
-    );
-    const rawMinute = nextHour === rawHour ? clampedMinutes % 60 : 0;
-    const nextMinute = minuteOptionsForHour.includes(rawMinute)
-      ? rawMinute
-      : minuteOptionsForHour.find((minute) => minute > rawMinute) ??
-        minuteOptionsForHour[0];
-
-    return clampPickerMinutes(
-      nextHour * 60 + nextMinute,
-      role,
-      normalizedMinMinutes,
-    );
-  }
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    const nextDraftMinutes = normalizeToWheelMinutes(selectedMinutes);
+    const nextDraftMinutes = normalizeToWheelMinutes(selectedMinutes, role, normalizedMinMinutes);
     const nextHour = Math.floor(nextDraftMinutes / 60);
     const nextMinute = nextDraftMinutes % 60;
 
@@ -331,7 +249,7 @@ export function TimeWheelPicker({
     const commitMinute = wheelMinute ?? selectedMinute;
     const nextDraft = setDraftFromParts(commitHour, commitMinute);
     const nextMinutes = clampPickerMinutes(
-      normalizeToWheelMinutes(nextDraft?.minutes ?? draftMinutes),
+      normalizeToWheelMinutes(nextDraft?.minutes ?? draftMinutes, role, normalizedMinMinutes),
       role,
       normalizedMinMinutes,
     );

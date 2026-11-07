@@ -1,12 +1,10 @@
 import {
-  createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactDiffV5,
   type WeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactKindV5,
 } from '../weeklyPlanningVNextV5Boundary';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPlanningFactGraphValidatorV5';
 import {
-  WEEKLY_PLANNING_VNEXT_STATE_VERSION,
   type VNextAddFact,
   type VNextEffortWorkBinding,
   type VNextFactRef,
@@ -32,7 +30,7 @@ import { SEMANTIC_STUDY_ACTIVITY_KINDS_V5 } from '../../semantic/weeklyPlanningS
 import { vnextQuestionKeyAllowsProvisionalTimebox } from '../projection/weeklyPlanningVNextProjection';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import { evaluateVNextLearningStrategy } from '../weeklyPlanningVNextLearningStrategy';
-import { resolveVNextEventRegistrationActs, vnextRegistrationCandidateKeys } from '../weeklyPlanningVNextEventRegistration';
+import { resolveVNextEventRegistrationActs, retainVNextPendingEventRegistrationTargets, vnextRegistrationCandidateKeys } from '../weeklyPlanningVNextEventRegistration';
 
 const collections = {
   planning_window: 'planningWindows', task: 'tasks', study_context: 'studyContexts',
@@ -93,11 +91,7 @@ function terminalize(graph: WeeklyPlanningVNextGraph, factId: string, replacemen
   lifecycle.supersededByFactId = replacementId;
 }
 
-export function createEmptyWeeklyPlanningVNextState(): WeeklyPlanningVNextState {
-  return { version: WEEKLY_PLANNING_VNEXT_STATE_VERSION,
-    graph: { ...createEmptyWeeklyPlanningFactGraphV5(), effortEstimates: [], studyContexts: [] },
-    workRelations: [], deferrals: [], learningStrategyProposalRecords: [], draftGenerationIntent: 'not_requested', optionalInvitationClosed: false };
-}
+export { createEmptyWeeklyPlanningVNextState } from '../weeklyPlanningVNextState';
 
 /**
  * The sole fact writer: settle window add/patch/remove, choose one final horizon,
@@ -530,15 +524,19 @@ export function applyWeeklyPlanningVNextTurn(
       return reject();
     }
   }
-  next.learningStrategyProposalRecords = evaluateVNextLearningStrategy({ state: next,
-    projection: projectWeeklyPlanningVNext(next, context.observedMemoryPace), turnId: context.turnId, decision: statedDelta.proposalDecision }).records;
   const registration = resolveVNextEventRegistrationActs({ state: next, delta: statedDelta,
     acts: context.preview?.eventRegistration?.acts, currentTurnId: context.turnId });
   if (registration.status === 'rejected') return { status: 'rejected', state, errors: registration.errors };
+  const pendingTargets = retainVNextPendingEventRegistrationTargets(next, registration.acts, context.turnId);
+  if (pendingTargets.length) next.pendingEventRegistrationTargetIds = pendingTargets;
+  else delete next.pendingEventRegistrationTargetIds;
+  next.learningStrategyProposalRecords = evaluateVNextLearningStrategy({ state: next,
+    projection: projectWeeklyPlanningVNext(next, context.observedMemoryPace), turnId: context.turnId, decision: statedDelta.proposalDecision }).records;
   const acceptedRegistration = context.preview?.eventRegistration ? { registrationActs: registration.acts } : {};
   if (!diff.added.length && !diff.removed.length && !diff.superseded.length
     && JSON.stringify(next.workRelations) === JSON.stringify(state.workRelations)
     && JSON.stringify(next.deferrals) === JSON.stringify(state.deferrals)
+    && JSON.stringify(next.pendingEventRegistrationTargetIds) === JSON.stringify(state.pendingEventRegistrationTargetIds)
     && JSON.stringify(next.learningStrategyProposalRecords) === JSON.stringify(state.learningStrategyProposalRecords)) {
     // Preview identity covers accepted permission/registration meaning, not facts alone.
     // Compare both V5 key sources once; unchanged sets never tick or create a second save identity.

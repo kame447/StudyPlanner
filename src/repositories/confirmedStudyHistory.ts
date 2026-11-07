@@ -84,6 +84,7 @@ export function invalidateStudyHistoryOnWrites(repository: PlannerRepository, re
     deleteMonthEvent: (owner, id) => write(owner, () => repository.deleteMonthEvent(owner, id)),
     applyRecurringMonthEventMutation: (owner, events) => write(owner, () => repository.applyRecurringMonthEventMutation(owner, events)),
     deleteActual: (owner, id) => write(owner, () => repository.deleteActual(owner, id)),
+    saveDurationActualsBatch: (owner, records) => write(owner, () => repository.saveDurationActualsBatch(owner, records)),
     upsertActualWithMaterialProgress: mutation => write(mutation.actual.userId, () => repository.upsertActualWithMaterialProgress(mutation)),
     applyRecurringPlanMutation: (owner, mutation) => write(owner, () => repository.applyRecurringPlanMutation(owner, mutation)),
     deletePlanWithDependents: mutation => write(mutation.userId, () => repository.deletePlanWithDependents(mutation)),

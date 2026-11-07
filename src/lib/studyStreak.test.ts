@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { addDays } from './date';
 import { buildStudyStreakModel, collectStudyDates, nextAutomaticStudyRestDate, studyRestDayBlockReason, type StudyStreakInput } from './studyStreak';
 import { buildHomeDashboardModel } from './homeDashboard';
-import type { Actual } from '../types/domain';
+import type { TimedActual } from '../types/domain';
 
-const actual = (date: string, overrides: Partial<Actual> = {}): Actual => ({
+const actual = (date: string, overrides: Partial<TimedActual> = {}): TimedActual => ({
   id: date, userId: 'owner', planId: null, occurrenceDate: date,
   actualStartTime: '09:00', actualEndTime: '09:10', subject: '数学', note: '', updatedAt: '2026-10-14T00:00:00Z', ...overrides,
 });
