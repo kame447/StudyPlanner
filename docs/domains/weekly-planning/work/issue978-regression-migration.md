@@ -29,11 +29,11 @@ Branch: `test/issue978-v5-regression-vnext`, base `799d89a3`
 | X0 `fixed-event-yes-after-rendered-offer/1,/2` | 登録依頼false・候補0、busy区間は既存の固定予定oracleで検査。明示登録2正例も維持。 | **追加検証済み**: busy共有→checkpoint再開→相づちの2turnでbusyを保持し、task/candidate/previewなし。 |
 | #882 completed/remaining/同turn見積訂正 | 既存Transaction `C12 and explicit R8` / `R8 + E60`、Projection `binds a same-turn quantity and total correction`、providerシナリオ `882-c12-derived-r8` / `882-iter4-explicit-r8` / `compound-r8-e60-1,2`。 | **追加検証済み**: Workerの10→12と不正参照対照。Correction suiteで明示R8枚＋E60分を節順2通りとも最終8枚へbindし、候補/保存権限0。 |
 | #904 明示日付/期限/schema回復 | 既存Transactionの無効temporal/相対日、FocusedRecovery統合、providerシナリオ `explicit-date` / `deadline-tomorrow-1300`。 | **追加検証済み**: Correction suiteで初回schema不正→1回修復成功、および修復も不正→graph保持→次turn成功。どちらも明日13:00を受理時計の8/27終了期限として保持し、独立作業/見積は不変。 |
-| #905/#907 「残り45分」と独立作業 | 既存Projection `never silently drops or double-counts other-basis work`、providerシナリオ `independent-scope` / `native-45-minute`。 | 同一/別scopeの各選択と日本語のWorker対応は未追加。 |
-| #906/#907 blocking質問→対象付き訂正/関係明示 | 既存Projectionの矛盾選択/owner同一性、StageA3の反復質問と選択、provider `option-answer`。 | 完了値の対象付き訂正は追加検証済み。関係選択の元反例との対応は未完。 |
+| #905/#907 「残り45分」と独立作業 | 既存Projection `never silently drops or double-counts other-basis work`、providerシナリオ `independent-scope` / `native-45-minute`。 | **追加検証済み**: WorkIdentity suiteで別作業125分、同一作業の45分保持/10ページ保持80分の3選択を、提示された型付きoption→Workerの回答bindで確認。元の日本語の現行モデル読取は未実施。 |
+| #906/#907 blocking質問→対象付き訂正/関係明示 | 既存Projectionの矛盾選択/owner同一性、StageA3の反復質問と選択、provider `option-answer`。 | **追加検証済み**: 完了値の対象付き訂正、およびsame_or_distinct_workの全3選択で質問閉鎖、保存権限なし。|
 | #908 再解釈による値変更/独立節消失 | 既存Providerの999改変を含むbounded repair、Transactionの独立節/ownership/stale/cross-task拒否。 | **追加検証済み**: Workerの不正参照を初回/1回修復とも拒否しgraph全体を保持。元モデルの12→999や別対象移動の読取は別途照合。 |
 | #909/#919 明示残量・独立見積の保持 | 既存TransactionのC12/R8、Projectionの旧見積不再利用/observed pace、provider `explicit-r7-retained` / `observed-pace` / `custom-unit-change` / `custom-page-preservation`。 | 訂正で独立したrate/date保持は追加検証済み。取消・旧残量/見積が予定へ戻らないWorker境界は未追加。 |
-| #911/#912 rate×量とtotal/別単位scope | 既存Projection `surfaces a rate and a total that disagree`、ShadowComparison、provider `rate-total-conflict` / `independent-scope`。 | ケースID付きの既存#926実API証拠再利用とWorkerの正例/反例対応は未完。 |
+| #911/#912 rate×量とtotal/別単位scope | 既存Projection `surfaces a rate and a total that disagree`、ShadowComparison、provider `rate-total-conflict` / `independent-scope`。 | **追加検証済み**: WorkIdentity suiteで8×5とtotal60を保持して質問、明示total40への訂正/旧rate取消によるtotal60保持で解消。別単位scopeは上記3選択。既存実API結果の個別再利用照合は未完。 |
 | #918 受理時clock固定 | 既存Transactionのmulti-week weekday/relative date固定、Sessionの後日V5移行。DateOracleは受理後の絶対日を検査する。 | Worker checkpoint再開後に日付を保持する例を追加。別日の再開という元条件の固有証拠は既存テストと照合する。 |
 | #461 「明日ではなく今日」 | 既存planning-windowの明示patch/atomic staging。 | 元日本語/訂正承認のWorker正例/反例は未追加。 |
 | #335 / D5 / C20 / A群 | 移管コメントのケースID・turn、既存provider/会話oraclesを再利用する。旧JEV live-negativeは5発話であり旧表の3行と異なる。 | 通常VNextの権限/独立事実の境界へ対応付ける。旧コア比較のgreenや総数49/49を個別ケースの合格としない。 |
@@ -44,6 +44,8 @@ base799d89a3上の未commit作業ツリーで、DateOracle＋比較fixtureのfoc
 
 第1単位はcommit `8edc29c2` / [PR #1010](https://github.com/kame447/StudyPlanner/pull/1010)。その上で `durableVNextV5Correction.integration.test.ts` の **4pass**（節順2例・schema回復2例）、app+Worker typecheck再成功。これも合成応答であり実モデル読取の成功とは区別する。
 
+第2単位はcommit `a5820264`。その上の `durableVNextV5WorkIdentity.integration.test.ts` は **5pass**（作業の区別3例、見積衝突の回復2例）、app+Worker typecheck成功。初回の合成option応答にschema外のquestionKeyを付けたharness不整合を、実schemaのoptionId/minutes/perへ訂正した。質問が残る期待へ弱めていない。
+
 初回の失敗は評価側のrangeのfield名、および旧除外ケースを前提とするテストを分類・修正した。Workerのpreview assertionも実在するcheckpointのpreviewを検査する形へ訂正し、候補0という独立条件を保持した。過去モデルの意味欠落を修正したとは扱わない。
 
-次は#905の同一/別scope、#911/#912のrate-total衝突から、未カバーのWorker正例/反例を最小単位で追加する。実モデルrunは親の予算・実行判断へ依頼する。全行の境界と結果が揃うまで#978全体の完了とはしない。
+次は#909/#919の明示残量の保持と取消後の非復活、#461の計画窓訂正から、未カバーのWorker正例/反例を最小単位で追加する。実モデルrunは親の予算・実行判断へ依頼する。全行の境界と結果が揃うまで#978全体の完了とはしない。
