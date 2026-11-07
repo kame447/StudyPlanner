@@ -733,19 +733,21 @@ describe('traceWorker scheduled subrequest budget', () => {
     expect(backlog.backfillCompleted).toBe(true);
   });
 
-  it('keeps retention plus the account deletion probe at exact 6 and 20', async () => {
+  it('keeps retention plus account and conversation probes at exact 7 and 21', async () => {
     const steady = installScenario('retention');
     await runScheduled(3);
-    expect(externalCalls(steady)).toBe(6);
+    expect(externalCalls(steady)).toBe(7);
+    expect(steady.calls.filter(call => call.url.includes(':runQuery'))
+      .map(call => collectionFromQuery(call.init))).toContain('sessions');
 
     vi.unstubAllGlobals();
     const backlog = installScenario('retention', { retentionMax: true });
     await runScheduled(3);
     const firstCalls = externalCalls(backlog);
-    expect(firstCalls).toBe(20);
+    expect(firstCalls).toBe(21);
     expect(backlog.retentionDeleted).toBe(800);
     await runScheduled(3);
-    expect(externalCalls(backlog) - firstCalls).toBe(20);
+    expect(externalCalls(backlog) - firstCalls).toBe(21);
     expect(backlog.retentionDeleted).toBe(1_600);
   });
 

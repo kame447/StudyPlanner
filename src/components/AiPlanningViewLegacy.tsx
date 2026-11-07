@@ -283,7 +283,8 @@ export function AiPlanningView({
     () => allPreviewBlocks.map((block) => `${block.id}:${block.date}`).join('|'),
     [allPreviewBlocks],
   );
-  const isBusy = Boolean(state.pendingTurn || state.pendingApproval || application.chat.requiresInitialization);
+  const isBusy = Boolean(state.pendingTurn || state.pendingApproval || application.chat.requiresInitialization
+    || ['loading', 'locked', 'conflict'].includes(application.conversationSync?.status ?? ''));
   const isInteractionBusy = isBusy || isReadingAttachment || isSubmitting || isRecoveringModule;
   const isComposerBusy = isInteractionBusy || Boolean(state.approvalRecovery);
   const speechRecognitionSupported = getSpeechRecognitionConstructor() !== null;

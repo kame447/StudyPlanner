@@ -18,6 +18,7 @@ interface ChatSnapshot {
 interface ChatSessionPorts<StoredSnapshot extends ChatSnapshot> {
   isCurrent(): boolean;
   isBusy(): boolean;
+  canNavigate?(): boolean;
   isApplicationStateReady?(): boolean;
   initializeApplicationState?(): boolean;
   exportSnapshot(includeEmpty: boolean): StoredSnapshot | null;
@@ -125,6 +126,7 @@ export function createAiPlanningChatSessionWithStore<StoredSnapshot extends Chat
     return snapshot ? ports.prepareImport(snapshot) : null;
   }
   function navigate(kind: 'select' | 'create' | 'delete', chatId?: string): AiPlanningChatResult {
+    if (ports.canNavigate?.() === false) return { status: 'blocked', reason: 'busy' };
     const blocked = guard(); if (blocked) return blocked;
     if (initializationBlocked()) return fail(phase === 'index-unavailable' ? 'index-unavailable' : 'initialization-unavailable');
     const current = currentIndex();

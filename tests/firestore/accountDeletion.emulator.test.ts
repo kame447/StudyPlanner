@@ -88,6 +88,7 @@ async function seed(account: Account): Promise<string[][]> {
   }
   docs.push(
     { collection: 'support_inquiries', id: uid, value: { userId: uid, schemaVersion: 1, body: 'synthetic support' } },
+    { collection: `weekly_planning_conversations/${uid}/sessions`, id: 'ai-chat-deletion.2026-11-02', value: { ownerId: uid, payload: 'synthetic conversation' } },
     { collection: 'weekly_planning_approval_operations', id: uid, value: { userId: uid } },
     { collection: `weekly_planning_approval_operations/${uid}/weekly_planning_approval_items`, id: 'item', value: { userId: uid } },
     { collection: `class_attendance/${uid}/classes`, id: 'lesson', value: { userId: uid } },

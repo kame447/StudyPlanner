@@ -9,6 +9,9 @@ on:
       - main
     paths:
       - firestore.rules
+      - firestore.indexes.json
+      - scripts/ci/ensure-conversation-firestore-indexes.mjs
+      - scripts/ci/ensure-conversation-firestore-indexes.test.mjs
       - firebase.json
       - scripts/ci/firestore-profile-registration-rules.mjs
       - scripts/ci/deploy-firestore-rules.mjs
@@ -83,6 +86,11 @@ jobs:
           workload_identity_provider: projects/980145543174/locations/global/workloadIdentityPools/github-actions/providers/studyplanner-main
           service_account: firestore-rules-deployer@study-planner-d1bc8.iam.gserviceaccount.com
           token_format: access_token
+
+      - name: Ensure conversation retention index before enabling Rules
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/ci/ensure-conversation-firestore-indexes.mjs
 
       - name: Deploy Firestore rules
         env:

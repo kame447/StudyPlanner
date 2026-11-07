@@ -174,6 +174,10 @@ export async function runAccountDeletionJob(
         count += await deleteDocuments('weekly_planning_approval_operations', [id]);
       }
     } },
+    { name: 'weekly_planning_conversations', async run() {
+      return await deleteChildren(`weekly_planning_conversations/${uid}/sessions`)
+        + await deleteUidDocument('weekly_planning_conversations');
+    } },
     ...UID_COLLECTIONS.map((collection) => ({ name: collection, run: () => deleteUidDocument(collection) })),
     { name: 'class_attendance', async run() {
       let count = 0;
