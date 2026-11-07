@@ -121,6 +121,11 @@ export function vnextUnitIdentity(unit: { unitCode: string | null; unitLabel: st
   return `${unit.unitCode ?? ''}|${label}`;
 }
 
+/** Numeric comparison of typed time quantities; labels never establish unit meaning. */
+export function vnextMinutesPerQuantityUnit(unitCode: string | null | undefined): number | null {
+  return unitCode === 'hour' ? 60 : unitCode === 'minute' ? 1 : null;
+}
+
 // Normalizing this constant has no effects; disabled builds must not retain its initializer.
 const PERCENT_UNIT_IDENTITY = /*#__PURE__*/ vnextUnitIdentity({ unitCode: 'custom', unitLabel: '%' });
 
@@ -223,8 +228,14 @@ function computeUnits(graph: WeeklyPlanningVNextGraph, workRelations: readonly V
   const lineageOf = (fact: { id: string }) => resolver.lineageOf(fact.id);
   const distinct = new Set(workRelations.filter(relation => relation.kind === 'distinct')
     .map(relation => JSON.stringify([...relation.lineageIds].sort())));
-  const workloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads)
+  const sourceWorkloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads)
     .map(workload => declaredAs && workload.quantityRole === 'declared' ? { ...workload, quantityRole: declaredAs } : workload);
+  const sourceById = new Map(sourceWorkloads.map(workload => [workload.id, workload]));
+  // Compare time quantities in minutes; grouping below preserves independently stated work.
+  // Restore defining facts and binding bases before returning work.
+  const workloads = sourceWorkloads.map<WorkloadFactV5>(workload => workload.unitCode === 'hour'
+    ? { ...workload, amount: workload.amount * 60, unitCode: 'minute', unitLabel: '分' }
+    : workload);
   const owners = new Map<string, WorkloadFactV5[]>();
   for (const workload of workloads) {
     const key = resolver.ownerKeyOf(workload);
@@ -253,6 +264,23 @@ function computeUnits(graph: WeeklyPlanningVNextGraph, workRelations: readonly V
     for (const workload of ownerWorkloads) {
       const key = vnextQuantityBasisKey(workload);
       groups.set(key, [...(groups.get(key) ?? []), workload]);
+    }
+    // Cross-unit progress can share a basis only when its roles identify one quantity.
+    // Independent targets/remainders and explicit distinct pairs keep their source bases.
+    for (const [basisKey, group] of [...groups]) {
+      const sourceBases = new Set(group.map(workload => vnextQuantityBasisKey(sourceById.get(workload.id)!)));
+      if (sourceBases.size === 1) continue;
+      const uniqueProgress = group.some(workload => workload.quantityRole === 'scope_total')
+        && group.every(workload => ['scope_total', 'completed', 'remaining'].includes(workload.quantityRole))
+        && new Set(group.map(workload => workload.quantityRole)).size === group.length;
+      const independentPair = group.some((a, index) => group.slice(index + 1).some(b =>
+        distinct.has(JSON.stringify([lineageOf(a), lineageOf(b)].sort()))));
+      if (uniqueProgress && !independentPair) continue;
+      groups.delete(basisKey);
+      for (const workload of group) {
+        const sourceBasis = vnextQuantityBasisKey(sourceById.get(workload.id)!);
+        groups.set(sourceBasis, [...(groups.get(sourceBasis) ?? []), workload]);
+      }
     }
     const units: VNextWorkUnit[] = [];
     let issue: VNextWorkUnitIssue | null = null;
@@ -331,7 +359,12 @@ function computeUnits(graph: WeeklyPlanningVNextGraph, workRelations: readonly V
     }
     done(issue, units);
   }
-  return result;
+  return result.map(owner => ({ ...owner, units: owner.units.map(unit => {
+    const source = sourceById.get(unit.definingFactId)!;
+    return source === unit.workload ? unit : { ...unit,
+      amount: unit.amount / (vnextMinutesPerQuantityUnit(source.unitCode) ?? 1),
+      basisKey: vnextQuantityBasisKey(source), workload: source };
+  }) }));
 }
 
 /**

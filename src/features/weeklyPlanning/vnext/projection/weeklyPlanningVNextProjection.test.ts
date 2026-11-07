@@ -71,6 +71,62 @@ const amountPatch = (localId: string, targetFactId: string, amount: number) => (
 
 describe('projectWeeklyPlanningVNext', () => {
   it.each([
+    { unitCode: 'minute', totalAmount: 60, completed: false },
+    { unitCode: 'hour', totalAmount: 1, completed: false },
+    { unitCode: 'hour', totalAmount: 1, completed: true },
+  ] as const)('does not ask whether explicit total and remaining time are different work ($unitCode, completed=$completed)', ({ unitCode, totalAmount, completed }) => {
+    const state = withTask([
+      W('total-time', 'scope_total', totalAmount, unitCode, unitCode === 'hour' ? '時間' : '分'),
+      ...(completed ? [W('completed-time', 'completed', 30, 'minute', '分')] : []),
+      W('remaining-time', 'remaining', 30, 'minute', '分'),
+      { kind: 'task', localId: 'other', category: 'study', title: '数学' },
+      { ...W('other-time', 'target', 60, 'minute', '分'), taskRef: { localId: 'other' } },
+    ]);
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection.questions).toEqual([]);
+    expect(projection.readiness).toBe('ready');
+    expect(projection.owners.map(owner => owner.work.map(item => item.minutes))).toEqual([[30], [60]]);
+  });
+
+  it.each([
+    { total: 1, totalUnit: 'hour', done: 15, doneUnit: 'minute', left: 0.5, leftUnit: 'hour', values: [0.75, 30] },
+    { total: 60, totalUnit: 'minute', done: 0.25, doneUnit: 'hour', left: 30, leftUnit: 'minute', values: [45, 0.5] },
+    { total: 1, totalUnit: 'hour', done: 0.25, doneUnit: 'hour', left: 0.5, leftUnit: 'hour', values: [0.75, 0.5] },
+  ] as const)('keeps an inconsistent time correction in the target fact unit ($totalUnit/$doneUnit/$leftUnit)', input => {
+    const state = withTask([
+      W('total', 'scope_total', input.total, input.totalUnit),
+      W('done', 'completed', input.done, input.doneUnit),
+      W('left', 'remaining', input.left, input.leftUnit),
+    ]);
+    const before = structuredClone(state);
+    const question = projectWeeklyPlanningVNext(state).questions[0];
+    expect(question.code).toBe('remaining_inconsistent');
+    expect(question.options.map(option => option.value)).toEqual(input.values);
+    for (const [index, option] of question.options.entries()) {
+      const corrected = turn(state, option.delta);
+      const projection = projectWeeklyPlanningVNext(corrected);
+      expect(projection.questions).toEqual([]);
+      expect(projection.owners[0].work[0].minutes).toBe(index === 0 ? 45 : 30);
+      const fact = corrected.graph.workloads.find(workload => workload.id === active(corrected, index === 0 ? 'remaining' : 'completed'))!;
+      expect(fact).toMatchObject({ amount: input.values[index], unitCode: index === 0 ? input.leftUnit : input.doneUnit });
+    }
+    expect(state).toEqual(before);
+  });
+
+  it('still asks about completed time beyond a mixed-unit total without changing the stated amounts', () => {
+    const state = withTask([W('total', 'scope_total', 1, 'hour', '時間'), W('done', 'completed', 90, 'minute', '分')]);
+    expect(projectWeeklyPlanningVNext(state).questions[0].code).toBe('completed_exceeds_total');
+    expect(state.graph.workloads.map(fact => fact.amount)).toEqual([1, 90]);
+  });
+
+  it('derives remaining from total and completed and asks an estimate bound to that amount', () => {
+    const state = withTask([W('t', 'scope_total', 20), W('c', 'completed', 10)]);
+    const projection = projectWeeklyPlanningVNext(state);
+    expect(projection.readiness).toBe('needs_resolution');
+    expect(projection.questions[0]).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 10 } });
+  });
+
+  it.each([
     { detailTarget: 'component', conflict: false },
     { detailTarget: 'workload', conflict: false },
     { detailTarget: 'component', conflict: true },
@@ -111,13 +167,6 @@ describe('projectWeeklyPlanningVNext', () => {
       expect(next.owners.find(owner => owner.componentId === state.graph.workloads[1].componentId)!.work[0].minutes).toBe(40);
     }
     expect(state).toEqual(before);
-  });
-
-  it('derives remaining from total and completed and asks an estimate bound to that amount', () => {
-    const state = withTask([W('t', 'scope_total', 20), W('c', 'completed', 10)]);
-    const projection = projectWeeklyPlanningVNext(state);
-    expect(projection.readiness).toBe('needs_resolution');
-    expect(projection.questions[0]).toMatchObject({ code: 'missing_effort_estimate', forWork: { amount: 10 } });
   });
 
   it('keeps the unit on a value-only completed correction and does not reuse a total bound to the old amount', () => {
