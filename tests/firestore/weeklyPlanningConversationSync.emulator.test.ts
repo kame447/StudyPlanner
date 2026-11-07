@@ -1,4 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { FirestoreServiceAccountClient } from '../../workers/ai-proxy/src/firestoreServiceAccountClient';
+import { sweepExpiredConversations } from '../../workers/ai-proxy/src/weeklyPlanningConversationRetention';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app';
 import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { connectFirestoreEmulator, deleteDoc, doc, getFirestore, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -63,14 +65,18 @@ describe.skipIf(!enabled)('VNext shared conversation through real Auth, Firestor
     address(authHost!); address(firestoreHost!);
     a = await device('a'); b = await device('b', a); foreign = await device('foreign');
     await acceptPolicy(a.uid); await acceptPolicy(foreign.uid);
+    await a.store.enable(); await foreign.store.enable();
   });
   afterAll(async () => { await Promise.all(apps.map(deleteApp)); });
   it('restores on a second signed-in device and acknowledges the same operation once', async () => {
     const op = operation(a.uid, 'restore');
     const first = await a.store.commit(op);
     expect(first.status).toBe('accepted');
-    expect(await b.store.read(op.scope)).toEqual(first.snapshot);
-    expect(await b.store.commit(op)).toEqual(first);
+    const restored = await b.store.read(op.scope);
+    const { updatedAt, ...restoredState } = restored!;
+    expect(restoredState).toEqual(first.snapshot);
+    expect(typeof updatedAt).toBe('string'); expect(Number.isFinite(Date.parse(updatedAt!))).toBe(true);
+    expect(await b.store.commit(op)).toEqual({ status: 'accepted', snapshot: restored });
     expect((await a.store.list()).items.some(row => row.operationId === op.operationId)).toBe(true);
   });
   it('two concurrent devices cannot both replace the same revision', async () => {
@@ -106,10 +112,48 @@ describe.skipIf(!enabled)('VNext shared conversation through real Auth, Firestor
     await expect(setDoc(ref, { schemaVersion: 1, ...op.scope, revision: 3, operationId: 'resurrect',
       deleted: false, payload: JSON.stringify(op.payload), updatedAt: serverTimestamp() })).rejects.toMatchObject({ code: 'permission-denied' });
   });
+  it('expires an old body through the real transaction while preventing its offline resurrection', async () => {
+    const op = operation(a.uid, 'client-expiry'); await a.store.commit(op);
+    const path = `${CONVERSATION_COLLECTION}/${a.uid}/sessions/ai-chat-client-expiry.2026-11-02`;
+    const response = await fetch(`http://${firestoreHost}/v1/projects/${project}/databases/(default)/documents/${path}`, {
+      headers: { Authorization: 'Bearer owner' },
+    });
+    const before = await response.json() as { fields: Record<string, unknown> };
+    await seed(path, { ...before.fields, updatedAt: { timestampValue: new Date(Date.now() - 181 * 86_400_000).toISOString() } });
+    const expired = await a.store.read(op.scope);
+    expect(expired).toMatchObject({ deleted: true, payload: null, revision: 2, operationId: 'expired-1' });
+    expect((await b.store.commit({ ...op, operationId: 'offline-before-expiry' })).status).toBe('conflict');
+  });
+  it('the actual scheduled sweep empties expired nested sessions without deleting their identity', async () => {
+    const op = operation(a.uid, 'server-expiry'); await a.store.commit(op);
+    const path = `${CONVERSATION_COLLECTION}/${a.uid}/sessions/ai-chat-server-expiry.2026-11-02`;
+    const target = `http://${firestoreHost}/v1/projects/${project}/databases/(default)/documents/${path}`;
+    const response = await fetch(target, { headers: { Authorization: 'Bearer owner' } });
+    const before = await response.json() as { fields: Record<string, unknown> };
+    await seed(path, { ...before.fields, updatedAt: { timestampValue: new Date(Date.now() - 181 * 86_400_000).toISOString() } });
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      return realFetch(url.replace('https://firestore.googleapis.com', `http://${firestoreHost}`), init);
+    });
+    try {
+      const client = new FirestoreServiceAccountClient({ FIREBASE_PROJECT_ID: project,
+        FIREBASE_SERVICE_ACCOUNT_EMAIL: 'unused', FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused' }, { getToken: async () => 'owner' });
+      expect(await sweepExpiredConversations(client)).toBe(1);
+      expect(await sweepExpiredConversations(client)).toBe(0);
+    } finally { vi.unstubAllGlobals(); }
+    const after = await (await realFetch(target, { headers: { Authorization: 'Bearer owner' } })).json() as { fields: Record<string, unknown> };
+    expect(after.fields.payload).toEqual({ stringValue: '' });
+    expect(after.fields.deleted).toEqual({ booleanValue: true });
+    expect(after.fields.revision).toEqual({ integerValue: '2' });
+    expect(after.fields.conversationId).toEqual(before.fields.conversationId);
+  });
   it('requires policy acceptance and denies new writes after account deletion begins', async () => {
     const user = await device('deleting'); const op = operation(user.uid, 'policy');
     await expect(user.store.commit(op)).rejects.toMatchObject({ code: 'permission-denied' });
-    await acceptPolicy(user.uid); expect((await user.store.commit(op)).status).toBe('accepted');
+    await acceptPolicy(user.uid);
+    await expect(user.store.commit(op)).rejects.toMatchObject({ code: 'permission-denied' });
+    await user.store.enable(); expect((await user.store.commit(op)).status).toBe('accepted');
     await seed(`account_deletions/${user.uid}`, { status: { stringValue: 'deleting' } });
     await expect(user.store.read(op.scope)).rejects.toMatchObject({ code: 'permission-denied' });
     await expect(user.store.commit({ ...op, baseRevision: 1, operationId: 'after-delete' })).rejects.toMatchObject({ code: 'permission-denied' });

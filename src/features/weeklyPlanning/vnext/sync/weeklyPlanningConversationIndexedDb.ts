@@ -70,6 +70,25 @@ export function createIndexedDbConversationStore(options: { factory?: IDBFactory
     },
   };
   return { ...store,
+    async listOwner(ownerId: string): Promise<ConversationLocalRecord[]> {
+      const db = await database();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE, 'readonly');
+        const request = transaction.objectStore(STORE).index('owner').getAll(IDBKeyRange.only(ownerId));
+        let records: ConversationLocalRecord[] = [];
+        let failure: unknown;
+        request.onsuccess = () => {
+          try {
+            records = request.result.map(raw => {
+              if (raw?.scope?.ownerId !== ownerId) throw new Error('local-owner-mismatch');
+              return decode(raw, raw.scope)!;
+            });
+          } catch (error) { failure = error; transaction.abort(); }
+        };
+        transaction.oncomplete = () => resolve(records);
+        transaction.onabort = transaction.onerror = () => reject(failure ?? transaction.error ?? new Error('indexeddb-read-failed'));
+      });
+    },
     async removeOwner(ownerId: string) {
       const db = await database();
       return new Promise<void>((resolve, reject) => {

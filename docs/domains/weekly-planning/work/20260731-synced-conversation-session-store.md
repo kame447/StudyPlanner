@@ -1,12 +1,24 @@
 # VNext conversation shared session
 
-Status: active / shared persistence foundation implemented; application integration pending
+Status: active / VNext application and UI integrated; production release and index deployment pending
 Priority: P1 architecture / persistence
 Updated: 2026-11-07
 Tracking: Issue #47
 Architecture dependency: Issue #164
 Branch: `feat/issue47-conversation-sync`
 Base: `67ea8b5ce0b2d34327b486ab43414164bcb97aec`
+
+## 2026-11-07 最新チェックポイント（PR #998 継続）
+
+VNext本番の会話hook・チャット画面・チャット切替と、最初に保存されていたlocalStorageからの非破壊移行をIndexedDB/Firestore共有保存へ接続した。本人の明示操作による同期同意を独立した境界とし、同意前は既存local保存を維持する。同期の状態（同期済み・保留・オフライン・競合・エラー）、別端末とのテキスト比較と明示選択、同一ブラウザーの別タブ競合ガードをUIへ組み込んだ。未承認の予定・実績が同期だけで保存されることは許可しない。
+
+保存結果の分からない実績の書込を、会話同期によって「保存済み」と誤認させない。試行の未確定を端末内のdurable状態に保存した後だけ実際の書込へ進め、再読込時も不明な結果を再照会する既存経路を保持する。会話ターン準備中に状態変化のない同期読取が不要な再描画を起こし、不正な古い入力扱いになる問題はE2Eで再現し、無意味な更新通知を抑える変更と回帰テストで修正した。
+
+ここまでのローカル証拠は、会話同期state machine／VNext hook統合／保存境界の30件、Firestoreの本物のAuth/Rulesを使う8件、既存退会処理・Traceの35件、追加したNo-op UI契約を含む13件成功。実画面E2Eの1回目は後半の英語追加で、no-op同期の画面再描画によって送信が拒否され失敗した。修正後の再実行は独立の仮アカウントを使い、2/2成功。別端末での会話・プレビュー復元、再読込、オフラインの編集、異なる端末からの競合、競合内容の比較と選択、予定・実績が0件のままであることを確認した。app/Workerの型検査も成功。
+
+注意: 同期の180日保持期限を実際に動かすscheduled sweepにはFirestoreのcollection-group composite indexが必要で、既存のRules専用デプロイworkflowは `firestore.indexes.json` をデプロイしない。インデックスの安全な作成・確認と本番Rules/Worker/Pages配信を完了するまで、本番提供は完了と扱わない。現在のPRはDraft。#47の長期個別最適化は今回の同期実装とは別の未完了責務として残す。
+
+以下の「本番hook未接続」など古い進捗記述は基盤PR作成時の履歴であり、最新状態の判断にはこのチェックポイントと実装・CIの結果を優先する。
 
 ## 現在地とリリース境界
 

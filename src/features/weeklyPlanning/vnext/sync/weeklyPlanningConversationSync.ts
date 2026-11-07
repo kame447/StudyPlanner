@@ -15,6 +15,7 @@ export interface ConversationSnapshot {
   scope: ConversationScope;
   revision: number;
   operationId: string;
+  updatedAt?: string;
   deleted: boolean;
   payload: ConversationPayload | null;
 }
@@ -30,6 +31,7 @@ export interface ConversationLocalRecord {
   version: 1;
   scope: ConversationScope;
   generation: number;
+  editedAt?: string;
   confirmed: ConversationSnapshot | null;
   working: ConversationPayload | null;
   dirty: boolean;
@@ -78,6 +80,7 @@ export function createConversationSync(ports: {
   local: ConversationLocalStore;
   remote: ConversationRemoteStore;
   operationId(): string;
+  now?: () => string;
   validatePayload(scope: ConversationScope, payload: ConversationPayload): boolean;
 }) {
   const inflight = new Map<string, Promise<ConversationSyncResult>>();
@@ -127,7 +130,7 @@ export function createConversationSync(ports: {
       if (record.confirmed?.deleted) throw new Error('conversation-deleted');
       if (samePayload(record.working, payload) && (record.confirmed || record.dirty)) return record;
       // Pending bytes are immutable even when the user continues editing during an upload.
-      return { ...record, generation: record.generation + 1, working: payload,
+      return { ...record, generation: record.generation + 1, editedAt: (ports.now ?? (() => new Date().toISOString()))(), working: payload,
         dirty: record.pending !== null || !samePayload(record.confirmed?.payload ?? null, payload) || !record.confirmed };
     });
   }
@@ -135,6 +138,10 @@ export function createConversationSync(ports: {
   async function refresh(scope: ConversationScope) {
     guard(scope);
     const snapshot = await ports.remote.read(scope);
+    return ingest(scope, snapshot);
+  }
+
+  async function ingest(scope: ConversationScope, snapshot: ConversationSnapshot | null) {
     guard(scope); remote(snapshot, scope);
     return ports.local.update(scope, existing => {
       const record = local(existing, scope);
@@ -191,5 +198,18 @@ export function createConversationSync(ports: {
     return request;
   }
 
-  return { stage, refresh, flush };
+  async function resolve(scope: ConversationScope, choice: 'local' | 'remote', expectedGeneration: number) {
+    return ports.local.update(scope, existing => {
+      const record = local(existing, scope);
+      if (record.generation !== expectedGeneration) throw new Error('local-revision-conflict');
+      if (record.blocked !== 'conflict' || !record.conflict) throw new Error('conflict-not-available');
+      if (choice === 'local' && record.conflict.deleted) throw new Error('conversation-deleted');
+      const working = choice === 'remote' ? record.conflict.payload : record.working;
+      return { ...record, generation: record.generation + 1, confirmed: record.conflict, working,
+        dirty: choice === 'local' && !samePayload(working, record.conflict.payload),
+        pending: null, blocked: null, conflict: null };
+    });
+  }
+
+  return { stage, refresh, ingest, flush, resolve };
 }

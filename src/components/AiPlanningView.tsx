@@ -1,3 +1,4 @@
+import { AiPlanningConversationSync } from './AiPlanningConversationSync';
 import {
   useLayoutEffect,
   useMemo,
@@ -261,7 +262,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
     }
   }
 
-  const checkpointNotice = application.chat.result?.status === 'blocked' ? (
+  const localCheckpointNotice = application.chat.result?.status === 'blocked' ? (
     <div className="ai-planning-error ai-planning-checkpoint-notice" role="alert">
       {application.chat.requiresInitialization
         ? '保存済みチャットを読み込めません。保存データは変更していません。再試行してください。'
@@ -284,6 +285,10 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
       ) : null}
     </div>
   ) : null;
+
+  const checkpointNotice = application.conversationSync
+    ? <><AiPlanningConversationSync sync={application.conversationSync} />{localCheckpointNotice}</>
+    : localCheckpointNotice;
 
   return (
     <div

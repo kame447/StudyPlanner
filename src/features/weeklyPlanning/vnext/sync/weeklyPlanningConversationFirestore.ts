@@ -1,5 +1,6 @@
-import { collection, doc, documentId, getDocFromServer, getDocsFromServer, limit, orderBy, query,
-  runTransaction, serverTimestamp, startAfter, type Firestore } from 'firebase/firestore';
+import { collection, doc, documentId, getDocFromServer, getDocsFromServer, limit, onSnapshot, orderBy, query,
+  runTransaction, serverTimestamp, setDoc, startAfter, type Firestore } from 'firebase/firestore';
+import { CONVERSATION_SYNC_POLICY, CONVERSATION_RETENTION_MS } from './weeklyPlanningConversationSyncPolicy';
 import { MAX_CONVERSATION_SYNC_BYTES, validConversationScope, validateConversationPayload } from './weeklyPlanningConversationPayload';
 import { sameConversationScope, type ConversationOperation, type ConversationPayload,
   type ConversationRemoteStore, type ConversationScope, type ConversationSnapshot } from './weeklyPlanningConversationSync';
@@ -20,7 +21,9 @@ function decode(value: unknown, ownerId: string, id: string): ConversationSnapsh
   let payload: ConversationPayload | null;
   try { payload = data.deleted ? null : JSON.parse(data.payload); } catch { throw new Error('remote-state-unreadable'); }
   if (data.deleted ? data.payload !== '' : payload === null || !validateConversationPayload(scope, payload)) throw new Error('remote-state-unreadable');
-  return { scope, revision: data.revision as number, operationId: data.operationId, deleted: data.deleted, payload };
+  const timestamp = data.updatedAt as { toDate?: () => Date } | undefined;
+  const updatedAt = timestamp?.toDate?.().toISOString();
+  return { scope, revision: data.revision as number, operationId: data.operationId, deleted: data.deleted, payload, ...(updatedAt ? { updatedAt } : {}) };
 }
 
 /** The Firestore transaction is the single shared revision authority. SDK offline LWW is not used. */
@@ -38,6 +41,12 @@ export function createFirestoreConversationStore(db: Firestore, ownerId: string,
       if (!snapshot.exists()) return null;
       const decoded = decode(snapshot.data(), ownerId, snapshot.id);
       if (!sameConversationScope(decoded.scope, scope)) throw new Error('conversation-identity-conflict');
+      if (!decoded.deleted && decoded.updatedAt && Date.now() - Date.parse(decoded.updatedAt) >= CONVERSATION_RETENTION_MS) {
+        const expired = await store.commit({ scope, operationId: `expired-${decoded.revision}`,
+          baseRevision: decoded.revision, payload: null });
+        if (expired.status !== 'accepted') throw new Error('conversation-expiry-changed');
+        return expired.snapshot;
+      }
       return decoded;
     },
     commit: async (operation: ConversationOperation) => {
@@ -80,7 +89,8 @@ export function createFirestoreConversationStore(db: Firestore, ownerId: string,
         // Rules may reject a raced revision before the Web SDK receives ABORTED.
         // One authorized server read proves a conflict/receipt; failed reads and unchanged
         // revisions retain the original failure. Never retry the write or bypass Rules.
-        const current = await store.read(scope);
+        const reread = await getDocFromServer(reference);
+        const current = reread.exists() ? decode(reread.data(), ownerId, reread.id) : null;
         guard(scope);
         const previous = previousCommit(current);
         if (previous) return previous;
@@ -89,13 +99,42 @@ export function createFirestoreConversationStore(db: Firestore, ownerId: string,
     },
   };
   return { ...store,
+    watch(changed: () => void, failed: () => void) {
+      guard();
+      let signature = '';
+      return onSnapshot(query(sessions, orderBy('updatedAt', 'desc'), limit(1)), snapshot => {
+        if (!isCurrent() || snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+        const next = snapshot.docs.map(row => `${row.id}:${row.data().operationId}`).join('|');
+        if (next !== signature) { signature = next; changed(); }
+      }, () => { if (isCurrent()) failed(); });
+    },
+    async consent(): Promise<boolean> {
+      guard();
+      const snapshot = await getDocFromServer(doc(db, CONVERSATION_COLLECTION, ownerId));
+      guard();
+      if (!snapshot.exists()) return false;
+      const data = snapshot.data();
+      return data.ownerId === ownerId && data.schemaVersion === 1 && data.policyVersion === CONVERSATION_SYNC_POLICY;
+    },
+    async enable(): Promise<void> {
+      guard();
+      await setDoc(doc(db, CONVERSATION_COLLECTION, ownerId), { schemaVersion: 1, ownerId,
+        policyVersion: CONVERSATION_SYNC_POLICY, acceptedAt: serverTimestamp() });
+      guard();
+    },
     async list(cursor: string | null = null, pageSize = 20): Promise<{ items: ConversationSnapshot[]; cursor: string | null }> {
       guard();
       if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50 || (cursor !== null && cursor.includes('/'))) throw new Error('invalid-conversation-page');
       const page = await getDocsFromServer(query(sessions, orderBy(documentId()), ...(cursor ? [startAfter(cursor)] : []), limit(pageSize)));
       guard();
-      return { items: page.docs.map(item => decode(item.data(), ownerId, item.id)),
-        cursor: page.size === pageSize ? page.docs[page.size - 1].id : null };
+      const items: ConversationSnapshot[] = [];
+      for (const item of page.docs) {
+        const decoded = decode(item.data(), ownerId, item.id);
+        items.push(!decoded.deleted && decoded.updatedAt && Date.now() - Date.parse(decoded.updatedAt) >= CONVERSATION_RETENTION_MS
+          ? (await store.read(decoded.scope))! : decoded);
+      }
+      guard();
+      return { items, cursor: page.size === pageSize ? page.docs[page.size - 1].id : null };
     },
   };
 }

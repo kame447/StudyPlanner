@@ -565,6 +565,19 @@ service cloud.firestore {
           .data.createdAt == request.time;
     }
 
+    function hasConversationSyncConsent(userId) {
+      return exists(/databases/$(database)/documents/weekly_planning_conversations/$(userId))
+        && get(/databases/$(database)/documents/weekly_planning_conversations/$(userId)).data.policyVersion == '2026-11-07-v1';
+    }
+    match /weekly_planning_conversations/{userId} {
+      allow get: if isOwner(userId) && !accountDeletionStarted();
+      allow create, update: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy() && !accountDeletionStarted()
+        && request.resource.data.keys().hasOnly(['schemaVersion', 'ownerId', 'policyVersion', 'acceptedAt'])
+        && request.resource.data.schemaVersion == 1 && request.resource.data.ownerId == userId
+        && request.resource.data.policyVersion == '2026-11-07-v1' && request.resource.data.acceptedAt == request.time;
+      allow list, delete: if false;
+    }
+
     // One shared commit per revision; clients retain conflicts instead of timestamp LWW.
     match /weekly_planning_conversations/{userId}/sessions/{sessionId} {
       function validConversation() {
@@ -583,16 +596,18 @@ service cloud.firestore {
           && (next.deleted ? next.payload == '' : next.payload.size() > 0)
           && next.updatedAt == request.time;
       }
-      allow read: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy() && !accountDeletionStarted();
-      allow create: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy() && !accountDeletionStarted()
+      allow read: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy() && hasConversationSyncConsent(userId) && !accountDeletionStarted();
+      allow create: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy() && hasConversationSyncConsent(userId) && !accountDeletionStarted()
         && validConversation() && request.resource.data.revision == 1;
-      allow update: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy() && !accountDeletionStarted()
+      allow update: if isOwner(userId) && hasAcceptedWeeklyPlanningPolicy() && hasConversationSyncConsent(userId) && !accountDeletionStarted()
         && validConversation() && resource.data.deleted == false
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.operationId != resource.data.operationId
         && request.resource.data.chatId == resource.data.chatId
         && request.resource.data.weekStartDate == resource.data.weekStartDate
-        && request.resource.data.conversationId == resource.data.conversationId;
+        && request.resource.data.conversationId == resource.data.conversationId
+        && (!request.resource.data.operationId.matches('expired-.*')
+          || (request.resource.data.deleted && resource.data.updatedAt + duration.value(180, 'd') <= request.time));
       // A durable tombstone prevents offline replicas from bringing a deleted chat back.
       // Account deletion removes the entire collection using the existing server boundary.
       allow delete: if false;
