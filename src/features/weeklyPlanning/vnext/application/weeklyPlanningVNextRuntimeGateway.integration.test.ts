@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getEntryDurationMinutes } from '../../../../lib/entryTimeRange';
 import { createWeeklyPlanningStableV5DialoguePrompt } from '../../dialogue/weeklyPlanningStableV5DialoguePrompt';
 import { CANDIDATE_CHOICE_CATALOG_VERSION, type CandidateChoiceWireRequest } from '../../../../../shared/candidateChoiceDecision';
 import { measureWeeklyPlanningTraceJsonBytes, WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS } from '../../../../../shared/weeklyPlanningTraceContract';
@@ -235,8 +236,18 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
   });
 
-  it.each([false, true])('Stage B: persists fixed memorization registration through failed append, reload and Worker (large=%s)', async large => {
-    const wire = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: null }],
+  it.each([false, true].flatMap(completed => [false, true].map(large => ({ completed, large }))))
+  ('Stage B: persists ready memory planning through failed append, reload and Worker (completed=$completed, large=$large)', async ({ completed, large }) => {
+    const wire = completed ? { planningIntent: 'create_plan', conversationActs: [], answer: null,
+      delta: { ...EMPTY, add: [
+        { ...task, title: '英単語' },
+        { ...work('scope', 'scope_total', 100, 'word'), unitLabel: '語' },
+        { ...work('done', 'completed', 100, 'word'), unitLabel: '語' },
+        { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
+          activityKind: 'memorization_retrieval', contextLabel: null },
+        { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+        { ...work('math-time', 'remaining', 60, 'minute'), taskRef: { localId: 'math' } },
+      ] } } : { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: null }],
       answer: null, delta: { ...EMPTY, add: [task, work('pages', 'remaining', 10),
         { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
           activityKind: 'memorization_retrieval', contextLabel: null },
@@ -254,9 +265,16 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       } };
     } });
     failAppend = true;
-    const submitted = await h.submit('火曜10時から11時に数学の残り10枚を進める予定を入れて');
-    expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
-      date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
+    const submitted = await h.submit(completed ? '英単語100語は全部終わった。今週は数学60分の予定案を作って'
+      : '火曜10時から11時に数学の残り10枚を進める予定を入れて');
+    if (completed) {
+      expect(h.local.readCheckpoint()!.vnext.state.graph.workloads.map(fact => fact.amount)).toEqual([100, 100, 60]);
+      expect(submitted.draftCandidates.reduce((minutes, candidate) => minutes
+        + getEntryDurationMinutes(candidate.startTime, candidate.endTime), 0)).toBe(60);
+    } else {
+      expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
+        date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
+    }
     expect(h.local.readCheckpoint()!.vnext.state.graph.effortEstimates).toEqual([]);
     expect(h.local.readCheckpoint()!.vnext.state.learningStrategyProposalRecords).toEqual([]);
     expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull();
@@ -287,11 +305,22 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
     if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(rendererInputs[0]);
     else {
-      // Response-source and document budgets bound this context in two stages. The
-      // outer size measures the first wrapper; its head must retain the raw size.
       const originalBytes = new TextEncoder().encode(JSON.stringify(rendererInputs[0])).byteLength;
-      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
-        jsonHead: expect.stringContaining(`"originalBytes":${originalBytes}`), jsonTail: expect.any(String) });
+      if (completed) {
+        // This ready-turn document fits after one source-value truncation.
+        const truncated = diagnostic.dialogueRenderer.request.promptContext as { jsonHead: string; jsonTail: string };
+        expect(truncated).toMatchObject({ traceTruncated: true, originalBytes,
+          jsonHead: expect.stringContaining('keep-fixed-quantity-evidence'), jsonTail: expect.any(String) });
+        expect(truncated.jsonTail.length).toBeGreaterThan(0);
+        const sourceJson = JSON.stringify(rendererInputs[0]);
+        expect(sourceJson.startsWith(truncated.jsonHead)).toBe(true);
+        expect(sourceJson.endsWith(truncated.jsonTail)).toBe(true);
+      } else {
+        // Fixed registration also needs document-level truncation. The outer
+        // wrapper must retain the raw source size in the first wrapper's head.
+        expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+          jsonHead: expect.stringContaining(`"originalBytes":${originalBytes}`), jsonTail: expect.any(String) });
+      }
     }
     const saved = JSON.stringify(server.entries[0]);
     expect(saved).toContain('keep-fixed-quantity-evidence');

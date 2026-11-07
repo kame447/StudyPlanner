@@ -22,6 +22,9 @@ export function evaluateVNextLearningStrategy(params: {
   const active = new Set(graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
   const contexts = graph.studyContexts.filter(fact => active.has(fact.id));
   const workloads = graph.workloads.filter(fact => active.has(fact.id));
+  // The existing quantity projection owns completion; do not infer it from a workload role.
+  const ownersWithoutFutureWork = new Set(params.projection.owners
+    .filter(owner => owner.status === 'nothing_to_schedule').map(owner => owner.ownerKey));
   const temporalConstraints = graph.temporalConstraints.filter(fact => active.has(fact.id));
   const fixedWorkloads = workloads.filter(item => isWeeklyPlanningWorkItemFixedByTemporalScopeV5({
     graph: { temporalConstraints }, item,
@@ -48,6 +51,8 @@ export function evaluateVNextLearningStrategy(params: {
   return evaluateWeeklyPlanningLearningStrategyProposalsV5({
     previousState: { ...createInitialPlanningIntakeState(), learningStrategyProposalRecords: params.state.learningStrategyProposalRecords },
     document, localToFactId: Object.fromEntries(identities),
+    excludedWorkloadFactIds: workloads.filter(workload => ownersWithoutFutureWork.has(resolver.ownerKeyOf(workload)))
+      .map(workload => workload.id),
     compilation: { status: 'needs_resolution', input: null,
       issues: [
         ...fixedWorkloads.map(workload => ({ domain: 'deduplication', code: 'fixed_task_movable_work_suppressed',

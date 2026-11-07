@@ -98,7 +98,7 @@ function blockingEffortFactId(
 function memoryWorkloadFromCurrentMeaning(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   localToFactId: Readonly<Record<string, string>>;
-  fixedWorkloadIds: ReadonlySet<string>;
+  excludedWorkloadIds: ReadonlySet<string>;
 }): { taskId: string; workloadFactId: string } | null {
   for (const task of params.document.tasks) {
     if (task.study?.activityKind !== 'memorization_retrieval') continue;
@@ -110,7 +110,7 @@ function memoryWorkloadFromCurrentMeaning(params: {
     ];
     for (const workload of workloads) {
       const workloadFactId = params.localToFactId[workload.localId];
-      if (workloadFactId && !params.fixedWorkloadIds.has(workloadFactId)) return { taskId, workloadFactId };
+      if (workloadFactId && !params.excludedWorkloadIds.has(workloadFactId)) return { taskId, workloadFactId };
     }
   }
   return null;
@@ -210,6 +210,8 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   compilation: GenericSchedulerInputCompilationResult;
   effortEstimates?: readonly WeeklyPlanningLearningStrategyEffortFact[];
   workloadSupersessions?: Readonly<Record<string, string>>;
+  /** Current derived-work eligibility; this does not mutate persisted proposal history. */
+  excludedWorkloadFactIds?: readonly string[];
   graphRevision: number;
   turnId: string;
   /** Proposal id of the fresh presented question, or null when none is fresh. */
@@ -226,11 +228,13 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     presentedProposalId: params.presentedProposalId,
   });
 
-  // A method can change movable learning, not an already fixed registration.
-  // Keep old records as history, but do not create or select them for fixed work.
-  const fixedWorkloadIds = new Set(params.compilation.issues
-    .filter(issue => issue.code === 'fixed_task_movable_work_suppressed').map(issue => issue.factId));
-  const currentMemoryWorkload = memoryWorkloadFromCurrentMeaning({ ...params, fixedWorkloadIds });
+  // A method changes future movable learning, not fixed registrations or completed work.
+  // Keep old records as history, while excluding them from current creation and selection.
+  const excludedWorkloadIds = new Set([
+    ...params.compilation.issues.filter(issue => issue.code === 'fixed_task_movable_work_suppressed').map(issue => issue.factId),
+    ...(params.excludedWorkloadFactIds ?? []),
+  ]);
+  const currentMemoryWorkload = memoryWorkloadFromCurrentMeaning({ ...params, excludedWorkloadIds });
   records = createInitialMemoryProposal({
     records,
     currentMemoryWorkload,
@@ -239,7 +243,7 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   });
 
   const missingEffort = blockingEffortFactId(params.compilation);
-  const missingEffortFactId = missingEffort && !fixedWorkloadIds.has(missingEffort) ? missingEffort : null;
+  const missingEffortFactId = missingEffort && !excludedWorkloadIds.has(missingEffort) ? missingEffort : null;
   records = createCalibrationProposal({
     records,
     effortEstimates: params.effortEstimates ?? [],
@@ -251,7 +255,7 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   const decisionTargetProposalId = params.document.decisions.find(
     (decision) => decision.target.kind === 'proposal' && decision.target.publicId,
   )?.target.publicId ?? null;
-  const eligibleRecords = records.filter(record => !fixedWorkloadIds.has(record.workloadFactId));
+  const eligibleRecords = records.filter(record => !excludedWorkloadIds.has(record.workloadFactId));
   const lastRecord = eligibleRecords.length > 0 ? eligibleRecords[eligibleRecords.length - 1] : null;
   const relevantWorkloadFactId = currentMemoryWorkload?.workloadFactId
     ?? missingEffortFactId
