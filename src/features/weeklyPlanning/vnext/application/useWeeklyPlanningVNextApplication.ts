@@ -586,7 +586,12 @@ export function useWeeklyPlanningVNextApplication(
     approveActualRecords,
     approveDraftBlocks: async () => {
       const beforeSync = runtime.state;
-      if (cloud.storage && (!await cloud.beforeApproval() || !current() || runtime.state !== beforeSync)) return;
+      if (cloud.storage) {
+        // Recovery reconciles the original approval operation. Its local-only receipt cannot be a cloud sync prerequisite.
+        if (beforeSync.approvalRecovery) await cloud.persist();
+        else if (!await cloud.beforeApproval()) return;
+        if (!current() || runtime.state !== beforeSync) return;
+      }
       await approveWeeklyPlanningDraftBlocks({ ...input, userId: ownerId,
       featureSessionId: runtime.session.conversationId, plans: input.plans, getState, dispatch,
       resolveRuntime: runtime.local.resolveRuntime, approvalOperations: runtime.operations,
@@ -594,7 +599,11 @@ export function useWeeklyPlanningVNextApplication(
         runtime.operations = [...runtime.operations.filter(item => item.approvalOperationId !== operation.approvalOperationId), operation];
         saveWeeklyPlanningApprovalOperations(ownerId, runtime.operations);
       } });
-      try { await cloud.persist(); } catch { /* Saving a Plan and synchronizing its UI receipt are distinct. */ }
+      try {
+        await cloud.persist();
+        // The completed recovery is cloud-eligible again; persist has already consumed its local dirty marker.
+        if (beforeSync.approvalRecovery) await cloud.refresh();
+      } catch { /* Saving a Plan and synchronizing its UI receipt are distinct. */ }
     },
   };
 }

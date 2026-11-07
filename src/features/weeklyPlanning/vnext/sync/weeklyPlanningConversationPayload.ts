@@ -12,8 +12,8 @@ export function validConversationScope(scope: ConversationScope): boolean {
     && typeof scope.conversationId === 'string' && scope.conversationId.length > 0 && scope.conversationId.length <= 256;
 }
 
-/** Decode at the cloud/local trust boundary using the actual VNext/UI readers, not a second graph schema. */
-export function validateConversationPayload(scope: ConversationScope, payload: ConversationPayload): boolean {
+/** Both boundaries reuse the actual VNext/UI readers; cloud eligibility additionally excludes recovery. */
+function validatePayload(scope: ConversationScope, payload: ConversationPayload, allowRecovery: boolean): boolean {
   if (!validConversationScope(scope) || !payload || typeof payload !== 'object'
     || (payload.core !== null && typeof payload.core !== 'string') || typeof payload.ui !== 'string'
     || typeof payload.title !== 'string' || payload.title.length > 32
@@ -22,7 +22,7 @@ export function validateConversationPayload(scope: ConversationScope, payload: C
     const ui = JSON.parse(payload.ui);
     if (ui?.ownerId !== scope.ownerId || ui?.conversationId !== scope.conversationId || ui?.payload?.version !== 2
       || !ui.payload.state || ui.payload.state.pendingTurn || ui.payload.state.pendingApproval
-      || ui.payload.state.approvalRecovery) return false;
+      || (!allowRecovery && ui.payload.state.approvalRecovery)) return false;
     const session = createWeeklyPlanningVNextLocalSession({ ...scope, legacyV5Raw: null, storage: {
       getItem: key => key.endsWith('.core') ? payload.core : key.endsWith('.ui') ? payload.ui : null,
       setItem: () => { throw new Error('validation-cannot-write'); },
@@ -31,4 +31,13 @@ export function validateConversationPayload(scope: ConversationScope, payload: C
     const decoded = session.load();
     return decoded.conversationId === scope.conversationId && decoded.state.weekStartDate === scope.weekStartDate;
   } catch { return false; }
+}
+
+export function validateConversationPayload(scope: ConversationScope, payload: ConversationPayload): boolean {
+  return validatePayload(scope, payload, false);
+}
+
+/** An unresolved Plan save must survive reload on its original device, without becoming a cloud operation. */
+export function validateLocalConversationPayload(scope: ConversationScope, payload: ConversationPayload): boolean {
+  return validatePayload(scope, payload, true);
 }

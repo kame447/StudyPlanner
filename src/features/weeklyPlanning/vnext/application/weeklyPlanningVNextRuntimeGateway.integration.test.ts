@@ -716,6 +716,73 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(Object.keys(payload)).toEqual(['core', 'checkpoint', 'legacyV5Checkpoint', 'weekStartDate', 'input']);
   });
 
+  it.each([false, true])('Stage B: persists ordinary scoped session durations through outbox reload and Worker (large=%s)', async large => {
+    const wire = { planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { ...EMPTY, add: [task,
+      { kind: 'component', localId: 'a', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '第1章' },
+      { kind: 'component', localId: 'b', taskRef: { localId: 'task' }, parentComponentRef: null, role: 'chapter', label: '第2章' },
+      { ...work('a-work', 'remaining', 2, 'session'), unitLabel: '回', componentRef: { localId: 'a' } },
+      { ...work('b-work', 'remaining', 2, 'session'), unitLabel: '回', componentRef: { localId: 'b' } },
+      { kind: 'effort_estimate', localId: 'default', taskRef: { localId: 'task' }, targetRef: { localId: 'task' },
+        effortKind: 'session_duration', minutes: 20, unitCode: null, unitLabel: null, precision: 'exact' },
+      { kind: 'effort_estimate', localId: 'detail', taskRef: { localId: 'task' }, targetRef: { localId: 'a' },
+        effortKind: 'session_duration', minutes: 30, unitCode: null, unitLabel: null, precision: 'exact' },
+    ] } };
+    const inputs: unknown[] = [];
+    const h = harness({ nativeReading: wire, createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        Object.assign(input.communication!, { futureScopedSessionSentinel: 'keep-session-scope-evidence',
+          ...(large ? { futureScopedSessionDetails: 'x'.repeat(48 * 1024) } : {}) });
+        inputs.push(structuredClone(input)); return renderer.render(input);
+      } };
+    } });
+    failAppend = true;
+    const submitted = await h.submit('各章を2回。普段は1回20分、第1章だけ30分で今週の予定案を作って');
+    // The stated 60/40-minute work keeps the ordinary 10/5-minute estimate buffers.
+    expect(submitted.draftCandidates.reduce((sum, item) => sum + getEntryDurationMinutes(item.startTime, item.endTime), 0)).toBe(115);
+    expect(submitted.draftCandidates.every(item => item.approvalStatus === 'unapproved')).toBe(true);
+    expect(h.getState().previewCandidates).toEqual(submitted.draftCandidates);
+    const checkpoint = h.local.readCheckpoint()!.vnext;
+    expect(checkpoint.presentedQuestion).toBeNull();
+    expect(checkpoint.state.graph.effortEstimates.map(estimate => estimate.minutes)).toEqual([20, 30]);
+    expect(h.results[0].dialogueRendererTrace?.request?.promptContext).toEqual(inputs[0]);
+    expect(h.results[0].dialogueRendererTrace?.response?.status).toBe('rendered');
+    const sent = h.requests[0] as { messages: { role: string; content: string }[] };
+    expect(h.results[0].debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued).toBeDefined();
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    expect(measureWeeklyPlanningTraceJsonBytes(attempted.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'retry-scoped-session', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(attempted.entries);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '112' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(server.entries[0].aiInterpreter).toMatchObject({ rawResponses: [expect.objectContaining({ text: JSON.stringify(wire) })] });
+    const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+    if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(inputs[0]);
+    else {
+      const originalBytes = new TextEncoder().encode(JSON.stringify(inputs[0])).byteLength;
+      const truncated = diagnostic.dialogueRenderer.request.promptContext as { originalBytes: number; jsonHead: string; jsonTail: string };
+      expect(truncated).toMatchObject({ traceTruncated: true, jsonHead: expect.any(String), jsonTail: expect.any(String) });
+      if (truncated.originalBytes === originalBytes) {
+        expect(JSON.stringify(inputs[0]).startsWith(truncated.jsonHead)).toBe(true);
+        expect(JSON.stringify(inputs[0]).endsWith(truncated.jsonTail)).toBe(true);
+      } else expect(truncated.jsonHead).toContain(`"originalBytes":${originalBytes}`);
+      expect(truncated.jsonTail.length).toBeGreaterThan(0);
+    }
+    const saved = JSON.stringify(server.entries[0]);
+    expect(saved).toContain('keep-session-scope-evidence');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
+  });
+
   it('keeps successful placement and records the actual native request and renderer evidence', async () => {
     const h = harness();
     const submitted = await h.submit('数学を30分');

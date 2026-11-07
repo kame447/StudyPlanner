@@ -200,6 +200,14 @@ function estimateCandidates(
   if (workload.unitCode === 'minute') return [{ minutes: unit.amount, basis: 'intrinsic_duration', effortIds: [] }];
   if (workload.unitCode === 'hour') return [{ minutes: unit.amount * 60, basis: 'intrinsic_duration', effortIds: [] }];
   const workIdentity = vnextUnitIdentity(workload);
+  // Questions and placement share scoped session preferences; a detail does not contradict its inherited default.
+  const lineage = context.resolver.lineageOf;
+  const sessionEstimateIds = workload.unitCode === 'session' ? new Set(resolveWeeklyPlanningWorkItemSessionDurationV5({
+    item: { workloadFactId: unit.workLineageId, taskId: lineage(workload.taskId),
+      componentId: workload.componentId === null ? null : lineage(workload.componentId) },
+    estimates: context.efforts.map(estimate => ({ ...estimate,
+      taskId: lineage(estimate.taskId), targetFactId: lineage(estimate.targetFactId) })),
+  }).sourceFactIds) : null;
   const candidates: EstimateCandidate[] = [];
   for (const effort of context.efforts) {
     if (effort.kind === 'duration_per_unit') {
@@ -210,7 +218,7 @@ function estimateCandidates(
       continue;
     }
     if (effort.kind === 'session_duration') {
-      if (workload.unitCode === 'session' && effortAppliesToWork(context, effort, unit)) {
+      if (sessionEstimateIds?.has(effort.id)) {
         candidates.push({ minutes: effort.minutes * unit.amount, basis: 'session_duration', effortIds: [effort.id] });
       }
       continue;

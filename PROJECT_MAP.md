@@ -153,7 +153,7 @@ External provider adapters may physically live under services or a feature-owned
 
 `src/services/materialMetadataService.ts` is the browser-facing client for normalized material metadata search. It authenticates to the Worker and validates the provider-neutral response; it does not call NDL directly.
 
-`src/services/natural-language/` and `naturalLanguagePlanner` are not the semantic authority for Stable V5 weekly planning. Their lexical/rule logic must not be imported as a fallback to reinterpret weekly-planning raw user text.
+`src/services/natural-language/` and `naturalLanguagePlanner` are not the semantic authority for production VNext or local Stable V5 weekly-planning comparison. Their lexical/rule logic must not be imported as a fallback to reinterpret weekly-planning raw user text.
 
 `src/services/adminObservabilityService.ts` is the current typed browser query boundary for admin pages. It consumes authenticated Worker read models and restricted diagnostic projections. Do not restore browser-side collection scans as the console read path.
 
@@ -310,7 +310,7 @@ Assistant-generated advice is not observed learner evidence or durable preferenc
 
 ### `parsing/`
 
-Legacy/mechanical parsing helpers still present in the codebase. Presence of this directory is not permission to use raw-text parsers as Stable V5 semantic authority. Before adding or retaining a parser, prove that it is mechanical representation/compatibility rather than a semantic choice already owned by AI.
+Legacy/mechanical parsing helpers still present in the codebase. Presence of this directory is not permission to use raw-text parsers as production VNext or local Stable V5 semantic authority. Before adding or retaining a parser, prove that it is mechanical representation/compatibility rather than a semantic choice already owned by AI.
 
 ### `chat/` / `config/`
 

@@ -1,7 +1,7 @@
 # Laplance Documentation Dictionary
 
 Status: canonical documentation-governance contract
-Updated: 2026-10-05
+Updated: 2026-11-07
 
 この文書は、Markdownを「どこに置くか」「どれを正仕様として扱うか」を決める辞書である。文書の置き場所を読者名・agent名・作成時期で決めず、責務 × 文書種別 × lifecycle で一意に決める。
 
@@ -80,10 +80,11 @@ Issue #278 は canonical `ScheduleEvent → ScheduleOccurrence` baseline を確�
 
 正本:
 
-- runtime ownership: `architecture/current-contract-v5.md`
-- semantic ownership: `architecture/weekly-planning-semantic-ownership-boundary-v5.md`
-- dialogue/runtime structure: `architecture/weekly-planning-dialogue-architecture-v5.md`
-- availability: `architecture/weekly-planning-availability-architecture-v5.md`
+- production conversation ownership: `architecture/vnext-conversation-core.md` (VNext)
+- local comparison and reused pure responsibilities: `architecture/current-contract-v5.md` (Stable V5)
+- V5 semantic ownership reference: `architecture/weekly-planning-semantic-ownership-boundary-v5.md`
+- V5 dialogue structure reference: `architecture/weekly-planning-dialogue-architecture-v5.md`
+- V5 availability reference: `architecture/weekly-planning-availability-architecture-v5.md`
 - product intent: `spec/product-intent.md`
 - pre-scheduling learning consultation / advice requirement: `spec/learning-consultation-and-advice.md`
 - scheduling behavior: `policies/scheduling.md`
@@ -93,7 +94,7 @@ Issue #278 は canonical `ScheduleEvent → ScheduleOccurrence` baseline を確�
 - regression scenarios: `quality/regression-scenarios.md`
 - execution order: `roadmap/current.md`
 
-`spec/learning-consultation-and-advice.md` はIssue #246の正本であり、相談→助言→採用→既存Stable V5へのpromotionに関するproduct requirement、planned runtime boundary、state/lifecycle、failure、test、future evolutionを所有する。production codeが未実装の間は`architecture/current-contract-v5.md`のcurrent runtime baselineを上書きしない。
+`spec/learning-consultation-and-advice.md` は Issue #246 の要件正本であり、相談→助言→明示的採用→現行の計画作成フローへの接続に関するproduct requirement、planned runtime boundary、state/lifecycle、failure、test、future evolutionを所有する。相談機能のproduction routingが未実装の間は、`architecture/vnext-conversation-core.md` のVNext本番契約を上書きしない。Stable V5の文書は比較・純粋処理再利用の参照であり、本番会話へのfallbackを意味しない。
 
 ### User context
 
