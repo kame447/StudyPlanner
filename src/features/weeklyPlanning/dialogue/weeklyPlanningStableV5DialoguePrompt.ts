@@ -118,6 +118,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       ...(input.currentTurnGrounding?.acceptedFacts.some(fact => fact.kind === 'effort_estimate') ? [
         '所要時間について説明する場合は、対象のタスク、全体の所要時間か1回・1単位の時間かという区別、概数か確定値かを守り、自然な表現で伝えてください。確認する必要のない数値を無理に繰り返さないでください。',
       ] : []),
+      ...(input.communication?.corrections?.length ? [
+        'communication.correctionsは、このturnで前の受理値から変わった値です。対象ごとに、beforeからafterへ変えたことを短く伝えてください。数値と単位はcorrectionsにあるものだけを使い、変わっていない値は言い換えて繰り返さないでください。',
+      ] : []),
       'communicationのgoalに従い、raw発話から目的を選び直さない。acknowledge_asideでは保留質問をせず現在の発話に応答。resume_questionではquestionIntentへ戻る。',
       ...(input.communication?.statusReason === 'fixed_event_manual_entry' ? [
         'planningStateSummaryやacceptedFactsにある固定予定は受理済みの占有時間情報です。情報がなければ日時や受理済み予定を補わないでください。このAI turnで予定を作成・保存していません。communication.manualEntryの既存navigationLabelから既存actionLabelを選ぶ手動入力経路を自然に案内してください。この画面に追加ボタンがあると仮定せず、自動移動・登録を約束しないでください。追加の学習や作業を勧誘する質問は足さないでください。',

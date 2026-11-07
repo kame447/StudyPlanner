@@ -58,6 +58,7 @@ import {
 import { resolveWeeklyPlanningVNextTurnDelta } from './weeklyPlanningVNextAnswerBinding';
 import { workNotCoveredBySavedPlans } from '../../application/weeklyPlanningSavedWorkCoverage';
 import { createVNextOptionalInvitation } from './weeklyPlanningVNextOptionalInvitation';
+import { deriveVNextAcceptedCorrections, type VNextAcceptedCorrection } from './weeklyPlanningVNextCorrections';
 import { createWeeklyPlanningVNextRenderInput, VNEXT_RECENT_MESSAGE_LIMIT } from './weeklyPlanningVNextDialogue';
 import {
   serializeWeeklyPlanningVNextSessionCheckpoint,
@@ -496,6 +497,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   let errors: VNextTurnError[] = [];
   let semanticChanged = false;
   let registrationActs: SemanticConversationActV5[] = [];
+  let corrections: VNextAcceptedCorrection[] = [];
   if (interpretation.status === 'failed') {
     outcome = 'interpretation_failed';
     errors = interpretation.errors;
@@ -530,6 +532,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       outcome = 'noop';
     } else {
       const priorCompilation = interpretation.conversationActs?.length ? compilePreviewInput(scope, ports, calendar, state, before) : null;
+      const graphBeforeTurn = state.graph;
       const result = applyWeeklyPlanningVNextTurn(state, delta, {
         observedMemoryPace: pace,
         preview: { shownPreviewBlockIds: read.checkpoint.preview?.blocks.map(block => block.id) ?? [], authorizedCandidateKeys,
@@ -550,6 +553,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       outcome = result.status;
       state = result.state;
       if (result.status === 'applied' || result.status === 'noop') registrationActs = result.registrationActs ?? [];
+      if (result.status === 'applied') corrections = deriveVNextAcceptedCorrections({ before: graphBeforeTurn,
+        after: result.state.graph, superseded: result.diff.superseded });
       if (result.status === 'applied') semanticChanged = result.diff.added.length > 0
         || result.diff.superseded.length > 0 || result.diff.removed.length > 0
         || JSON.stringify(state.workRelations) !== JSON.stringify(read.checkpoint.state.workRelations);
@@ -650,6 +655,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
           || (question.code === 'completed_exceeds_total' && question.key.startsWith('completed_exceeds_total:') && question.options.length === 0))
         && unansweredQuestionStreak !== undefined && unansweredQuestionStreak.count >= 3,
       registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
+      corrections,
     });
   // The renderer is a model call: it may run only while this turn is still current.
   const canDispatchRecovery = () => ports.checkpoint.read() === rawBefore;
