@@ -48,6 +48,16 @@ S02の対照試験は、期間のpatchと取消＋新規指定が、同じ最終
 
 V5移行では、既に受理した期間の根拠を保存されたgroundingから引き継ぐ。旧データの基準が不明な場合に現在の日付から推測してよいと一般化しない。移行・旧版への復帰で元のV5のbytesを書き換えない。
 
+### Planning-window year evidence
+
+Native planning windows and corrections require `yearBasis` for both endpoints: semantic origin (`explicit`, `context`, `inferred`), evidence source (`user_text`, `current_date`, `planning_horizon`) and its reference. A current-utterance reference must occur verbatim in that utterance; calendar references must match the supplied typed context and endpoint year. This checks evidence references, not the meaning of Japanese text. The provider never supplies verification authority. An ordinary December-to-January range may have context-grounded endpoint years; no fixed day-count threshold defines that meaning.
+
+The transaction freezes dates and binds the verified evidence to those years. A planning horizon borrowed from an existing window is evidence only if that window's endpoint years were verified; an unconfirmed candidate cannot validate itself on the next turn. The derived projection requires the existing global `semantic_uncertainty` question for any year crossing with missing, unverified or inferred evidence, even if the provider omitted an uncertainty fact. That question cannot be deferred into readiness. Explicit long ranges and validated ordinary year-boundary context remain eligible without another confirmation. A later date correction carries fresh evidence; an old proof cannot authorize a changed year.
+
+Bound evidence is the optional `graph.planningWindows[].yearBasis` fact extension. Old checkpoints without it remain readable, but absence does not prove a cross-year interval. The shared fact reader used by older VNext checkpoint readers permits optional per-fact fields; no state-level key, state version or capability changes. The new reader validates the extension when present. Approval rechecks the global period question so an old shown preview cannot bypass the gate after reload. Deploy the new Pages reader/approval boundary before the new durable Worker producer, and deploy both revisions before treating the fix as live.
+
+AI can still misclassify an inferred year as explicit or contextual while citing real text. Typed evidence removes reliance on an optional uncertainty signal; it does not make semantic classification infallible. Deterministic evidence/readiness/lifecycle controls and the parent-authorized real-provider controls are separate verification obligations.
+
 ## The shown question is a presentation record
 
 domainに未解決の質問があることと、利用者に質問を表示したことは違う。次の回答の結び付けは、実際の表示結果から一度だけ確定した質問・表示文・状態の版の組を使う。エラー通知を新しい質問の表示文として保存してはいけない（S01）。
