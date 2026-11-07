@@ -1,4 +1,4 @@
-import type { WeeklyPlanningFactDiffV5 } from '../../semantic/weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningFactDiffV5 } from '../weeklyPlanningVNextV5Boundary';
 import type { WeeklyPlanningVNextGraph } from '../weeklyPlanningVNextTypes';
 
 /** An accepted change of an existing quantity or estimate, read from the revision diff. */
