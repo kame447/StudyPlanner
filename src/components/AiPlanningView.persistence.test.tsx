@@ -40,7 +40,7 @@ function Harness({ active = true }: { active?: boolean }) {
 }
 
 class PreviewTrigger {
-  closest() { return this; }
+  closest(_selector?: string): PreviewTrigger | null { return this; }
 }
 
 beforeEach(() => {
@@ -130,4 +130,34 @@ it('releases preview scroll locks and ignores old dialog commands when the retai
   expect(application.pendingDraftBlocks.map(block => block.id)).toEqual(['kept-draft']);
   act(() => { renderer!.update(<Harness active />); });
   expect(renderer!.root.findAllByType(AiPlanningPreviewDialog)).toHaveLength(0);
+});
+
+it('finishes only the running AI route entry before the chat drawer opens', () => {
+  class DrawerTrigger extends PreviewTrigger {
+    closest(selector?: string): DrawerTrigger | null { return selector === '.ai-planning-chat-menu-button' ? this : null; }
+  }
+  const entry = { animationName: 'ui-surface-fade', playState: 'running', finish: vi.fn() };
+  const feedback = { animationName: 'feedback', playState: 'running', finish: vi.fn() };
+  const finished = { animationName: 'ui-surface-fade', playState: 'finished', finish: vi.fn() };
+  const getAnimations = vi.fn(() => [entry, feedback, finished]);
+  act(() => { renderer = create(<Harness />, { createNodeMock: node =>
+    String(node.props.className ?? '').startsWith('ai-planning-view-shell-v2')
+      ? { querySelector: () => ({ getAnimations }) } : null,
+  }); });
+
+  act(() => {
+    renderer!.root.findByProps({ className: 'ai-planning-view-shell-v2 ' }).props.onClickCapture({
+      target: new DrawerTrigger(), preventDefault: vi.fn(), stopPropagation: vi.fn(),
+    });
+  });
+  expect(entry.finish).toHaveBeenCalledOnce();
+  expect(feedback.finish).not.toHaveBeenCalled();
+  expect(finished.finish).not.toHaveBeenCalled();
+  const shell = () => renderer!.root.findAllByType('div').find(node =>
+    String(node.props.className ?? '').startsWith('ai-planning-view-shell-v2'))!;
+  expect(shell().props.className).toContain('is-entry-suppressed');
+  act(() => { renderer!.update(<Harness active={false} />); });
+  expect(shell().props.className).not.toContain('is-entry-suppressed');
+  act(() => { renderer!.update(<Harness active />); });
+  expect(shell().props.className).not.toContain('is-entry-suppressed');
 });
