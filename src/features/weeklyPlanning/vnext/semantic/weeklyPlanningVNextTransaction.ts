@@ -527,7 +527,10 @@ export function applyWeeklyPlanningVNextTurn(
   const registration = resolveVNextEventRegistrationActs({ state: next, delta: statedDelta,
     acts: context.preview?.eventRegistration?.acts, currentTurnId: context.turnId });
   if (registration.status === 'rejected') return { status: 'rejected', state, errors: registration.errors };
-  const pendingTargets = retainVNextPendingEventRegistrationTargets(next, registration.acts, context.turnId);
+  // With unchanged facts, candidate comparison keeps the existing revision and its shown identities.
+  // Changed facts use the staged revision, so an older preview cannot consume the new request.
+  const registrationState = !diff.added.length && !diff.removed.length && !diff.superseded.length ? state : next;
+  const pendingTargets = retainVNextPendingEventRegistrationTargets(registrationState, registration.acts, context.turnId, context.preview);
   if (pendingTargets.length) next.pendingEventRegistrationTargetIds = pendingTargets;
   else delete next.pendingEventRegistrationTargetIds;
   next.learningStrategyProposalRecords = evaluateVNextLearningStrategy({ state: next,
