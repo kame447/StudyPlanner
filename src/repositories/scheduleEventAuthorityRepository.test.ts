@@ -36,6 +36,7 @@ function authorityRepository(): ScheduleEventAuthorityRepository {
     getMonthEvents: vi.fn().mockResolvedValue([]),
     applyRecurringPlanMutation: vi.fn().mockResolvedValue(undefined),
     deletePlanWithDependents: vi.fn().mockResolvedValue(undefined),
+    deletePlanRetainingActuals: vi.fn().mockResolvedValue({ beforeActuals: [], afterActuals: [] }),
     restorePlanWithDependents: vi.fn().mockResolvedValue(undefined),
     scheduleTodoPlan: vi.fn().mockResolvedValue(undefined),
     applyRecurringMonthEventMutation: vi.fn().mockResolvedValue(undefined),

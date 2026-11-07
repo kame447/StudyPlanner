@@ -1,7 +1,7 @@
 import { projectWeeklyPlanningFixedEventRegistration, type SemanticConversationActV5 } from './weeklyPlanningVNextV5Boundary';
 import type { GenericSchedulerInputCompilationResult } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type { VNextEventRegistrationAct } from './weeklyPlanningVNextInterpretationContract';
-import type { VNextTurnDelta, VNextTurnError, WeeklyPlanningVNextState } from './weeklyPlanningVNextTypes';
+import type { VNextTurnContext, VNextTurnDelta, VNextTurnError, WeeklyPlanningVNextState } from './weeklyPlanningVNextTypes';
 import { createVNextLineageResolver, withCurrentVNextReferences } from './weeklyPlanningVNextWorkIdentity';
 import { filterActiveWeeklyPlanningFactsV5 } from '../semantic/weeklyPlanningFactLifecycleV5';
 
@@ -40,12 +40,14 @@ export function resolveVNextEventRegistrationActs(params: {
   return errors.length ? { status: 'rejected', errors } : { status: 'resolved', acts };
 }
 
-/** Retain only formally requested, still-timeless task registrations. Null keeps V5's current-turn
+/** Retain formally requested tasks until their registration preview is captured, even with known clocks.
+ * Null keeps V5's current-turn
  * scope, never all historical tasks. Once retained, the request survives other questions until
  * the session captures its preview; EventRegistration integration guards reload and consumption.
  */
 export function retainVNextPendingEventRegistrationTargets(
   state: WeeklyPlanningVNextState, acts: readonly SemanticConversationActV5[], currentTurnId: string,
+  preview?: VNextTurnContext['preview'],
 ): string[] {
   const { graph } = state;
   const { leafOf } = createVNextLineageResolver(graph);
@@ -69,10 +71,19 @@ export function retainVNextPendingEventRegistrationTargets(
       .map(effort => leafOf(effort.taskId) ?? effort.taskId),
   ]);
   const requested = acts.filter(act => act.kind === 'request_event_registration').flatMap(act =>
-    act.targetPublicId === null ? [...currentTaskIds].filter(id => !definedWorkTaskIds.has(id)) : [act.targetPublicId]);
+    act.targetPublicId === null ? [...currentTaskIds].filter(id => !definedWorkTaskIds.has(id) || fixedTaskIds.has(id)) : [act.targetPublicId]);
+  // A repeated request already captured at this graph revision must remain a noop.
+  // Compare the existing V5 candidate identity; task names or clocks alone are not capture evidence.
+  const shown = new Set(preview?.shownPreviewBlockIds ?? []);
+  const compilation = preview?.eventRegistration?.compilation;
+  const captured = new Set(compilation ? projectWeeklyPlanningFixedEventRegistration({
+    graph: withCurrentVNextReferences(graph, id => leafOf(id) ?? id), compilation,
+    registrationActs: acts, currentTurnId,
+  }).candidates.filter(candidate => shown.has(candidate.stableKey)).map(candidate =>
+    (candidate as typeof candidate & { stableV5Metadata?: { taskId: string } }).stableV5Metadata?.taskId) : []);
   return [...new Set([
     ...(state.pendingEventRegistrationTargetIds ?? []).map(leafOf).filter((id): id is string => id !== null && taskIds.has(id)),
-    ...requested.filter(id => taskIds.has(id) && !fixedTaskIds.has(id)),
+    ...requested.filter(id => taskIds.has(id) && !captured.has(id)),
   ])];
 }
 

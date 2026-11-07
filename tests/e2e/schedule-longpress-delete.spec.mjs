@@ -207,19 +207,14 @@ test('day action-menu deletion failure keeps the target available for retry with
   await expect(page.locator('.timeline-plan-block').filter({ hasText: '残る予定' })).toBeVisible();
   const original = before.find(event => event.id === 'plan:held-plan');
   expect(original).toBeDefined();
-  // One-off cancellation retains the source identity for history and Undo.
-  const cancelled = {
-    ...original,
-    updatedAt: expect.any(String),
-    recurrence: { ...original.recurrence, excludedDates: [E2E_TODAY] },
-  };
-  const expectCancelled = async () => {
-    await expect.poll(async () => (await readEvents()).find(event => event.id === original.id)).toEqual(cancelled);
+  // A one-off deletion removes its canonical source; Undo restores that identity.
+  const expectDeleted = async () => {
+    await expect.poll(async () => (await readEvents()).find(event => event.id === original.id)).toBeUndefined();
     expect((await readEvents()).filter(event => event.id !== original.id))
       .toEqual(before.filter(event => event.id !== original.id));
-    expect(await readEvents()).toHaveLength(before.length);
+    expect(await readEvents()).toHaveLength(before.length - 1);
   };
-  await expectCancelled();
+  await expectDeleted();
   await page.getByRole('button', { name: '元に戻す', exact: true }).click();
   await expect(plan).toBeVisible();
   await expect.poll(async () => (await readEvents()).find(event => event.id === original.id))
@@ -227,13 +222,13 @@ test('day action-menu deletion failure keeps the target available for retry with
   await plan.click();
   await remove.click();
   await expect(plan).toHaveCount(0);
-  await expectCancelled();
+  await expectDeleted();
   await page.reload();
   await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
   await page.getByRole('tab', { name: '日', exact: true }).click();
   await expect(plan).toHaveCount(0);
   await expect(page.locator('.timeline-plan-block').filter({ hasText: '残る予定' })).toBeVisible();
-  await expectCancelled();
+  await expectDeleted();
   expect(pageErrors).toEqual([]);
   await context.close();
 });

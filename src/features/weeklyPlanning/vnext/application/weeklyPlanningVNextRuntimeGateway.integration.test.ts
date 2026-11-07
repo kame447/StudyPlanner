@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getEntryDurationMinutes } from '../../../../lib/entryTimeRange';
 import { createWeeklyPlanningStableV5DialoguePrompt } from '../../dialogue/weeklyPlanningStableV5DialoguePrompt';
 import { CANDIDATE_CHOICE_CATALOG_VERSION, type CandidateChoiceWireRequest } from '../../../../../shared/candidateChoiceDecision';
 import { measureWeeklyPlanningTraceJsonBytes, WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS } from '../../../../../shared/weeklyPlanningTraceContract';
@@ -167,6 +168,64 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(JSON.stringify(h.local.readCheckpoint()!.vnext)).not.toContain('"planningRequestEvidence"');
   });
 
+  it.each([false, true])('#868 persists a timed registration retained across an independent question through outbox and Worker (large=%s)', async large => {
+    const first = { planningIntent: 'create_plan', conversationActs: [{ kind: 'request_event_registration', targetRef: { localId: 'club' } }],
+      answer: null, delta: { ...EMPTY, add: [task, work('work', 'remaining', 8),
+        { kind: 'task', localId: 'club', category: 'non_study', title: '部活' },
+        { kind: 'temporal_constraint', localId: 'fixed', taskRef: { localId: 'club' }, targetRef: { localId: 'club' },
+          constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+          startTime: '16:00', endTime: '17:00', precision: 'exact' }] } };
+    const answer = { planningIntent: 'unknown', conversationActs: [], delta: EMPTY,
+      answer: { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' } };
+    const h = harness({ nativeReadings: [first, answer], createRenderer: () => {
+      const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion });
+      return { render(input) {
+        Object.assign(input.communication!, { futureTimedRegistrationSentinel: 'keep-timed-registration',
+          ...(large ? { futureLargeTimedRegistrationMetadata: 'x'.repeat(48 * 1024) } : {}) });
+        return renderer.render(input);
+      } };
+    } });
+    expect(await h.submit('数学は残り8枚の予定案を作って。火曜16時から17時の部活も登録して')).toMatchObject({ accepted: true, draftCandidates: [] });
+    expect(h.local.readCheckpoint()!.vnext.state.pendingEventRegistrationTargetIds)
+      .toEqual([h.local.readCheckpoint()!.vnext.state.graph.tasks.find(task => task.title === '部活')!.id]);
+    failAppend = true;
+    const submitted = await h.submit('全部で40分です');
+    expect(submitted.accepted).toBe(true);
+    expect(submitted.draftCandidates.map(candidate => candidate.source).sort()).toEqual(['fixed_event_registration', 'weekly_exam_prep']);
+    expect(submitted.draftCandidates.every(candidate => candidate.approvalStatus === 'unapproved')).toBe(true);
+    expect(h.local.readCheckpoint()!.vnext.state.pendingEventRegistrationTargetIds ?? []).toEqual([]);
+    const result = h.results[1];
+    const sent = h.requests[1] as { messages: { role: string; content: string }[] };
+    expect(result.debugTraceEvents!.find(event => event.stage === 'semantic_provider_request')!.data).toMatchObject({
+      request: { messages: sent.messages }, requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength });
+    const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });
+    expect(queued.input.debugTraceEvents).toEqual(result.debugTraceEvents);
+    const attempted = appendAttempts[appendAttempts.length - 1];
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toHaveLength(1);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...queued.input, requestId: 'timed-registration-retry', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION })).toEqual([]);
+    const write = writes.find(write => write.entries.some(entry => entry.requestId === queued.input.requestId))!;
+    expect(write.entries).toEqual(attempted.entries);
+    const entry = write.entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing retained timed-registration diagnostic');
+    expect(entry.diagnostics).toMatchObject({ outcome: 'preview_ready', previewCount: 2 });
+    expect(entry.aiInterpreter.rawResponses[0].text).toBe(JSON.stringify(answer));
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '106' },
+    { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: CONVERSATION }, NOW);
+    expect(server.entries).toHaveLength(1);
+    expect(JSON.stringify(server.entries[0])).toContain('keep-timed-registration');
+    expect(measureWeeklyPlanningTraceJsonBytes(server.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (large) {
+      const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
+      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+        jsonHead: expect.any(String), jsonTail: expect.any(String) });
+      expect(JSON.stringify(server.entries[0])).not.toContain('x'.repeat(48 * 1024));
+    }
+  });
+
   it.each([false, true].flatMap(large => [true, false].map(withUncertainty => ({ large, withUncertainty }))))(
     'persists year evidence and a required period question through outbox and Worker (large=$large, uncertainty=$withUncertainty)', async ({ large, withUncertainty }) => {
     const reason = 'The omitted end year may mean a much longer period ending next year';
@@ -298,8 +357,18 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     if (large) expect(saved).not.toContain('x'.repeat(48 * 1024));
   });
 
-  it.each([false, true])('Stage B: persists fixed memorization registration through failed append, reload and Worker (large=%s)', async large => {
-    const wire = { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: null }],
+  it.each([false, true].flatMap(completed => [false, true].map(large => ({ completed, large }))))
+  ('Stage B: persists ready memory planning through failed append, reload and Worker (completed=$completed, large=$large)', async ({ completed, large }) => {
+    const wire = completed ? { planningIntent: 'create_plan', conversationActs: [], answer: null,
+      delta: { ...EMPTY, add: [
+        { ...task, title: '英単語' },
+        { ...work('scope', 'scope_total', 100, 'word'), unitLabel: '語' },
+        { ...work('done', 'completed', 100, 'word'), unitLabel: '語' },
+        { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
+          activityKind: 'memorization_retrieval', contextLabel: null },
+        { kind: 'task', localId: 'math', category: 'study', title: '数学' },
+        { ...work('math-time', 'remaining', 60, 'minute'), taskRef: { localId: 'math' } },
+      ] } } : { planningIntent: 'discuss', conversationActs: [{ kind: 'request_event_registration', targetRef: null }],
       answer: null, delta: { ...EMPTY, add: [task, work('pages', 'remaining', 10),
         { kind: 'study_context', localId: 'study', taskRef: { localId: 'task' }, purpose: 'self_study',
           activityKind: 'memorization_retrieval', contextLabel: null },
@@ -317,9 +386,16 @@ describe('VNext session → gateway → existing controller and trace owner', ()
       } };
     } });
     failAppend = true;
-    const submitted = await h.submit('火曜10時から11時に数学の残り10枚を進める予定を入れて');
-    expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
-      date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
+    const submitted = await h.submit(completed ? '英単語100語は全部終わった。今週は数学60分の予定案を作って'
+      : '火曜10時から11時に数学の残り10枚を進める予定を入れて');
+    if (completed) {
+      expect(h.local.readCheckpoint()!.vnext.state.graph.workloads.map(fact => fact.amount)).toEqual([100, 100, 60]);
+      expect(submitted.draftCandidates.reduce((minutes, candidate) => minutes
+        + getEntryDurationMinutes(candidate.startTime, candidate.endTime), 0)).toBe(60);
+    } else {
+      expect(submitted.draftCandidates).toEqual([expect.objectContaining({ source: 'fixed_event_registration',
+        date: '2026-11-03', startTime: '10:00', endTime: '11:00' })]);
+    }
     expect(h.local.readCheckpoint()!.vnext.state.graph.effortEstimates).toEqual([]);
     expect(h.local.readCheckpoint()!.vnext.state.learningStrategyProposalRecords).toEqual([]);
     expect(h.local.readCheckpoint()!.vnext.presentedQuestion).toBeNull();
@@ -350,11 +426,22 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     const diagnostic = server.entries[0].diagnostics as { dialogueRenderer: { request: { promptContext: unknown } } };
     if (!large) expect(diagnostic.dialogueRenderer.request.promptContext).toEqual(rendererInputs[0]);
     else {
-      // Response-source and document budgets bound this context in two stages. The
-      // outer size measures the first wrapper; its head must retain the raw size.
       const originalBytes = new TextEncoder().encode(JSON.stringify(rendererInputs[0])).byteLength;
-      expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
-        jsonHead: expect.stringContaining(`"originalBytes":${originalBytes}`), jsonTail: expect.any(String) });
+      if (completed) {
+        // This ready-turn document fits after one source-value truncation.
+        const truncated = diagnostic.dialogueRenderer.request.promptContext as { jsonHead: string; jsonTail: string };
+        expect(truncated).toMatchObject({ traceTruncated: true, originalBytes,
+          jsonHead: expect.stringContaining('keep-fixed-quantity-evidence'), jsonTail: expect.any(String) });
+        expect(truncated.jsonTail.length).toBeGreaterThan(0);
+        const sourceJson = JSON.stringify(rendererInputs[0]);
+        expect(sourceJson.startsWith(truncated.jsonHead)).toBe(true);
+        expect(sourceJson.endsWith(truncated.jsonTail)).toBe(true);
+      } else {
+        // Fixed registration also needs document-level truncation. The outer
+        // wrapper must retain the raw source size in the first wrapper's head.
+        expect(diagnostic.dialogueRenderer.request.promptContext).toMatchObject({ traceTruncated: true,
+          jsonHead: expect.stringContaining(`"originalBytes":${originalBytes}`), jsonTail: expect.any(String) });
+      }
     }
     const saved = JSON.stringify(server.entries[0]);
     expect(saved).toContain('keep-fixed-quantity-evidence');

@@ -1,7 +1,7 @@
 import { UserFacingError } from '../lib/userFacingError';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
-import { createLocalFixture, deferred, plan, event, actual, STAMP } from '../repositories/localPersistenceConcurrency.testUtils';
+import { createLocalFixture, deferred, plan, event, actual, todo, STAMP } from '../repositories/localPersistenceConcurrency.testUtils';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
 import type { ScheduleTemplate } from '../types/domain';
 import { createScheduleOccurrenceProjection } from '../domain/scheduleOccurrence';
@@ -34,6 +34,33 @@ function project(date = DATE) { return createScheduleOccurrenceProjection({ owne
   scheduleTemplates: state.scheduleTemplates, timetableTerms: state.timetableTerms, startDate: date, endDate: date }).occurrences; }
 const get = (kind: 'plan' | 'month-event' | 'timetable-template') => project().find(row => row.source.backingKind === kind)!;
 const undo = () => { const action = [...showNotice.mock.calls].reverse().find(call => call[2]?.actionLabel === '元に戻す')?.[2]?.onAction; if (!action) throw Error('no undo'); return action; };
+it.each([false, true])('deletes a one-off Plan document while retaining independent records through reload and undo (recorded=%s)', async recorded => {
+  const { repository } = await mount();
+  await repository.upsertPlan(plan({ date: DATE }));
+  const source = (await repository.getPlans('owner')).find(row => row.id === 'plan')!;
+  if (!recorded) await repository.deleteActual('owner', 'actual');
+  await act(async () => { await state.loadPlannerData('owner'); });
+  const before = await repository.getActuals('owner');
+  const occurrence = get('plan');
+  await act(async () => { await state.deleteDayOccurrence(occurrence); });
+  const restore = undo();
+  expect((await repository.getPlans('owner')).find(row => row.id === source.id)).toBeUndefined();
+  expect(state.plans.find(row => row.id === source.id)).toBeUndefined();
+  const remaining = await repository.getActuals('owner');
+  expect(remaining).toHaveLength(before.length);
+  expect(remaining.find(row => row.id === 'event-actual')).toEqual(before.find(row => row.id === 'event-actual'));
+  if (recorded) {
+    expect(remaining.find(row => row.id === 'actual')).toMatchObject({ ...before.find(row => row.id === 'actual'),
+      planId: null, progressSource: { kind: 'study', sourceId: source.id, planType: 'study' } });
+  }
+  await act(async () => { await state.loadPlannerData('owner'); });
+  expect(state.plans.find(row => row.id === source.id)).toBeUndefined();
+  expect(state.actuals).toEqual(remaining);
+  await act(async () => { await restore(); });
+  expect((await repository.getPlans('owner')).find(row => row.id === source.id)).toEqual(source);
+  expect((await repository.getActuals('owner')).find(row => row.id === 'actual'))
+    .toEqual(before.find(row => row.id === 'actual'));
+});
 it.each(['plan', 'month-event', 'timetable-template'] as const)('persists only this %s occurrence, retains actuals, reloads and restores once', async kind => {
   const { repository } = await mount();
   const beforeActuals = await repository.getActuals('owner'); const id = get(kind).id;
@@ -349,7 +376,7 @@ it('blocks duplicate record preparation and preserves source admission through w
   expect(state.plans.filter(row => row.sourceType === 'timetable')).toHaveLength(1);
 });
 
-it('one-off cancellation keeps the saved history and restores the same target through Undo', async () => {
+it('one-off deletion keeps independent history and restores the same target and links through Undo', async () => {
   const { repository } = await mount();
   await repository.upsertPlan(plan({ date: DATE, repeat: 'none' }));
   await act(async () => { await state.loadPlannerData('owner'); });
@@ -357,11 +384,59 @@ it('one-off cancellation keeps the saved history and restores the same target th
   const records = await repository.getActuals('owner');
   await act(async () => { await state.deleteDayOccurrence(occurrence); });
   expect(project().some(row => row.id === occurrence.id)).toBe(false);
-  expect(await repository.getActuals('owner')).toEqual(records);
+  expect((await repository.getPlans('owner')).find(row => row.id === 'plan')).toBeUndefined();
+  expect(await repository.getActuals('owner')).toEqual(records.map(row => row.planId === 'plan'
+    ? { ...row, planId: null, isAlignedToPlan: false } : row));
   const restore = undo();
   await act(async () => { await state.loadPlannerData('owner'); });
   expect(project().some(row => row.id === occurrence.id)).toBe(false);
   await act(async () => { await restore(); });
   expect(project().find(row => row.id === occurrence.id)).toMatchObject({ source: { backingId: occurrence.source.backingId } });
+  expect((await repository.getActuals('owner')).sort((a, b) => a.id.localeCompare(b.id)))
+    .toEqual([...records].sort((a, b) => a.id.localeCompare(b.id)));
+});
+
+it('rolls back the source and records if independent-record persistence fails, then retries after refresh', async () => {
+  const { repository, gateway } = await mount();
+  await repository.upsertPlan(plan({ date: DATE }));
+  await act(async () => { await state.loadPlannerData('owner'); });
+  const plans = await repository.getPlans('owner'), records = await repository.getActuals('owner');
+  vi.spyOn(gateway, 'writeActuals').mockRejectedValueOnce(Error('offline'));
+  await act(async () => { await expect(state.deleteDayOccurrence(get('plan'))).rejects.toThrow(); });
+  expect(await repository.getPlans('owner')).toEqual(plans);
   expect(await repository.getActuals('owner')).toEqual(records);
+  await act(async () => { await state.retryPlannerData(); });
+  await act(async () => { await state.deleteDayOccurrence(get('plan')); });
+  expect((await repository.getPlans('owner')).find(row => row.id === 'plan')).toBeUndefined();
+  expect((await repository.getActuals('owner')).find(row => row.id === 'actual')?.planId).toBeNull();
+});
+
+it('does not overwrite an observed edit to an independent record through deletion Undo', async () => {
+  const { repository } = await mount();
+  await repository.upsertPlan(plan({ date: DATE }));
+  await act(async () => { await state.loadPlannerData('owner'); });
+  await act(async () => { await state.deleteDayOccurrence(get('plan')); });
+  const restore = undo();
+  const retained = (await repository.getActuals('owner')).find(row => row.id === 'actual')!;
+  await repository.upsertActual({ ...retained, note: 'edited after deletion' });
+  await act(async () => { await state.loadPlannerData('owner'); });
+  const dispatch = vi.spyOn(boundary.repository, 'restorePlanWithDependents');
+  await act(async () => { await restore(); });
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(showNotice.mock.calls[showNotice.mock.calls.length - 1]?.[0]).toContain('更新');
+  expect((await repository.getPlans('owner')).find(row => row.id === 'plan')).toBeUndefined();
+  expect((await repository.getActuals('owner')).find(row => row.id === 'actual')).toMatchObject({ planId: null, note: 'edited after deletion' });
+});
+
+it('reopens a Todo with the one-off deletion and restores its schedule on Undo', async () => {
+  const { repository } = await mount();
+  await repository.upsertPlan(plan({ date: DATE, sourceType: 'todo', sourceId: 'todo' }));
+  await repository.upsertTodo(todo());
+  await act(async () => { await state.loadPlannerData('owner'); });
+  const before = await repository.getTodos('owner');
+  await act(async () => { await state.deleteDayOccurrence(get('plan')); });
+  expect(await repository.getTodos('owner')).toEqual([expect.objectContaining({ id: 'todo', status: 'open', scheduledPlanId: null })]);
+  await act(async () => { await undo()(); });
+  expect(await repository.getTodos('owner')).toEqual(before);
+  expect((await repository.getActuals('owner')).find(row => row.id === 'actual')?.planId).toBe('plan');
 });

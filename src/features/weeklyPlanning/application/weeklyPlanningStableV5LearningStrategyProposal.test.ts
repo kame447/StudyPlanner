@@ -151,7 +151,9 @@ describe('Stable V5 learning strategy proposal policy', () => {
     expect(result.pendingProposal).toBeNull();
   });
 
-  it.each(['new', 'pending', 'accepted'] as const)('excludes fixed work from method selection without rewriting its %s history', status => {
+  it.each((['fixed', 'completed'] as const).flatMap(reason =>
+    (['new', 'pending', 'accepted'] as const).map(status => ({ reason, status }))))
+  ('excludes $reason work from method selection without rewriting its $status history', ({ reason, status }) => {
     const meaning = document({ activityKind: 'memorization_retrieval' });
     const identities = { task: 'task-public', workload: 'workload-public' };
     const first = evaluateWeeklyPlanningLearningStrategyProposalsV5({
@@ -168,10 +170,11 @@ describe('Stable V5 learning strategy proposal policy', () => {
     const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
       previousState: state(records), presentedProposalId: null,
       document: meaning, localToFactId: identities, graphRevision: 2, turnId: 'fixed-turn',
-      compilation: { status: 'needs_resolution', input: null, issues: [{
+      excludedWorkloadFactIds: reason === 'completed' ? ['workload-public'] : [],
+      compilation: { status: 'needs_resolution', input: null, issues: reason === 'fixed' ? [{
         domain: 'deduplication', code: 'fixed_task_movable_work_suppressed', blocking: false,
         factId: 'workload-public', details: { taskId: 'task-public', workItemId: 'workload-public' },
-      }] },
+      }] : [] },
     });
     expect(result.records).toEqual(records);
     expect(result.pendingProposal).toBeNull();

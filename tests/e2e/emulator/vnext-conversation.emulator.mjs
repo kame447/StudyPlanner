@@ -69,15 +69,24 @@ async function firestoreDocuments(request, collection) {
   return (await response.json()).documents ?? [];
 }
 
-async function activeVNextCheckpoint(page) {
+// A response can precede publication of the chat index/core. Poll absence as pending;
+// malformed data and multiple active checkpoints still fail rather than becoming readiness.
+async function readActiveVNextCheckpoint(page) {
   return page.evaluate(() => {
     const keys = Object.keys(localStorage).filter(key => !key.includes('.anonymous'));
     const indexKey = keys.find(key => key.startsWith('studyplanner.aiPlanning.chats.v1.'));
     const chatId = indexKey ? JSON.parse(localStorage.getItem(indexKey)).activeChatId : null;
     const coreKeys = chatId ? keys.filter(key => key.startsWith('studyplanner.weeklyPlanning.vnext.') && key.endsWith(`.${chatId}.core`)) : [];
+    if (coreKeys.length === 0) return null;
     if (coreKeys.length !== 1) throw new Error(`Expected one active VNext checkpoint, found ${coreKeys.length}`);
     return JSON.parse(localStorage.getItem(coreKeys[0]));
   });
+}
+
+async function activeVNextCheckpoint(page) {
+  const checkpoint = await readActiveVNextCheckpoint(page);
+  if (checkpoint === null) throw new Error('Expected one active VNext checkpoint, found 0');
+  return checkpoint;
 }
 
 test('VNext core: UI → Worker → Auth/Firestore/trace → preview → approval → save → reload → failure', async ({ page, request }) => {
@@ -201,7 +210,7 @@ test('P1 worker-first: a provider outage preserves the unsaved plan and the next
   const factsRenderer = await nextCall(request);
   expect(factsRenderer.schema).toBe('weekly_planning_stable_v5_dialogue_response');
   await answer(request, factsRenderer, rendererReply(factsRenderer));
-  await expect.poll(async () => (await activeVNextCheckpoint(page)).vnext.messages.length).toBe(2);
+  await expect.poll(async () => (await readActiveVNextCheckpoint(page))?.vnext.messages.length ?? null).toBe(2);
 
   await send(page, 'この条件で予定を作って');
   const plan = await nextCall(request);
@@ -252,7 +261,7 @@ test('P1 worker-first: a provider outage preserves the unsaved plan and the next
   expect(resumedRenderer.schema).toBe('weekly_planning_stable_v5_dialogue_response');
   await answer(request, resumedRenderer, rendererReply(resumedRenderer));
   await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
-  await expect.poll(async () => JSON.stringify((await activeVNextCheckpoint(page)).vnext.state.graph)).toContain('英語の音読');
+  await expect.poll(async () => JSON.stringify((await readActiveVNextCheckpoint(page))?.vnext.state.graph ?? null)).toContain('英語の音読');
   const afterResume = await activeVNextCheckpoint(page);
   expect(afterResume.vnext.failureRecovery).toBeUndefined();
   await expect.poll(async () => (await readVNextChatStorage(page, '英語の音読は30分です')).userTextPersisted).toBe(true);

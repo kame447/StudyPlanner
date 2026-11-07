@@ -7,6 +7,8 @@ This directory contains durable unfinished task/checkpoint records only when an 
 
 Current durable records:
 
+- [V5回帰のVNext移管](issue978-regression-migration.md) — #978。旧除外の日付・繰返し・固定予定を検査対象に戻し、ケースごとのWorker対応と未検証の意味読取を追跡する。
+
 - [AIチャットの送信をボタン操作に限定](ai-chat-button-only-send.md) — Enter/IME編集の送信を撤去。関連component回帰と型・buildは確認済み。公開承認とnative browser CI待ち。会話の意味解釈は変更しない。
 
 - [別アプリからの復帰時のviewport再計測](20261013-ai-viewport-resume-handoff.md) — #483関連。復帰イベントと描画フレームの境界だけを修正し、実機原因・native描画は未確認。AI通信・semantic変更とは別scope。

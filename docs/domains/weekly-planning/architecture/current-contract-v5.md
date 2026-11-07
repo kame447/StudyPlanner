@@ -209,6 +209,8 @@ In VNext, a workload already covered by its own hard fixed temporal scope does n
 
 Learning-method proposals apply to movable learning work. Work excluded by its hard fixed scope does not create or select a method proposal that blocks registration; earlier records remain history without implicit acceptance or rejection. Eligible movable work keeps its ordinary proposal and required-question priority.
 
+In VNext, an owner already resolved to `nothing_to_schedule` does not create or select a memory-method proposal. Its completed facts and proposal history remain intact; an unfinished owner in the same task still keeps its method question, and independent ready work can proceed.
+
 ## Proposal / readiness / scheduler
 
 A proposal is not a command.

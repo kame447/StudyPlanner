@@ -75,6 +75,57 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>, fa
 
 describe('VNext native fixed-event registration through the unchanged V5 projection and approval', () => {
   it.each([
+    { complete: true, repeat: false, requested: true, broad: false, fixedStudy: false },
+    { complete: false, repeat: false, requested: true, broad: false, fixedStudy: false },
+    { complete: false, repeat: true, requested: true, broad: false, fixedStudy: false },
+    { complete: false, repeat: false, requested: false, broad: false, fixedStudy: false },
+    { complete: false, repeat: false, requested: true, broad: true, fixedStudy: false },
+    { complete: false, repeat: false, requested: true, broad: true, fixedStudy: true },
+  ])('retains only requested timed registrations across an independent question and reload (%j)', async ({ complete, repeat, requested, broad, fixedStudy }) => {
+    const math: VNextAddFact[] = [work[0], { kind: 'workload', localId: 'math-work', taskRef: { localId: 'math' }, componentRef: null,
+      amount: 8, unitCode: 'page', unitLabel: '枚', quantityRole: 'remaining', rangeStart: null, rangeEnd: null,
+      perOccurrence: false, periodExpression: null }];
+    const effort: VNextAddFact = { kind: 'effort_estimate', localId: 'math-effort', taskRef: { localId: 'math' },
+      targetRef: { localId: 'math-work' }, effortKind: 'total_duration', minutes: 40,
+      unitCode: null, unitLabel: null, precision: 'exact' };
+    const title = fixedStudy ? '英単語' : '部活';
+    const fixed = event('club', fixedStudy ? 'study' : 'non_study', '16:00', '17:00')
+      .map(fact => fact.kind === 'task' ? { ...fact, title } : fact);
+    const add = [...math, ...fixed,
+      ...(fixedStudy ? [{ kind: 'workload' as const, localId: 'fixed-words', taskRef: { localId: 'club' }, componentRef: null,
+        amount: 30, unitCode: 'word' as const, unitLabel: '語', quantityRole: 'target' as const, rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null }] : []), ...(complete ? [effort] : [])];
+    const h = harness([wire(add, requested ? [request(broad ? null : { localId: 'club' })] : [], 'create_plan'),
+      (context: Context) => ({ ...wire([], repeat ? [request({ factId: context.activeFacts.tasks.find(task => task.title === title)!.id })] : [], 'unknown'),
+        answer: { kind: 'estimate_minutes', optionId: null, minutes: 40, per: 'whole_work' } })]);
+    const first = await h.turn(`今週の数学プリント残り8枚の予定案を作って。火曜16時から17時は${title}${fixedStudy ? '30語の勉強' : ''}。${requested ? `${title}も登録して。` : ''}${complete ? '数学は全部で40分です。' : ''}`);
+    expect(first.interpretation).toMatchObject({ status: 'interpreted', metrics: { calls: 1, repairs: 0 } });
+    expect(first.authorizationDecision?.authorized).toBe(true);
+    let result = first;
+    if (!complete) {
+      expect(first).toMatchObject({ question: { code: 'missing_effort_estimate' }, preview: null });
+      const id = h.state().graph.tasks.find(task => task.title === title)!.id;
+      expect(h.state().pendingEventRegistrationTargetIds ?? []).toEqual(requested ? [id] : []);
+      const restored = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: h.memory.storage });
+      expect(restored.readCheckpoint()!.vnext.state).toEqual(h.state());
+      result = await submitWeeklyPlanningVNextExperimentalTurn({ scope, ports: { ...h.ports, checkpoint: restored.checkpoint },
+        userText: `全部で40分です。${repeat ? `${title}も登録して。` : ''}`, turnId: 'turn-2',
+        shownRevision: restored.readCheckpoint()!.vnext.presentedQuestion!.graphRevision });
+    }
+    expect(result).toMatchObject({ readiness: 'ready', question: null,
+      interpretation: { status: 'interpreted', metrics: { calls: 1, repairs: 0 } } });
+    expect(result.draftCandidates?.map(candidate => candidate.source).sort()).toEqual(requested
+      ? ['fixed_event_registration', 'weekly_exam_prep'] : ['weekly_exam_prep']);
+    expect(result.draftCandidates?.filter(candidate => candidate.source === 'fixed_event_registration')).toEqual(requested
+      ? [expect.objectContaining({ date: '2026-11-03', startTime: '16:00', endTime: '17:00' })] : []);
+    expect(h.state().graph.temporalConstraints).toEqual([expect.objectContaining({ startTime: '16:00', endTime: '17:00' })]);
+    expect(h.state().graph.effortEstimates).toEqual([expect.objectContaining({ minutes: 40 })]);
+    expect(h.state().draftGenerationIntent).toBe('user_authorized');
+    expect(h.state().pendingEventRegistrationTargetIds ?? []).toEqual([]);
+    expect(h.saves()).toBe(0); expect(h.slots.has('ledger')).toBe(false);
+  });
+
+  it.each([
     { activityKind: 'memorization_retrieval', movableMemory: false },
     { activityKind: 'problem_solving', movableMemory: false },
     { activityKind: 'memorization_retrieval', movableMemory: true },
