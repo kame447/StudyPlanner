@@ -71,7 +71,7 @@ describe('#978 independent stated facts and window corrections through Worker', 
       targetFactId: context.activeFacts.workloads.find(f => f.quantityRole === 'completed')!.id, amountDelta: null,
       changes: { amount: 12, quantityRole: null, unitCode: null, unitLabel: null, rangeStart: null, rangeEnd: null, perOccurrence: null, periodExpression: null } }] }),
     context => ({ remove: [{ targetFactId: context.activeFacts.workloads.find(f => f.quantityRole === 'remaining')!.id }] }), {}]);
-    await h.turn(hasTotal ? '全部20ページ、13ページ完了、残り7ページで1ページ5分です。' : '10ページ完了、残り7ページで1ページ5分です。');
+    await h.turn(hasTotal ? '数学プリントは全部20ページ、13ページ完了、残り7ページで1ページ5分です。' : '数学プリントは10ページ完了、残り7ページで1ページ5分です。');
     const corrected = await h.turn('完了は12ページに訂正します。残り7ページはそのまま残してください。');
     expect(corrected.workloads.filter(f => f.quantityRole === 'remaining').map(f => f.amount)).toEqual([7]);
     expect(corrected.workloads.filter(f => f.quantityRole === 'scope_total').map(f => f.amount)).toEqual(hasTotal ? [20] : []);

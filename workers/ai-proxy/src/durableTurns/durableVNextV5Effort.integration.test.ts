@@ -49,7 +49,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('#978 C20 effort meaning through the Worker (scripted semantic readings)', () => {
   it('past-progress-observed-pace/1: estimates only the remaining five pages from completed ten/80 minutes', async () => {
-    const result = await turn('past-progress-observed-pace', '10ページ終わり、そこまでに80分かかりました。残りは5ページです。', [
+    const result = await turn('past-progress-observed-pace', 'レポートは10ページ終わり、そこまでに80分かかりました。残りは5ページです。', [
       task, workload('done', 'completed', 10, 'page', 'ページ'), workload('left', 'remaining', 5, 'page', 'ページ'),
       { kind: 'effort_estimate', localId: 'observed', taskRef: { localId: 'work' }, targetRef: { localId: 'done' },
         effortKind: 'total_duration', minutes: 80, unitCode: null, unitLabel: null, precision: 'exact' },

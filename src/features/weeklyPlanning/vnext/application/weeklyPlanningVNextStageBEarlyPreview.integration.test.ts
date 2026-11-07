@@ -170,7 +170,7 @@ describe('Stage B: early preview after an independent explicit request (syntheti
     const h = harness([wire('discuss', { add: [...MATH, ...physics] }), (context: Context) => wire('create_plan', {
       add: ENGLISH, defer: [{ questionKey: context.openQuestions[0].key, allocation: 'none' }],
     })]);
-    await h.turn('数学は残り8枚、物理は残り6枚です');
+    await h.turn('数学プリントは残り8枚、物理プリントは残り6枚です');
     const result = await h.turn('数学は後で決めます。先に英語60分の予定案を作って');
     expect(result).toMatchObject({ outcome: 'applied', readiness: 'needs_resolution', preview: null });
     const state = h.local.readCheckpoint()!.vnext.state;
