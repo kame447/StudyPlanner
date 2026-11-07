@@ -13,6 +13,11 @@ export interface OpenAiCompatibleRequestMetric {
   promptTokens: number | null;
   completionTokens: number | null;
   totalTokens: number | null;
+  /** Missing provider usage is unknown, never a measured cache miss. */
+  cachedTokens: number | null;
+  cacheWriteTokens: number | null;
+  /** Evaluation grouping from the typed response schema; no prompt text retained. */
+  requestKind?: 'native' | 'focused' | 'renderer' | 'other';
   durationMs: number;
   providerCompletion?: ProviderCompletionMetadata;
 }
