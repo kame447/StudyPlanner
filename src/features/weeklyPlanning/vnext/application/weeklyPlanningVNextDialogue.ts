@@ -26,6 +26,7 @@ import {
 } from '../weeklyPlanningVNextV5Boundary';
 import { createVNextLineageResolver, withCurrentVNextReferences } from '../weeklyPlanningVNextWorkIdentity';
 import { presentWeeklyPlanningVNextQuestion } from './weeklyPlanningVNextQuestionText';
+import type { VNextAcceptedCorrection } from './weeklyPlanningVNextCorrections';
 import type { WeeklyPlanningVNextShownPreview } from './weeklyPlanningVNextSessionCheckpoint';
 
 /** As many recent messages as the Stable V5 renderer reads. */
@@ -45,6 +46,8 @@ export const VNEXT_REPEATED_COMPLETED_EXCEEDS_TOTAL_GUIDANCE =
 type VNextDialogueRenderInput = WeeklyPlanningStableV5DialogueRenderInput & {
   communication: NonNullable<WeeklyPlanningStableV5DialogueRenderInput['communication']> & {
     previewAuthorization?: { status: 'authorization_required'; requestedPlanningIntent: 'create_plan' };
+    /** Values this turn changed from an earlier accepted value; omitted when nothing changed. */
+    corrections?: readonly VNextAcceptedCorrection[];
   };
 };
 
@@ -84,6 +87,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   authorizationRequired?: boolean;
   repeatedQuestionGuidance?: boolean;
   registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts;
+  corrections?: readonly VNextAcceptedCorrection[];
 }): VNextDialogueRenderInput {
   const { state, question, preview } = params;
   // The renderer's helpers follow exact ids, so they read the facts with current references.
@@ -111,6 +115,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
         : actionKind === 'preview_ready' ? 'present_preview' : 'acknowledge',
       askQuestion: actionKind === 'question',
       ...params.registrationCommunication,
+      ...(params.corrections?.length ? { corrections: params.corrections } : {}),
       ...(params.authorizationRequired ? { previewAuthorization: {
         status: 'authorization_required' as const, requestedPlanningIntent: 'create_plan' as const,
       } } : {}),

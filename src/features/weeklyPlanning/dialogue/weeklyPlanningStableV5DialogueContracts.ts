@@ -205,6 +205,8 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   communication?: {
     goal: 'ask_question' | 'explain_question' | 'acknowledge_aside' | 'resume_question' | 'present_preview' | 'acknowledge';
     askQuestion: boolean;
+    /** Optional typed values this turn changed from an earlier accepted value (VNext only). */
+    corrections?: readonly unknown[];
   } & Partial<WeeklyPlanningFixedEventCommunicationFacts>;
   actionId: string;
   currentUserMessage: string;
