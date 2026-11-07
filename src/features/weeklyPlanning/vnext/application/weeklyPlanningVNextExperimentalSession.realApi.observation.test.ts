@@ -108,6 +108,40 @@ function statedTotalUnit(ports: WeeklyPlanningVNextExperimentalPorts): string | 
   return totals.length === 1 ? vnextUnitIdentity(totals[0]) : null;
 }
 
+run('#914 native planning-period interpretation', () => {
+  it.each([
+    { id: 'omitted-past-month', text: '明日から9/7まで、数学を毎日45分の予定を作ってください。', count: null, asksYear: true },
+    { id: 'short-period', text: '明日から11/7まで、数学を毎日45分の予定を作ってください。', count: 9, asksYear: false },
+    { id: 'explicit-long-period', text: '2026年10月30日から2027年9月7日まで、数学を毎日45分の予定を作ってください。', count: 313, asksYear: false },
+    { id: 'ordinary-year-boundary', text: '2026年12月30日から2027年1月5日まで、数学を毎日45分の予定を作ってください。', count: 7, asksYear: false },
+    { id: 'explicit-past-year', text: '明日から2026年9月7日まで、数学を毎日45分の予定を作ってください。', count: null, asksYear: false },
+    { id: 'same-day-boundary', text: '2026年10月30日から同じ10月30日まで、数学を45分だけ予定にしてください。', count: 1, asksYear: false },
+  ])('$id preserves the stated period and asks only about an ambiguous year', async scenario => {
+    const { ports, takeRawOutputs } = createPorts();
+    // Real semantic provider, deterministic session and a synthetic renderer. No user data or saved plans.
+    ports.createRenderer = () => ({ render: async input => ({ status: 'rendered',
+      text: `typed:${input.questionCode ?? input.actionKind}`, rawResponse: '' }) });
+    const periodScope: WeeklyPlanningVNextExperimentalScope = { ...scope, weekStartDate: '2026-10-26',
+      conversationId: `period-${scenario.id}`, clock: { ...scope.clock, currentDate: '2026-10-29',
+        planningStartDate: '2026-10-26', planningEndDate: '2026-11-01' } };
+    const turn = await submitWeeklyPlanningVNextExperimentalTurn({ scope: periodScope, ports,
+      turnId: 'period', userText: scenario.text, shownRevision: null });
+    mkdirSync(outputDir, { recursive: true });
+    writeFileSync(`${outputDir}/914-${scenario.id}.json`, `${JSON.stringify({ scenario, scope: periodScope,
+      turn: snapshot(turn), rawProviderOutputs: takeRawOutputs() }, null, 2)}\n`);
+    if (scenario.asksYear) {
+      expect(turn.question?.code).toBe('semantic_uncertainty');
+      expect(turn.readiness).toBe('needs_resolution');
+      expect(turn.preview).toBeNull();
+    } else if (scenario.count !== null) {
+      expect(turn.question).toBeNull();
+      expect(turn.preview?.blocks).toHaveLength(scenario.count);
+    } else {
+      expect(turn.preview).toBeNull(); // An explicit past year must never silently become next year.
+    }
+  }, 300_000);
+});
+
 run('#926 VNext native session real API end to end', () => {
   it('asks, binds the answer, re-asks after a correction, saves with a resumed partial save, reloads, and leaves V5 data intact', async () => {
     const record: Record<string, unknown> = { scope, steps: [] };

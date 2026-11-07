@@ -1085,7 +1085,7 @@ async function runVNextConversation(
       const workQuestion = observedQuestion ?? (fixtureTurn.oracle.allowQuestionDeferral
         ? projection.deferredQuestions.find(({ code }) => code === fixtureTurn.oracle.questionCode) : undefined);
       const askedWork = workQuestion?.forWork;
-      questionForWork = askedWork ? {
+      questionForWork = workQuestion?.taskId && askedWork ? {
         taskId: workQuestion!.taskId,
         amount: askedWork.amount,
         unitCode: askedWork.unitCode,
@@ -1421,7 +1421,7 @@ describe('VNext real API conversation fixture contract (offline)', () => {
     const conversation = vnextRealApiConversations.find(({ id }) => id === 'optional-invitation-busy-decline-reopen')!;
     const emptyDelta: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defer: [] };
     const busyDelta: VNextTurnDelta = { ...emptyDelta, add: [{
-      kind: 'planning_window', localId: 'week-window', windowKind: 'absolute', value: '2026-11-02/2026-11-08',
+      kind: 'planning_window', localId: 'week-window', yearBasis: null, windowKind: 'absolute', value: '2026-11-02/2026-11-08',
       start: '2026-11-02', end: '2026-11-08',
     }, {
       kind: 'availability_declaration', localId: 'busy', availabilityKind: 'unavailable',

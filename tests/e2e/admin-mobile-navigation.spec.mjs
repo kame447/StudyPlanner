@@ -108,6 +108,9 @@ for (const motion of ['standard', 'reduced', 'off']) test(`drawer button/swipe/f
   await expect(nav).toBeFocused();
   await expect(page.locator('.admin-console-main')).toHaveAttribute('inert', '');
   await expect.poll(() => nav.evaluate(e => Math.abs(e.getBoundingClientRect().x))).toBeLessThan(1);
+  // The sidebar's arrival does not settle the translated main. The frame assertions below
+  // still check their relationship throughout the animation, not just this final position.
+  await expect.poll(() => page.locator('.admin-console-main').evaluate(e => e.getBoundingClientRect().x)).toBeGreaterThan(200);
   const geometry = await page.locator('.admin-console-main').evaluate(e => ({ x: e.getBoundingClientRect().x, transform: getComputedStyle(e).transform, duration: getComputedStyle(e).transitionDuration }));
   expect(geometry.x).toBeGreaterThan(200);
   const openDir = path.resolve('artifacts/admin-overview'); fs.mkdirSync(openDir, { recursive: true });

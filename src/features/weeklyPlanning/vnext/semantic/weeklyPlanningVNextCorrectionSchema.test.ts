@@ -9,7 +9,7 @@ const workload = () => ({ kind: 'workload', localId: 'r8', targetFactId: 'r', am
 describe('VNext experimental provider correction fragment', () => {
   it.each([
     { kind: 'study_context', changes: { purpose: null, contextLabel: null, activityKind: 'reading' } },
-    { kind: 'planning_window', changes: { windowKind: null, value: 'next_week', start: null, end: null } },
+    { kind: 'planning_window', changes: { windowKind: null, value: 'next_week', start: null, end: null, yearBasis: null } },
     { kind: 'recurrence', changes: { recurrenceKind: 'weekly', count: null, days: ['weekday:monday'] } },
     { kind: 'task_date_rule', changes: { ruleKind: 'excluded_date', dateExpression: 'weekday:friday', constraintLevel: null } },
     { kind: 'availability_declaration', changes: { availabilityKind: null, dateExpression: null, namedTimePeriod: null,

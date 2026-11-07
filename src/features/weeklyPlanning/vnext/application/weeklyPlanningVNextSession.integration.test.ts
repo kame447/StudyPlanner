@@ -155,6 +155,7 @@ describe('VNext session: migration, answer binding inside presentation freshness
     v5.workloads = v5.workloads.map((workload) => (workload.id === 'completed' ? { ...workload, taskId: 'task-1-renamed' } : workload));
     const { state } = migrateWeeklyPlanningV5GraphToVNextSession(v5);
     const [question] = projectWeeklyPlanningVNext(state).questions;
+    if (question.code !== 'missing_effort_estimate') throw new Error('Expected an effort question for the migrated work');
     const applied = applyWeeklyPlanningVNextTurn(state, {
       add: [{ kind: 'effort_estimate', localId: 'answer', taskRef: { factId: question.taskId },
         targetRef: { workLineageId: question.forWork!.workLineageId }, effortKind: 'total_duration',
