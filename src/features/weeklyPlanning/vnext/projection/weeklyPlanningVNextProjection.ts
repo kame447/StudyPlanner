@@ -31,6 +31,7 @@ import {
   computeVNextWorkUnits,
   createVNextLineageResolver,
   vnextQuantityBasisKey,
+  vnextMinutesPerQuantityUnit,
   vnextUnitIdentity,
   type VNextLineageResolver,
   type VNextWorkUnit,
@@ -137,7 +138,7 @@ function amountOption(optionId: string, targetFactId: string, amount: number): V
   };
 }
 
-function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; componentId: string | null }): VNextTaskQuestion {
+function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; componentId: string | null }, context: ProjectionContext): VNextTaskQuestion {
   const base = {
     code: issue.code,
     key: questionKey({
@@ -154,11 +155,14 @@ function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; compo
     options: [] as VNextQuestionOption[],
   };
   if (issue.code !== 'remaining_inconsistent') return base;
+  // Time inconsistencies are compared in minutes; each correction still writes its fact's stated unit.
+  const inFactUnits = (amount: number, factId: string) =>
+    amount / (vnextMinutesPerQuantityUnit(context.workloadsById.get(factId)?.unitCode) ?? 1);
   // Either the stated remaining follows progress, or progress follows the stated remaining.
-  const options = [amountOption('remaining_follows_progress', issue.remainingFactId, issue.derivedAmount)];
+  const options = [amountOption('remaining_follows_progress', issue.remainingFactId, inFactUnits(issue.derivedAmount, issue.remainingFactId))];
   const completedForStated = issue.totalAmount - issue.statedAmount;
   if (completedForStated >= 0) {
-    options.push(amountOption('completed_follows_remaining', issue.completedFactId, completedForStated));
+    options.push(amountOption('completed_follows_remaining', issue.completedFactId, inFactUnits(completedForStated, issue.completedFactId)));
   }
   return { ...base, options };
 }
@@ -307,7 +311,7 @@ function resolveOwnerWork(
   owner: OwnerWorkUnits,
 ): { scheduled: VNextWorkUnit[] } | { projection: VNextOwnerProjection } {
   if (owner.issue) {
-    return { projection: { ...ownerQuestion(owner, owner.issue.code, []), question: issueQuestion(owner.issue, owner) } };
+    return { projection: { ...ownerQuestion(owner, owner.issue.code, []), question: issueQuestion(owner.issue, owner, context) } };
   }
   const units = owner.units;
   const represented = new Set<VNextWorkUnit>();

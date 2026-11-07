@@ -5,6 +5,7 @@ import {
   computeVNextWorkUnits,
   vnextLineageIdByFactId,
   vnextQuantityBasisKey,
+  resolveVNextEffortBinding,
 } from '../weeklyPlanningVNextWorkIdentity';
 import type { WeeklyPlanningVNextGraph } from '../weeklyPlanningVNextTypes';
 import { compileGenericPlanningWorkItems } from '../../semantic/weeklyPlanningGenericWorkItems';
@@ -65,6 +66,34 @@ function graphWithWorkloads(workloads: WorkloadFactV5[]): WeeklyPlanningVNextGra
 }
 
 describe('VNext work identity kernel', () => {
+  it.each([
+    { totalUnit: 'hour', total: 1, doneUnit: 'minute', done: 30, remaining: 0.5 },
+    { totalUnit: 'minute', total: 60, doneUnit: 'hour', done: 0.5, remaining: 30 },
+  ] as const)('derives mixed time progress without changing facts or binding units ($totalUnit)', ({ totalUnit, total, doneUnit, done, remaining }) => {
+    const totalFact = workload({ id: 'total', role: 'scope_total', amount: total, unitCode: totalUnit });
+    const graph = graphWithWorkloads([totalFact,
+      workload({ id: 'done', role: 'completed', amount: done, unitCode: doneUnit })]);
+    const before = structuredClone(graph);
+    const [owner] = computeVNextWorkUnits(graph);
+    expect(owner.issue).toBeNull();
+    expect(owner.units).toHaveLength(1);
+    expect(owner.units[0]).toMatchObject({ amount: remaining, workload: totalFact,
+      basisKey: vnextQuantityBasisKey(totalFact), derivedFromTotal: true });
+    expect(resolveVNextEffortBinding(graph, { workloadFactId: 'total' })).toEqual({
+      kind: 'future_work', workLineageId: 'total', boundAmount: remaining, boundBasisKey: vnextQuantityBasisKey(totalFact),
+    });
+    expect(graph).toEqual(before);
+  });
+
+  it('keeps a weekly total separate from a per-session time quantity', () => {
+    const total = workload({ id: 'total', role: 'scope_total', amount: 1, unitCode: 'hour' });
+    const each = workload({ id: 'each', role: 'remaining', amount: 30, unitCode: 'minute', perOccurrence: true, periodExpression: 'each_session' });
+    expect(computeVNextWorkUnits(graphWithWorkloads([total, each]))[0].units).toMatchObject([
+      { amount: 1, workload: total, basisKey: vnextQuantityBasisKey(total) },
+      { amount: 30, workload: each, basisKey: vnextQuantityBasisKey(each) },
+    ]);
+  });
+
   it('derives remaining work from total and completed without storing a remainder', () => {
     const graph = graphWithWorkloads([
       workload({ id: 'total', role: 'scope_total', amount: 20 }),
