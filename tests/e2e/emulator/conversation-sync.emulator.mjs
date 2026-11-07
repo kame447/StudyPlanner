@@ -151,3 +151,88 @@ test('real UI opts in, restores across independent devices and reloads, with no 
   await page.screenshot({ path: testInfo.outputPath('desktop-sync.png'), fullPage: true });
   expect(errors).toEqual([]);
 });
+
+test('pending edits reach the other device exactly once after reconnect without a competing edit', async ({ page, browser, request }) => {
+  const firstMessage = '再接続確認の数学を60分予定にしてください。';
+  const edit = '地理も30分あります。';
+  await signIn(page); await goToTargetPlannerWeek(page);
+  await expect(sync(page)).toHaveAttribute('data-sync-state', /disabled|synced/);
+  // A separate chat keeps this case independent of the preceding conflict case.
+  await page.getByLabel('チャット一覧を開く').click();
+  await page.getByRole('button', { name: '新しいチャット', exact: true }).click();
+  await expect(page.locator('.ai-planning-message-row')).toHaveCount(0);
+  await message(page, firstMessage); await completePlan(request);
+  await expect(page.locator('.ai-planning-plan-card')).toBeVisible();
+  if (await sync(page).getAttribute('data-sync-state') === 'disabled') {
+    await page.getByRole('button', { name: '端末間同期を有効にする' }).click();
+    await page.getByRole('button', { name: '同意して同期する', exact: true }).click();
+  }
+  await expect(sync(page)).toHaveAttribute('data-sync-state', 'synced', { timeout: 20_000 });
+  await expect.poll(async () => {
+    const current = await inspect(page);
+    const row = current.rows.find(item => item.scope.chatId === current.index.activeChatId);
+    return Boolean(row && !row.pending && !row.dirty && row.confirmed?.payload?.core?.includes('数学'));
+  }, { timeout: 20_000 }).toBe(true);
+  const a = await inspect(page);
+  const baseline = a.rows.find(row => row.scope.chatId === a.index.activeChatId);
+  expect(baseline.confirmed).not.toBeNull(); expect(baseline.pending).toBeNull();
+  const record = async device => (await inspect(device)).rows.find(row =>
+    row.scope.chatId === baseline.scope.chatId && row.scope.weekStartDate === baseline.scope.weekStartDate);
+  const state = await page.context().storageState();
+  const second = await browser.newContext({ baseURL: origin, timezoneId: 'Asia/Tokyo', storageState: {
+    cookies: [], origins: state.origins.map(item => ({ origin: item.origin,
+      localStorage: item.localStorage.filter(row => row.name.startsWith('laplance-first-run-tour-v1:')) })),
+  } });
+  try {
+    const other = await second.newPage();
+    await signIn(other);
+    await expect(sync(other)).toHaveAttribute('data-sync-state', 'synced', { timeout: 20_000 });
+    await other.getByLabel('チャット一覧を開く').click();
+    await other.locator('.ai-chat-list').getByText(firstMessage, { exact: true }).click();
+    await expect(other.locator('.ai-planning-message-row.user .ai-planning-bubble')).toHaveText([firstMessage]);
+    expect((await record(other)).confirmed.revision).toBe(baseline.confirmed.revision);
+
+    // Interrupt only B's transaction commit for this conversation. Auth, reads,
+    // the synthetic AI and A's connection keep using their real emulator paths.
+    const document = `projects/demo-studyplanner/databases/(default)/documents/weekly_planning_conversations/${a.uid}/sessions/${baseline.scope.chatId}.${baseline.scope.weekStartDate}`;
+    const firestore = 'http://127.0.0.1:8180/**';
+    let blockedCommits = 0;
+    await second.route(firestore, route => {
+      const outgoing = route.request();
+      if (outgoing.method() === 'POST' && new URL(outgoing.url()).pathname.endsWith('/documents:commit')
+        && outgoing.postDataJSON()?.writes?.some(write => write.update?.name === document)) {
+        blockedCommits++;
+        return route.abort('internetdisconnected');
+      }
+      return route.continue();
+    });
+    await message(other, edit);
+    await answerAddedTask(request, await nextCall(request), '地理');
+    await expect.poll(() => blockedCommits, { timeout: 20_000 }).toBeGreaterThan(0);
+    await expect.poll(async () => Boolean((await record(other))?.pending)).toBe(true);
+    await expect.poll(async () => (await record(other))?.working?.core).toContain('地理');
+    // A makes no edit and retains the accepted baseline while B cannot send.
+    expect((await record(page)).confirmed.revision).toBe(baseline.confirmed.revision);
+    await expect(page.locator('.ai-planning-message-row.user .ai-planning-bubble').filter({ hasText: edit })).toHaveCount(0);
+
+    await second.unroute(firestore);
+    await other.getByRole('button', { name: /会話を更新|同期を再試行/ }).click();
+    await expect.poll(async () => {
+      const row = await record(other);
+      return Boolean(row && !row.pending && !row.dirty && row.confirmed?.payload?.core?.includes('地理'));
+    }, { timeout: 20_000 }).toBe(true);
+    await expect(sync(other)).toHaveAttribute('data-sync-state', 'synced');
+    const delivered = await record(other);
+    expect(delivered.blocked).toBeNull();
+    expect(delivered.confirmed.revision).toBeGreaterThan(baseline.confirmed.revision);
+
+    await page.getByRole('button', { name: /会話を更新|同期を再試行/ }).click();
+    await expect.poll(async () => (await record(page))?.confirmed?.revision, { timeout: 20_000 })
+      .toBe(delivered.confirmed.revision);
+    await expect(page.locator('.ai-planning-message-row.user .ai-planning-bubble').filter({ hasText: edit })).toHaveCount(1);
+    const restored = await record(page);
+    expect(restored.pending).toBeNull(); expect(restored.blocked).toBeNull();
+    expect(restored.working.core).toBe(delivered.confirmed.payload.core);
+    expect(JSON.parse(restored.working.core).vnext.state.graph.tasks.filter(task => task.title === '地理')).toHaveLength(1);
+  } finally { await second.close(); }
+});
