@@ -32,3 +32,21 @@ Streamable HTTP の stateless JSON response subset: `initialize`、`notification
 公開前には別承認で OAuth / canonical marker admission / read-only server repository composition / rate・query budget / audit / 実クライアント相互運用を完成させる。現在の flag を立てるだけでは読めない構成を維持する。
 
 References (checked 2026-11-08): [OpenAI server/tool/auth boundaries](https://developers.openai.com/plugins/build/mcp-server), [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), [MCP initialization/version negotiation](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle), [schedule authority](../../scheduling/architecture/scheduled-event-authority.md).
+
+## Follow-up: single-event prepare (design before implementation)
+
+Active branch `feat/issue355-mcp-prepare`, exact base `b83a36eaad657109c31bae5b6f26d97724aa7489` (PR #1047). Owner: WiseLinnaeus. Status: locally verified; patch handoff to PluckyTuring for Git/CI integration. The read-only slice above remains its own release unit.
+
+単発の一般予定について、型付き title / start / end / timeZone から未保存の仮確認を返す。start/end は `YYYY-MM-DD` と `HH:mm` (00:00–23:59) の正規化済みローカル端点。24:00 や日跨ぎは解釈せず、明示された翌日00:00を受ける。終了は開始より後、composition が指定した許可期間内に収まることを検証する。期間末の翌日00:00は排他的終端として許容する。自然文、UTC offset、終日、recurrence、更新・削除はこの入力に含めない。
+
+候補は canonical ScheduleEvent の一般予定フィールドに対応するが、保存レコードは作らない。既存の owner-bound range reader が authority・owner・timezone と既存 occurrence 展開を所有し、prepare は正規化済み半開区間の比較だけを行う。全重なり（busy 値も保持）と、タイトル・両端点が同じ重複候補を返す。タイトル一致を同一予定の証明とは扱わず、自動削除・保存・時間移動を行わない。
+
+代案比較: (1) 週間planning graphを新設すると単発の確認に不要な状態と保存経路を増やす。(2) MCP専用draft DBやpreview tokenを発行すると今回不要な持続性・承認権限を生む。(3) **採用:** stateless な typed preview と既存 reader の再利用。返値は `unsaved_preview`、preview ID/revision は今回発行しない。後段commitはこの返値を権限として信用せず、owner/freshness/明示承認/冪等性を別途検証する必要がある。
+
+MCP は既存の無効 flag / 未構成401を維持し、prepare に `schedule:prepare` scope を追加する。read scope だけの client には引き続き read tool だけを列挙し、prepare 呼出を403にする。追加scopeは保存権限ではない。default entry は認証・reader・preparerを持たず、OAuth・本番entry・deploy設定・Firestoreは変更しない。
+
+Exit: 重複候補、隣接と日跨ぎの半開区間、タイムゾーン、owner、許可期間外、不正入力、読取不能、無書込み、MCP scope/discovery/call を決定論で確認し、型検査と独立Worker bundleを検証する。関連範囲の統合テストと exact diff/manifest を親へ渡す。公開・実保存の完了とは呼ばない。
+
+2026-11-08: focused 67/67 (3 files)、Worker 全体＋MCP/occurrence/authority repository の統合 1820/1820 (137 files)、app/Worker typecheck exit0、production app build exit0、独立Worker bundle 7.2kB と無効404/認証未構成401の実行確認2/2が通過。型生成時の Wrangler debug log は sandbox の `~/.wrangler/logs` EPERM が出たが、runtime types生成と tsc は完了・exit0。共有fixture / runner / provider / trace / 保存schema / 本番entryには変更がなく、新規moduleのimportは独立MCP entry内に限られるため、VNext全体の再実行は統合owner側のCIへ委ねる。
+
+保存形状の追加keyはない。Pages/Workerの本番配信順序変更は不要（両本番entry・deploy設定は無変更）。差分の適用基点は #1047。OAuth、実authority admission/composition、公開、保存・承認・冪等commitは引き続き後続範囲であり、現在の仮確認をその代用にしない。実行証拠とexact contentは `.handoff/355-prepare-summary.md` / `.handoff/355-prepare-snapshot.json` に記録する。
