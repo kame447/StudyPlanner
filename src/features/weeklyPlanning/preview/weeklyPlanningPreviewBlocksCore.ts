@@ -5,6 +5,7 @@ import type {
 } from '../types';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
+import { expandWeeklyPlanningCandidateEstimate } from '../personalization/weeklyPlanningEstimateCalibration';
 import type { BehaviorAwarePreviewMetadata } from './weeklyPlanningPreviewCompatibility';
 
 export type WeeklyPlanningStableV5PreviewMetadata =
@@ -95,6 +96,14 @@ function behaviorMetadataFromCandidate(
             weeklyPlanningObservationSource: {
               ...stableV5Metadata.weeklyPlanningObservationSource,
             },
+          }
+        : {}),
+      ...(stableV5Metadata.estimate
+        ? {
+            estimateMetadata: expandWeeklyPlanningCandidateEstimate(stableV5Metadata.estimate, {
+              allocationMinutes: candidate.durationMinutes,
+              sourceFactRefs: stableV5Metadata.sourceFactRefs,
+            }),
           }
         : {}),
       ...(userId

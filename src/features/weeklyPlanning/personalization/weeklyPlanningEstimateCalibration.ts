@@ -59,7 +59,18 @@ export function createWeeklyPlanningEstimateMetadata(
   item: GenericPlanningWorkItem,
   allocationMinutes: number,
 ): WeeklyPlanningEstimateMetadataV1 | null {
-  const baseEstimateMinutes = item.baseEstimatedMinutes ?? item.estimatedMinutes;
+  // Only a user's own effort estimate is something an actual can be compared with. A time the user chose
+  // to spend (intrinsic duration or a provisional timebox) is not an estimate, and an observed pace is
+  // already built from actuals.
+  if (item.estimateBasis !== 'direct_effort') return null;
+  const itemBaseMinutes = item.baseEstimatedMinutes ?? item.estimatedMinutes;
+  // A work item can be placed as several blocks. Each block records its own share of the base, in the
+  // same proportion as its allocation (as the allocation breakdown does); the whole base on every block
+  // would make a later actual/base ratio look too small.
+  const baseEstimateMinutes = itemBaseMinutes !== null && item.estimatedMinutes !== null && item.estimatedMinutes > 0
+    && allocationMinutes > 0 && allocationMinutes <= item.estimatedMinutes
+    ? itemBaseMinutes * (allocationMinutes / item.estimatedMinutes)
+    : itemBaseMinutes;
   const roundingStepMinutes = item.roundingStepMinutes;
   if (
     baseEstimateMinutes === null
@@ -77,6 +88,42 @@ export function createWeeklyPlanningEstimateMetadata(
     allocationMinutes,
     roundingStepMinutes,
     sourceFactRefs: [...item.sourceFactRefs],
+  };
+}
+
+/**
+ * The three numbers a placed candidate keeps (candidates are stored in size-bounded traces and
+ * checkpoints). Everything else in the metadata is already on the candidate or fixed by the recording rule.
+ */
+export interface WeeklyPlanningCandidateEstimateV1 {
+  base: number;
+  multiplier: number;
+  step: 5 | 15;
+}
+
+export function createWeeklyPlanningCandidateEstimate(
+  item: GenericPlanningWorkItem,
+  allocationMinutes: number,
+): WeeklyPlanningCandidateEstimateV1 | null {
+  const metadata = createWeeklyPlanningEstimateMetadata(item, allocationMinutes);
+  return metadata
+    ? { base: metadata.baseEstimateMinutes, multiplier: metadata.calibrationMultiplier, step: metadata.roundingStepMinutes }
+    : null;
+}
+
+/** The inverse of the compact form; only a direct effort estimate is ever recorded (see the factory). */
+export function expandWeeklyPlanningCandidateEstimate(
+  estimate: WeeklyPlanningCandidateEstimateV1,
+  block: { allocationMinutes: number; sourceFactRefs: readonly string[] },
+): WeeklyPlanningEstimateMetadataV1 {
+  return {
+    version: WEEKLY_PLANNING_ESTIMATE_METADATA_VERSION,
+    baseEstimateMinutes: estimate.base,
+    estimateBasis: 'direct_effort',
+    calibrationMultiplier: estimate.multiplier,
+    allocationMinutes: block.allocationMinutes,
+    roundingStepMinutes: estimate.step,
+    sourceFactRefs: [...block.sourceFactRefs],
   };
 }
 

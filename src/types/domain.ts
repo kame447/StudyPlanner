@@ -77,6 +77,17 @@ export interface WeeklyPlanningMemoryPaceObservationSourceV1 {
   plannedSessionMinutes: number;
 }
 
+/** The estimate behind a weekly-planning block: numbers and fact ids only, never a user's words. */
+export interface WeeklyPlanningEstimateMetadataV1 {
+  version: 1;
+  baseEstimateMinutes: number;
+  estimateBasis: string | null;
+  calibrationMultiplier: number;
+  allocationMinutes: number;
+  roundingStepMinutes: 5 | 15;
+  sourceFactRefs: string[];
+}
+
 export interface WeeklyPlanningMemoryPaceObservationResultV1 {
   version: 1;
   kind: 'memory_pace_calibration';
@@ -111,6 +122,7 @@ export interface Plan {
   materialId?: string | null;
   materialName?: string;
   weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
+  weeklyPlanningEstimate?: WeeklyPlanningEstimateMetadataV1;
 }
 
 export interface ActualProgressSource {
@@ -182,6 +194,7 @@ export interface PlanDraft {
   materialId?: string | null;
   materialName?: string;
   weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
+  weeklyPlanningEstimate?: WeeklyPlanningEstimateMetadataV1;
 }
 
 export interface ActualDraft {

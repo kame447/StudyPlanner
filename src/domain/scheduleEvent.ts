@@ -7,6 +7,7 @@ import type {
   PlanSourceType,
   PlanType,
   RecurrenceRule,
+  WeeklyPlanningEstimateMetadataV1,
   WeeklyPlanningMemoryPaceObservationSourceV1,
 } from '../types/domain';
 
@@ -57,6 +58,7 @@ export interface ScheduleEventPlanDetails {
   materialId?: string | null;
   materialName?: string;
   weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
+  weeklyPlanningEstimate?: WeeklyPlanningEstimateMetadataV1;
 }
 
 export interface ScheduleEventGeneralDetails {
@@ -168,6 +170,7 @@ export function scheduleEventFromPlan(plan: Plan): ScheduleEvent {
     materialId: plan.materialId,
     materialName: plan.materialName,
     weeklyPlanningObservationSource: plan.weeklyPlanningObservationSource,
+    weeklyPlanningEstimate: plan.weeklyPlanningEstimate,
   };
   const base: ScheduleEventBase = {
     schemaVersion: SCHEDULE_EVENT_SCHEMA_VERSION,
@@ -282,6 +285,7 @@ export function scheduleEventToPlan(event: ScheduleEvent): Plan | null {
     materialId: event.plan.materialId,
     materialName: event.plan.materialName,
     weeklyPlanningObservationSource: event.plan.weeklyPlanningObservationSource,
+    ...(event.plan.weeklyPlanningEstimate ? { weeklyPlanningEstimate: event.plan.weeklyPlanningEstimate } : {}),
     ...(event.busy === false ? { busy: false } : {}),
   };
 }
