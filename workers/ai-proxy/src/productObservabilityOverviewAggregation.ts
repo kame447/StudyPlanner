@@ -75,10 +75,18 @@ function mergeAiAggregates(
   }, emptyAiAggregate());
 }
 
+/** Counts by typed key; undefined when no rollup carries them (unmeasured), otherwise the sum over those that do. */
+function mergeOptionalCounts<T extends string>(
+  values: ReadonlyArray<Partial<Record<T, number>> | undefined>,
+): Partial<Record<T, number>> | undefined {
+  const present = values.filter((value): value is Partial<Record<T, number>> => value !== undefined);
+  return present.length === 0 ? undefined : present.reduce<Partial<Record<T, number>>>((sum, value) => addCountRecord(sum, value), {});
+}
+
 function mergePlanningAggregates(
   values: readonly ObservabilityPlanningAggregate[],
 ): ObservabilityPlanningAggregate {
-  return values.reduce<ObservabilityPlanningAggregate>((merged, value) => ({
+  const merged = values.reduce<ObservabilityPlanningAggregate>((merged, value) => ({
     outcomeCounts: addCountRecord(merged.outcomeCounts, value.outcomeCounts),
     previewCountSum: merged.previewCountSum + value.previewCountSum,
     previewCountUnknownCount: merged.previewCountUnknownCount + value.previewCountUnknownCount,
@@ -92,6 +100,15 @@ function mergePlanningAggregates(
     unscheduledCountSum: 0,
     unscheduledCountUnknownCount: 0,
   });
+  const questionCodeCounts = mergeOptionalCounts(values.map(value => value.questionCodeCounts));
+  const rejectionReasonCounts = mergeOptionalCounts(values.map(value => value.rejectionReasonCounts));
+  return {
+    ...merged,
+    ...(questionCodeCounts ? { questionCodeCounts } : {}),
+    ...(rejectionReasonCounts ? { rejectionReasonCounts } : {}),
+    // Days that carry the counts: the period's counts cover only those; the rest are unmeasured, not zero.
+    ...(questionCodeCounts ? { questionCountDays: values.filter(value => value.questionCodeCounts !== undefined).length } : {}),
+  };
 }
 
 function firstTimestamp(values: readonly (string | null)[]): string | null {

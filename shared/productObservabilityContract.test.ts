@@ -3,6 +3,8 @@ import {
   PRODUCT_OBSERVABILITY_SCHEMA_VERSION,
   OBSERVABILITY_COUNTER_LIMITS,
   observabilityCountersInDomain,
+  PLANNING_QUESTION_CODES,
+  PLANNING_TURN_REJECTION_REASONS,
   validatePlanningOutcomeTelemetryDraft,
   validateProductActivityTelemetryDraft,
 } from './productObservabilityContract';
@@ -140,5 +142,37 @@ describe('telemetry counter domains', () => {
     payload.decision.inputRevision = 0;
     payload.providerCompletion.effectiveMaxCompletionTokens = OBSERVABILITY_COUNTER_LIMITS.tokens + 1;
     expect(check()).toBe(false);
+  });
+});
+
+describe('typed question and rejection dimensions (Stage B SB11)', () => {
+  const asked = (changes: Record<string, unknown> = {}) => { const draft = planningDraft();
+    return { ...draft, payload: { ...draft.payload, outcomeType: 'question_asked', previewCount: null, unscheduledCount: null, questionCode: 'duplicate_quantity', ...changes } }; };
+  const failed = (changes: Record<string, unknown> = {}) => { const draft = planningDraft();
+    return { ...draft, payload: { ...draft.payload, outcomeType: 'failed', rejectionReason: 'rejected_after_repair', ...changes } }; };
+  const rejected = { ok: false, error: 'Telemetry planning outcome payload is invalid.' };
+
+  it('accepts every code and reason of the closed lists, on their own event only', () => {
+    for (const questionCode of PLANNING_QUESTION_CODES) expect(validatePlanningOutcomeTelemetryDraft(asked({ questionCode })).ok).toBe(true);
+    for (const rejectionReason of PLANNING_TURN_REJECTION_REASONS) expect(validatePlanningOutcomeTelemetryDraft(failed({ rejectionReason })).ok).toBe(true);
+    expect(validatePlanningOutcomeTelemetryDraft(planningDraft()).ok).toBe(true);
+  });
+
+  it('drops nothing silently: free text, an unknown code, null and the wrong event are all rejected', () => {
+    for (const questionCode of ['数学の問題集が全部で20ページ', 'unknown_code', '', null, 7]) {
+      expect(validatePlanningOutcomeTelemetryDraft(asked({ questionCode }))).toEqual(rejected);
+    }
+    for (const rejectionReason of ['stack trace: TypeError at x', 'unknown', null]) {
+      expect(validatePlanningOutcomeTelemetryDraft(failed({ rejectionReason }))).toEqual(rejected);
+    }
+    // A question event must name its code; another event must not carry one.
+    const noCode = asked(); delete (noCode.payload as Record<string, unknown>).questionCode;
+    expect(validatePlanningOutcomeTelemetryDraft(noCode)).toEqual(rejected);
+    expect(validatePlanningOutcomeTelemetryDraft({ ...planningDraft(), payload: { ...planningDraft().payload, questionCode: 'duplicate_quantity' } })).toEqual(rejected);
+    expect(validatePlanningOutcomeTelemetryDraft({ ...planningDraft(), payload: { ...planningDraft().payload, rejectionReason: 'provider_error' } })).toEqual(rejected);
+  });
+
+  it('still rejects any other extra payload key', () => {
+    expect(validatePlanningOutcomeTelemetryDraft(asked({ utterance: '予定を作って' }))).toEqual(rejected);
   });
 });

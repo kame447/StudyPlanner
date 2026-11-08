@@ -135,6 +135,24 @@ describe('aggregateOverviewPeriod', () => {
     expect(aggregateOverviewPeriod([legacy, withWrite]).ai).toMatchObject({ cacheWriteTokens: 300, cacheWriteTokensUnknownCount: 3 });
   });
 
+  it('merges typed question and rejection counts over the days that carry them, and reports the rest as unmeasured', () => {
+    const withCounts = (date: string, questions: Record<string, number>, rejections: Record<string, number>) => {
+      const entry = daily(date, 90);
+      return { ...entry, planning: { ...entry.planning, questionCodeCounts: questions, rejectionReasonCounts: rejections } } as ObservabilityDailyRollup;
+    };
+    const legacy = daily('2026-11-07', 90);
+    const merged = aggregateOverviewPeriod([legacy, withCounts('2026-11-08', { duplicate_quantity: 2, missing_effort_estimate: 1 }, { rejected_after_repair: 1 }),
+      withCounts('2026-11-09', { duplicate_quantity: 1 }, {})]).planning;
+    expect(merged.questionCodeCounts).toEqual({ duplicate_quantity: 3, missing_effort_estimate: 1 });
+    expect(merged.rejectionReasonCounts).toEqual({ rejected_after_repair: 1 });
+    expect(merged.questionCountDays).toBe(2);
+    // Only legacy days: unmeasured, not an empty map.
+    const unmeasured = aggregateOverviewPeriod([legacy]).planning;
+    expect(unmeasured).not.toHaveProperty('questionCodeCounts');
+    expect(unmeasured).not.toHaveProperty('rejectionReasonCounts');
+    expect(unmeasured).not.toHaveProperty('questionCountDays');
+  });
+
   it('returns explicit zero aggregates for an empty period', () => {
     const aggregate = aggregateOverviewPeriod([]);
 

@@ -363,3 +363,49 @@ describe('product observability read model projection', () => {
     expect(next.latestErrorAt).toBeUndefined();
   });
 });
+
+describe('typed question and rejection counts (Stage B SB11)', () => {
+  const day = (current: ReturnType<typeof createEmptyDailyRollup> | null, payload: PlanningOutcomeMetricPayload) =>
+    projectDailyRollup({ current, event: event({ eventType: 'planning_outcome', payload }), actorDayWasNew: false, nowIso: '2026-08-28T00:00:02.000Z' });
+  const empty = () => createEmptyDailyRollup({ environment: 'production', localDate: '2026-08-28', nowIso: '2026-08-28T00:00:00.000Z' });
+  const asked = (questionCode: PlanningOutcomeMetricPayload['questionCode']) => planningPayload({ outcomeType: 'question_asked', questionCode, previewCount: null, unscheduledCount: null });
+
+  it('counts a question by its typed code and a failure by its typed reason, on their own events', () => {
+    let rollup = day(empty(), asked('missing_effort_estimate'));
+    rollup = day(rollup, asked('missing_effort_estimate'));
+    rollup = day(rollup, asked('duplicate_quantity'));
+    rollup = day(rollup, planningPayload({ outcomeType: 'failed', rejectionReason: 'rejected_after_repair' }));
+    rollup = day(rollup, planningPayload({ outcomeType: 'failed' }));
+    expect(rollup.planning.questionCodeCounts).toEqual({ missing_effort_estimate: 2, duplicate_quantity: 1 });
+    expect(rollup.planning.rejectionReasonCounts).toEqual({ rejected_after_repair: 1 });
+    expect(rollup.planning.outcomeCounts).toMatchObject({ question_asked: 3, failed: 2 });
+  });
+
+  it('drops a value outside the closed lists instead of storing it under its own key', () => {
+    const rollup = day(day(empty(), asked('予定を作って' as never)), planningPayload({ outcomeType: 'failed', rejectionReason: 'stack trace' as never }));
+    expect(rollup.planning.questionCodeCounts).toEqual({});
+    expect(rollup.planning.rejectionReasonCounts).toEqual({});
+    expect(JSON.stringify(rollup.planning)).not.toMatch(/予定を作って|stack trace/u);
+  });
+
+  it('ignores the dimension on an event that is not its own', () => {
+    const rollup = day(empty(), planningPayload({ outcomeType: 'preview_generated', questionCode: 'duplicate_quantity', rejectionReason: 'provider_error' }));
+    expect(rollup.planning.questionCodeCounts).toEqual({});
+    expect(rollup.planning.rejectionReasonCounts).toEqual({});
+  });
+
+  it('starts counting on a rollup recorded before these counts existed, without inventing zeros for it', () => {
+    const legacy = empty();
+    delete (legacy.planning as { questionCodeCounts?: unknown }).questionCodeCounts;
+    delete (legacy.planning as { rejectionReasonCounts?: unknown }).rejectionReasonCounts;
+    const unchanged = day(legacy, planningPayload({ outcomeType: 'preview_generated' }));
+    expect(unchanged.planning.questionCodeCounts).toEqual({});
+    expect(day(legacy, asked('same_or_distinct_work')).planning.questionCodeCounts).toEqual({ same_or_distinct_work: 1 });
+  });
+
+  it('keeps a question count out of the user\'s last planning outcome', () => {
+    const summary = projectUserSummary({ current: null, event: event({ eventType: 'planning_outcome', payload: planningPayload({ outcomeType: 'preview_generated' }) }), nowIso: '2026-08-28T00:00:02.000Z' });
+    const after = projectUserSummary({ current: summary, event: event({ eventType: 'planning_outcome', payload: asked('duplicate_quantity'), occurredAt: '2026-08-28T00:00:05.000Z' }), nowIso: '2026-08-28T00:00:06.000Z' });
+    expect(after.lastPlanningOutcome).toBe('preview_generated');
+  });
+});

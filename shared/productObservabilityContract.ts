@@ -127,9 +127,43 @@ export const PLANNING_OUTCOME_TYPES = [
   'stale_observed',
   'unscheduled_observed',
   'approval_failure_observed',
+  'question_asked',
 ] as const;
 
 export type PlanningOutcomeType = (typeof PLANNING_OUTCOME_TYPES)[number];
+
+/**
+ * The typed question a planning turn ended by asking (the VNext question codes). A closed list, never free text, so a
+ * count by code carries no utterance, title or identifier. A code outside this list is dropped, not stored.
+ */
+export const PLANNING_QUESTION_CODES = [
+  'semantic_uncertainty',
+  'learning_strategy_proposal',
+  'quantity_role_unresolved',
+  'quantity_basis_invalid',
+  'duplicate_quantity',
+  'completed_exceeds_total',
+  'remaining_inconsistent',
+  'same_or_distinct_work',
+  'missing_effort_estimate',
+  'effort_inconsistent',
+  'invalid_commitment_interval',
+  'missing_schedulable_work',
+] as const;
+
+export type PlanningQuestionCode = (typeof PLANNING_QUESTION_CODES)[number];
+
+/** Why a planning turn failed: the provider call, an unparseable reply, a reading rejected after repair, a rejected turn. */
+export const PLANNING_TURN_REJECTION_REASONS = [
+  'provider_error',
+  'unparseable',
+  'rejected_after_repair',
+  'rejected',
+  'checkpoint_unreadable',
+  'other',
+] as const;
+
+export type PlanningTurnRejectionReason = (typeof PLANNING_TURN_REJECTION_REASONS)[number];
 
 export interface PlanningOutcomeMetricPayload {
   outcomeType: PlanningOutcomeType;
@@ -144,6 +178,10 @@ export interface PlanningOutcomeMetricPayload {
   schedulerVersion: string | null;
   promptVersion: string | null;
   model: string | null;
+  /** Set only on `question_asked`; absent from every other event. */
+  questionCode?: PlanningQuestionCode;
+  /** Set only on `failed`, when the turn's failure reason is known; absent otherwise. */
+  rejectionReason?: PlanningTurnRejectionReason;
 }
 
 export interface PlanningOutcomeTelemetryDraft {
@@ -196,6 +234,15 @@ const MAX_CORRELATION_ID_LENGTH = 180;
 const MAX_DIMENSION_LENGTH = 128;
 const activityActionSet = new Set<string>(PRODUCT_ACTIVITY_ACTIONS);
 const planningOutcomeTypeSet = new Set<string>(PLANNING_OUTCOME_TYPES);
+const planningQuestionCodeSet = new Set<string>(PLANNING_QUESTION_CODES);
+const planningRejectionReasonSet = new Set<string>(PLANNING_TURN_REJECTION_REASONS);
+export const isPlanningQuestionCode = (value: unknown): value is PlanningQuestionCode =>
+  typeof value === 'string' && planningQuestionCodeSet.has(value);
+export const isPlanningTurnRejectionReason = (value: unknown): value is PlanningTurnRejectionReason =>
+  typeof value === 'string' && planningRejectionReasonSet.has(value);
+/** Absent, or one value of the closed list: no null and no free text. */
+const isOptionalEnum = (value: unknown, allowed: ReadonlySet<string>): boolean =>
+  value === undefined || (typeof value === 'string' && allowed.has(value));
 const sourceSet = new Set<string>(OBSERVABILITY_SOURCES);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -374,6 +421,8 @@ export function validatePlanningOutcomeTelemetryDraft(
       'schedulerVersion',
       'promptVersion',
       'model',
+      'questionCode',
+      'rejectionReason',
     ])
     || typeof value.payload.outcomeType !== 'string'
     || !planningOutcomeTypeSet.has(value.payload.outcomeType)
@@ -387,7 +436,11 @@ export function validatePlanningOutcomeTelemetryDraft(
     || !isNullableBoolean(value.payload.approvalFailureObserved)
     || !isNullableBoundedString(value.payload.schedulerVersion, MAX_DIMENSION_LENGTH)
     || !isNullableBoundedString(value.payload.promptVersion, MAX_DIMENSION_LENGTH)
-    || !isNullableBoundedString(value.payload.model, MAX_DIMENSION_LENGTH)) {
+    || !isNullableBoundedString(value.payload.model, MAX_DIMENSION_LENGTH)
+    || !isOptionalEnum(value.payload.questionCode, planningQuestionCodeSet)
+    || !isOptionalEnum(value.payload.rejectionReason, planningRejectionReasonSet)
+    || (value.payload.questionCode !== undefined) !== (value.payload.outcomeType === 'question_asked')
+    || (value.payload.rejectionReason !== undefined && value.payload.outcomeType !== 'failed')) {
     return { ok: false, error: 'Telemetry planning outcome payload is invalid.' };
   }
   return { ok: true, value: value as unknown as PlanningOutcomeTelemetryDraft };

@@ -1,3 +1,4 @@
+import { planningBreakdown, type PlanningBreakdownRow } from '../lib/planningQuestionBreakdown';
 import { formatObservabilityReportingDate, shiftObservabilityDate } from '../../shared/productObservabilityDateRange';
 import {
   Activity,
@@ -258,6 +259,20 @@ function ActivityBars({ daily }: { daily: ObservabilityDailyRollup[] }) {
   );
 }
 
+/** Reuses the planning list's rows (no new CSS: the stylesheet is at its size budget). */
+function BreakdownList({ title, rows, empty }: { title: string; rows: PlanningBreakdownRow[] | null; empty: string }) {
+  return (
+    <div className="admin-overview-planning-list">
+      <small>{title}</small>
+      {rows === null ? <small>未計測</small> : rows.length === 0 ? <small>{empty}</small> : rows.map(row => (
+        <div key={row.key} className="admin-overview-planning-row">
+          <div><span>{row.label}</span><strong>{formatNumber(row.count)}件</strong></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function StatusRow({
   label,
   value,
@@ -351,6 +366,7 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
     { label: '失敗', value: planning?.failed ?? 0, tone: 'red' },
   ] : [];
   const planningMax = Math.max(1, ...planningRows.map((row) => row.value));
+  const planningDetail = planningBreakdown(data?.period.planning);
   const aiSuccessRate = !data || data.period.ai.requestCount <= 0
     ? '—'
     : `${((data.period.ai.successCount / data.period.ai.requestCount) * 100).toFixed(1)}%`;
@@ -527,6 +543,11 @@ export function AdminOverviewPage({ navigate }: AdminOverviewPageProps) {
                     </div>
                   </div>
                 ))}
+              </div>
+              <div aria-label="質問と失敗の内訳">
+                <BreakdownList title="最後に尋ねた質問" rows={planningDetail.questions} empty="質問なし" />
+                <BreakdownList title="失敗の理由" rows={planningDetail.rejections} empty="失敗なし" />
+                <small>{planningDetail.measuredDays === null ? '内訳は未計測です。' : `内訳を計測した日: ${planningDetail.measuredDays}日分（それ以前は未計測）`}</small>
               </div>
               <button className="admin-overview-detail-link" type="button" onClick={() => navigate('/admin/planning')}>
                 Planningの詳細を確認

@@ -187,6 +187,22 @@ describe('AdminOverviewPage', () => {
     expect(text).not.toContain('Planning品質スコア');
   });
 
+  it('shows the typed question and failure breakdown, and says unmeasured when the period has none', () => {
+    const previous = overviewFixture.period.planning;
+    const render = () => { let renderer!: ReturnType<typeof create>; act(() => { renderer = create(<AdminOverviewPage navigate={vi.fn()} />); });
+      const text = JSON.stringify(renderer.toJSON()); act(() => renderer.unmount()); return text; };
+    try {
+      overviewFixture.period.planning = { ...previous, questionCodeCounts: { missing_effort_estimate: 4, duplicate_quantity: 1 },
+        rejectionReasonCounts: { rejected_after_repair: 2 }, questionCountDays: 3 };
+      const measured = render();
+      for (const expected of ['所要時間の確認', '量の重複', '修復の後も受理されない', '内訳を計測した日: 3日分']) expect(measured).toContain(expected);
+      overviewFixture.period.planning = previous;
+      const unmeasured = render();
+      expect(unmeasured).toContain('内訳は未計測です。');
+      expect(unmeasured).not.toContain('所要時間の確認');
+    } finally { overviewFixture.period.planning = previous; }
+  });
+
   it('exposes the implemented AI, Planning, and System drill-down routes', () => {
     const navigate = vi.fn();
     let renderer: ReturnType<typeof create>;
