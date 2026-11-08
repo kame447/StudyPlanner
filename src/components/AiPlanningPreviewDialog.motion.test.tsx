@@ -43,14 +43,21 @@ function show(blocks: WeeklyPlanDraftBlock[], hasLocalPreview = true, plans: Pla
     const element = <AiPlanningPreviewDialog {...props} plans={plans} blocks={blocks} hasLocalPreview={hasLocalPreview} />;
     if (renderer) renderer.update(element);
     else renderer = create(element, {
-      createNodeMock: node => (/ai-planning-preview-(overview-grid|day-detail)/.test(String(node.props.className ?? '')) ? body : {}),
+      createNodeMock: node => {
+        if (/ai-planning-preview-(overview-grid|day-detail)/.test(String(node.props.className ?? ''))) return body;
+        // The dialog now takes focus when it opens; a hidden node is left alone by the focus hook.
+        if (node.type === 'section' && node.props.role === 'dialog') return { getClientRects: () => [], getAttribute: () => null, querySelectorAll: () => [], contains: () => false };
+        return {};
+      },
     });
   });
 }
 
 beforeEach(() => {
   env = installFakeMotionEnvironment();
+  vi.stubGlobal('HTMLElement', class {});
   vi.stubGlobal('document', { ...globalThis.document, addEventListener: vi.fn(), removeEventListener: vi.fn(), documentElement: { dataset: {} } });
+  Object.assign(window, { requestAnimationFrame: () => 1, cancelAnimationFrame: () => undefined });
   played.length = 0;
   nodes.clear();
 });
