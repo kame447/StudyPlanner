@@ -22,6 +22,8 @@ vi.mock('./weeklyPlanningTurnExecutor', async () => ({
   executeWeeklyPlanningTurn: execute,
 }));
 // Repository IO is outside this owner/view-lifetime contract.
+// The focus hook needs a real DOM; its contract is covered by useDialogFocus.test.tsx.
+vi.mock('../../hooks/useDialogFocus', async () => { const { useRef } = await import('react'); return { useDialogFocus: () => ({ dialogRef: useRef(null), initialFocusRef: useRef(null) }) }; });
 vi.mock('../../repositories', () => ({
   plannerRepository: { getTodos: async () => [], getStudyMaterials: async () => [] },
 }));
