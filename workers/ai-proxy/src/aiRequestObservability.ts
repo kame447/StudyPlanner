@@ -108,9 +108,22 @@ export function resolveAiRequestPhase(
   const hasRepairEnvelope = entries.some((message) =>
     message.role === 'user'
       && typeof message.content === 'string'
-      && message.content.includes('"validationErrors"')
-      && message.content.includes('"requiredChanges"'));
+      && (isStableV5RepairEnvelope(message.content) || isVNextRepairEnvelope(message.content)));
   return hasAssistantContext && hasRepairEnvelope ? 'repair' : 'initial';
+}
+
+function isStableV5RepairEnvelope(content: string): boolean {
+  return content.includes('"validationErrors"') && content.includes('"requiredChanges"');
+}
+
+/** The VNext repair request is exactly `{ instruction: string, errors: [...] }`; no initial VNext input carries both keys. */
+function isVNextRepairEnvelope(content: string): boolean {
+  try {
+    const value = record(JSON.parse(content));
+    return typeof value?.instruction === 'string' && Array.isArray(value.errors);
+  } catch {
+    return false;
+  }
 }
 
 export function createAiRequestId(
