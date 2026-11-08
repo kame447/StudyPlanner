@@ -122,6 +122,8 @@ describe.skipIf(!enabled)('Issue #51 first approval transaction — actual deplo
     const items = await getDocs(query(collection(operation, 'weekly_planning_approval_items'), where('userId', '==', owner.uid)));
     expect(items.size).toBe(1);
     expect((await getDoc(targetRef(owner.db, input, 'legacy-plan'))).exists()).toBe(true);
-    expect((await getDoc(targetRef(owner.db, input, 'canonical-event'))).exists()).toBe(true);
+    // A new account has no schedule-event migration record, so the transaction writes the plan in legacy form only
+    // (`resolveScheduleWriteMode`). One authority holds it: both clients converge on that one record, none in schedule_events.
+    expect((await getDoc(targetRef(owner.db, input, 'canonical-event'))).exists()).toBe(false);
   });
 });
