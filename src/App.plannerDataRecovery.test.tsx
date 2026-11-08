@@ -183,7 +183,8 @@ it('retains the previous App view and Home entry instance while settings owns th
   await act(async () => renderer!.root.findByType(HomeScheduleView).props.onAddEntry({ kind: 'study', date: '2026-10-13' }));
   const homeInstance = renderer!.root.findByType(HomeScheduleView);
   const entryInstance = renderer!.root.findByType(HomeAddFlow);
-  act(() => renderer!.root.findByType(PrimaryAppHeader).props.onOpenSettings());
+  // Settings loads on demand (lazy), so let its chunk resolve before looking for it.
+  await act(async () => renderer!.root.findByType(PrimaryAppHeader).props.onOpenSettings());
   expect(renderer!.root.findByType(AppSettingsDialog).props.open).toBe(true);
   expect(renderer!.root.findByProps({ className: 'app-shell home-app-shell' }).props.hidden).toBe(true);
   expect(renderer!.root.findByType(HomeScheduleView)).toBe(homeInstance);
