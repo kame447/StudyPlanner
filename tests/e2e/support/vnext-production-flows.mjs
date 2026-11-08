@@ -182,6 +182,8 @@ const countSavedBlocks = async (page, title) => {
 // Only visible nodes: the hidden AI view still holds the same title in its messages.
 const visibleEntries = (page, title) => page.getByText(title).locator('visible=true');
 
+const PLANNER_DATA_RECOVERY_NOTICE = '.planner-data-recovery-notice';
+
 // Counts for the open day view, by the same title identity as countSavedBlocks. Numbers only: never a title or an id.
 const dayBlockCounts = async (page, title) => {
   const rows = await page.locator('.timeline-plan-block').evaluateAll(nodes => nodes.map(node => ({
@@ -192,6 +194,9 @@ const dayBlockCounts = async (page, title) => {
     drafts: mine.filter(row => row.draft).length,
     otherSaved: rows.filter(row => !row.draft && !isSavedPlanTitle(row.blockTitle, title)).length,
     visible: await visibleEntries(page, title).count(),
+    // The planner-data recovery notice (PlannerDataRecoveryNotice.tsx) is rendered only while the product knows its plans may be
+    // out of date. Presence only: its text is never read.
+    notice: (await page.locator(PLANNER_DATA_RECOVERY_NOTICE).count()) > 0,
   };
 };
 
