@@ -2,6 +2,7 @@ import { PLAN_TYPE_OPTIONS } from '../lib/plans';
 import { PLAN_REPEAT_OPTIONS } from '../lib/planRecurrence';
 import { TimeRangeFields } from './TimeRangeFields';
 import type { PlanDraft } from '../types/domain';
+import { mergeEditedPlanMemo, visiblePlanMemo } from '../lib/planInternalMemo';
 
 interface PlanFieldsEditorProps {
   draft: PlanDraft;
@@ -126,8 +127,8 @@ export function PlanFieldsEditor({
       <label className="field field-full">
         <span>メモ</span>
         <textarea
-          value={draft.memo}
-          onChange={(event) => updateField('memo', event.target.value)}
+          value={visiblePlanMemo(draft.memo)}
+          onChange={(event) => updateField('memo', mergeEditedPlanMemo(draft.memo, event.target.value))}
           rows={3}
           placeholder="必要なら補足を残す"
         />

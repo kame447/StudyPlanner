@@ -12,9 +12,9 @@ const plan: Plan = {
 let renderer: ReactTestRenderer | undefined;
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; });
 
-function mount() {
+function mount(planOverride: Plan = plan) {
   const save = vi.fn().mockResolvedValue(undefined);
-  act(() => { renderer = create(<ActualEditorCard plan={plan} plans={[plan]} actuals={[]}
+  act(() => { renderer = create(<ActualEditorCard plan={planOverride} plans={[planOverride]} actuals={[]}
     onEditPlan={vi.fn()} onDeletePlan={vi.fn()} onSaveActual={save} onDeleteActual={vi.fn()}
     forceOpen hideToggleButton hidePlanActions />); });
   const root = renderer!.root;
@@ -57,4 +57,11 @@ it('preserves alternate-content validation, data and the return to planned conte
     isAlignedToPlan: true, title: plan.title, subject: plan.subject, note: '保持するメモ',
     occurrenceDate: plan.date, actualStartTime: plan.startTime, actualEndTime: plan.endTime,
   }), undefined);
+});
+
+it('shows the user\'s memo but not the weekly planning bookkeeping saved with it', () => {
+  const markers = 'Stable V5 preview / graphRevision: 2 / workItemKey: wpwi_x / [weekly-source:block-1] / [weekly-approval:op-1]';
+  const note = (memo: string) => mount({ ...plan, memo }).root.findAllByProps({ className: 'detail-note' }).map(node => node.children.join(''));
+  expect(note(`${plan.memo} / ${markers}`)).toEqual([plan.memo]);
+  expect(note(markers)).toEqual([]);
 });

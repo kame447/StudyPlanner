@@ -19,6 +19,7 @@ import {
 } from '../features/weeklyPlanning/personalization/weeklyPlanningMemoryPaceObservationsV5';
 import { isTimedActual } from '../lib/actualDuration';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
+import { visiblePlanMemo } from '../lib/planInternalMemo';
 
 interface ActualEditorCardProps {
   plan: Plan;
@@ -272,7 +273,7 @@ export function ActualEditorCard({
         </div>
       </div>
 
-      {plan.memo ? <p className="detail-note">{plan.memo}</p> : null}
+      {visiblePlanMemo(plan.memo) ? <p className="detail-note">{visiblePlanMemo(plan.memo)}</p> : null}
 
       {isOpen ? (
         <div className="actual-form actual-form-compact">
