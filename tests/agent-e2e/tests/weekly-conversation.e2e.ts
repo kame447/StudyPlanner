@@ -25,15 +25,14 @@ test('smoke: weekly planning conversation accepts one user turn', async ({ app, 
   await composer.fill(vagueRequest);
   await screen.getByRole('button', { name: '送信' }).click();
 
-  // The chat title in the heading repeats the first user message, so the user's text is asserted exactly
-  // once inside the conversation below, not by a page-wide text match.
-  await expect(screen.getByText(`テスト応答: ${vagueRequest}`, { exact: true })).toBeVisible();
-
+  // The chat title in the heading repeats the first user message, and the hidden live region (role=status)
+  // repeats the newest reply, so both texts are asserted exactly once inside the conversation, not page-wide.
   // Keep the exact-once controller/reducer and rendered-message guarantees
   // when moving this synthetic 1-turn contract from the Playwright suite.
   const page = surfaceOf(weeklyWebEngine)?.page();
   assert.ok(page, 'The shared TesterArmy web surface must be active');
   const conversation = page.locator('.ai-planning-conversation');
+  await conversation.getByText(`テスト応答: ${vagueRequest}`, { exact: true }).waitFor({ state: 'visible' });
   assert.equal(await conversation.getByText(vagueRequest, { exact: true }).count(), 1);
   assert.equal(await conversation.getByText(`テスト応答: ${vagueRequest}`, { exact: true }).count(), 1);
 
@@ -74,10 +73,11 @@ test('agentic: a vague student request can be submitted through the visible UI',
 
   await agent.act(`週間計画の相談欄へ「${vagueRequest}」を入力し、通常の送信操作を一度だけ行ってください。予定の仮登録・承認・保存は行わないでください。`);
 
-  await expect(screen.getByText(`テスト応答: ${vagueRequest}`, { exact: true })).toBeVisible();
   const page = surfaceOf(weeklyWebEngine)?.page();
   assert.ok(page, 'The shared TesterArmy web surface must be active');
   const conversation = page.locator('.ai-planning-conversation');
+  // The hidden live region (role=status) also holds the newest reply; wait on the conversation's copy.
+  await conversation.getByText(`テスト応答: ${vagueRequest}`, { exact: true }).waitFor({ state: 'visible' });
   assert.equal(await conversation.getByText(vagueRequest, { exact: true }).count(), 1);
   assert.equal(await conversation.getByText(`テスト応答: ${vagueRequest}`, { exact: true }).count(), 1);
   const boundary = await page.evaluate(() => ({

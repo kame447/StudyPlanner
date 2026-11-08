@@ -50,7 +50,7 @@ test.describe('real weekly failure recovery through AiPlanningView', () => {
     const completion = (await events(page, 'real-runtime-complete'))[0];
     expect(completion.payload.graphRevision).toBe(1);
     expect(await events(page, 'real-runtime-execute')).toHaveLength(2);
-    await expect(page.getByText('テスト応答: 回復後の条件', { exact: true })).toHaveCount(1);
+    await expect(page.locator('.ai-planning-conversation').getByText('テスト応答: 回復後の条件', { exact: true })).toHaveCount(1);
   });
 
   test('a failed approval save keeps the draft retryable and a second approval can complete it', async ({ page }) => {
