@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { VNextAddFact, VNextTurnDelta, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
+import type { VNextAddFact, VNextAddWorkload, VNextTurnDelta, WeeklyPlanningVNextState } from '../weeklyPlanningVNextTypes';
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from '../semantic/weeklyPlanningVNextTransaction';
 import { projectWeeklyPlanningVNext } from './weeklyPlanningVNextProjection';
 
@@ -8,8 +8,9 @@ import { projectWeeklyPlanningVNext } from './weeklyPlanningVNextProjection';
 const horizon = { startDate: '2026-11-02', endDate: '2026-11-08' };
 const empty = (): VNextTurnDelta => ({ add: [], patch: [], remove: [], relate: [], defer: [] });
 const task = (localId: string, title: string): VNextAddFact => ({ kind: 'task', localId, category: 'study', title });
-const remaining = (localId: string, taskLocalId: string, amount: number): VNextAddFact => ({ kind: 'workload', localId, taskRef: { localId: taskLocalId },
-  componentRef: null, quantityRole: 'remaining', amount, unitCode: 'custom', unitLabel: 'ページ', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null });
+const remaining = (localId: string, taskLocalId: string, amount: number, quantityRole: VNextAddWorkload['quantityRole'] = 'remaining'): VNextAddWorkload => ({ kind: 'workload',
+  localId, taskRef: { localId: taskLocalId }, componentRef: null, quantityRole, amount, unitCode: 'custom', unitLabel: 'ページ', rangeStart: null, rangeEnd: null,
+  perOccurrence: false, periodExpression: null });
 function apply(delta: VNextTurnDelta, state = createEmptyWeeklyPlanningVNextState()): WeeklyPlanningVNextState {
   const result = applyWeeklyPlanningVNextTurn(state, delta, { expectedRevision: state.graph.revision, acceptedDate: '2026-11-02', weekStartsOn: 'monday',
     planningHorizon: horizon, defaultPlanningHorizon: horizon, conversationId: 'c', turnKey: `t${state.graph.revision}`, turnId: `t${state.graph.revision}`, sourceText: 'synthetic' });
@@ -39,7 +40,7 @@ describe('the question asked first grasps the whole picture before a detail (Sta
 
   it('keeps a structural question about a stated quantity ahead of a detail, whatever the task order', () => {
     const state = apply({ ...empty(), add: [task('a', '数学'), remaining('wa', 'a', 8), task('b', '英語'),
-      { ...remaining('x', 'b', 20), quantityRole: 'scope_total' }, { ...remaining('y', 'b', 20), quantityRole: 'scope_total' }] });
+      remaining('x', 'b', 20, 'scope_total'), remaining('y', 'b', 20, 'scope_total')] });
     expect(asked(state)[0]).toEqual(['duplicate_quantity', '英語']);
     expect(asked(state).map(([code]) => code)).toEqual(['duplicate_quantity', 'missing_effort_estimate']);
   });
