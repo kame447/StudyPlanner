@@ -3,7 +3,7 @@ import { createScheduleRangeReader } from '../../../src/features/mcp/readSchedul
 import { createScheduleEventPreparer } from '../../../src/features/mcp/prepareScheduleEvent';
 import { ScheduleEventCommitError, createScheduleEventCommitter } from '../../../src/features/mcp/commitScheduleEvent';
 import type { Plan } from '../../../src/types/domain';
-import defaultWorker, { MAX_MCP_REQUEST_BODY_BYTES, createMcpReadWorker, type McpReadPrincipal } from './mcpReadWorker';
+import defaultWorker, { MAX_MCP_REQUEST_BODY_BYTES, createMcpReadWorker, type McpReadPrincipal, type McpToolCallAudit } from './mcpReadWorker';
 
 const enabled = { MCP_READ_ENABLED: 'true' };
 const principal: McpReadPrincipal = { ownerId: 'owner-a', scopes: ['schedule:read'] };
@@ -197,6 +197,82 @@ describe('disabled private MCP read Worker entry', () => {
     expect(await (await unconfigured.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: {} }), enabled)).json())
       .toMatchObject({ result: { isError: true, content: [{ text: 'Schedule preview unavailable.' }] } });
     expect((await defaultWorker.fetch(rpc('tools/call', { name: 'prepare_schedule_event', arguments: {} }), enabled)).status).toBe(401);
+  });
+
+  describe('tool call audit', () => {
+    const FIXED = '2026-11-08T00:00:00.000Z';
+    const call = (worker: ReturnType<typeof createMcpReadWorker>, name: string, args: unknown) =>
+      worker.fetch(rpc('tools/call', { name, arguments: args }), enabled);
+    function audited(actor: McpReadPrincipal = principal) {
+      const h = setup(actor);
+      const entries: McpToolCallAudit[] = [];
+      const prepare = createScheduleEventPreparer({ ownerId: principal.ownerId, timeZone: query.timeZone, range: query,
+        authority: { getScheduleSnapshot: h.snapshot }, timetable: { getScheduleTemplates: async () => [], getTimetableTerms: async () => [] } });
+      const reader = createScheduleRangeReader({ ownerId: principal.ownerId, timeZone: query.timeZone,
+        authority: { getScheduleSnapshot: h.snapshot }, timetable: { getScheduleTemplates: async () => [], getTimetableTerms: async () => [] } });
+      const worker = createMcpReadWorker({ authenticate: h.authenticate, readScheduleRange: reader, prepareScheduleEvent: prepare,
+        audit: entry => entries.push(entry), now: () => FIXED });
+      return { ...h, worker, entries };
+    }
+    const prepareInput = { title: 'secret title', start: { date: query.startDate, time: '10:00' },
+      end: { date: query.endDate, time: '11:00' }, timeZone: query.timeZone };
+
+    it('records owner, tool, outcome code and time for ok, invalid, denied and unavailable reads, and never arguments or content', async () => {
+      const h = audited();
+      await call(h.worker, 'read_schedule_range', query);
+      await call(h.worker, 'read_schedule_range', { ...query, endDate: '2026-10-01' });
+      h.snapshot.mockResolvedValueOnce({ plans: [{ ...plan, userId: 'foreign', title: 'foreign secret' }], monthEvents: [] });
+      await call(h.worker, 'read_schedule_range', query);
+      h.snapshot.mockRejectedValueOnce(new Error('database private details'));
+      await call(h.worker, 'read_schedule_range', query);
+      const base = { event: 'mcp_tool_call', ownerId: 'owner-a', tool: 'read_schedule_range', at: FIXED };
+      expect(h.entries).toEqual([{ ...base, outcome: 'ok', reason: 'ok' }, { ...base, outcome: 'error', reason: 'invalid_range' },
+        { ...base, outcome: 'denied', reason: 'owner_mismatch' }, { ...base, outcome: 'error', reason: 'unavailable' }]);
+      const text = JSON.stringify(h.entries);
+      for (const secret of [plan.title, plan.memo, 'foreign secret', 'database private details', query.startDate]) expect(text).not.toContain(secret);
+    });
+
+    it('audits prepare (ok, invalid, scope denial, unavailable) without the title', async () => {
+      const h = audited({ ...principal, scopes: ['schedule:read', 'schedule:prepare'] });
+      await call(h.worker, 'prepare_schedule_event', prepareInput);
+      await call(h.worker, 'prepare_schedule_event', { ...prepareInput, approved: true });
+      h.snapshot.mockRejectedValueOnce(new Error('private source details'));
+      await call(h.worker, 'prepare_schedule_event', prepareInput);
+      const readOnly = audited();
+      await call(readOnly.worker, 'prepare_schedule_event', prepareInput);
+      expect(h.entries.map(entry => [entry.tool, entry.outcome, entry.reason])).toEqual([
+        ['prepare_schedule_event', 'ok', 'ok'], ['prepare_schedule_event', 'error', 'invalid_event'], ['prepare_schedule_event', 'error', 'unavailable']]);
+      expect(readOnly.entries.map(entry => [entry.outcome, entry.reason])).toEqual([['denied', 'scope']]);
+      expect(JSON.stringify([...h.entries, ...readOnly.entries])).not.toContain('secret title');
+    });
+
+    it('does not audit unauthenticated, wrong-origin or malformed requests, and leaves commit to its own audit', async () => {
+      const h = audited({ ...principal, scopes: ['schedule:read', 'schedule:prepare', 'schedule:commit'] });
+      const commit = vi.fn(async () => ({ status: 'saved' }));
+      const worker = createMcpReadWorker({ authenticate: h.authenticate, commitScheduleEvent: commit as never,
+        audit: entry => h.entries.push(entry) });
+      await worker.fetch(rpc('tools/call', { name: 'commit_schedule_event', arguments: {} }), { ...enabled, MCP_COMMIT_ENABLED: 'true' });
+      expect(commit).toHaveBeenCalledOnce(); expect(h.entries).toEqual([]);
+      const unauthenticated = new Request('https://private.example/mcp', { method: 'POST', headers: { ...headers, Authorization: 'Bearer wrong' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_schedule_range', arguments: query } }) });
+      expect((await worker.fetch(unauthenticated, enabled)).status).toBe(401);
+      expect((await worker.fetch(rpc('tools/call', { name: 'read_schedule_range', arguments: query }, { Origin: 'https://evil.example' }), enabled)).status).toBe(403);
+      expect(h.entries).toEqual([]);
+    });
+
+    it('a failing sink does not change the response, and the default sink writes the Worker log line', async () => {
+      const h = setup();
+      const reader = createScheduleRangeReader({ ownerId: principal.ownerId, timeZone: query.timeZone,
+        authority: { getScheduleSnapshot: h.snapshot }, timetable: { getScheduleTemplates: async () => [], getTimetableTerms: async () => [] } });
+      const failing = createMcpReadWorker({ authenticate: h.authenticate, readScheduleRange: reader, audit: () => { throw new Error('sink down'); } });
+      expect(await (await call(failing, 'read_schedule_range', query)).json()).toMatchObject({ result: { structuredContent: { startDate: query.startDate } } });
+      const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+      try {
+        const standard = createMcpReadWorker({ authenticate: h.authenticate, readScheduleRange: reader });
+        await call(standard, 'read_schedule_range', query);
+        expect(info).toHaveBeenCalledWith('[MCP Tool Call] audit', expect.objectContaining({ event: 'mcp_tool_call', ownerId: 'owner-a', outcome: 'ok' }));
+      } finally { info.mockRestore(); }
+    });
   });
 
   describe('commit_schedule_event', () => {
