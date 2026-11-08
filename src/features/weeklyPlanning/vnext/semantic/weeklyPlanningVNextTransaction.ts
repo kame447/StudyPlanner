@@ -470,12 +470,14 @@ export function applyWeeklyPlanningVNextTurn(
   }
   delta.defer.forEach((deferral, index) => {
     if (!deferral.questionKey.trim()) error('invalid_value', `defer[${index}].questionKey`);
+    // An all_pending scope is expanded by the session before this point; one that reaches here was not a valid expansion.
+    else if (deferral.scope === 'all_pending') error('invalid_value', `defer[${index}].scope`);
     else if (deferral.allocation !== 'none' && (deferral.allocation !== 'provisional_timebox'
       || !vnextQuestionKeyAllowsProvisionalTimebox(deferral.questionKey))) error('invalid_value', `defer[${index}].allocation`);
     else if (!next.deferrals.some(item => item.questionKey === deferral.questionKey && item.allocation === deferral.allocation)) {
       // A later statement about the same question replaces its allocation (e.g. deferred, then "place it provisionally").
       next.deferrals = next.deferrals.filter(item => item.questionKey !== deferral.questionKey);
-      next.deferrals.push({ ...deferral, createdRevision: graph.revision });
+      next.deferrals.push({ questionKey: deferral.questionKey, allocation: deferral.allocation, createdRevision: graph.revision });
     }
   });
 

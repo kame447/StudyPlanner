@@ -177,6 +177,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       ...(input.communication?.corrections?.length ? [
         'communication.correctionsは、このturnで前の受理値から変わった値です。対象ごとに、beforeからafterへ変えたことを返信の本文（text）で短く伝えてください。groundingAcknowledgementにだけ入れて本文を直前の質問のままにしないでください。数値と単位はcorrectionsにあるものだけを使い、変わっていない値は言い換えて繰り返さないでください。',
       ] : []),
+      ...(input.communication?.provisionalWork?.length ? [
+        'communication.provisionalWorkの作業は、所要時間が分からないため、仮に置いたminutes分の候補です。見積もりではないと伝え、承認する前に所要時間が分かれば教えてもらえれば置き直せる、と案内してください。この作業について述べる数値と作業名はprovisionalWorkにあるものだけを使い、保存・承認したとは述べないでください。provisionalWorkにない作業（所要時間が分かっている作業など）の説明は、省かず通常どおり伝えてください。',
+      ] : []),
       ...(input.communication?.statusReason === 'fixed_event_manual_entry' ? [
         'planningStateSummaryやacceptedFactsにある固定予定は受理済みの占有時間情報です。情報がなければ日時や受理済み予定を補わないでください。このAI turnで予定を作成・保存していません。communication.manualEntryの既存navigationLabelから既存actionLabelを選ぶ手動入力経路を自然に案内してください。この画面に追加ボタンがあると仮定せず、自動移動・登録を約束しないでください。追加の学習や作業を勧誘する質問は足さないでください。',
       ] : []),
