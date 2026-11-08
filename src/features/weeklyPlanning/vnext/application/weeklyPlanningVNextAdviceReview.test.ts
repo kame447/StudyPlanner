@@ -23,6 +23,9 @@ const EMPTY: VNextTurnDelta = { add: [], patch: [], remove: [], relate: [], defe
 const reading = (planningIntent: 'discuss' | 'unknown' | 'create_plan', delta: Partial<VNextTurnDelta> = {}): WeeklyPlanningVNextInterpretation =>
   ({ status: 'interpreted', planningIntent, delta: { ...EMPTY, ...delta }, answer: null, metrics });
 const task: VNextAddFact = { kind: 'task', localId: 'eng', category: 'study', title: '英語' };
+// A planning turn that states a quantity never reaches the purpose check; the scripted purposes below also say planning_operation.
+const workload: VNextAddFact = { kind: 'workload', localId: 'w', taskRef: { localId: 'eng' }, componentRef: null, quantityRole: 'remaining', amount: 30,
+  unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null };
 
 const proposal = (text = '文法の基礎問題集を毎日1ページ。', optionTitles = ['毎日少しずつ']): ProposalAnswer => ({
   schemaVersion: 'learning-consultation-answer.v1', kind: 'proposal', userFacingAnswer: text, assumptions: [], overallUncertainty: 'low',
@@ -32,13 +35,15 @@ const memory = (id: string, label: string): UserPlanningContextRecordV1 => ({ id
   dateExpression: null, observedDate: '2026-10-01', resolvedDate: null, sourceText: `ORIGINAL-${id}`, sourceConversationId: 'earlier', sourceTurnId: 'earlier-turn',
   recordedAt: '2026-10-01T00:00:00.000Z', status: 'active', origin: 'user_confirmed' });
 
-function harness(script: WeeklyPlanningVNextInterpretation[], answers: Array<{ kind: 'proposal'; proposal: ProposalAnswer } | { kind: 'clarification' }> = []) {
+function harness(script: WeeklyPlanningVNextInterpretation[], answers: Array<{ kind: 'proposal'; proposal: ProposalAnswer } | { kind: 'clarification' }> = [],
+  purposes: Array<'learning_consultation' | 'planning_operation'> = []) {
   const slots = new Map<string, string>();
   const slot = (key: string) => ({ read: () => slots.get(key) ?? null, write: (raw: string) => void slots.set(key, raw) });
   const saveBlock = vi.fn(async () => { throw new Error('advice never saves'); });
   let tick = 0;
   const consultation: WeeklyPlanningVNextConsultationPort = {
-    classify: async () => 'learning_consultation',
+    // A turn that reads task-only facts is classified too (slice 2); the planning turns below say planning_operation.
+    classify: async () => purposes.shift() ?? 'learning_consultation',
     answer: async () => {
       const next = answers.shift() ?? { kind: 'proposal' as const, proposal: proposal() };
       return next.kind === 'proposal' ? { kind: 'proposal', text: `${next.proposal.userFacingAnswer}\n\n※これは助言です。`, proposal: next.proposal }
@@ -186,12 +191,20 @@ describe('adopting or declining is one recorded decision on the active advice', 
 });
 
 describe('a planning turn after the advice keeps it (F3)', () => {
+  it('a task-only reading the purpose check calls a planning operation is also a planning turn and keeps the advice', async () => {
+    const h = harness([reading('discuss'), reading('discuss', { add: [task] })], [], ['learning_consultation', 'planning_operation']);
+    await h.turn('何から始めればいい？');
+    const before = h.consult();
+    expect(await h.turn('英語を始めたい')).toMatchObject({ replySource: 'renderer' });
+    expect(h.consult()).toEqual(before);
+  });
+
   it('carries the saved advice and its adoption through an ordinary planning turn', async () => {
-    const h = harness([reading('discuss'), reading('discuss', { add: [task] })]);
+    const h = harness([reading('discuss'), reading('discuss', { add: [task, workload] })], [], ['learning_consultation', 'planning_operation']);
     await h.turn('何から始めればいい？');
     expect(h.review()).toMatchObject({ status: 'reviewed' });
     const before = h.consult();
-    const planning = await h.turn('英語を始めたい');
+    const planning = await h.turn('英語を30分やりたい');
     expect(planning).toMatchObject({ outcome: 'applied', replySource: 'renderer' });
     expect(h.checkpoint().vnext.state.graph.tasks).toHaveLength(1);
     expect(h.consult()).toEqual(before);
@@ -199,9 +212,14 @@ describe('a planning turn after the advice keeps it (F3)', () => {
   });
 
   it('carries unadopted advice through a planning turn and still lets the user adopt it', async () => {
-    const h = harness([reading('discuss'), reading('discuss', { add: [task] })]);
+    const h = harness([reading('discuss'), reading('discuss', { add: [task, workload] })], [], ['learning_consultation', 'planning_operation']);
     await h.turn('何から始めればいい？');
-    await h.turn('英語を始めたい');
+    const before = h.consult();
+    const planning = await h.turn('英語を30分やりたい');
+    expect(planning).toMatchObject({ outcome: 'applied', replySource: 'renderer' });
+    // The planning turn did not write a second proposal: the saved advice is the same one, still adoptable.
+    expect(h.consult()).toEqual(before);
+    expect(h.consult()!.proposals).toHaveLength(1);
     expect(projectWeeklyPlanningVNextAdvice(h.consult())?.status).toBe('reviewable');
     expect(h.review()).toMatchObject({ status: 'reviewed' });
   });
