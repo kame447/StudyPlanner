@@ -8,6 +8,7 @@ import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextPro
 import { applyWeeklyPlanningVNextTurn, createEmptyWeeklyPlanningVNextState } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
+import { VNEXT_F_MEASURE_SCENARIOS } from './weeklyPlanningVNextFMeasureScenarios';
 import { presentWeeklyPlanningVNextQuestion } from '../application/weeklyPlanningVNextQuestionText';
 import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts } from '../application/weeklyPlanningVNextExperimentalSession';
@@ -31,6 +32,11 @@ run('#1005 answer and independent request through real focused/native interpreta
     { id: 'answer-plus-request', text: '全部で40分です。この条件で今週の予定案を作って', preview: true },
     { id: 'answer-negated-request', text: '全部で40分です。予定案はまだ作らないで', preview: false },
     { id: 'answer-withdrawn-request', text: '全部で40分です。予定案を作って。やっぱり依頼は取り消します', preview: false },
+    // F measurement (#992, the negated-request flake): other ways to decline a plan in the same turn as the answer.
+    { id: 'answer-negated-request-b', text: '全部で40分です。予定案は今は要りません', preview: false },
+    { id: 'answer-negated-request-c', text: '全部で40分です。まだ予定は組まないでください', preview: false },
+    { id: 'answer-negated-request-d', text: '全部で40分です。今回は予定案を作らなくていいです', preview: false },
+    { id: 'answer-negated-request-e', text: '全部で40分かかります。予定案を作るのは後にして', preview: false },
   ])('$id', async ({ id, text, preview }) => {
     const receipts: Array<{ request: unknown; response?: string; transportFailure?: boolean }> = [];
     const artifact: Record<string, unknown> = { id, syntheticOnly: true, text, expectedPreview: preview, receipts, completed: false };
@@ -94,7 +100,7 @@ run('#1005 answer and independent request through real focused/native interpreta
 });
 
 run('VNext native provider synthetic real API observations', () => {
-  for (const scenario of VNEXT_PROVIDER_SCENARIOS) {
+  for (const scenario of [...VNEXT_PROVIDER_SCENARIOS, ...VNEXT_F_MEASURE_SCENARIOS]) {
     it(scenario.id, async () => {
       const clock = scenario.clock ?? defaultClock;
       const observations: unknown[] = [];
@@ -165,7 +171,7 @@ run('VNext native provider synthetic real API observations', () => {
             oracleFailures });
         }
         artifact.completed = true;
-        expect(failures, JSON.stringify(failures)).toEqual([]);
+        if (!scenario.observeOnly) expect(failures, JSON.stringify(failures)).toEqual([]);
       } catch (error) {
         artifact.exceptionName = error instanceof Error ? error.name : 'unknown';
         throw error;
