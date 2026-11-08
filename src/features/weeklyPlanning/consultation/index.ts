@@ -2,6 +2,7 @@
 export * from './contracts';
 export * from './activeInteraction';
 export * from './context';
+export * from './persistence';
 export * from './promotion';
 export * from './state';
 export * from './temporal';

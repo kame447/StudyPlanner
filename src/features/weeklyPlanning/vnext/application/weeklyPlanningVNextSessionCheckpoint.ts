@@ -17,6 +17,8 @@ import {
   type WeeklyPlanningVNextState,
 } from '../weeklyPlanningVNextTypes';
 import type { WeeklyPlanDraftBlock } from '../../types';
+import type { ConsultationSessionState } from '../../consultation/contracts';
+import { validateConsultationSessionState } from '../../consultation/persistence';
 import { VNEXT_STUDY_RECORD_QUESTION_REASONS, type VNextActualRecord, type VNextStudyRecordQuestion } from '../weeklyPlanningVNextStudyRecords';
 import type { WeeklyPlanningVNextPresentedQuestion } from './weeklyPlanningVNextAnswerBinding';
 import { VNEXT_RECENT_MESSAGE_LIMIT, type WeeklyPlanningVNextMessage } from './weeklyPlanningVNextDialogue';
@@ -65,6 +67,8 @@ export interface WeeklyPlanningVNextSessionCheckpoint {
     actualRecords?: VNextActualRecord[];
     /** The one record question still open, so the next answer is read against it; absent means none. */
     pendingStudyRecordQuestion?: VNextStudyRecordQuestion;
+    /** The learning-consultation advice and its reviews (#246). Absent means none; never a fact, a preview or a plan. */
+    consultation?: ConsultationSessionState;
   };
   savedAt: string;
 }
@@ -251,10 +255,13 @@ export function parseWeeklyPlanningVNextSessionCheckpoint(params: {
         ...('unansweredQuestionStreak' in value.vnext ? ['unansweredQuestionStreak'] : []),
         ...('actualRecords' in value.vnext ? ['actualRecords'] : []),
         ...('pendingStudyRecordQuestion' in value.vnext ? ['pendingStudyRecordQuestion'] : []),
+        ...('consultation' in value.vnext ? ['consultation'] : []),
       ]) || !validFailureRecovery(value.vnext.failureRecovery)
       || !validUnansweredQuestionStreak(value.vnext.unansweredQuestionStreak)
       || !validActualRecords(value.vnext.actualRecords)
-      || !validStudyRecordQuestion(value.vnext.pendingStudyRecordQuestion)) return null;
+      || !validStudyRecordQuestion(value.vnext.pendingStudyRecordQuestion)
+      || (value.vnext.consultation !== undefined && !validateConsultationSessionState(value.vnext.consultation,
+        { ownerId: params.ownerId, conversationId: value.conversationId }).ok)) return null;
     // Earlier experimental previews were automatic and carry no evidence of permission. Keep
     // facts and raw storage, but invalidate that derived preview; only a new request can replace it.
     const missingAuthorization = isRecord(value.vnext.state) && !('draftGenerationIntent' in value.vnext.state);

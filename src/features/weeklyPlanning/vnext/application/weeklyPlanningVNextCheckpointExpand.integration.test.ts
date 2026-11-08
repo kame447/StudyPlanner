@@ -13,10 +13,22 @@ import {
   parseWeeklyPlanningVNextSessionCheckpoint as parseExpand,
   serializeWeeklyPlanningVNextSessionCheckpoint,
 } from './weeklyPlanningVNextSessionCheckpoint';
+import { CONSULTATION_NO_FRESHNESS_FINGERPRINT, applyReviewDecision, commitAdviceProposal, createConsultationSession } from '../../consultation';
 
 const ownerId = 'expand-owner';
 const weekStartDate = '2026-11-02';
 const scope = { ownerId, weekStartDate };
+
+function storedConsultation(conversationId: string) {
+  const proposed = commitAdviceProposal(createConsultationSession({ consultationId: 'consultation-1', ownerId, conversationId }), {
+    adviceId: 'advice-1', expectedConsultationRevision: 0, sourceQuestionTurnId: 'turn-1', contextFingerprint: CONSULTATION_NO_FRESHNESS_FINGERPRINT,
+    createdAt: '2026-11-02T09:00:00.000Z',
+    answer: { schemaVersion: 'learning-consultation-answer.v1', kind: 'proposal', userFacingAnswer: '毎日少しずつ進めましょう。', assumptions: [], overallUncertainty: 'low',
+      options: [{ title: '毎日', strategySummary: '短く毎日', tradeoffs: [], recommendations: [{ recommendationKind: 'study_method', rationale: '続けやすい',
+        assumptionRefs: [], evidenceRefs: [], uncertainty: 'low' }] }] } });
+  if (!proposed.accepted) throw new Error(proposed.reason);
+  return proposed.state;
+}
 
 it('accepts only validated optional fields in the expand parser while fixed historical parsers retain their own contract', () => {
   const baseRaw = serializeWeeklyPlanningVNextSessionCheckpoint({
@@ -28,6 +40,8 @@ it('accepts only validated optional fields in the expand parser while fixed hist
   const failureRecovery = { reason: 'provider_error', consecutiveCount: 1 };
   const unansweredQuestionStreak = { questionKey: 'missing_effort_estimate:work', graphRevision: 0, count: 1 };
   const withFields = (fields: Record<string, unknown>) => JSON.stringify({ ...base, vnext: { ...base.vnext, ...fields } });
+  // #246 slice 3: the reader accepts a stored consultation before any producer writes it; fixed older parsers refuse the unknown key.
+  const consultation = storedConsultation('expand-conversation');
   // Every column receives these exact same raw bytes. Snapshot fixtures are verbatim parser sources
   // from f27b3a66, 81b4bc45 and 1d060128, with their relative imports resolved in this directory.
   const cases = [
@@ -36,6 +50,9 @@ it('accepts only validated optional fields in the expand parser while fixed hist
     { name: 'unansweredQuestionStreak', raw: withFields({ unansweredQuestionStreak }), accepts: [false, false, true, false, true] },
     { name: 'both fields', raw: withFields({ failureRecovery, unansweredQuestionStreak }), accepts: [false, false, true, false, true] },
     { name: 'invalid failureRecovery', raw: withFields({ failureRecovery: { ...failureRecovery, consecutiveCount: '1' } }),
+      accepts: [false, false, false, false, false] },
+    { name: 'consultation', raw: withFields({ consultation }), accepts: [false, false, true, false, false] },
+    { name: 'consultation of another conversation', raw: withFields({ consultation: { ...consultation, conversationId: 'other' } }),
       accepts: [false, false, false, false, false] },
     { name: 'invalid unansweredQuestionStreak', raw: withFields({ unansweredQuestionStreak: { ...unansweredQuestionStreak, count: 0 } }),
       accepts: [false, false, false, false, false] },
@@ -106,5 +123,42 @@ describe('expanded checkpoint value contract', () => {
     checkpoint.vnext[field as string] = value;
     const raw = JSON.stringify(checkpoint);
     expect(parseExpand({ raw, ...scope })).toBeNull();
+  });
+});
+
+describe('consultation field in the expanded checkpoint (#246 slice 3, reader only)', () => {
+  const emptyBase = () => JSON.parse(serializeWeeklyPlanningVNextSessionCheckpoint({
+    ...scope, conversationId: 'expand-conversation', savedAt: '2026-11-02T09:00:00.000Z',
+    vnext: { state: createEmptyWeeklyPlanningVNextState(), presentedQuestion: null, preview: null, messages: [] },
+  })!);
+  const read = (checkpoint: unknown) => parseExpand({ raw: JSON.stringify(checkpoint), ...scope });
+
+  it('reads a checkpoint without the field as before, and a stored consultation back unchanged through parse and serialize', () => {
+    expect(read(emptyBase())?.vnext.consultation).toBeUndefined();
+    const consultation = storedConsultation('expand-conversation');
+    const withConsultation = { ...emptyBase(), vnext: { ...emptyBase().vnext, consultation } };
+    const parsed = read(withConsultation);
+    expect(parsed?.vnext.consultation).toEqual(consultation);
+    const raw = serializeWeeklyPlanningVNextSessionCheckpoint({ ownerId: parsed!.ownerId, weekStartDate: parsed!.weekStartDate,
+      conversationId: parsed!.conversationId, vnext: parsed!.vnext, savedAt: parsed!.savedAt });
+    expect(JSON.parse(raw!).vnext.consultation).toEqual(consultation);
+  });
+
+  it('refuses the whole checkpoint for a damaged consultation, never repairing or dropping it', () => {
+    const consultation = storedConsultation('expand-conversation');
+    for (const damaged of [{ ...consultation, ownerId: 'someone-else' }, { ...consultation, extra: true }, { ...consultation, activeAdviceId: 'missing' },
+      { ...consultation, proposals: [{ ...consultation.proposals[0], withdrawnAt: '2026-11-02T10:00:00.000Z' }] }, null, 'text']) {
+      expect(read({ ...emptyBase(), vnext: { ...emptyBase().vnext, consultation: damaged } })).toBeNull();
+    }
+  });
+
+  it('keeps an approved consultation (a review decision) readable', () => {
+    const proposed = storedConsultation('expand-conversation');
+    const approved = applyReviewDecision(proposed, { ownerId, conversationId: 'expand-conversation', decision: {
+      decisionId: 'decision-1', consultationId: proposed.consultationId, targetAdviceId: 'advice-1', expectedAdviceRevision: 1,
+      expectedConsultationRevision: proposed.revision, targetScope: { kind: 'proposal' }, action: 'approve', feedback: null,
+      sourceTurnId: 'turn-2', decidedAt: '2026-11-02T10:00:00.000Z' } });
+    expect(approved.accepted).toBe(true);
+    expect(read({ ...emptyBase(), vnext: { ...emptyBase().vnext, consultation: approved.accepted ? approved.state : null } })).not.toBeNull();
   });
 });

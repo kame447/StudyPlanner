@@ -170,6 +170,10 @@ export interface AdviceProposal {
   temporalResolutions: readonly TemporalResolution[];
   materialBindings: readonly MaterialBinding[];
   createdAt: string;
+  /** Ids (never words) of the confirmed memory records the advice was written from; a forget of one withdraws this proposal. */
+  derivedFromRecordIds?: readonly string[];
+  /** Set when a forgotten memory withdrew the proposal: its answer is then the fixed placeholder and keeps none of the words. */
+  withdrawnAt?: string;
 }
 
 export type ReviewAction = 'approve' | 'request_revision' | 'request_alternative' | 'dismiss';
