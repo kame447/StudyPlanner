@@ -10,7 +10,7 @@ import type { WeeklyPlanningVNextDurableTurnInput, WeeklyPlanningVNextDurableTur
  */
 export async function executeIsolatedWeeklyPlanningVNextTurn(
   payload: WeeklyPlanningVNextDurableTurnInput,
-  provider: Pick<WeeklyPlanningVNextExperimentalPorts, 'client' | 'interpret' | 'createRenderer'>,
+  provider: Pick<WeeklyPlanningVNextExperimentalPorts, 'client' | 'interpret' | 'createRenderer' | 'consultation'>,
 ): Promise<WeeklyPlanningVNextDurableTurnResult> {
   const input = payload.input;
   const clock = input.requestContext;

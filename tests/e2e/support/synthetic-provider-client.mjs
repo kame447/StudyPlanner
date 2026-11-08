@@ -6,6 +6,8 @@ import { requestContextOf, scriptedReading } from './vnext-scripted-readings.mjs
 export const SYNTHETIC = 'http://127.0.0.1:18790';
 export const VNEXT_READING_SCHEMA = 'weekly_planning_vnext_native_v1';
 export const RENDERER_SCHEMA = 'weekly_planning_stable_v5_dialogue_response';
+export const PURPOSE_SCHEMA = 'weekly_planning_vnext_turn_purpose_v1';
+export const ADVICE_SCHEMA = 'weekly_planning_vnext_advice_v1';
 
 /** The next model call the Worker forwarded, with the structured-output schema it asked for. */
 export async function nextCall(request) {
@@ -40,12 +42,25 @@ export function rendererReply(call) {
 
 /**
  * The `beforeTurn` hook of the emulator spec: answers this turn's reading, then its renderer call, from what the Worker
- * actually sent. Every scripted kind makes exactly one reading and one renderer call.
+ * actually sent. Every scripted kind makes exactly one reading and one renderer call, except a consultation (#246):
+ * its reading finds nothing to plan, so the Worker asks the turn purpose and then the advice, and no renderer call follows.
  */
 export async function answerScriptedTurn(request, turn) {
   const read = await nextCall(request);
   expect(read.schema).toBe(VNEXT_READING_SCHEMA);
   await answer(request, read, scriptedReading(turn.kind, turn, requestContextOf(read.body.messages)));
+  if (turn.kind === 'consultation') {
+    const purpose = await nextCall(request);
+    expect(purpose.schema).toBe(PURPOSE_SCHEMA);
+    await answer(request, purpose, { schemaVersion: 'learning-consultation-turn-purpose.v1', kind: 'learning_consultation' });
+    const advice = await nextCall(request);
+    expect(advice.schema).toBe(ADVICE_SCHEMA);
+    await answer(request, advice, { schemaVersion: 'learning-consultation-answer.v1', kind: 'proposal',
+      userFacingAnswer: 'まず文法の基礎問題集を1周しましょう。', assumptions: ['高校レベル'], overallUncertainty: 'medium',
+      options: [{ title: '基礎固め', strategySummary: '文法から', tradeoffs: [], recommendations: [{ recommendationKind: 'study_method',
+        rationale: '土台が先です。', assumptionRefs: [], evidenceRefs: [], uncertainty: 'medium' }] }] });
+    return;
+  }
   const render = await nextCall(request);
   expect(render.schema).toBe(RENDERER_SCHEMA);
   await answer(request, render, rendererReply(render));

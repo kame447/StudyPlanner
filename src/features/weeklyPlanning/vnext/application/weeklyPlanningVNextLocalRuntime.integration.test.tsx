@@ -195,6 +195,24 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     expect(memory.plans.size).toBe(1);
   });
 
+  it('answers a learning consultation with advice through the ordinary turn, planning and saving nothing (#246)', async () => {
+    const advice = '文法の基礎問題集から始めましょう。';
+    const { input, services } = fixture(() => async () => ({ ...seed, planningIntent: 'unknown' as const,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] } }));
+    const classify = vi.fn(async () => 'learning_consultation' as const);
+    services.consultation = () => ({ classify, answer: async () => ({ kind: 'proposal' as const, text: advice }) });
+    const ref = createRef<WeeklyPlanningApplication>();
+    await act(async () => { renderer = create(<LocalHarness ref={ref} input={input} services={services} />); });
+    await act(async () => { expect((await ref.current!.submitTurn('英語が苦手なんだけど何から始めればいい？')).accepted).toBe(true); });
+    expect(classify).toHaveBeenCalledOnce();
+    expect(ref.current!.state.messages.map(message => message.content)).toEqual(['英語が苦手なんだけど何から始めればいい？', advice]);
+    expect(ref.current!.state.previewCandidates ?? []).toEqual([]);
+    expect(ref.current!.state.pendingApproval).toBeFalsy();
+    const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId });
+    expect(local.readCheckpoint()!.vnext.state.graph.tasks).toEqual([]);
+    expect(local.readCheckpoint()!.vnext.messages.slice(-1)[0]).toEqual({ role: 'assistant', content: advice });
+  });
+
   it('does not publish accepted facts or previews after the existing controller cancels a reading', async () => {
     const reading = createDeferred<WeeklyPlanningVNextInterpretation>();
     const started = createDeferred<void>();

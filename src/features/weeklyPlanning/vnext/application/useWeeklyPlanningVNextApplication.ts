@@ -40,6 +40,8 @@ export interface WeeklyPlanningVNextLocalApplicationServices {
   client: () => WeeklyPlanningVNextExperimentalPorts['client'];
   interpret: (scope: { ownerId: string; conversationId: string }) => WeeklyPlanningVNextExperimentalPorts['interpret'];
   createRenderer: (client: WeeklyPlanningVNextExperimentalPorts['client'], options: { canDispatchRecovery: () => boolean }) => ReturnType<WeeklyPlanningVNextExperimentalPorts['createRenderer']>;
+  /** Answers a learning consultation with advice (#246). Absent keeps every turn on the planning path. */
+  consultation?: (client: WeeklyPlanningVNextExperimentalPorts['client']) => NonNullable<WeeklyPlanningVNextExperimentalPorts['consultation']>;
   readActualSave?: (ownerId: string, attempted: readonly ActualSaveIntentRecord[]) => Promise<ActualSaveReadbackClassification>;
   now: () => string;
 }
@@ -64,6 +66,7 @@ function localServices(): WeeklyPlanningVNextLocalApplicationServices {
     client: () => loaded().client(),
     interpret: scope => loaded().interpret(scope),
     createRenderer: (client, options) => loaded().createRenderer(client, options),
+    consultation: client => loaded().consultation(client),
     readActualSave: async (ownerId, attempted) => {
       const [{ getFirebaseAuth, getFirestoreDb }, { readAndClassifyActualSaveFromServer }] = await Promise.all([
         import('../../../../lib/firebaseClient'), import('../weeklyPlanningVNextActualSaveServerReadback')]);
@@ -344,7 +347,8 @@ export function useWeeklyPlanningVNextApplication(
         plans: { findExistingPlanId: async () => undefined, saveBlock: async () => { throw new Error('Approval belongs to the existing application.'); } },
         calendar: () => ({ plans: turn.plans, actuals: turn.actuals ?? [], monthEvents: turn.monthEvents ?? [],
           scheduleTemplates: turn.scheduleTemplates, timetableTermId: turn.timetableTermId }),
-        createRenderer: options => services.createRenderer(client, options), now: services.now };
+        createRenderer: options => services.createRenderer(client, options),
+        ...(services.consultation ? { consultation: services.consultation(client) } : {}), now: services.now };
     } }), [liveSession, runtime, services, ownerId]);
   const turnServices = { ...weeklyPlanningTurnApplicationBaseServices, ...gateway,
     outcomeLifecycle: createWeeklyPlanningTurnOutcomeLifecycle({ saveOwnedState: (_owner, state) => {

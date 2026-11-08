@@ -58,6 +58,7 @@ import {
 import { resolveWeeklyPlanningVNextTurnDelta } from './weeklyPlanningVNextAnswerBinding';
 import { workNotCoveredBySavedPlans } from '../../application/weeklyPlanningSavedWorkCoverage';
 import { createVNextOptionalInvitation } from './weeklyPlanningVNextOptionalInvitation';
+import type { WeeklyPlanningVNextConsultationPort } from './weeklyPlanningVNextConsultation';
 import { deriveVNextAcceptedCorrections, type VNextAcceptedCorrection } from './weeklyPlanningVNextCorrections';
 import { createWeeklyPlanningVNextRenderInput, VNEXT_RECENT_MESSAGE_LIMIT } from './weeklyPlanningVNextDialogue';
 import {
@@ -141,6 +142,8 @@ export interface WeeklyPlanningVNextExperimentalPorts {
    * as V5 does, so a failed turn's recovery reply can check it is still current before each call.
    */
   createRenderer(options: { canDispatchRecovery: () => boolean }): WeeklyPlanningStableV5DialogueRenderer;
+  /** Answers a learning consultation with advice (#246). Absent keeps every turn on the planning path. */
+  consultation?: WeeklyPlanningVNextConsultationPort;
   now(): string;
 }
 
@@ -175,9 +178,10 @@ export interface WeeklyPlanningVNextExperimentalTurn {
   reply: string;
   /**
    * renderer: the V5 renderer's text; renderer_recovery: its verified reply to a failed turn (nothing was
-   * applied); renderer_fallback: V5's contingency text (the question counts as not shown); system: a notice.
+   * applied); renderer_fallback: V5's contingency text (the question counts as not shown); system: a notice;
+   * advice: the consultation answer (shown text only, never a fact, a preview or a plan).
    */
-  replySource: 'renderer' | 'renderer_recovery' | 'renderer_fallback' | 'system';
+  replySource: 'renderer' | 'renderer_recovery' | 'renderer_fallback' | 'system' | 'advice';
   interpretation: WeeklyPlanningVNextInterpretation | null;
   appliedDelta: VNextTurnDelta | null;
   errors: VNextTurnError[];
@@ -491,6 +495,40 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
         graphRevision: read.checkpoint.state.graph.revision, readiness: before.readiness, question: presentedQuestion,
         preview: read.checkpoint.preview, unplacedOwnerKeys: [], previewBlockedBy: [], reply, replySource: 'system',
         interpretation, appliedDelta: null, errors: [], actualRecords: nextRecords };
+    }
+  }
+
+  // A learning consultation ("何から始めればいい？") is answered with advice, never with a planning question (#246). Only a
+  // turn that read nothing to plan, with no question, preview or study-record question open, reaches the purpose check, so
+  // a short reply to an open interaction is never taken for a new topic. Nothing of the advice enters the graph, a preview
+  // or a save; a failed or refused consultation leaves the turn on the planning path below exactly as before.
+  if (ports.consultation && interpretation.status === 'interpreted'
+    && (interpretation.planningIntent === 'discuss' || interpretation.planningIntent === 'unknown')
+    && isEmpty(interpretation.delta) && !interpretation.conversationActs?.length && interpretation.answer === null
+    && !interpretation.studyRecords?.length && !interpretation.studyRecordQuestion && !interpretation.studyRestDays?.length
+    && before.questions.every(question => question.optionalInvitation) && read.checkpoint.preview === null
+    && !read.checkpoint.pendingStudyRecordQuestion) {
+    const active = new Set(state.graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
+    const consultation = { userText: params.userText, recentConversation: read.checkpoint.messages,
+      activeTaskTitles: state.graph.tasks.filter(task => active.has(task.id)).slice(0, 10).map(task => task.title.slice(0, 80)),
+      rememberedBackground: params.confirmedUserContext?.records.map(({ kind, label, value }) => ({ kind, label, value })) ?? [],
+      currentDate: scope.clock.currentDate };
+    const advice = await ports.consultation.classify(consultation) === 'learning_consultation'
+      ? await ports.consultation.answer(consultation) : null;
+    if (advice) {
+      if (ports.checkpoint.read() !== rawBefore) return staleTurn();
+      const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
+        ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
+        vnext: { state, presentedQuestion: null, preview: null, ...studyRecordFields(priorRecords, undefined),
+          messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
+            { role: 'assistant' as const, content: advice.text }].slice(-VNEXT_RECENT_MESSAGE_LIMIT) },
+        savedAt: ports.now(),
+      });
+      if (raw === null) throw new Error('VNext checkpoint exceeds the storage limit');
+      ports.checkpoint.write(raw);
+      return { outcome: 'noop', graphRevision: state.graph.revision, readiness: before.readiness, question: null, preview: null,
+        draftCandidates: [], unplacedOwnerKeys: [], previewBlockedBy: [], reply: advice.text, replySource: 'advice',
+        interpretation, appliedDelta: null, errors: [], actualRecords: priorRecords };
     }
   }
 
