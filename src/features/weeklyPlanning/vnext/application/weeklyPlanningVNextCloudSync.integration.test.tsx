@@ -11,6 +11,7 @@ import { setWeeklyPlanningTraceRepositoryForTests } from '../../trace/weeklyPlan
 import { resetWeeklyPlanningStableV5TraceRuntimeForTest } from '../../trace/weeklyPlanningStableV5TraceRuntime';
 import { createWeeklyPlanningApprovalMemoryState, createMemoryWeeklyPlanningApprovalPlanRepository } from '../../application/weeklyPlanningApprovalMemoryRepository';
 import { createWeeklyDraftBlocksFromPreviewCandidates } from '../../preview/weeklyPlanningPreviewBlocks';
+import { UserFacingError } from '../../../../lib/userFacingError';
 import { validateConversationPayload, validateLocalConversationPayload } from '../sync/weeklyPlanningConversationPayload';
 
 const OWNER = 'sync-app-owner', WEEK = '2026-11-02';
@@ -18,6 +19,7 @@ const Harness = forwardRef<WeeklyPlanningApplication, { input: UseWeeklyPlanning
   const application = useWeeklyPlanningVNextApplication(props.input, props.services);
   useImperativeHandle(ref, () => application, [application]); return null;
 });
+const network = { online: true };
 let mounted: ReactTestRenderer | undefined;
 let restore: (() => void) | undefined;
 function device(server = conversationSyncFakeServer()) {
@@ -29,7 +31,7 @@ function device(server = conversationSyncFakeServer()) {
   const services: WeeklyPlanningVNextLocalApplicationServices = {
     storage: storage.storage, now: () => SYNC_TEST_NOW, client: () => ({} as never),
     conversationSync: async () => ({ local, remote: server.remote, keys: () => [...storage.values.keys()],
-      online: () => true, acquire: acquired }),
+      online: () => network.online, acquire: acquired }),
     interpret: () => async () => ({ status: 'interpreted', planningIntent: 'create_plan', answer: null, conversationActs: [],
       delta: { add: [
         { kind: 'task', localId: 'math', category: 'study', title: '数学' },
@@ -53,7 +55,7 @@ async function mount(fixture: ReturnType<typeof device>) {
 async function waitSynced(ref: { current: WeeklyPlanningApplication | null }) {
   await act(async () => { await vi.waitFor(() => expect(ref.current?.conversationSync?.status).toBe('synced'), { timeout: 2500 }); });
 }
-beforeEach(() => { setWeeklyPlanningTraceRepositoryForTests(createInMemoryWeeklyPlanningTraceRepository()); resetWeeklyPlanningStableV5TraceRuntimeForTest(); });
+beforeEach(() => { network.online = true; setWeeklyPlanningTraceRepositoryForTests(createInMemoryWeeklyPlanningTraceRepository()); resetWeeklyPlanningStableV5TraceRuntimeForTest(); });
 afterEach(async () => {
   if (mounted) await act(async () => mounted!.unmount()); mounted = undefined; restore?.(); restore = undefined;
   setWeeklyPlanningTraceRepositoryForTests(undefined); resetWeeklyPlanningStableV5TraceRuntimeForTest();
@@ -145,6 +147,66 @@ describe('VNext actual application with shared conversation storage', () => {
     await act(async () => { mounted!.update(<Harness ref={ref} input={a.input} services={a.services} />); });
     expect(ref.current!.state.weekStartDate).toBe(WEEK);
     expect(ref.current!.state.messages).toEqual(previous);
+  });
+  describe('approval when the pre-approval sync does not complete', () => {
+    // A real approval repository, so the unaffected paths save for real; one pending draft block in a conversation.
+    async function pendingApproval(syncEnabled: boolean) {
+      const a = device();
+      const memory = createWeeklyPlanningApprovalMemoryState();
+      const repository = createMemoryWeeklyPlanningApprovalPlanRepository(memory);
+      const save = vi.fn(repository.saveApprovedPlan);
+      a.input.saveWeeklyApprovedPlan = save;
+      a.input.completeWeeklyApprovalOperation = repository.completeOperation;
+      const ref = await mount(a);
+      await act(async () => { await ref.current!.submitTurn('数学60分の計画'); });
+      await act(async () => { ref.current!.createDraftBlocks(createWeeklyDraftBlocksFromPreviewCandidates({
+        candidates: ref.current!.state.previewCandidates!, userId: OWNER, createdAt: SYNC_TEST_NOW })); });
+      if (syncEnabled) { await act(async () => { await ref.current!.conversationSync!.enable(); }); await waitSynced(ref); }
+      expect(ref.current!.pendingDraftBlocks).toHaveLength(1);
+      return { a, ref, memory, save };
+    }
+    const NOT_SAVED = /まだ保存していません/u;
+    async function expectRefusedWithoutSaving(fixture: Awaited<ReturnType<typeof pendingApproval>>) {
+      let failure: unknown;
+      await act(async () => { try { await fixture.ref.current!.approveDraftBlocks(); } catch (error) { failure = error; } });
+      // A rejection is what keeps the preview dialog open and shows the message (AiPlanningView.saveDrafts catch path).
+      expect(failure).toBeInstanceOf(UserFacingError);
+      expect((failure as Error).message).toMatch(NOT_SAVED);
+      expect(fixture.save).not.toHaveBeenCalled(); expect(fixture.memory.metrics.planWrites).toBe(0);
+      expect(fixture.ref.current!.pendingDraftBlocks).toHaveLength(1);
+      expect(fixture.ref.current!.state.pendingApproval).toBeUndefined();
+    }
+
+    it('rejects, saves nothing and keeps the draft pending when the device is offline', async () => {
+      const fixture = await pendingApproval(true);
+      network.online = false;
+      await expectRefusedWithoutSaving(fixture);
+    });
+    it('rejects the same way when the sync service is unavailable', async () => {
+      const fixture = await pendingApproval(true);
+      fixture.a.server.setOffline(true);
+      await expectRefusedWithoutSaving(fixture);
+    });
+    it('rejects the same way on a sync conflict with another device', async () => {
+      const fixture = await pendingApproval(true);
+      // Another device committed a different revision of the same conversation, then this one edits its stale copy.
+      const [key, row] = [...fixture.a.server.rows.entries()][0];
+      const remote = JSON.parse(row.payload!.ui);
+      remote.payload.state.messages = [...remote.payload.state.messages, { id: 'remote', role: 'user', content: '別の端末で追記', createdAt: SYNC_TEST_NOW }];
+      fixture.a.server.rows.set(key, { ...row, revision: row.revision + 1, operationId: 'other-device-operation',
+        payload: { ...row.payload!, ui: JSON.stringify(remote) } });
+      await act(async () => { fixture.ref.current!.appendMessage({ id: 'local', role: 'user', content: 'この端末の追記', createdAt: SYNC_TEST_NOW }); });
+      await expectRefusedWithoutSaving(fixture);
+      expect(fixture.ref.current!.conversationSync?.status).toBe('conflict');
+    });
+    it('still saves with a healthy sync, and with sync disabled', async () => {
+      for (const syncEnabled of [true, false]) {
+        const fixture = await pendingApproval(syncEnabled);
+        await act(async () => { await fixture.ref.current!.approveDraftBlocks(); });
+        expect(fixture.save).toHaveBeenCalledTimes(1); expect(fixture.memory.metrics.planWrites).toBe(1);
+        expect(fixture.ref.current!.pendingDraftBlocks).toHaveLength(0);
+      }
+    });
   });
   it('shows a locked state rather than opening a second writable browser replica', async () => {
     const a = device(); a.acquired.mockRejectedValue(new Error('conversation-open-in-another-tab'));
