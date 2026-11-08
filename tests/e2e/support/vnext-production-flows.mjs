@@ -3,6 +3,7 @@ import { expectTurnPersisted, previewDialog, promoteThenSave, readVNextChatStora
 import { expectDurableVNext, observeDurableTurns } from './vnext-durable-observation.mjs';
 import { openScheduleDay, removeSavedPlansByTitle, sweepLeftoverPlans } from './schedule-plan-cleanup.mjs';
 import { isSavedPlanTitle } from './schedule-plan-title.mjs';
+import { describeMissingSavedBlocks } from './saved-block-diagnosis.mjs';
 import { attachWriteLedger, planDeletionCommitProblems, protectedWritesIn } from './vnext-firestore-writes.mjs';
 import { assertKnownFlowOptions } from './vnext-flow-options.mjs';
 import { addDays, chooseTargetDay, isoDay, keyForWeek, onlyWeek, weeksOf } from './vnext-planner-week.mjs';
@@ -181,6 +182,38 @@ const countSavedBlocks = async (page, title) => {
 // Only visible nodes: the hidden AI view still holds the same title in its messages.
 const visibleEntries = (page, title) => page.getByText(title).locator('visible=true');
 
+// Counts for the open day view, by the same title identity as countSavedBlocks. Numbers only: never a title or an id.
+const dayBlockCounts = async (page, title) => {
+  const rows = await page.locator('.timeline-plan-block').evaluateAll(nodes => nodes.map(node => ({
+    draft: node.classList.contains('timeline-draft-block'), blockTitle: (node.getAttribute('title') ?? '').split(' / ')[0] })));
+  const mine = rows.filter(row => isSavedPlanTitle(row.blockTitle, title));
+  return {
+    saved: mine.filter(row => !row.draft).length,
+    drafts: mine.filter(row => row.draft).length,
+    otherSaved: rows.filter(row => !row.draft && !isSavedPlanTitle(row.blockTitle, title)).length,
+    visible: await visibleEntries(page, title).count(),
+  };
+};
+
+// The wait for the saved blocks. The wait itself is unchanged (30 s, same message). When it runs out, the failure also says what the
+// day view showed (counts only) and what it showed after ONE reload, so a client that never took the saved plan is told apart from a
+// save or a date that is wrong. It still fails: nothing here retries, lengthens or relaxes the check.
+async function expectSavedBlocksShown(page, title, target) {
+  const message = 'the corrected plan must be visible as saved blocks, not only a draft';
+  try {
+    await expect.poll(() => countSavedBlocks(page, title), { message, timeout: 30_000 }).toBeGreaterThan(0);
+  } catch (error) {
+    const diagnosis = await describeMissingSavedBlocks({ date: target.iso, read: () => dayBlockCounts(page, title),
+      reloadAndOpenDay: async () => {
+        await page.reload();
+        await openScheduleDay(page, target.date);
+        // The reload starts a fresh read; give it a short, bounded time to arrive before counting once.
+        await expect.poll(() => countSavedBlocks(page, title), { timeout: 10_000 }).toBeGreaterThan(0).catch(() => undefined);
+      } });
+    throw new Error(`${message} (${diagnosis})`, { cause: error });
+  }
+}
+
 /**
  * Registers the three flows (and, with `exerciseWeekSwitch`, a fourth that runs flow 3 after selecting a day of the PREVIOUS
  * week in the schedule view, so tomorrow lies outside the planner's week and the week-switching branch must be taken).
@@ -336,7 +369,7 @@ export function defineVNextProductionFlows(options) {
         await openScheduleDay(page, target.date);
         await expect.poll(() => visibleEntries(page, title).count(), { timeout: 30_000 }).toBeGreaterThan(0);
         // Waits for saved (non-draft) blocks: a draft block shows the same title, so the title alone proves nothing.
-        await expect.poll(() => countSavedBlocks(page, title), { message: 'the corrected plan must be visible as saved blocks, not only a draft', timeout: 30_000 }).toBeGreaterThan(0);
+        await expectSavedBlocksShown(page, title, target);
         savedBlocks = await countSavedBlocks(page, title);
         expect(savedBlocks, 'the corrected plan must be visible as saved blocks, not only a draft').toBeGreaterThan(0);
         const savedMinutes = await shownMinutes(page.locator(`[title*="${title}"]`).locator('visible=true'), title,
