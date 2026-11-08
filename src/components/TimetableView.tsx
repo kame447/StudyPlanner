@@ -42,6 +42,7 @@ import type {
   TimetableTermDraft,
 } from '../types/domain';
 import '../styles/timetable-period-config.css';
+import { LazyLoadBoundary } from './LazyLoadBoundary';
 
 const TimetableOcrImportDialog = lazy(() =>
   import('./TimetableOcrImportDialog').then((module) => ({
@@ -1379,7 +1380,10 @@ export function TimetableView({
       ) : null}
 
       {timetableOcrResult ? (
-        <Suspense fallback={null}>
+        <LazyLoadBoundary message="読み取り結果の画面を読み込めませんでした。ページを再読み込みしてください。" onClose={() => {
+          setTimetableOcrResult(null);
+          setTimetableOcrFileName('');
+        }}><Suspense fallback={null}>
           <TimetableOcrImportDialog
             userId={userId}
             termId={activeTermId}
@@ -1394,7 +1398,7 @@ export function TimetableView({
             onSaveTimetablePeriod={onSaveTimetablePeriod}
             onSaveScheduleTemplate={onSaveScheduleTemplate}
           />
-        </Suspense>
+        </Suspense></LazyLoadBoundary>
       ) : null}
     </section>
   );

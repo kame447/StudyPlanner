@@ -558,7 +558,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         ) : null}
 
         {visitedAiOwner === user.id ? (
-          <Suspense fallback={isAiPlanningSurface ? <RouteSkeleton view="ai-planning" /> : null}>
+          <LazyLoadBoundary key={user.id} message="AI 計画の画面を読み込めませんでした。ページを再読み込みしてください。"><Suspense fallback={isAiPlanningSurface ? <RouteSkeleton view="ai-planning" /> : null}>
             <AiPlanningView
               key={user.id}
               active={isActiveAiPlanningSurface}
@@ -568,7 +568,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
               selectedDate={selectedDate}
               plans={plans}
             />
-          </Suspense>
+          </Suspense></LazyLoadBoundary>
         ) : null}
 
         {isWorkspaceSurface && viewMode === 'month' ? (
@@ -594,7 +594,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         ) : null}
 
         {isWorkspaceSurface ? (
-          <Suspense fallback={<RouteSkeleton view={viewMode} />}>
+          <LazyLoadBoundary key={viewMode} message="この画面を読み込めませんでした。ページを再読み込みしてください。"><Suspense fallback={<RouteSkeleton view={viewMode} />}>
             {viewMode === 'week' ? (
               <WeekView
                 selectedDate={selectedDate}
@@ -732,7 +732,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
                 onAddMaterialToPlan={(material) => openQuickEntry(material.id)}
               />
             ) : null}
-          </Suspense>
+          </Suspense></LazyLoadBoundary>
         ) : null}
       </main>
 
@@ -776,17 +776,17 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
       ) : null}
 
       {isHomeSurface && homeEntry?.ownerId === user.id ? (
-        <Suspense fallback={null}>
+        <LazyLoadBoundary message="予定の追加画面を読み込めませんでした。ページを再読み込みしてください。" onClose={() => setHomeEntry((current) => current === homeEntry ? null : current)}><Suspense fallback={null}>
           <HomeAddFlow key={homeEntry.id} entry={homeEntry.entry} userId={user.id} plans={plans} actuals={actuals} materials={studyMaterials}
             subjects={studySubjects} monthEvents={monthEvents}
             onClose={() => setHomeEntry((current) => current === homeEntry ? null : current)}
             onSaveTodo={saveTodo} onSavePlan={savePlanDraft} onSaveStandaloneActual={saveStandaloneActual}
             onSaveLinkedActual={saveActual} onSaveMonthEvent={saveMonthEvent} onDeleteMonthEvent={deleteMonthEvent} />
-        </Suspense>
+        </Suspense></LazyLoadBoundary>
       ) : null}
 
       {quickEntry?.ownerId === user.id ? (
-        <Suspense fallback={null}>
+        <LazyLoadBoundary message="入力画面を読み込めませんでした。ページを再読み込みしてください。" onClose={() => setQuickEntry((current) => current === quickEntry ? null : current)}><Suspense fallback={null}>
           <QuickEntryModal
             key={quickEntry.id}
             initialMaterialId={quickEntry.materialId}
@@ -803,7 +803,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
             onSaveStandaloneActual={saveStandaloneActual}
             onSaveLinkedActual={saveActual}
           />
-        </Suspense>
+        </Suspense></LazyLoadBoundary>
       ) : null}
 
       <MyPageDialog
@@ -851,9 +851,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onClose={settingsNavigation.close}
       />
       </Suspense></LazyLoadBoundary> : null}
-      {streakNavigation.isOpen ? <Suspense fallback={<main className="app-settings-page" aria-label="学習記録"><button type="button" onClick={streakNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>
+      {streakNavigation.isOpen ? <LazyLoadBoundary message="学習記録を読み込めませんでした。ページを再読み込みしてください。" onClose={streakNavigation.close}><Suspense fallback={<main className="app-settings-page" aria-label="学習記録"><button type="button" onClick={streakNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>
         <StudyStreakPage onClose={streakNavigation.close} />
-      </Suspense> : null}
+      </Suspense></LazyLoadBoundary> : null}
     </HomeSceneAtmosphereProvider>
     </StudyStreakProvider>
     </HomeDisplayClockProvider>
