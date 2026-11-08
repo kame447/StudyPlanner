@@ -202,10 +202,27 @@ describe('learning consultation routing in the VNext session (#246)', () => {
       expect(h.checkpoint().vnext.state.graph.tasks.map(item => item.title)).toEqual(['英語']);
     });
 
+    const studyContext = (): VNextAddFact => ({ kind: 'study_context', localId: 'c', taskRef: { localId: 'eng' }, purpose: 'exam', activityKind: 'problem_solving', contextLabel: '共通テスト' });
+
+    it('is answered with advice when the task came with its study context (the real model often adds it), and both are dropped', async () => {
+      const port = consult('learning_consultation');
+      const h = harness([reading('discuss', { add: [task, studyContext()] })], port);
+      const result = await h.turn('t1', '共通テストの英語を伸ばしたい。どう勉強すればいい？');
+      expect(result).toMatchObject({ replySource: 'advice', appliedDelta: null });
+      expect(h.checkpoint().vnext.state.graph.tasks).toEqual([]);
+    });
+
+    it('keeps the task and its study context when the purpose is planning', async () => {
+      const h = harness([reading('discuss', { add: [task, studyContext()] })], consult('planning_operation'));
+      const result = await h.turn('t1', '共通テストの英語をやりたい');
+      expect(result).toMatchObject({ replySource: 'renderer', outcome: 'applied' });
+      expect(h.checkpoint().vnext.state.graph.tasks.map(item => item.title)).toEqual(['英語']);
+    });
+
     it.each([
-      ['a component or study context', (): VNextAddFact => ({ kind: 'study_context', localId: 'c', taskRef: { localId: 'eng' }, purpose: 'exam', activityKind: 'problem_solving', contextLabel: '共通テスト' }) ],
       ['a temporal constraint', (): VNextAddFact => ({ kind: 'temporal_constraint', localId: 'c', taskRef: { localId: 'eng' }, targetRef: { localId: 'eng' },
         constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: 'this_week', namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' })],
+      ['a quantity', () => pages],
     ])('is not consulted when the reading also read %s', async (_name, extra) => {
       const port = consult('learning_consultation');
       const h = harness([reading('discuss', { add: [task, extra()] })], port);

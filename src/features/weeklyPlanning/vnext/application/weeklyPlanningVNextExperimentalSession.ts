@@ -369,10 +369,11 @@ const withoutStudyRecords = (body: WeeklyPlanningVNextSessionCheckpoint['vnext']
 const isEmpty = (delta: VNextTurnDelta) =>
   !delta.proposalDecision && delta.add.length + delta.patch.length + delta.remove.length + delta.relate.length + delta.defer.length === 0;
 
-/** Nothing but named tasks: no quantity, time, effort, date or relation, so no plan fact would be lost by answering instead (#246). */
-const isTaskNamesOnly = (delta: VNextTurnDelta) =>
+/** Only named tasks and their study context (purpose, kind, label): no quantity, time, effort, date or relation, so nothing a plan
+ * could schedule would be lost by answering instead (#246). The real model often adds the study context to a consultation's task. */
+const isTaskDescriptionOnly = (delta: VNextTurnDelta) =>
   !delta.proposalDecision && delta.patch.length + delta.remove.length + delta.relate.length + delta.defer.length === 0
-  && delta.add.every(fact => fact.kind === 'task');
+  && delta.add.every(fact => fact.kind === 'task' || fact.kind === 'study_context');
 
 /**
  * One user turn. Every step reads from and writes to the checkpoint slot, so a reload is the normal path.
@@ -504,13 +505,13 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   }
 
   // A learning consultation ("何から始めればいい？") is answered with advice, never with a planning question (#246). Only a
-  // turn that read nothing to plan (or only task names, no quantity, time or date), with no question, preview or study-record
+  // turn that read nothing to plan (or only task names and their study context, no quantity, time or date), with no question, preview or study-record
   // question open, reaches the purpose check, so a short reply to an open interaction is never taken for a new topic. A
   // consultation drops that turn's task names with the rest: nothing of it enters the graph, a preview or a save. A refused
   // consultation, or any other purpose, leaves the turn on the planning path below exactly as before, task names kept.
   if (ports.consultation && interpretation.status === 'interpreted'
     && (interpretation.planningIntent === 'discuss' || interpretation.planningIntent === 'unknown')
-    && isTaskNamesOnly(interpretation.delta) && !interpretation.conversationActs?.length && interpretation.answer === null
+    && isTaskDescriptionOnly(interpretation.delta) && !interpretation.conversationActs?.length && interpretation.answer === null
     && !interpretation.studyRecords?.length && !interpretation.studyRecordQuestion && !interpretation.studyRestDays?.length
     && before.questions.every(question => question.optionalInvitation) && read.checkpoint.preview === null
     && !read.checkpoint.pendingStudyRecordQuestion) {

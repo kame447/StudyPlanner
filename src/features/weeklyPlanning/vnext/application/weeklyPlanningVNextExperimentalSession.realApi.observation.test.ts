@@ -587,8 +587,8 @@ async function observeConsultationTurn(scenario: ConsultationCase) {
     scenario,
     native: { status: turn.interpretation?.status ?? null, planningIntent: interpreted?.planningIntent ?? null,
       deltaEmpty: interpreted ? added.length + interpreted.delta.patch.length + interpreted.delta.remove.length + interpreted.delta.relate.length + interpreted.delta.defer.length === 0 : null,
-      // Only task names: no quantity, time, effort, date or relation (the reading the purpose check also covers).
-      deltaTaskOnly: interpreted ? added.length > 0 && added.every(fact => fact.kind === 'task') && interpreted.delta.patch.length + interpreted.delta.remove.length + interpreted.delta.relate.length + interpreted.delta.defer.length === 0 : null,
+      // Only task names and their study context: no quantity, time, effort, date or relation (the reading the purpose check also covers).
+      deltaDescriptionOnly: interpreted ? added.length > 0 && added.every(fact => fact.kind === 'task' || fact.kind === 'study_context') && interpreted.delta.patch.length + interpreted.delta.remove.length + interpreted.delta.relate.length + interpreted.delta.defer.length === 0 : null,
       taskTitles: added.flatMap(fact => fact.kind === 'task' ? [fact.title] : []) },
     purposeCheckRan: consultation.log.classifyCalled,
     classification: consultation.log.classification,
@@ -622,7 +622,7 @@ function expectConsultationOutcomeIsSafe(observed: Awaited<ReturnType<typeof obs
     expect(observed.drafts).toBe(0);
     expect(observed.questionCode).toBeNull();
     // The reading held nothing but task names at most, and those names were dropped with the turn (the graph is untouched above).
-    expect(observed.native.deltaEmpty === true || observed.native.deltaTaskOnly === true).toBe(true);
+    expect(observed.native.deltaEmpty === true || observed.native.deltaDescriptionOnly === true).toBe(true);
   } else {
     // The planning path is the old behavior, never a half-advice turn.
     expect(observed.replySource).not.toBe('advice');
@@ -646,7 +646,7 @@ function summarizeConsultation(observations: typeof consultationObservations) {
       const items = observations.filter(item => item.scenario.category === category);
       return [category, { turns: items.length,
         nativeDeltaEmpty: items.filter(item => item.native.deltaEmpty === true).length,
-        nativeTaskOnly: items.filter(item => item.native.deltaTaskOnly === true).length,
+        nativeDescriptionOnly: items.filter(item => item.native.deltaDescriptionOnly === true).length,
         nativeTaskAdded: items.filter(item => item.native.taskTitles.length > 0).length,
         purposeCheckRan: items.filter(item => item.purposeCheckRan).length,
         classifiedConsultation: items.filter(item => item.classification === 'learning_consultation').length,
@@ -654,7 +654,7 @@ function summarizeConsultation(observations: typeof consultationObservations) {
         answerContractRefused: items.filter(item => item.answerContractPassed === false).length,
         adviceShown: items.filter(item => item.adviceShown).length }];
     })),
-    perScenario: observations.map(item => ({ id: item.scenario.id, planningIntent: item.native.planningIntent, deltaEmpty: item.native.deltaEmpty, deltaTaskOnly: item.native.deltaTaskOnly,
+    perScenario: observations.map(item => ({ id: item.scenario.id, planningIntent: item.native.planningIntent, deltaEmpty: item.native.deltaEmpty, deltaDescriptionOnly: item.native.deltaDescriptionOnly,
       taskTitles: item.native.taskTitles, purposeCheckRan: item.purposeCheckRan, classification: item.classification, answerKind: item.answerKind,
       answerContractPassed: item.answerContractPassed, adviceShown: item.adviceShown, replySource: item.replySource })),
   };
@@ -684,7 +684,7 @@ run('#246 learning consultation is answered with advice, and only a consultation
 // Offline: the oracle and the summary against hand-made observations, so a broken oracle cannot pass the paid run unnoticed.
 describe('#246 consultation observation oracle (no API)', () => {
   const base = (scenario: ConsultationCase, overrides: Partial<Awaited<ReturnType<typeof observeConsultationTurn>>> = {}) => ({
-    scenario, native: { status: 'interpreted', planningIntent: 'unknown', deltaEmpty: true, deltaTaskOnly: false, taskTitles: [] as string[] }, purposeCheckRan: true,
+    scenario, native: { status: 'interpreted', planningIntent: 'unknown', deltaEmpty: true, deltaDescriptionOnly: false, taskTitles: [] as string[] }, purposeCheckRan: true,
     classification: 'learning_consultation', answerCalled: true, answerContractPassed: true, answerKind: 'proposal', replySource: 'advice', adviceShown: true,
     adviceText: '助言', state: { graphRevision: 0, tasks: 0, workloads: 0, efforts: 0, temporal: 0 }, previewShown: false, drafts: 0, questionCode: null,
     saves: 0, approvals: 0, turn: {}, raw: [], ...overrides }) as unknown as Awaited<ReturnType<typeof observeConsultationTurn>>;
@@ -696,12 +696,12 @@ describe('#246 consultation observation oracle (no API)', () => {
     expect(() => expectConsultationOutcomeIsSafe(base(consult, { adviceShown: false, replySource: 'renderer', answerContractPassed: false, adviceText: null,
       state: { graphRevision: 0, tasks: 0, workloads: 0, efforts: 0, temporal: 0 } }))).not.toThrow();
     expect(() => expectConsultationOutcomeIsSafe(base(planning, { adviceShown: false, replySource: 'renderer', purposeCheckRan: false, classification: null,
-      answerCalled: false, answerContractPassed: null, adviceText: null, answerKind: null, native: { status: 'interpreted', planningIntent: 'discuss', deltaEmpty: false, deltaTaskOnly: false, taskTitles: ['数学'] } }))).not.toThrow();
+      answerCalled: false, answerContractPassed: null, adviceText: null, answerKind: null, native: { status: 'interpreted', planningIntent: 'discuss', deltaEmpty: false, deltaDescriptionOnly: false, taskTitles: ['数学'] } }))).not.toThrow();
     // A consultation whose reading only named a task: advice shown, the task name dropped with the turn.
-    expect(() => expectConsultationOutcomeIsSafe(base(byId('consult-math-books'), { native: { status: 'interpreted', planningIntent: 'discuss', deltaEmpty: false, deltaTaskOnly: true, taskTitles: ['数学'] } }))).not.toThrow();
+    expect(() => expectConsultationOutcomeIsSafe(base(byId('consult-math-books'), { native: { status: 'interpreted', planningIntent: 'discuss', deltaEmpty: false, deltaDescriptionOnly: true, taskTitles: ['数学'] } }))).not.toThrow();
     // The first word of a plan (a task name): the purpose check ran and said it is planning, so the task stays.
     expect(() => expectConsultationOutcomeIsSafe(base(firstWord, { adviceShown: false, replySource: 'renderer', classification: 'planning_operation', answerCalled: false, answerContractPassed: null, adviceText: null, answerKind: null,
-      native: { status: 'interpreted', planningIntent: 'discuss', deltaEmpty: false, deltaTaskOnly: true, taskTitles: ['数学'] }, state: { graphRevision: 1, tasks: 1, workloads: 0, efforts: 0, temporal: 0 } }))).not.toThrow();
+      native: { status: 'interpreted', planningIntent: 'discuss', deltaEmpty: false, deltaDescriptionOnly: true, taskTitles: ['数学'] }, state: { graphRevision: 1, tasks: 1, workloads: 0, efforts: 0, temporal: 0 } }))).not.toThrow();
   });
 
   it.each([
@@ -711,8 +711,8 @@ describe('#246 consultation observation oracle (no API)', () => {
     ['a question was asked with advice', { questionCode: 'missing_schedulable_work' }],
     ['a save happened', { saves: 1 }],
     ['an approval happened', { approvals: 1 }],
-    ['advice followed a reading that held a quantity or time as well', { native: { status: 'interpreted', planningIntent: 'unknown', deltaEmpty: false, deltaTaskOnly: false, taskTitles: ['英語'] } }],
-    ['advice with a task name that stayed in the graph', { state: { graphRevision: 1, tasks: 1, workloads: 0, efforts: 0, temporal: 0 }, native: { status: 'interpreted', planningIntent: 'unknown', deltaEmpty: false, deltaTaskOnly: true, taskTitles: ['数学'] } }],
+    ['advice followed a reading that held a quantity or time as well', { native: { status: 'interpreted', planningIntent: 'unknown', deltaEmpty: false, deltaDescriptionOnly: false, taskTitles: ['英語'] } }],
+    ['advice with a task name that stayed in the graph', { state: { graphRevision: 1, tasks: 1, workloads: 0, efforts: 0, temporal: 0 }, native: { status: 'interpreted', planningIntent: 'unknown', deltaEmpty: false, deltaDescriptionOnly: true, taskTitles: ['数学'] } }],
     ['advice was shown without the consultation classification', { classification: 'unresolved' }],
   ])('fails when %s', (_name, overrides) => {
     expect(() => expectConsultationOutcomeIsSafe(base(consult, overrides as never))).toThrow();
@@ -722,7 +722,7 @@ describe('#246 consultation observation oracle (no API)', () => {
     expect(() => expectConsultationOutcomeIsSafe(base(greeting))).toThrow();
     expect(() => expectConsultationOutcomeIsSafe(base(planning))).toThrow();
     // The first word of a plan taken for a consultation loses the task: the oracle must catch it.
-    expect(() => expectConsultationOutcomeIsSafe(base(firstWord, { native: { status: 'interpreted', planningIntent: 'discuss', deltaEmpty: false, deltaTaskOnly: true, taskTitles: ['数学'] } }))).toThrow();
+    expect(() => expectConsultationOutcomeIsSafe(base(firstWord, { native: { status: 'interpreted', planningIntent: 'discuss', deltaEmpty: false, deltaDescriptionOnly: true, taskTitles: ['数学'] } }))).toThrow();
     expect(() => expectConsultationOutcomeIsSafe(base(greeting, { adviceShown: false, replySource: 'renderer', answerCalled: true }))).toThrow();
   });
 
