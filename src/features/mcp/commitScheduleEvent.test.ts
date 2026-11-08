@@ -23,12 +23,14 @@ async function harness(events: MonthEvent[] = [], options: { dailyLimit?: number
   const authority = createLocalScheduleEventAuthority(createLocalPlannerStorageGateway(storage), storage);
   await authority.ensureMigrated(OWNER, async () => ({ plans: [], monthEvents: events }));
   const timetable = { getScheduleTemplates: async () => [], getTimetableTerms: async () => [] };
+  const rawUpsert = authority.upsertMonthEvent.bind(authority);
+  const rawSnapshot = authority.getScheduleSnapshot.bind(authority);
   const upsert = vi.spyOn(authority, 'upsertMonthEvent');
   const commit = createScheduleEventCommitter({ ownerId: OWNER, timeZone: candidate.timeZone, range, authority, timetable,
     now: () => '2026-11-08T00:00:00.000Z', audit: () => undefined, ...options });
   const read = createScheduleRangeReader({ ownerId: OWNER, timeZone: candidate.timeZone, authority, timetable });
   const day = () => read(OWNER, { startDate: candidate.start.date, endDate: candidate.start.date, timeZone: candidate.timeZone });
-  return { authority, commit, upsert, day, timetable, storage, values };
+  return { authority, commit, upsert, rawUpsert, rawSnapshot, day, timetable, storage, values };
 }
 
 describe('commit_schedule_event application adapter', () => {
@@ -225,6 +227,26 @@ describe('commit_schedule_event application adapter', () => {
       expect(info).toHaveBeenCalledWith('[MCP Schedule Commit] audit', expect.objectContaining({ outcome: 'saved', ownerId: OWNER }));
       expect(JSON.stringify(info.mock.calls)).not.toContain('ゼミ');
       info.mockRestore();
+    });
+
+    it('does not exceed the limit when commits run concurrently, even with slow reads and writes', async () => {
+      const h = await harness([], { dailyLimit: 2 });
+      const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      h.upsert.mockImplementation(async event => { await pause(20); return h.rawUpsert(event); });
+      vi.spyOn(h.authority, 'getScheduleSnapshot').mockImplementation(async owner => { await pause(1); return h.rawSnapshot(owner); });
+      const results = await Promise.allSettled([1, 2, 3, 4, 5].map(n => h.commit(OWNER, key(n))));
+      expect(results.filter(item => item.status === 'fulfilled')).toHaveLength(2);
+      expect(results.filter(item => item.status === 'rejected' && (item.reason as { code: string }).code === 'daily_limit_exceeded')).toHaveLength(3);
+      expect((await h.authority.getMonthEvents(OWNER)).filter(event => event.id.startsWith('mcp-'))).toHaveLength(2);
+    });
+
+    it('saves a concurrently resent request once, and a failed commit does not block the next one', async () => {
+      const h = await harness();
+      const results = await Promise.all([h.commit(OWNER, input), h.commit(OWNER, input)]);
+      expect(results.map(item => item.status).sort()).toEqual(['already_saved', 'saved']);
+      expect(h.upsert).toHaveBeenCalledTimes(1);
+      await expect(h.commit(OWNER, { ...input, idempotencyKey: 'bad key!' })).rejects.toMatchObject({ code: 'invalid_commit' });
+      expect((await h.commit(OWNER, key(2))).status).toBe('saved');
     });
   });
 });

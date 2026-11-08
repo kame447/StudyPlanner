@@ -35,6 +35,21 @@ export const logScheduleEventCommitAudit = (entry: ScheduleEventCommitAudit) => 
 /** A person saves a handful of events a day by chat; this bounds a runaway agent to a small, reviewable batch. */
 export const DEFAULT_MCP_COMMIT_DAILY_LIMIT = 20;
 
+/**
+ * Serializes whole commits per owner within this isolate, so the daily count and the save are one critical
+ * section and concurrent calls cannot all pass the limit check. It cannot see other isolates: the production
+ * composition must run an owner's commits in a single place (e.g. one Durable Object per owner) before enabling.
+ */
+const ownerQueues = new Map<string, Promise<unknown>>();
+async function exclusivelyForOwner<T>(ownerId: string, work: () => Promise<T>): Promise<T> {
+  const previous = ownerQueues.get(ownerId) ?? Promise.resolve();
+  const run = previous.then(work, work);
+  const tail = run.catch(() => undefined);
+  ownerQueues.set(ownerId, tail);
+  try { return await run; }
+  finally { if (ownerQueues.get(ownerId) === tail) ownerQueues.delete(ownerId); }
+}
+
 const KEY = /^[A-Za-z0-9._:-]{8,128}$/u;
 const FIELDS = ['title', 'start', 'end', 'timeZone', 'idempotencyKey'];
 
@@ -127,7 +142,7 @@ export function createScheduleEventCommitter(source: Parameters<typeof createSch
       catch { /* auditing must not alter or block the commit result */ }
     };
     try {
-      const result = await commit(actorOwnerId, input, context);
+      const result = await exclusivelyForOwner(actorOwnerId, () => commit(actorOwnerId, input, context));
       emit(result.status === 'saved' ? 'saved' : 'duplicate');
       return result;
     } catch (error) {
