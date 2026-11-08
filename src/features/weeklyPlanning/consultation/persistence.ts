@@ -14,7 +14,7 @@ import { validateAdviceAnswerDocument, type ValidationResult } from './validatio
 /** The active leaf plus at most three earlier proposals. */
 export const CONSULTATION_MAX_PROPOSALS = 4;
 /** One stored proposal, serialized (a typical two-option answer is 2.5-3.5 KB). The whole checkpoint is bounded separately. */
-export const CONSULTATION_MAX_PROPOSAL_BYTES = 4096;
+export const CONSULTATION_MAX_PROPOSAL_BYTES = 8192;
 const MAX_ID_LENGTH = 128;
 const MAX_FEEDBACK_LENGTH = 500;
 const MAX_DERIVED_RECORD_IDS = 30;
