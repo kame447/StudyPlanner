@@ -39,7 +39,7 @@ class MemoryBackfillFirestore {
     return value ? { ...value, id } : null;
   }
 
-  async commitWrites(writes: readonly Array<{
+  async commitWrites(writes: ReadonlyArray<{
     collection: string;
     id: string;
     value: StoredDocument;

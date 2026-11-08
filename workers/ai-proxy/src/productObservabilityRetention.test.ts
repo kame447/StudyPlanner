@@ -45,7 +45,7 @@ class MemoryRetentionFirestore {
   }
 
   async commitWrites(
-    writes: readonly Array<{
+    writes: ReadonlyArray<{
       collection: string;
       id: string;
       delete: true;

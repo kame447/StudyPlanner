@@ -50,7 +50,7 @@ class MemoryRollupFirestore {
   }
 
   async batchGetDocumentKeys(
-    keys: readonly Array<{ collection: string; id: string }>,
+    keys: ReadonlyArray<{ collection: string; id: string }>,
     _transaction: string,
   ): Promise<Array<StoredDocument | null>> {
     return await Promise.all(keys.map(({ collection, id }) => this.getDocument(collection, id)));
@@ -58,7 +58,7 @@ class MemoryRollupFirestore {
 
   async commitTransaction(
     _transaction: string,
-    writes: readonly Array<{ collection: string; id: string; value: StoredDocument }>,
+    writes: ReadonlyArray<{ collection: string; id: string; value: StoredDocument }>,
   ): Promise<void> {
     for (const write of writes) {
       this.documents.set(this.key(write.collection, write.id), { ...write.value });

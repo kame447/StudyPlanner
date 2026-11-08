@@ -70,7 +70,7 @@ class MemoryReadFirestore {
     return await Promise.all(ids.map((id) => this.getDocument(collection, id)));
   }
 
-  async batchGetDocumentKeys(keys: readonly Array<{ collection: string; id: string }>) {
+  async batchGetDocumentKeys(keys: ReadonlyArray<{ collection: string; id: string }>) {
     this.batchGetCallCount += 1;
     return await Promise.all(keys.map(({ collection, id }) => this.getDocument(collection, id)));
   }

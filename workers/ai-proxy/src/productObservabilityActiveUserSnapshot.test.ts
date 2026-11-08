@@ -57,7 +57,7 @@ class MemorySnapshotFirestore {
   }
 
   async batchGetDocumentKeys(
-    keys: readonly Array<{ collection: string; id: string }>,
+    keys: ReadonlyArray<{ collection: string; id: string }>,
     transaction?: string,
   ): Promise<Array<StoredDocument | null>> {
     this.batchGetCallCount += 1;
@@ -96,8 +96,8 @@ class MemorySnapshotFirestore {
 
   async commitTransaction(
     _transaction: string,
-    writes: readonly Array<{ collection: string; id: string; value: StoredDocument }>,
-    deletes: readonly Array<{ collection: string; id: string }> = [],
+    writes: ReadonlyArray<{ collection: string; id: string; value: StoredDocument }>,
+    deletes: ReadonlyArray<{ collection: string; id: string }> = [],
   ): Promise<void> {
     if (this.conflictNextCommit) {
       this.conflictNextCommit = false;
