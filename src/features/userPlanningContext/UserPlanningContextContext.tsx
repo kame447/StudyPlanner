@@ -1,4 +1,5 @@
 import { startupTiming } from '../../lib/startupTiming';
+import { AiProviderError } from '../../../shared/aiProviderFailure';
 import {
   createContext,
   useCallback,
@@ -69,9 +70,19 @@ function currentDateInJapan(): string {
   }).format(new Date());
 }
 
-function reportSyncFailure(error: unknown, action: string): string {
+// A save or forget the user just asked for must say that nothing changed, and what to do next.
+const MEMORY_SAVE_FAILED_MESSAGE = 'この内容を覚えておけませんでした（保存されていません）。通信を確認して、もう一度お試しください。';
+const MEMORY_FORGET_FAILED_MESSAGE = 'この内容を忘れられませんでした（まだ覚えています）。通信を確認して、もう一度お試しください。';
+// The AI call failed before anything was saved; a provider's own message is never shown to the user.
+const MEMORY_INTERPRET_FAILED_MESSAGE = 'AIが内容を整理できませんでした（保存されていません）。通信を確認して、もう一度お試しください。';
+
+function reportSyncFailure(
+  error: unknown,
+  action: string,
+  message = 'AIが覚えている情報を同期できませんでした。',
+): string {
   console.error(`[UserPlanningContext] ${action}`, error);
-  return 'AIが覚えている情報を同期できませんでした。';
+  return message;
 }
 
 export function userPlanningContextDateTextV1(record: UserPlanningContextRecordV1): string {
@@ -219,6 +230,11 @@ export function UserPlanningContextProvider({
       const interpreted = await interpretUserPlanningContextNaturalLanguageV2({
         text: input.text,
         existingRecord: existing,
+      }).catch((interpretError: unknown) => {
+        if (interpretError instanceof AiProviderError) {
+          throw new Error(reportSyncFailure(interpretError, 'natural-language interpretation failed', MEMORY_INTERPRET_FAILED_MESSAGE));
+        }
+        throw interpretError;
       });
       if (interpreted.targetDomain !== 'user_context') {
         throw new Error(userPlanningContextExternalOwnerMessageV2(interpreted.targetDomain));
@@ -241,7 +257,7 @@ export function UserPlanningContextProvider({
         const next = await repository.saveUserConfirmedRecord(ownerId, record, existing?.id ?? null);
         applyRepositoryState(next);
       } catch (saveError) {
-        const message = reportSyncFailure(saveError, 'natural-language settings save failed');
+        const message = reportSyncFailure(saveError, 'natural-language settings save failed', MEMORY_SAVE_FAILED_MESSAGE);
         setError(message);
         throw new Error(message);
       }
@@ -259,7 +275,7 @@ export function UserPlanningContextProvider({
       applyRepositoryState(next);
       publishUserPlanningContextForgottenV1({ ownerId, recordId });
     } catch (removeError) {
-      const message = reportSyncFailure(removeError, 'forget failed');
+      const message = reportSyncFailure(removeError, 'forget failed', MEMORY_FORGET_FAILED_MESSAGE);
       setError(message);
       throw new Error(message);
     } finally {
