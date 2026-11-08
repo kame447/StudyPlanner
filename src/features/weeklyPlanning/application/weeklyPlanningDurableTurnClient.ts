@@ -12,9 +12,15 @@ export const DURABLE_CLIENT_TIMING = {
   retentionMs: RETENTION_MS,
   pollBaseMs: 2000,
   pollMaxMs: 10_000,
+  /** A healthy queued/running turn is polled at the base interval this many times (about 30 s, past the slowest observed turn) before backing off. */
+  steadyPolls: 15,
   requestTimeoutMs: 20_000,
   reconcileWindowMs: 5 * 60_000,
 } as const;
+/** Wait after a healthy queued/running answer. Failure retries keep their own growing backoff. */
+export const healthyPollDelayMs = (polls: number) => polls < DURABLE_CLIENT_TIMING.steadyPolls
+  ? DURABLE_CLIENT_TIMING.pollBaseMs
+  : Math.min(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.pollBaseMs + (polls - DURABLE_CLIENT_TIMING.steadyPolls + 1) * 1000);
 /** Each core owns its receipt: a build that predates a core never sees (or resumes) that core's receipt. */
 export type DurableReceiptCore = 'stable_v5' | 'vnext';
 export const durableReceiptKey = (ownerId: string, core: DurableReceiptCore = 'stable_v5') =>
@@ -105,6 +111,7 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
   let maySubmit = !options.resumeOnly;
   let needsReconcile = false;
   let attempts = 0;
+  let healthyPolls = 0;
   while (ports.now() < deadline) {
     if (options.isCurrent?.() === false) throw new Error('会話が切り替わったため、古い返信の反映を止めました。');
     const token = await ports.token(receipt.ownerId);
@@ -148,7 +155,12 @@ export async function executeDurableWeeklyTurn<Result extends IsolatedWeeklyPlan
       if (!(error instanceof TypeError) && !(error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) throw error;
       needsReconcile = true;
     }
-    await ports.wait(Math.min(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.pollBaseMs + attempts++ * 1000));
+    // needsReconcile is false only after a healthy queued/running answer; every failure path keeps the old backoff.
+    const delay = needsReconcile
+      ? Math.min(DURABLE_CLIENT_TIMING.pollMaxMs, DURABLE_CLIENT_TIMING.pollBaseMs + attempts * 1000)
+      : healthyPollDelayMs(healthyPolls++);
+    attempts++;
+    await ports.wait(delay);
   }
   throw new Error('返信の保存期限が切れました。');
 }
