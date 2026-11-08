@@ -174,9 +174,17 @@ function matchingVariant(variants: Schema[], value: unknown): Schema | undefined
       : variant.type === (value === null ? 'null' : typeof value));
 }
 
+/**
+ * Repair-only text (never in the first request or the schema): a fixed_interval is one stated start and end. A part of
+ * the day (afternoon, evening) or a single clock time does not state both, so the missing time is unknown and is never
+ * invented. The constraint is removed, keeping the task, its registration request and its date as a task_date_rule.
+ */
+export const VNEXT_FIXED_INTERVAL_REPAIR_REQUIREMENT = 'A fixed_interval needs both startTime and endTime as clock times the user stated. If the user stated only a part of the day (for example afternoon or evening) or only one clock time, the missing time is unknown: remove that temporal_constraint, keep the task and its conversationActs request, and keep the stated date as a task_date_rule (allowed_date). Never invent a clock time and never put a named period into a fixed_interval.';
+
 /** Describe a typed field from the same schema sent to the provider; paths contain no natural-language inference. */
 export function describeVNextProviderField(path: string, output: unknown): string | null {
   if (path === 'labelEvidence') return VNEXT_LABEL_EVIDENCE_REQUIREMENT;
+  if (/^(?:delta\.)?add\[\d+\]:missing-interval$/.test(path)) return VNEXT_FIXED_INTERVAL_REPAIR_REQUIREMENT;
   const normalized = /^(add|patch|remove|relate|defer)\[/.test(path) ? `delta.${path}` : path;
   const tokens = normalized.split(':')[0].match(/[A-Za-z_][A-Za-z0-9_]*|\d+/g) ?? [];
   let schema: Schema | undefined = root;
