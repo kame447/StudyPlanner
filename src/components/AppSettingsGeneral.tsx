@@ -9,6 +9,7 @@ import { FONT_PRESET_OPTIONS, FONT_PRESET_SAMPLE_TEXT, loadAllWebFontStylesheets
 import { THEME_PALETTE_OPTIONS, type ThemeMode, type ThemePalette } from '../lib/themePalette';
 import { DEFAULT_HOME_SCENE_PREFERENCES, HOME_SCENE_STYLE_OPTIONS, type HomeScenePreferences, type HomeSceneStyle } from '../lib/homeScenePreferences';
 import { HomeScene } from './home/HomeScene';
+import { DefaultStudyModeSetting } from './DefaultStudyModeSetting';
 
 export interface AppSettingsGeneralProps {
   progressPreferences?: StudyProgressPreferences;
@@ -222,6 +223,7 @@ export function AppSettingsGeneral({
         </div>
         <p className="settings-group-note" id="settings-week-description">「今週」「来週」の解釈と週間計画の保存単位に反映されます。</p>
       </div>
+      <DefaultStudyModeSetting />
       <button className="settings-row settings-row-button settings-reset-row" type="button" disabled={preferenceSaving} onClick={() => {
         if (window.confirm('学習設定を初期化しますか？')) void resetProfile();
       }}><span className="settings-field-label"><RotateCcw aria-hidden="true" size={20} />学習設定を初期化</span><ChevronRight aria-hidden="true" size={20} /></button>

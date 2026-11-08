@@ -1,4 +1,14 @@
 import type { WeeklyPlanningWeekStartsOn } from './weeklyPlanningWeek';
+import { isValidPomodoroMinutes, type PomodoroSettings } from '../../../lib/pomodoroSession';
+
+/**
+ * The study mode a session starts in, and the pomodoro focus/break length it
+ * uses. The set count stays a per-session choice, so it is not stored here.
+ */
+export interface DefaultStudyMode {
+  mode: 'normal' | 'pomodoro';
+  pomodoro: Omit<PomodoroSettings, 'setCount'>;
+}
 
 export const WEEKLY_PLANNING_PERSONALIZATION_SCHEMA_VERSION = 2;
 export const WEEKLY_PLANNING_PLACEMENT_FEATURE_VERSION = 'placement-features-v1' as const;
@@ -68,6 +78,8 @@ export interface WeeklyPlanningPersonalizationProfile {
   weekStartsOn?: WeeklyPlanningPersonalizationFact<WeeklyPlanningWeekStartsOn>;
   subjectEstimateMultipliers: Record<string, WeeklyPlanningPersonalizationFact<number>>;
   preferredSessionMinutes?: WeeklyPlanningPersonalizationFact<number>;
+  /** Unset means the normal timer. */
+  defaultStudyMode?: WeeklyPlanningPersonalizationFact<DefaultStudyMode>;
   placementModel: WeeklyPlanningPlacementModelProfile;
   updatedAt: string;
 }
@@ -196,6 +208,7 @@ export function sanitizeWeeklyPlanningPersonalizationProfile(
     typeof input === 'number' && Number.isFinite(input) && input >= 10 && input <= 240
       ? Math.round(input)
       : undefined);
+  const defaultStudyMode = safeFact(value.defaultStudyMode, safeDefaultStudyMode);
   const subjectEstimateMultipliers: Record<string, WeeklyPlanningPersonalizationFact<number>> = {};
   if (isRecord(value.subjectEstimateMultipliers)) {
     Object.entries(value.subjectEstimateMultipliers).slice(0, 100).forEach(([key, fact]) => {
@@ -219,6 +232,32 @@ export function sanitizeWeeklyPlanningPersonalizationProfile(
     updatedAt: value.updatedAt,
     ...(weekStartsOn ? { weekStartsOn } : {}),
     ...(preferredSessionMinutes ? { preferredSessionMinutes } : {}),
+    ...(defaultStudyMode ? { defaultStudyMode } : {}),
+  };
+}
+
+function safeDefaultStudyMode(input: unknown): DefaultStudyMode | undefined {
+  if (!isRecord(input) || !isRecord(input.pomodoro)) return undefined;
+  if (input.mode !== 'normal' && input.mode !== 'pomodoro') return undefined;
+  const { preset, customFocusMinutes, customBreakMinutes } = input.pomodoro;
+  if (preset === '25-5' || preset === '50-10') return { mode: input.mode, pomodoro: { preset } };
+  if (preset !== 'custom' || typeof customFocusMinutes !== 'number' || typeof customBreakMinutes !== 'number'
+    || !isValidPomodoroMinutes(customFocusMinutes) || !isValidPomodoroMinutes(customBreakMinutes)) return undefined;
+  return { mode: input.mode, pomodoro: { preset, customFocusMinutes, customBreakMinutes } };
+}
+
+export function createConfirmedDefaultStudyModeFact(
+  value: DefaultStudyMode,
+  now = new Date().toISOString(),
+): WeeklyPlanningPersonalizationFact<DefaultStudyMode> {
+  return {
+    value,
+    origin: 'user_confirmed',
+    confidence: 'confirmed',
+    scope: { kind: 'global' },
+    updatedAt: now,
+    confirmedAt: now,
+    sourceRef: { kind: 'explicit_setting' },
   };
 }
 

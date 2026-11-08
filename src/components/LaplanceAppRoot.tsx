@@ -101,6 +101,7 @@ function ConsentedLaplanceApp({
               saving={personalization.loading}
               error={personalization.error}
               setWeekStartsOn={personalization.setWeekStartsOn}
+              setDefaultStudyMode={personalization.setDefaultStudyMode}
               resetProfile={personalization.resetProfile}
             >
               <RootStartupReadyProvider onReady={finishStartup}>

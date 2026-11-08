@@ -8,6 +8,8 @@ vi.mock(
     useWeeklyPlanningPersonalization: () => ({
       weekStartsOn: 'monday',
       setWeekStartsOn: vi.fn(),
+      defaultStudyMode: { mode: 'normal', pomodoro: { preset: '25-5' } },
+      setDefaultStudyMode: vi.fn(),
       resetProfile: vi.fn(),
     }),
   }),

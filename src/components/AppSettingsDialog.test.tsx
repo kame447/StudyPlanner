@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   memory: { records: [] as UserPlanningContextRecordV1[], shared: true, syncing: false, unavailable: false, error: null as string | null,
     saveNaturalLanguage: vi.fn(async () => undefined), removeRecord: vi.fn(async () => undefined) },
   weekStartsOn: 'monday', setWeekStartsOn: vi.fn(async () => true), resetProfile: vi.fn(async () => true),
+  defaultStudyMode: { mode: 'normal', pomodoro: { preset: '25-5' } }, setDefaultStudyMode: vi.fn(async () => true),
 }));
 vi.mock('../features/userPlanningContext/UserPlanningContextContext', () => ({ useOptionalUserPlanningContextV1: () => state.memory }));
 vi.mock('../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext', () => ({ useWeeklyPlanningPersonalization: () => state }));

@@ -88,7 +88,7 @@ describe('LaplanceAppRoot', () => {
     state.personalization = {
       loading: false, profile: null, error: '', readFailed: false,
       setWeekStartsOn: vi.fn(async () => true), refresh: vi.fn(async () => undefined),
-      resetProfile: vi.fn(async () => true),
+      setDefaultStudyMode: vi.fn(async () => true), resetProfile: vi.fn(async () => true),
     };
   });
 
