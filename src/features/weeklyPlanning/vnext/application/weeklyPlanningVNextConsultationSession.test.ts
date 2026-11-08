@@ -20,6 +20,8 @@ const reading = (planningIntent: 'discuss' | 'unknown' | 'create_plan', delta: P
   ({ status: 'interpreted', planningIntent, delta: { ...EMPTY, ...delta }, answer: null, metrics });
 const withExtra = (extra: object) => ({ ...reading('discuss'), ...extra }) as WeeklyPlanningVNextInterpretation;
 const task: VNextAddFact = { kind: 'task', localId: 'eng', category: 'study', title: '英語' };
+const pages: VNextAddFact = { kind: 'workload', localId: 'pages', taskRef: { localId: 'eng' }, componentRef: null, quantityRole: 'scope_total', amount: 20,
+  unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null };
 const ADVICE = 'まず文法の基礎問題集を1周しましょう。\n\n※これは助言です。';
 
 function harness(script: Array<WeeklyPlanningVNextInterpretation>, consultation?: Partial<WeeklyPlanningVNextConsultationPort>) {
@@ -65,7 +67,7 @@ describe('learning consultation routing in the VNext session (#246)', () => {
   });
 
   it('keeps the planning conversation working after the advice: the next turn reads the earlier text as context only', async () => {
-    const h = harness([reading('unknown'), reading('discuss', { add: [task] })], {});
+    const h = harness([reading('unknown'), reading('discuss', { add: [task, pages] })], {});
     await h.turn('t1', '数学の参考書は何がいい？');
     const second = await h.turn('t2', '英語を始めたい');
     expect(second.replySource).toBe('renderer');
@@ -102,7 +104,7 @@ describe('learning consultation routing in the VNext session (#246)', () => {
     const consult = () => ({ classify: vi.fn(async () => 'learning_consultation' as const), answer: vi.fn(async () => ({ kind: 'proposal' as const, text: ADVICE })) });
 
     it.each([
-      ['facts were read', () => reading('discuss', { add: [task] })],
+      ['a quantity was read with the task', () => reading('discuss', { add: [task, pages] })],
       ['a plan was requested', () => reading('create_plan')],
       ['the model answered a question', () => withExtra({ answer: { kind: 'estimate_minutes', minutes: 30, per: 'whole_work' } })],
       ['study records were read', () => withExtra({ studyRecords: [{ dateExpression: '今日', subject: '英語', minutes: 30 }] })],
@@ -116,7 +118,7 @@ describe('learning consultation routing in the VNext session (#246)', () => {
 
     it('while a planning question is open (a short reply is its answer)', async () => {
       const port = consult();
-      const h = harness([reading('discuss', { add: [task] }), reading('unknown')], port);
+      const h = harness([reading('discuss', { add: [task, pages] }), reading('unknown')], port);
       const first = await h.turn('t1', '英語をやりたい');
       expect(first.question).not.toBeNull();
       const second = await h.turn('t2', 'そうだね');
@@ -162,6 +164,71 @@ describe('learning consultation routing in the VNext session (#246)', () => {
     }
     // The stated work is untouched by the advice.
     expect(h.checkpoint().vnext.state.graph.workloads.map(item => item.amount)).toEqual([60]);
+  });
+
+  describe('a reading that only named a task (#246 slice 2)', () => {
+    const consult = (kind: 'learning_consultation' | 'planning_operation' | 'unresolved' | null) => ({
+      classify: vi.fn(async () => kind), answer: vi.fn(async () => ({ kind: 'proposal' as const, text: ADVICE })) });
+
+    it('is answered with advice when it is a consultation, and the task name is dropped with the rest of the turn', async () => {
+      const port = consult('learning_consultation');
+      const h = harness([reading('discuss', { add: [task] })], port);
+      const result = await h.turn('t1', '数学の点数を上げたいけど、どの参考書をいつまでに仕上げればいい？');
+      expect(result).toMatchObject({ outcome: 'noop', replySource: 'advice', question: null, preview: null, appliedDelta: null });
+      expect(h.rendered).toEqual([]);
+      const stored = h.checkpoint().vnext;
+      expect(stored.state.graph.tasks).toEqual([]);
+      expect(stored.state.graph.revision).toBe(0);
+      expect(stored.messages.slice(-1)[0]).toEqual({ role: 'assistant', content: ADVICE });
+    });
+
+    it.each([
+      ['planning_operation', 'planning_operation' as const], ['unresolved', 'unresolved' as const], ['a failed classification', null],
+    ])('keeps the task and the planning question when the purpose is %s (a first word of a plan is not lost)', async (_name, kind) => {
+      const port = consult(kind);
+      const h = harness([reading('discuss', { add: [task] })], port);
+      const result = await h.turn('t1', '英語をやりたい');
+      expect(port.classify).toHaveBeenCalledOnce();
+      expect(port.answer).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ outcome: 'applied', replySource: 'renderer', question: { code: 'missing_schedulable_work' } });
+      expect(h.checkpoint().vnext.state.graph.tasks.map(item => item.title)).toEqual(['英語']);
+    });
+
+    it('keeps the task when the advice is refused, so nothing the user said is lost to a failed consultation', async () => {
+      const port = { classify: vi.fn(async () => 'learning_consultation' as const), answer: vi.fn(async () => null) };
+      const h = harness([reading('discuss', { add: [task] })], port);
+      const result = await h.turn('t1', '英語の参考書はどれがいい？');
+      expect(result).toMatchObject({ outcome: 'applied', replySource: 'renderer' });
+      expect(h.checkpoint().vnext.state.graph.tasks.map(item => item.title)).toEqual(['英語']);
+    });
+
+    const studyContext = (): VNextAddFact => ({ kind: 'study_context', localId: 'c', taskRef: { localId: 'eng' }, purpose: 'exam', activityKind: 'problem_solving', contextLabel: '共通テスト' });
+
+    it('is answered with advice when the task came with its study context (the real model often adds it), and both are dropped', async () => {
+      const port = consult('learning_consultation');
+      const h = harness([reading('discuss', { add: [task, studyContext()] })], port);
+      const result = await h.turn('t1', '共通テストの英語を伸ばしたい。どう勉強すればいい？');
+      expect(result).toMatchObject({ replySource: 'advice', appliedDelta: null });
+      expect(h.checkpoint().vnext.state.graph.tasks).toEqual([]);
+    });
+
+    it('keeps the task and its study context when the purpose is planning', async () => {
+      const h = harness([reading('discuss', { add: [task, studyContext()] })], consult('planning_operation'));
+      const result = await h.turn('t1', '共通テストの英語をやりたい');
+      expect(result).toMatchObject({ replySource: 'renderer', outcome: 'applied' });
+      expect(h.checkpoint().vnext.state.graph.tasks.map(item => item.title)).toEqual(['英語']);
+    });
+
+    it.each([
+      ['a temporal constraint', (): VNextAddFact => ({ kind: 'temporal_constraint', localId: 'c', taskRef: { localId: 'eng' }, targetRef: { localId: 'eng' },
+        constraintKind: 'deadline', constraintLevel: 'hard', dateExpression: 'this_week', namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact' })],
+      ['a quantity', () => pages],
+    ])('is not consulted when the reading also read %s', async (_name, extra) => {
+      const port = consult('learning_consultation');
+      const h = harness([reading('discuss', { add: [task, extra()] })], port);
+      await h.turn('t1', '英語の共通テスト対策を今週中に');
+      expect(port.classify).not.toHaveBeenCalled();
+    });
   });
 
   it('writes nothing when another turn saved while the advice was being produced', async () => {
