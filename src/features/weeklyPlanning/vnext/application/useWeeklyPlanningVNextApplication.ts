@@ -29,6 +29,10 @@ import { formatActualSaveReadbackReply, formatUnknownActualSaveReadbackReply, re
   ACTUAL_SAVE_RETRY_SAVED_REPLY, type WeeklyPlanningActualRecord } from '../../application/weeklyPlanningActualRecords';
 import { ActualSaveReadbackUnknownError } from '../../../../domain/actualSaveReadback';
 import { PlannerMutationScopeExpiredError } from '../../../../lib/plannerMutationScopeExpiredError';
+import { UserFacingError } from '../../../../lib/userFacingError';
+
+/** Shown when the pre-approval sync did not complete: the plan is NOT saved and the preview stays retryable. */
+export const APPROVAL_NOT_SAVED_SYNC_MESSAGE = '同期を確認できなかったため、まだ保存していません。接続を確認して、もう一度「この内容で保存」を押してください。';
 import type { ActualSaveIntentRecord, ActualSaveReadbackClassification } from '../weeklyPlanningVNextActualSaveReadback';
 import { createWeeklyPlanningApplicationRequestId } from '../../application/weeklyPlanningApplicationIdentity';
 
@@ -604,8 +608,9 @@ export function useWeeklyPlanningVNextApplication(
       if (cloud.storage) {
         // Recovery reconciles the original approval operation. Its local-only receipt cannot be a cloud sync prerequisite.
         if (beforeSync.approvalRecovery) await cloud.persist();
-        else if (!await cloud.beforeApproval()) return;
-        if (!current() || runtime.state !== beforeSync) return;
+        // Returning here would let the caller close the preview as if the plan were saved; nothing was written.
+        else if (!await cloud.beforeApproval()) throw new UserFacingError(APPROVAL_NOT_SAVED_SYNC_MESSAGE);
+        if (!current() || runtime.state !== beforeSync) throw new UserFacingError(APPROVAL_NOT_SAVED_SYNC_MESSAGE);
       }
       await approveWeeklyPlanningDraftBlocks({ ...input, userId: ownerId,
       featureSessionId: runtime.session.conversationId, plans: input.plans, getState, dispatch,

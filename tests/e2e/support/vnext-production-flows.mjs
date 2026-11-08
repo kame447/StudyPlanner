@@ -50,6 +50,17 @@ async function sendTurn(page, text, scripted) {
   await run;
 }
 
+// The approval itself, not only the closing of its dialog: the product closes the preview after a save, and a refused approval keeps
+// it open with a message, so a closed dialog proves nothing. The application appends this reply when every block was saved.
+// A reply from an earlier run (the account's chats persist) must not satisfy it, so a NEW such reply is awaited.
+const approvalReplies = page => assistantBubbles(page).filter({ hasText: '通常予定として保存しました' });
+async function approveAndExpectCompleted(page, dialog) {
+  const before = await approvalReplies(page).count();
+  await promoteThenSave(dialog);
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+  await expect.poll(() => approvalReplies(page).count(), { message: 'the approval must complete ("通常予定として保存しました"), not only close the preview', timeout: 60_000 }).toBeGreaterThan(before);
+}
+
 // Key NAMES only (never values) plus the active chat id; the week readers below parse the names with the pure helpers.
 const readKeys = page => page.evaluate(() => {
   const names = Object.keys(localStorage);
@@ -282,8 +293,7 @@ export function defineVNextProductionFlows(options) {
         const target = await goToTargetPlannerWeek(page);
         const dialog = await planAndSave(page, request, firestore, target, title);
         await firestore.during('save', async () => {
-          await promoteThenSave(dialog);
-          await expect(dialog).toBeHidden({ timeout: 60_000 });
+          await approveAndExpectCompleted(page, dialog);
         });
         expect(protectedWritesIn(firestore.inPhase('save'))).not.toEqual([]);
         await openScheduleDay(page, target.date);
@@ -320,12 +330,13 @@ export function defineVNextProductionFlows(options) {
         attemptedSave = true; // the save click may write even when a later wait fails: cleanup must then still run
         // The approved save is the one authorized write of the flow; the observer must see it (a blind observer proves nothing).
         await firestore.during('save', async () => {
-          await promoteThenSave(dialog);
-          await expect(dialog).toBeHidden({ timeout: 60_000 });
+          await approveAndExpectCompleted(page, dialog);
         });
         expect(protectedWritesIn(firestore.inPhase('save')), 'the approved save writes to a protected collection, seen by the observer').not.toEqual([]);
         await openScheduleDay(page, target.date);
         await expect.poll(() => visibleEntries(page, title).count(), { timeout: 30_000 }).toBeGreaterThan(0);
+        // Waits for saved (non-draft) blocks: a draft block shows the same title, so the title alone proves nothing.
+        await expect.poll(() => countSavedBlocks(page, title), { message: 'the corrected plan must be visible as saved blocks, not only a draft', timeout: 30_000 }).toBeGreaterThan(0);
         savedBlocks = await countSavedBlocks(page, title);
         expect(savedBlocks, 'the corrected plan must be visible as saved blocks, not only a draft').toBeGreaterThan(0);
         const savedMinutes = await shownMinutes(page.locator(`[title*="${title}"]`).locator('visible=true'), title,
