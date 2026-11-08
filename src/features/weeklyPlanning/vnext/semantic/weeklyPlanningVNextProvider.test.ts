@@ -7,7 +7,8 @@ import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } fro
 import { createWeeklyPlanningVNextProviderInterpreter, VNEXT_PROVIDER_MAX_COMPLETION_TOKENS } from './weeklyPlanningVNextProvider';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT,
   VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_NAMED_TIME_PERIOD_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT,
-  VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
+  VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT,
+  VNEXT_FIXED_INTERVAL_REPAIR_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../../shared/aiProxyContract';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { checkVNextProviderScenario, VNEXT_PROVIDER_SCENARIOS } from './weeklyPlanningVNextProviderScenarios';
@@ -1001,5 +1002,46 @@ describe('VNext native provider', () => {
     expect(message.clock).toEqual(params.clock);
     expect(message.activeFacts.tasks).toHaveLength(1);
     expect(message.activeFacts.tasks[0].title).toBe('Changed');
+  });
+});
+
+describe('a fixed interval that states only part of the day (SB6 repair)', () => {
+  const event = [task('meeting', '面談'),
+    { kind: 'temporal_constraint', localId: 'meeting-time', taskRef: { localId: 'meeting' }, targetRef: { localId: 'meeting' }, constraintKind: 'fixed_interval',
+      constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: 'afternoon', startTime: null, endTime: null, precision: 'approximate' }];
+  const request = { kind: 'request_event_registration', targetRef: { localId: 'meeting' } };
+  const reading = (add: unknown[]) => ({ ...output(add), planningIntent: 'create_plan', conversationActs: [request] });
+  const dateOnly = [task('meeting', '面談'), { kind: 'task_date_rule', localId: 'meeting-date', taskRef: { localId: 'meeting' }, targetRef: { localId: 'meeting' },
+    ruleKind: 'allowed_date', dateExpression: '2026-11-03', constraintLevel: 'hard' }];
+  const repairMessage = (params: ReturnType<typeof input>) => {
+    const calls = vi.mocked(params.client.createChatCompletion).mock.calls;
+    return { calls: calls.length, message: JSON.parse(calls[1]?.[0].messages[calls[1][0].messages.length - 1]?.content ?? 'null') as { instruction: string; errors: Array<{ path: string; localId: string | null; requirement?: string }> } | null };
+  };
+
+  it('tells the repair to remove the interval and keep the request and the date, and says so only in the repair', async () => {
+    const params = { ...input([JSON.stringify(reading(event)), JSON.stringify(reading(dateOnly))]), userText: '明日の午後に面談があるので予定に入れてください' };
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    const { calls, message } = repairMessage(params);
+    expect(result).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    if (result.status === 'interpreted') {
+      expect(result.delta.add.map(fact => fact.kind)).toEqual(['task', 'task_date_rule']);
+      expect(result.conversationActs).toEqual([{ kind: 'request_event_registration', targetRef: { localId: 'meeting' } }]);
+    }
+    expect(calls).toBe(2);
+    expect(message!.errors).toEqual([{ path: 'add[1]:missing-interval', localId: 'meeting-time', requirement: VNEXT_FIXED_INTERVAL_REPAIR_REQUIREMENT }]);
+    // The first request and the schema are unchanged: the instruction exists only in the repair.
+    expect(JSON.stringify([buildWeeklyPlanningVNextProviderMessages(input([])), VNEXT_PROVIDER_RESPONSE_FORMAT])).not.toContain('never invent a clock time');
+    expect(JSON.stringify([buildWeeklyPlanningVNextProviderMessages(input([])), VNEXT_PROVIDER_RESPONSE_FORMAT])).not.toContain('Never invent a clock time');
+  });
+
+  it('does not carry the text to other temporal errors', () => {
+    expect(describeVNextProviderField('add[1]:missing-start', reading(event))).not.toBe(VNEXT_FIXED_INTERVAL_REPAIR_REQUIREMENT);
+    expect(describeVNextProviderField('add[1].startTime', reading(event))).not.toBe(VNEXT_FIXED_INTERVAL_REPAIR_REQUIREMENT);
+  });
+
+  it('still fails after one repair when the interval is kept, and never calls the model a third time', async () => {
+    const params = input([JSON.stringify(reading(event)), JSON.stringify(reading(event))]);
+    expect(await createWeeklyPlanningVNextProviderInterpreter()(params)).toMatchObject({ status: 'failed', reason: 'rejected_after_repair' });
+    expect(repairMessage(params).calls).toBe(2);
   });
 });
