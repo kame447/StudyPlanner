@@ -312,13 +312,17 @@ function shownPreview(
     authorizationRequired, registrationCommunication, optionalQuestion };
 }
 
+const BLOCKED_PREVIEW_REPLY = '予定案を作れませんでした。条件の中に、うまく組み合わせられないものがあるようです。内容を見直して、もう一度教えてください。';
+const BLOCKED_PREVIEW_CAPACITY_REPLY = '予定案を作れませんでした。指定の期間の空き時間に入りきらないようです。量を減らすか、期間や日付の指定を見直して、もう一度教えてください。';
+
 /** Notices for turns that changed nothing the renderer could explain: a failure, a stale turn, or a blocked preview. */
 function systemReply(outcome: WeeklyPlanningVNextExperimentalTurnOutcome, previewBlockedBy: string[]): string {
   if (outcome === 'stale') return '別の操作で会話が更新されました。最新の内容でもう一度送ってください。';
   if (outcome === 'interpretation_failed' || outcome === 'rejected') {
     return 'うまく反映できませんでした。もう一度、言い方を変えて教えてください。';
   }
-  return `予定案を作れませんでした（${previewBlockedBy.join(', ')}）。`;
+  // Internal codes stay in `previewBlockedBy` for diagnostics; the user is told what to change, never the code.
+  return previewBlockedBy.includes('insufficient_capacity') ? BLOCKED_PREVIEW_CAPACITY_REPLY : BLOCKED_PREVIEW_REPLY;
 }
 
 function interpretationFailureReply(failure: WeeklyPlanningVNextFailureRecovery,
