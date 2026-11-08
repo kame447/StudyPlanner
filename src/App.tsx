@@ -28,7 +28,6 @@ import { DeferredReportView as ReportView } from './components/DeferredReportVie
 import { DeferredMonthView as MonthView } from './components/DeferredMonthView';
 import { LazyLoadBoundary } from './components/LazyLoadBoundary';
 import { MyPageDialog } from './components/MyPageDialog';
-import { PlanEditorPanel } from './components/PlanEditorPanel';
 import { PlannerDataRecoveryNotice } from './components/PlannerDataRecoveryNotice';
 import { PrimaryAppHeader } from './components/PrimaryAppHeader';
 import {
@@ -57,6 +56,8 @@ import './styles/first-run-tutorial.css';
 // stays in the entry stylesheet for the same reason as the tutorial's.
 import './styles/app-settings-page.css';
 const AppSettingsDialog = lazy(() => import('./components/AppSettingsDialog').then(module => ({ default: module.AppSettingsDialog })));
+// The plan editor opens on demand, so it is mounted only while a draft exists (it renders nothing without one).
+const PlanEditorPanel = lazy(() => import('./components/PlanEditorPanel').then(module => ({ default: module.PlanEditorPanel })));
 const AccountDeletionDialog = lazy(() => import('./components/AccountDeletionDialog').then(module => ({ default: module.AccountDeletionDialog })));
 const FirstRunTutorial = lazy(() => import('./components/FirstRunTutorial').then(module => ({ default: module.FirstRunTutorial })));
 const StudyStreakPage = lazy(() => import('./components/StudyStreakPage').then(module => ({ default: module.StudyStreakPage })));
@@ -751,18 +752,20 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         {...primaryNavigation}
       />
 
-      <PlanEditorPanel
-        draft={editorDraft}
-        submitLabel={editingPlanId ? '学習予定を更新' : '学習予定を追加'}
-        heading={editingPlanId ? '学習予定を編集' : '学習予定を追加'}
-        recurringEditMode={Boolean(editingPlan && isRecurringPlanEdit)}
-        onChange={setEditorDraft}
-        onSubmit={() => {
-          if (editorDraft) return savePlanDraft(editorDraft);
-          return Promise.resolve();
-        }}
-        onCancel={closePlanEditor}
-      />
+      {editorDraft ? <LazyLoadBoundary message="予定の編集を読み込めませんでした。ページを再読み込みしてください。" onClose={closePlanEditor}><Suspense fallback={null}>
+        <PlanEditorPanel
+          draft={editorDraft}
+          submitLabel={editingPlanId ? '学習予定を更新' : '学習予定を追加'}
+          heading={editingPlanId ? '学習予定を編集' : '学習予定を追加'}
+          recurringEditMode={Boolean(editingPlan && isRecurringPlanEdit)}
+          onChange={setEditorDraft}
+          onSubmit={() => {
+            if (editorDraft) return savePlanDraft(editorDraft);
+            return Promise.resolve();
+          }}
+          onCancel={closePlanEditor}
+        />
+      </Suspense></LazyLoadBoundary> : null}
 
       {pendingRecurringPlanAction ? (
         <RecurringPlanScopeDialog
