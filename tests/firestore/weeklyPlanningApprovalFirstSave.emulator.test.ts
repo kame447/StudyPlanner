@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app';
 import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import { collection, connectFirestoreEmulator, doc, getDoc, getDocs, getFirestore, type Firestore } from 'firebase/firestore';
+import { collection, connectFirestoreEmulator, doc, getDoc, getDocs, getFirestore, query, where, type Firestore } from 'firebase/firestore';
 import { scheduleEventIdForLegacy } from '../../src/domain/scheduleEvent';
 import type { PlanDraft } from '../../src/types/domain';
 import { createFirestoreWeeklyPlanningApprovalPlanRepository } from '../../src/features/weeklyPlanning/application/weeklyPlanningApprovalFirestoreRepository';
@@ -118,7 +118,9 @@ describe.skipIf(!enabled)('Issue #51 first approval transaction — actual deplo
     expect(fromA.id).toBe(resolveApprovalDraftIdentity(input).planId);
     const operation = targetRef(owner.db, input, 'operation');
     expect((await getDoc(operation)).exists()).toBe(true);
-    expect((await getDocs(collection(operation, 'weekly_planning_approval_items'))).size).toBe(1);
+    // The Rules allow a list only for the owner's documents, and only a query that is itself limited to the owner proves that.
+    const items = await getDocs(query(collection(operation, 'weekly_planning_approval_items'), where('userId', '==', owner.uid)));
+    expect(items.size).toBe(1);
     expect((await getDoc(targetRef(owner.db, input, 'legacy-plan'))).exists()).toBe(true);
     expect((await getDoc(targetRef(owner.db, input, 'canonical-event'))).exists()).toBe(true);
   });
