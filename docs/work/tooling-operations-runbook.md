@@ -310,6 +310,14 @@ Prefer updating an existing entry when the new evidence is the same failure clas
 - The isolated CLI still includes unpatched `braces` ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)). Previously the same chain was fetched unpinned in a job with OIDC permission; now it runs only in the unprivileged test job against the demo emulator project. Keep the app's dependency graph and high-severity audit unchanged; do not suppress the advisory or force an incompatible watcher override. Review upstream CLI updates through Dependabot.
 - A merge changing this workflow triggers production deployment even with unchanged rules. Preserve the WIF settings, serialized concurrency, repository guard, production ruleset read-back and repository SHA-256 comparison; unchanged `firestore.rules` must deploy identical content. Do not dispatch production deployment merely to verify job isolation.
 
+## Conversation index deployment: IAM and list page size
+
+Issue #1037 has two distinct failure signatures. A 403 while listing conversation indexes requires checking the WIF service account's project-level IAM, not granting access to the service-account resource itself. The existing Firestore Rules deployer needs index-management permissions in addition to its Firebase Rules role; the authorized repair adds `roles/datastore.indexAdmin` to `firestore-rules-deployer@study-planner-d1bc8.iam.gserviceaccount.com`. Keep the existing WIF path and do not create a static credential or relax application Rules.
+
+After that grant, production run 42515892341 (2026-11-09 JST) exposed a separate 400: `Invalid page size. Only 0 is supported.`. The index-list request must omit the optional `pageSize` rather than force 100. Continue following any returned `nextPageToken`, encoded as a query value, and preserve the result bound, targeted writes, and READY check. A fake that checks only the URL pathname misses this failure; the regression must also reject nonzero page sizes and cover a returned continuation token.
+
+After a repair, follow Deploy Firestore Rules through index readiness, Rules deployment, and ruleset SHA-256 read-back, then recheck the production AI-planning sync UI. Reuse successful exact-content checks rather than repeatedly rerunning an unchanged failed deployment. IAM-only repairs need no credential cleanup; remove only the repair's temporary worktree/branch after its change is merged and verified.
+
 ## Temporary Firestore Node transport security pin
 
 - Last verified: 2026-10-25 (Firebase 12.14.0, [Issue #321](https://github.com/kame447/StudyPlanner/issues/321)); owner: [Issue #387](https://github.com/kame447/StudyPlanner/issues/387)

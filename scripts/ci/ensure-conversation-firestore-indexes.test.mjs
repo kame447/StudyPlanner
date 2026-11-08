@@ -12,10 +12,13 @@ function backend(options = {}) {
   let exempt = options.exempt ?? true;
   let updated = 0;
   const result = async (url, init) => {
-    const method = init?.method ?? 'GET'; const path = new URL(url).pathname;
+    const method = init?.method ?? 'GET'; const parsed = new URL(url); const path = parsed.pathname;
     calls.push({ path, method, body: init?.body ? JSON.parse(init.body) : undefined });
     if (options.deny && method !== 'GET') return new Response('permission denied', {status:403});
     if (path.endsWith('/indexes') && method === 'GET') {
+      if (options.defaultPageSizeOnly && parsed.searchParams.has('pageSize') && parsed.searchParams.get('pageSize') !== '0') {
+        return Response.json({ error: { message: 'Invalid page size. Only 0 is supported.' } }, { status: 400 });
+      }
       if (options.invalidList) return new Response('missing', {status:404});
       return Response.json({ indexes: [unrelated, ...(exists ? [index(state)] : [])] });
     }
@@ -37,6 +40,33 @@ function backend(options = {}) {
 function opts(b, extras = {}) { return { projectId:'demo-studyplanner', accessToken:'test-token', request:b.request, checks:3, pause:async () => b.setReady(), ...extras }; }
 
 describe('safe narrowly targeted Firestore index deployment', () => {
+  it('uses the server default when production rejects nonzero pageSize', async () => {
+    const b = backend({ defaultPageSizeOnly: true });
+    const result = await ensureConversationFirestoreIndexes(opts(b));
+    expect(result.indexState).toBe('READY');
+    expect(b.calls.every(call => call.method === 'GET')).toBe(true);
+  });
+  it('follows and encodes returned page tokens without imposing a page size', async () => {
+    const b = backend();
+    const pages = [];
+    const token = 'next+page/=';
+    const request = async (url, init) => {
+      const parsed = new URL(url);
+      if (parsed.pathname.endsWith('/indexes') && init.method === 'GET') {
+        expect(parsed.searchParams.has('pageSize')).toBe(false);
+        const cursor = parsed.searchParams.get('pageToken');
+        pages.push(cursor);
+        if (cursor === null) return Response.json({ indexes: [unrelated], nextPageToken: token });
+        expect(cursor).toBe(token);
+        return Response.json({ indexes: [index()] });
+      }
+      return b.request(url, init);
+    };
+    const result = await ensureConversationFirestoreIndexes(opts(b, { request }));
+    expect(result.indexState).toBe('READY');
+    expect(pages).toEqual([null, token, null, token]);
+    expect(b.calls.every(call => call.method === 'GET')).toBe(true);
+  });
   it('reads existing READY index and disabled field, never alters other indexes', async () => {
     const b = backend();
     const result = await ensureConversationFirestoreIndexes(opts(b));
