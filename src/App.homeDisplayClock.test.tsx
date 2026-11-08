@@ -68,7 +68,8 @@ afterEach(() => {
 
 it('keeps selected planner month/date and an open unsaved draft while Home and its persistent header advance', async () => {
   await act(async () => renderer!.root.findByType(PrimaryBottomNav).props.onOpenSchedule());
-  act(() => state.openCreatePlan());
+  // The plan editor loads on demand (lazy), so let its chunk resolve before looking for it.
+  await act(async () => state.openCreatePlan());
   act(() => renderer!.root.findByType(PlanEditorPanel).props.onChange({ ...state.editorDraft!, title: 'Unsaved future plan' }));
   const draft = state.editorDraft;
   const storedPlans = await boundary.repository.getPlans('owner');

@@ -15,7 +15,7 @@ vi.mock('../hooks/useThemePreference', () => ({ useThemePreference: () => ({ the
 vi.mock('./PrimaryAppHeader', () => ({ PrimaryAppHeader: forwardRef(() => <header />) }));
 vi.mock('./HomeScheduleView', () => ({ HomeScheduleView: () => <section aria-label="Home content" /> }));
 vi.mock('./ScheduleToolbar', () => ({ ScheduleToolbar: () => null }));
-vi.mock('./PlanEditorPanel', () => ({ PlanEditorPanel: () => null }));
+vi.mock('./PlanEditorPanel', async () => { throw new Error('simulated chunk delivery failure'); });
 vi.mock('./MyPageDialog', () => ({ MyPageDialog: () => null }));
 vi.mock('./AppSettingsDialog', async () => { throw new Error('simulated chunk delivery failure'); });
 let renderer: ReactTestRenderer;
@@ -39,6 +39,18 @@ function snapshotWith(overrides: Record<string, unknown>) {
     editingPlan: null, pendingRecurringPlanAction: null, setViewMode: vi.fn(), closePlanEditor: vi.fn(), ...overrides,
   } as unknown as PlannerAppSnapshot;
 }
+
+it('keeps the app and guides a reload when the plan editor chunk fails to load', async () => {
+  stubBrowser();
+  const closePlanEditor = vi.fn();
+  const draft = { title: '', date: '2026-10-16', startTime: '09:00', endTime: '10:00' };
+  await act(async () => { renderer = create(<App state={snapshotWith({ editorDraft: draft, closePlanEditor })} />); await vi.dynamicImportSettled(); });
+  expect(renderer.toJSON()).not.toBeNull();
+  expect(renderer.root.findByProps({ role: 'alert' }).findByType('p').children.join('')).toContain('再読み込み');
+  expect(renderer.root.findByProps({ 'aria-label': 'Home content' })).toBeDefined();
+  act(() => renderer.root.findByProps({ role: 'alert' }).findByType('button').props.onClick());
+  expect(closePlanEditor).toHaveBeenCalledTimes(1);
+});
 
 it('keeps the app and guides a reload when the settings chunk fails to load', async () => {
   stubBrowser();
