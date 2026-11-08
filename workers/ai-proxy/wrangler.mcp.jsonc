@@ -1,0 +1,16 @@
+{
+  // MCP-only configuration. Not the production worker (see wrangler.jsonc / traceWorker.ts); do not deploy until the
+  // owner decisions listed in docs/domains/external-integrations/work/mcp-read-slice-handoff.md are made.
+  "name": "studyplanner-mcp",
+  "main": "src/mcpWorker.ts",
+  "compatibility_date": "2026-04-10",
+  // MCP_READ_ENABLED and MCP_COMMIT_ENABLED are intentionally not set: both default to disabled.
+  "durable_objects": {
+    "bindings": [
+      { "name": "MCP_OWNER_COMMIT_GATE", "class_name": "McpOwnerCommitGate" }
+    ]
+  },
+  "migrations": [
+    { "tag": "mcp-v1", "new_sqlite_classes": ["McpOwnerCommitGate"] }
+  ]
+}
