@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app';
 import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth } from 'firebase/auth';
-import { connectFirestoreEmulator, doc, getDoc, getFirestore } from 'firebase/firestore';
+import { connectFirestoreEmulator, doc, getDoc, getFirestore, setDoc } from 'firebase/firestore';
+import { createActualFromDraft } from '../../src/domain/planner';
+import { createCompletionDraft } from '../../src/lib/scheduleItemActions';
 import { scheduleEventIdForLegacy, scheduleEventToPlan, type ScheduleEvent } from '../../src/domain/scheduleEvent';
 import type { PlanDraft, WeeklyPlanningEstimateMetadataV1 } from '../../src/types/domain';
 import { createFirestoreWeeklyPlanningApprovalPlanRepository } from '../../src/features/weeklyPlanning/application/weeklyPlanningApprovalFirestoreRepository';
@@ -85,6 +87,17 @@ describe.skipIf(!enabled)('weeklyPlanningEstimate under the current Rules (no Ru
     const old = await getDoc(doc(legacy.db, 'plans', resolveApprovalDraftIdentity(without).planId));
     expect(old.exists()).toBe(true);
     expect(old.data()).not.toHaveProperty('weeklyPlanningEstimate');
+  });
+
+  it('saves an actual that is marked as the plan times (one-tap completion) and reads the mark back', async () => {
+    const actual = createActualFromDraft(legacy.uid, { ...createCompletionDraft({
+      id: 'plan-1', seriesId: 'plan-1', userId: legacy.uid, title: '数学', subject: '数学', date: '2026-11-09', startTime: '19:00', endTime: '19:45',
+      repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], type: 'study', memo: '', createdAt: '', updatedAt: '' }) });
+    // The real repository strips undefined values before writing.
+    const document = JSON.parse(JSON.stringify(actual)) as Record<string, unknown>;
+    await setDoc(doc(legacy.db, 'actuals', `one-tap-${run}`), document);
+    const stored = await getDoc(doc(legacy.db, 'actuals', `one-tap-${run}`));
+    expect(stored.data()).toMatchObject({ timesFromPlan: true, isAlignedToPlan: true, userId: legacy.uid });
   });
 
   it('saves the estimate inside the `plan` map of a canonical `schedule_events` document and reads it back as the same Plan field', async () => {

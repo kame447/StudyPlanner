@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { createActualFromDraft } from '../domain/planner';
 import { createScheduleOccurrenceProjection } from '../domain/scheduleOccurrence';
+import { createActualDraftForPlan } from './actualDrafts';
 import type { Actual, Plan, ScheduleTemplate } from '../types/domain';
 import { createCompletionDraft, createDuplicatePlanDraft, ScheduleCompletionGuard, scheduleItemActions, scheduleMoveTarget, resolveScheduleActionPlan, resolveCurrentScheduleActionOccurrence } from './scheduleItemActions';
 const plan: Plan = { id: 'p', seriesId: 'p', userId: 'u', title: '数学', subject: '数学', date: '2026-10-05',
@@ -11,8 +13,17 @@ describe('schedule action semantics', () => {
   it('copies planned content and occurrence times into an aligned actual without mutating the plan', () => {
     const before = structuredClone(plan);
     expect(createCompletionDraft({ ...plan, occurrenceDate: '2026-10-12' })).toEqual({ userId: 'u', planId: 'p', occurrenceDate: '2026-10-12',
-      actualStartTime: '23:00', actualEndTime: '01:00', title: '数学', subject: '数学', isAlignedToPlan: true, note: '', materialId: 'm', materialName: '問題集' });
+      actualStartTime: '23:00', actualEndTime: '01:00', title: '数学', subject: '数学', isAlignedToPlan: true, note: '', materialId: 'm', materialName: '問題集',
+      timesFromPlan: true });
     expect(plan).toEqual(before);
+  });
+  it('marks a one-tap completion as plan times, and an edit of that actual is a measured one again', () => {
+    const saved = createActualFromDraft('u', createCompletionDraft(plan));
+    expect(saved.timesFromPlan).toBe(true);
+    // Reopening it in the editor builds a fresh draft: once the user reviews and saves, the times are theirs.
+    const reviewed = createActualFromDraft('u', createActualDraftForPlan(plan, saved), saved);
+    expect(reviewed).not.toHaveProperty('timesFromPlan');
+    expect(createActualFromDraft('u', { ...createCompletionDraft(plan), timesFromPlan: undefined })).not.toHaveProperty('timesFromPlan');
   });
   it('creates a reviewed single-plan draft with all visible content and no class binding', () => {
     const draft = createDuplicatePlanDraft({ ...plan, classTemplateId: 'class', occurrenceDate: '2026-10-12' });

@@ -146,6 +146,8 @@ interface ActualRecordBase {
   materialName?: string;
   materialProgressUpdates?: ActualMaterialProgressUpdate[];
   weeklyPlanningObservationResult?: WeeklyPlanningMemoryPaceObservationResultV1;
+  /** Set by the one-tap "complete": the start and end are the plan's own times, not measured. Not a duration observation. */
+  timesFromPlan?: true;
 }
 
 /** An actual with the clock times the user entered; its duration is derived from them. */
@@ -211,6 +213,8 @@ export interface ActualDraft {
   materialName?: string;
   materialProgressUpdates?: ActualMaterialProgressUpdate[];
   weeklyPlanningObservationResult?: WeeklyPlanningMemoryPaceObservationResultV1;
+  /** Set by the one-tap "complete": the start and end are the plan's own times, not measured. Not a duration observation. */
+  timesFromPlan?: true;
 }
 
 export interface StudySubject {

@@ -159,7 +159,8 @@ export function deriveWeeklyPlanningEstimateCalibration(params: {
   const ratios = params.actuals.flatMap((actual) => {
     // An actual the user marked "different from the plan" is not an observation of that plan's estimate,
     // even though it keeps the planId (the pace observations already exclude it the same way).
-    if (!actual.planId || actual.isAlignedToPlan === false) return [];
+    // A one-tap completion keeps the plan's own times; it is not a measured duration.
+    if (!actual.planId || actual.isAlignedToPlan === false || actual.timesFromPlan) return [];
     const plan = planById.get(actual.planId);
     if (!plan) return [];
     const metadata = readWeeklyPlanningEstimateMetadata(plan);
