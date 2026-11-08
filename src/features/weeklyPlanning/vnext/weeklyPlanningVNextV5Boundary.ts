@@ -74,3 +74,6 @@ export type {
 export { createWeeklyPlanningStableV5CurrentTurnGrounding } from '../dialogue/weeklyPlanningStableV5CurrentTurnGrounding';
 export { RENDERER_PREVIEW_CONTINGENCY, RENDERER_TECHNICAL_STOP } from '../dialogue/weeklyPlanningStableV5TurnDialogueCore';
 export { createWeeklyPlanningStableV5DialogueProjection } from '../semantic/weeklyPlanningStableV5DialogueProjection';
+// The learning-consultation contracts (#246): the strict turn-purpose and advice-answer documents the answer is validated against.
+export { validateAdviceAnswerDocument, validateTurnPurposeDocument, LEARNING_CONSULTATION_ANSWER_VERSION,
+  LEARNING_CONSULTATION_TURN_PURPOSE_VERSION, type AdviceAnswerDocument, type TurnPurposeKind } from '../consultation';

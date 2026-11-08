@@ -6,6 +6,7 @@ import { getAiConfig, getCloudflareAiProxyUrl } from '../../../../lib/aiConfig';
 import { createWeeklyPlanningVNextOptionChoicePort } from './weeklyPlanningVNextOptionChoiceBrowserPort';
 import { createWeeklyPlanningVNextRuntimeInterpreter, VNEXT_OPTION_CHOICE_POLICY, VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } from './weeklyPlanningVNextRuntimeInterpreter';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../weeklyPlanningVNextV5Boundary';
+import { createWeeklyPlanningVNextConsultation } from './weeklyPlanningVNextConsultation';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
 
 export { executeIsolatedWeeklyPlanningVNextTurn } from './weeklyPlanningVNextIsolatedTurn';
@@ -25,4 +26,5 @@ export const weeklyPlanningVNextRuntimeFactories = {
       policy: VNEXT_OPTION_CHOICE_POLICY, client: { semanticPolicy: VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } }) }),
   createRenderer: (client: WeeklyPlanningVNextExperimentalPorts['client'], options: { canDispatchRecovery: () => boolean }) =>
     createWeeklyPlanningStableV5DialogueRendererCore(client, options),
+  consultation: (client: WeeklyPlanningVNextExperimentalPorts['client']) => createWeeklyPlanningVNextConsultation(client),
 };

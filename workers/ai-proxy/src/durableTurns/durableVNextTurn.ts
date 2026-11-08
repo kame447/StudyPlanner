@@ -3,6 +3,7 @@ import { executeIsolatedWeeklyPlanningVNextTurn } from '../../../../src/features
 import type { WeeklyPlanningVNextDurableTurnInput } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextDurableTurn';
 import { createWeeklyPlanningVNextRuntimeInterpreter, VNEXT_OPTION_CHOICE_POLICY,
   VNEXT_OPTION_CHOICE_SEMANTIC_POLICY } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeInterpreter';
+import { createWeeklyPlanningVNextConsultation } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextConsultation';
 import type { AiProxyWorkerEnv } from '../worker';
 import type { DurableTurnExecute, DurableTurnExecutionResult } from './durableTurnJob';
 import { createDurableTurnProvider, createDurableVNextOptionChoicePort } from './durableTurnProvider';
@@ -26,7 +27,8 @@ export function executeDurableVNextTurn(
     focusedRequestId: () => `${traceRequestId}:focused`,
   });
   return executeIsolatedWeeklyPlanningVNextTurn(payload, { client, interpret,
-    createRenderer: options => createWeeklyPlanningStableV5DialogueRendererCore(client, options) });
+    createRenderer: options => createWeeklyPlanningStableV5DialogueRendererCore(client, options),
+    consultation: createWeeklyPlanningVNextConsultation(client) });
 }
 
 /** The core owns both interpretation recovery and the renderer's unsaved-preview fallback. */

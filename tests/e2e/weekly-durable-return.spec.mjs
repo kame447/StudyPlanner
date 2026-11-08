@@ -59,6 +59,9 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       if (body.response_format?.json_schema?.name === 'weekly_planning_vnext_native_v1') {
         content = JSON.stringify({ planningIntent: 'discuss', conversationActs: [], answer: null,
           delta: { add: [], patch: [], remove: [], relate: [], defer: [] } });
+      } else if (body.response_format?.json_schema?.name === 'weekly_planning_vnext_turn_purpose_v1') {
+        // A reading with nothing to plan is also sent to the consultation purpose check (#246); this turn is not one.
+        content = JSON.stringify({ schemaVersion: 'learning-consultation-turn-purpose.v1', kind: 'unresolved' });
       } else {
         const prompt = body.messages.map((message) => { try { return JSON.parse(message.content); } catch { return null; } })
           .find((value) => value?.applicationDecision);
@@ -71,14 +74,14 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       await job.run(async (payload, dispatch) => serializeWeeklyPlanningTurnResult(
         await executeDurableVNextTurn(env, JSON.parse(payload), dispatch)));
     } finally { globalThis.fetch = realFetch; }
-    expect(record.status).toBe('completed'); expect(providerCalls).toBe(2);
+    expect(record.status).toBe('completed'); expect(providerCalls).toBe(3);
     await page.goto(url);
     const conversation = page.locator('.ai-planning-conversation');
     await expect(conversation.getByText(reply, { exact: true })).toHaveCount(1);
     await page.reload();
     await expect(conversation.getByText(reply, { exact: true })).toHaveCount(1);
     await expect(conversation.getByText('学習計画を相談したい', { exact: true })).toHaveCount(1);
-    expect(posts).toBe(1); expect(providerCalls).toBe(2);
+    expect(posts).toBe(1); expect(providerCalls).toBe(3);
     expect(await page.evaluate(() => window.__realWeeklyEvents.filter((event) => event.type === 'real-save-approved-plan'))).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath('durable-return.png'), fullPage: true });
   });
