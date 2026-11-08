@@ -140,7 +140,31 @@ export {
   VNEXT_STUDY_RECORD_REQUIREMENT, VNEXT_PROVIDER_RESPONSE_FORMAT,
 };
 
-export const VNEXT_LABEL_EVIDENCE_REQUIREMENT = 'Preserve the source wording of task names and custom units; do not translate them. A free custom unitLabel must occur verbatim in the supplied user/context evidence or accepted labels; percentages keep their existing canonical % unit. For a paraphrased task title, labelEvidence names the current add/patch localId and quotes a non-empty naming fragment verbatim from that evidence which also occurs in the title. Keep legitimate generated activity wording around that name. Use [] when every task title is itself verbatim. Keep all independent clauses and registration acts. Quotations verify spelling, never authorize a new fact or action.';
+/**
+ * #977: the same requirement sentence sits on up to 8 fields (the wire schema was 41% repeats). Keep each
+ * distinct description once, in document order, and leave structure untouched. Only the first-call wire
+ * schema uses this; `root` keeps every description because describeVNextProviderField reads repair text from it.
+ */
+export function dedupeRepeatedSchemaDescriptions<T>(node: T, seen: Set<string> = new Set()): T {
+  if (Array.isArray(node)) return node.map(item => dedupeRepeatedSchemaDescriptions(item, seen)) as T;
+  if (node === null || typeof node !== 'object') return node;
+  const copy: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'description' && typeof value === 'string') {
+      if (seen.has(value)) continue;
+      seen.add(value);
+      copy[key] = value;
+    } else copy[key] = dedupeRepeatedSchemaDescriptions(value, seen);
+  }
+  return copy as T;
+}
+
+/** What the native interpreter actually sends on its first call (and a non-label repair). */
+export const VNEXT_PROVIDER_WIRE_RESPONSE_FORMAT: JsonSchemaResponseFormat = { ...VNEXT_PROVIDER_RESPONSE_FORMAT,
+  json_schema: { ...VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema,
+    schema: dedupeRepeatedSchemaDescriptions(VNEXT_PROVIDER_RESPONSE_FORMAT.json_schema.schema) } };
+
+export const VNEXT_LABEL_EVIDENCE_REQUIREMENT ='Preserve the source wording of task names and custom units; do not translate them. A free custom unitLabel must occur verbatim in the supplied user/context evidence or accepted labels; percentages keep their existing canonical % unit. For a paraphrased task title, labelEvidence names the current add/patch localId and quotes a non-empty naming fragment verbatim from that evidence which also occurs in the title. Keep legitimate generated activity wording around that name. Use [] when every task title is itself verbatim. Keep all independent clauses and registration acts. Quotations verify spelling, never authorize a new fact or action.';
 const labelRepairRoot: Schema = { ...root,
   properties: { ...root.properties, labelEvidence: { type: 'array', description: VNEXT_LABEL_EVIDENCE_REQUIREMENT,
     items: { type: 'object', properties: { localId: { type: 'string' }, quote: { type: 'string' } },

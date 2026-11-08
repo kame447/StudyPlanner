@@ -5,7 +5,7 @@ import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanni
 import { applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_ESTIMATE_ANSWER_REQUIREMENT,
-  VNEXT_PROVIDER_RESPONSE_FORMAT, type VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
+  VNEXT_PROVIDER_WIRE_RESPONSE_FORMAT, type VNextProviderReading } from './weeklyPlanningVNextProviderSchema';
 import { VNEXT_LABEL_REPAIR_RESPONSE_FORMAT } from './weeklyPlanningVNextProviderSchema';
 import { validateVNextProviderLabelEvidence } from './weeklyPlanningVNextProviderLabelEvidence';
 import { applyVNextStudyRecords } from '../weeklyPlanningVNextStudyRecords';
@@ -137,7 +137,7 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
       const shaped = decodeVNextProviderOutput(value, allowLabelEvidence);
       return shaped.status === 'decoded' ? references.decodeReading(shaped.reading) : shaped;
     };
-    const request = async (responseFormat = VNEXT_PROVIDER_RESPONSE_FORMAT) => {
+    const request = async (responseFormat = VNEXT_PROVIDER_WIRE_RESPONSE_FORMAT) => {
       metrics.calls++;
       return input.client.createChatCompletion({ messages, responseFormat,
         purpose: 'weekly_planning_semantic_normalizer', maxCompletionTokens: VNEXT_PROVIDER_MAX_COMPLETION_TOKENS });
@@ -163,7 +163,7 @@ export function createWeeklyPlanningVNextProviderInterpreter(): WeeklyPlanningVN
       }),
     }) });
     metrics.repairs++;
-    try { raw = await request(labelRepair ? VNEXT_LABEL_REPAIR_RESPONSE_FORMAT : VNEXT_PROVIDER_RESPONSE_FORMAT); }
+    try { raw = await request(labelRepair ? VNEXT_LABEL_REPAIR_RESPONSE_FORMAT : VNEXT_PROVIDER_WIRE_RESPONSE_FORMAT); }
     catch { return finish({ status: 'failed', reason: 'provider_error', errors }); }
     let repaired: unknown;
     try { repaired = JSON.parse(raw); }

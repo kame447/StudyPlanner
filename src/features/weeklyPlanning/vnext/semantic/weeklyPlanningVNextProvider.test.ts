@@ -5,7 +5,7 @@ import type { VNextAddFact } from '../weeklyPlanningVNextTypes';
 import { projectWeeklyPlanningVNext } from '../projection/weeklyPlanningVNextProjection';
 import { createEmptyWeeklyPlanningVNextState, applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { createWeeklyPlanningVNextProviderInterpreter, VNEXT_PROVIDER_MAX_COMPLETION_TOKENS } from './weeklyPlanningVNextProvider';
-import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT,
+import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_PROVIDER_RESPONSE_FORMAT, VNEXT_PROVIDER_WIRE_RESPONSE_FORMAT,
   VNEXT_CONSTRAINT_LEVEL_REQUIREMENT, VNEXT_ESTIMATE_ANSWER_REQUIREMENT, VNEXT_NAMED_TIME_PERIOD_REQUIREMENT, VNEXT_QUANTITY_ROLE_REQUIREMENT, VNEXT_RELATE_REFERENCE_REQUIREMENT,
   VNEXT_TEMPORAL_TARGET_REQUIREMENT, VNEXT_WORKLOAD_PERIOD_REQUIREMENT, VNEXT_WORKLOAD_UNIT_LABEL_REQUIREMENT } from './weeklyPlanningVNextProviderSchema';
 import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../../shared/aiProxyContract';
@@ -468,7 +468,7 @@ describe('VNext native provider', () => {
     expect(result.status).toBe('interpreted');
     expect(result.metrics).toMatchObject({ calls: 1, repairs: 0 });
     expect(params.state).toEqual(before);
-    expect(params.client.createChatCompletion).toHaveBeenCalledWith(expect.objectContaining({ responseFormat: VNEXT_PROVIDER_RESPONSE_FORMAT }));
+    expect(params.client.createChatCompletion).toHaveBeenCalledWith(expect.objectContaining({ responseFormat: VNEXT_PROVIDER_WIRE_RESPONSE_FORMAT }));
   });
 
   it('splices the erroneous field by local ID even if the repair reorders facts or changes unrelated content', async () => {

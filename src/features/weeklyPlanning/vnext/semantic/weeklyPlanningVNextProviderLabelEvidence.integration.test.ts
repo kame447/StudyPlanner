@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { submitWeeklyPlanningVNextExperimentalTurn, type WeeklyPlanningVNextExperimentalPorts } from '../application/weeklyPlanningVNextExperimentalSession';
 import { approveWeeklyPlanningVNextExperimentalPreview } from '../application/weeklyPlanningVNextExperimentalApproval';
 import { createWeeklyPlanningVNextProviderInterpreter } from './weeklyPlanningVNextProvider';
-import { VNEXT_LABEL_REPAIR_RESPONSE_FORMAT, VNEXT_PROVIDER_RESPONSE_FORMAT } from './weeklyPlanningVNextProviderSchema';
+import { VNEXT_LABEL_REPAIR_RESPONSE_FORMAT, VNEXT_PROVIDER_WIRE_RESPONSE_FORMAT } from './weeklyPlanningVNextProviderSchema';
 
 const wire = (title = 'カード', unit = '枚') => ({ planningIntent: 'create_plan', conversationActs: [], answer: null, delta: { add: [
   { kind: 'task', localId: 'cards', category: 'study', title },
@@ -49,7 +49,7 @@ describe('#951 label spelling across native reading, preview and save', () => {
       expect(turn.preview?.blocks.map(block => block.title)).toEqual(['カード 10枚']);
       expect(h.savedTitles).toEqual([]);
       const calls = h.client.createChatCompletion.mock.calls as unknown as [{ responseFormat: unknown }][];
-      expect(calls[0][0].responseFormat).toEqual(VNEXT_PROVIDER_RESPONSE_FORMAT);
+      expect(calls[0][0].responseFormat).toEqual(VNEXT_PROVIDER_WIRE_RESPONSE_FORMAT);
       expect(JSON.stringify(calls[0][0].responseFormat)).not.toContain('labelEvidence');
       expect(calls[1][0].responseFormat).toEqual(VNEXT_LABEL_REPAIR_RESPONSE_FORMAT);
       expect(turn.interpretation).not.toHaveProperty('labelEvidence');
