@@ -30,7 +30,7 @@ function Harness({ owner = 'user-1', ready = true, suspended, availability, isSn
     isPlannerDataSnapshotCurrent: isSnapshotCurrent,
     plannerDataAvailability: availability ?? (ready ? createReadyPlannerDataAvailability(owner) : {status:'loading',ownerId:owner,observedAt:new Date().toISOString(),lastSuccessfulAt:null}), saveWeeklyApprovedPlan: vi.fn() });
   if (suspended) throw suspended;
-  return <AiPlanningView application={app} userId={owner} selectedDate="2026-10-05" plans={[]} />;
+  return <AiPlanningView starterSuggestionsEnabled application={app} userId={owner} selectedDate="2026-10-05" plans={[]} />;
 }
 let renderer: ReactTestRenderer | undefined;
 let local: ReturnType<typeof createMemoryStorageHarness>;

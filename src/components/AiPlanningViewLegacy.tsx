@@ -78,6 +78,7 @@ export interface AiPlanningStarterCatalog {
 interface AiPlanningViewProps {
   active?: boolean;
   starterCatalog?: AiPlanningStarterCatalog;
+  starterSuggestionsEnabled?: boolean;
   application: WeeklyPlanningApplication;
   userId: string;
   selectedDate: string;
@@ -137,8 +138,6 @@ const PREVIEW_HOURS = Array.from(
   (_, index) => PREVIEW_START_HOUR + index,
 );
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
-// Temporarily hide context-derived starter suggestions while keeping saved drafts recoverable.
-const ENABLE_AI_PLANNING_STARTERS = false;
 
 function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
   if (typeof window === 'undefined') return null;
@@ -197,6 +196,7 @@ export function AiPlanningView({
   application,
   active = true,
   starterCatalog,
+  starterSuggestionsEnabled = false,
   userId,
   selectedDate,
   plans,
@@ -324,7 +324,7 @@ export function AiPlanningView({
     chatIndex.chats.find((chat) => chat.id === chatIndex.activeChatId) ??
     chatIndex.chats[0];
   const validatedStarterOptions = useMemo(() => {
-    if (!ENABLE_AI_PLANNING_STARTERS && !selectedStarterOption?.target) return [];
+    if (!starterSuggestionsEnabled && !selectedStarterOption?.target) return [];
     return buildAiPlanningStarterPromptOptions({
       referenceDate: selectedDate,
       plans,
@@ -332,7 +332,7 @@ export function AiPlanningView({
       materials: starterCatalog?.ready ? starterCatalog.materials : starterCatalog ? [] : starterMaterials,
       limit: Number.MAX_SAFE_INTEGER,
     });
-  }, [plans, selectedDate, starterMaterials, starterTodos, starterCatalog, selectedStarterOption?.target]);
+  }, [plans, selectedDate, starterMaterials, starterTodos, starterCatalog, selectedStarterOption?.target, starterSuggestionsEnabled]);
   const starterPromptOptions = validatedStarterOptions.slice(0, 3);
   // #735 draft: typed answers for the presented effort question (flag-gated, default off).
   const effortAnswerOptions = useMemo(() => buildMachineBoundEffortAnswerOptions(state), [state]);
@@ -485,7 +485,7 @@ export function AiPlanningView({
   useEffect(() => {
     // App supplies its current owned read snapshot. Standalone consumers retain
     // the existing repository path without giving stale data authority.
-    if ((!ENABLE_AI_PLANNING_STARTERS && !selectedStarterOption?.target)
+    if ((!starterSuggestionsEnabled && !selectedStarterOption?.target)
       || application.registeredTargetsAvailable === false || starterCatalog || !active) return;
     let cancelled = false;
     setStarterCatalogStatus('loading');
@@ -511,7 +511,7 @@ export function AiPlanningView({
     return () => {
       cancelled = true;
     };
-  }, [userId, Boolean(starterCatalog), active, application.registeredTargetsAvailable, selectedStarterOption?.target]);
+  }, [userId, Boolean(starterCatalog), active, application.registeredTargetsAvailable, selectedStarterOption?.target, starterSuggestionsEnabled]);
 
   useEffect(() => {
     setPreviewPageIndex(0);
@@ -911,7 +911,7 @@ export function AiPlanningView({
         </div>
 
         <div className="ai-planning-conversation" ref={conversationRef}>
-          {ENABLE_AI_PLANNING_STARTERS &&
+          {starterSuggestionsEnabled &&
           state.messages.length === 0 &&
           displayedDraftCount === 0 &&
           !state.pendingTurn ? (

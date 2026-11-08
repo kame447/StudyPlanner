@@ -34,6 +34,7 @@ interface AiPlanningViewProps {
   plans: Plan[];
   active?: boolean;
   starterCatalog?: AiPlanningStarterCatalog;
+  starterSuggestionsEnabled?: boolean;
 }
 
 const EMPTY_ACTUAL_RECORDS: NonNullable<AiPlanningViewProps['application']['pendingActualRecords']> = [];
