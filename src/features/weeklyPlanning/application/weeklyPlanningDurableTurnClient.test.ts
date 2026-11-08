@@ -28,6 +28,34 @@ describe('durable browser turn transport', () => {
       expect(receiver === undefined || receiver === globalThis).toBe(true);
     } finally { vi.unstubAllGlobals(); vi.useRealTimers(); }
   });
+  it('polls a healthy turn at the base interval so a turn finishing at 8 s is seen at 8 s, not 9 s or later', async () => {
+    const h = harness(); const waits: number[] = []; const wait = h.ports.wait;
+    h.ports.wait = async (ms) => { waits.push(ms); await wait(ms); };
+    h.fetch.mockResolvedValueOnce(h.response('queued'));
+    for (let i = 0; i < 3; i += 1) h.fetch.mockResolvedValueOnce(h.response('running'));
+    h.fetch.mockResolvedValueOnce(h.response('completed'));
+    await executeDurableWeeklyTurn(h.receipt, { ports: h.ports });
+    expect(waits).toEqual([2000, 2000, 2000, 2000]);
+  });
+  it('keeps the steady interval for about 30 s, then backs off to the old ceiling', async () => {
+    const h = harness(); const waits: number[] = []; const wait = h.ports.wait;
+    h.ports.wait = async (ms) => { waits.push(ms); await wait(ms); };
+    h.fetch.mockResolvedValueOnce(h.response('queued'));
+    for (let i = 0; i < 24; i += 1) h.fetch.mockResolvedValueOnce(h.response('running'));
+    h.fetch.mockResolvedValueOnce(h.response('completed'));
+    await executeDurableWeeklyTurn(h.receipt, { ports: h.ports });
+    expect(waits.slice(0, 15)).toEqual(Array(15).fill(2000));
+    expect(waits.slice(15)).toEqual([3000, 4000, 5000, 6000, 7000, 8000, 9000, 10_000, 10_000, 10_000]);
+  });
+  it('leaves the failure backoff exactly as before, including after healthy polls', async () => {
+    const h = harness(); const waits: number[] = []; const wait = h.ports.wait;
+    h.ports.wait = async (ms) => { waits.push(ms); await wait(ms); };
+    h.fetch.mockResolvedValueOnce(h.response('queued')).mockResolvedValueOnce(h.response('running'))
+      .mockRejectedValueOnce(new TypeError('offline')).mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce(h.response('completed'));
+    await executeDurableWeeklyTurn(h.receipt, { ports: h.ports });
+    expect(waits).toEqual([2000, 2000, 4000, 5000]);
+  });
   it('accepts once and only polls afterward', async () => {
     const h = harness(); h.fetch.mockResolvedValueOnce(h.response('queued')).mockResolvedValueOnce(h.response('running')).mockResolvedValueOnce(h.response('completed'));
     expect(await executeDurableWeeklyTurn(h.receipt, { ports: h.ports })).toEqual(h.completed);
