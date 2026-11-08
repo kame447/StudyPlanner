@@ -13,7 +13,7 @@ afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; env?.res
 const block = { id: 'b1', userId: 'u', date: '2026-10-17', startTime: '09:00', endTime: '10:00', title: 'b1', subject: 'math', type: 'study',
   source: 'ai', status: 'draft', userEdited: false, createdAt: '2026-10-16T00:00:00Z', updatedAt: '2026-10-16T00:00:00Z' } as WeeklyPlanDraftBlock;
 
-// Opening the plan preview moves focus into it, Escape closes it, and Tab cannot leave it (the same contract as the other dialogs).
+// Opening the plan preview moves focus into it and Escape closes it (Tab containment and focus return come from the shared useDialogFocus, tested there).
 it('takes focus when opened and closes on Escape', () => {
   env = installFakeMotionEnvironment();
   const keydown = new Set<(event: KeyboardEvent) => void>();
