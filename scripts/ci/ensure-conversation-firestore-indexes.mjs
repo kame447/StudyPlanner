@@ -41,7 +41,8 @@ export async function ensureConversationFirestoreIndexes({ projectId, accessToke
   const allIndexes = async () => {
     const result = []; let pageToken = '';
     do {
-      const page = await call(`${base}/indexes?pageSize=100${pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''}`);
+      // Production rejects nonzero pageSize; use its default and follow returned cursors.
+      const page = await call(`${base}/indexes${pageToken ? '?pageToken=' + encodeURIComponent(pageToken) : ''}`);
       if (!page) throw new Error('Firestore index listing missing');
       result.push(...(page.indexes ?? []));
       pageToken = page.nextPageToken || '';
