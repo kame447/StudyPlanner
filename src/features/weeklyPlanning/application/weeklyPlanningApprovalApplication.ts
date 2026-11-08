@@ -204,13 +204,12 @@ services: WeeklyPlanningApprovalApplicationServices = defaultServices,
             approvalOperationId: source.approvalOperationId,
             sourceDraftBlockId: source.sourceDraftBlockId,
           });
-          const sourceMarker = `[weekly-source:${source.sourceDraftBlockId}]`;
-          const operationMarker = `[weekly-approval:${source.approvalOperationId}]`;
+          // The memo stays the user's own text. The block and operation identity is the plan's sourceId; the
+          // `[weekly-source:…]` marker is only still read (below) for plans an older version saved.
           const savedPlan = await saveWeeklyApprovedPlan({
             ...draft,
             sourceType: WEEKLY_PLANNING_PLAN_SOURCE_TYPE,
             sourceId,
-            memo: [draft.memo, sourceMarker, operationMarker].filter(Boolean).join(' / '),
           });
           return { planId: savedPlan.id };
         },

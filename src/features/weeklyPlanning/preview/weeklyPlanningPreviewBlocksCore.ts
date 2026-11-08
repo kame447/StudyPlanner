@@ -210,14 +210,11 @@ export function removeWeeklyPlanningPreviewBlock({
   };
 }
 
-function stableV5Memo(block: WeeklyPlanningPreviewBlock): string {
-  if (!block.stableV5Metadata) return `unsaved-preview: ${block.workItemKey}`;
-  return [
-    'Stable V5 preview',
-    `graphRevision: ${block.stableV5Metadata.graphRevision}`,
-    `workItemKey: ${block.workItemKey}`,
-  ].join(' / ');
-}
+/**
+ * A generated block carries no memo: the saved plan's memo is the user's own text and is shown to them. Identity and
+ * provenance live in `id`, `behaviorMetadata` and the saved plan's `sourceType`/`sourceId`, never in the memo.
+ */
+const GENERATED_BLOCK_MEMO = '';
 
 export function createWeeklyPlanningPreviewDisplayBlock(
   block: WeeklyPlanningPreviewBlock,
@@ -270,7 +267,7 @@ export function createWeeklyPlanningPreviewDisplayBlock(
     type: block.planType ?? 'study',
     label: block.field ?? block.title,
     materialId: null,
-    memo: stableV5Memo(block),
+    memo: GENERATED_BLOCK_MEMO,
     source: 'ai',
     status: 'draft',
     userEdited: false,
@@ -295,18 +292,6 @@ export function buildWeeklyDraftBlocksFromPreviewCandidates({
   const blocks = candidates.map((candidate) => {
     const behaviorMetadata = behaviorMetadataFromCandidate(candidate, userId);
     const stableV5Metadata = stableV5MetadataFromCandidate(candidate);
-    const memo = stableV5Metadata
-      ? [
-          'Stable V5 preview',
-          `graphRevision: ${stableV5Metadata.graphRevision}`,
-          `workItemKey: ${candidate.workItemKey}`,
-        ].join(' / ')
-      : [
-          `year: ${candidate.year}`,
-          `estimatedMinutes: ${candidate.estimatedMinutes}`,
-          `workItemKey: ${candidate.workItemKey}`,
-          'source: dry-run preview',
-        ].join(' / ');
     return {
       id: candidate.stableKey,
       ...(candidate.allocationBreakdown ? { allocationBreakdown: structuredClone(candidate.allocationBreakdown) } : {}),
@@ -320,7 +305,7 @@ export function buildWeeklyDraftBlocksFromPreviewCandidates({
       label: candidate.field ?? candidate.title,
       materialId: null,
       materialName: '',
-      memo,
+      memo: GENERATED_BLOCK_MEMO,
       source: 'ai' as const,
       status: 'draft' as const,
       userEdited: false,

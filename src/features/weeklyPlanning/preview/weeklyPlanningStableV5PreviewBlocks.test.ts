@@ -87,8 +87,7 @@ describe('Stable V5 preview blocks', () => {
 
     const display = createWeeklyPlanningPreviewDisplayBlock(preview[0], 'owner-1');
     expect(display.type).toBe('other');
-    expect(display.memo).toContain('Stable V5 preview');
-    expect(display.memo).not.toContain('year: 0');
+    expect(display.memo).toBe('');
 
     const promoted = createWeeklyDraftBlocksFromPreviewCandidates({
       candidates: [stableCandidate()],
@@ -96,8 +95,7 @@ describe('Stable V5 preview blocks', () => {
       createdAt: '2026-07-22T00:00:00.000Z',
     });
     expect(promoted[0].type).toBe('other');
-    expect(promoted[0].memo).toContain('graphRevision: 3');
-    expect(promoted[0].memo).not.toContain('year: 0');
+    expect(promoted[0].memo).toBe('');
     expect(classifyWeeklyPlanningApprovalAvailability({
       blocks: promoted,
       userId: 'owner-1',
