@@ -1024,6 +1024,60 @@ describe('a plan request with new work after the optional invitation', () => {
   });
 });
 
+// SB6 (#868 / invalid_commitment_interval): a requested fixed event whose start and end are not both stated.
+describe('invalid_commitment_interval characterization (a vague time such as "夕方")', () => {
+  const seminar = (): VNextAddFact[] => [
+    { kind: 'task', localId: 'seminar', category: 'study', title: 'ゼミ' },
+    { kind: 'task_date_rule', localId: 'seminar-date', taskRef: { localId: 'seminar' }, targetRef: { localId: 'seminar' },
+      ruleKind: 'allowed_date', dateExpression: '2026-11-03', constraintLevel: 'hard' },
+  ];
+  const interval = (changes: Record<string, unknown>): VNextAddFact => ({ kind: 'temporal_constraint', localId: 'seminar-time',
+    taskRef: { localId: 'seminar' }, targetRef: { localId: 'seminar' }, constraintKind: 'fixed_interval', constraintLevel: 'hard',
+    dateExpression: '2026-11-03', namedTimePeriod: null, startTime: null, endTime: null, precision: 'approximate', ...changes } as VNextAddFact);
+
+  it('asks one fixed question for the start and end, offers no choices, and neither guesses a time nor registers', async () => {
+    const h = harness([wire(seminar(), [request({ localId: 'seminar' })], 'create_plan')]);
+    const result = await h.turn('火曜のゼミは夕方です。ゼミを登録して');
+    const id = h.state().graph.tasks[0].id;
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'needs_resolution', preview: null,
+      question: { code: 'invalid_commitment_interval', taskId: id, options: [] } });
+    expect(presentWeeklyPlanningVNextQuestion(h.state(), result.question!)).toEqual({ text: '「ゼミ」は何時から何時までですか？', optionLabels: {} });
+    expect(h.rendererInputs[0]).toMatchObject({ questionIntent: { kind: 'resolution_question', resolutionKind: 'commitment_time_bounds',
+      allowedChoices: [], requestedInformation: ['commitment_start_and_end_time'] }, communication: { goal: 'ask_question', askQuestion: true } });
+    expect(result.draftCandidates ?? []).toEqual([]);
+    expect(h.state().pendingEventRegistrationTargetIds).toEqual([id]);
+    expect(h.saves()).toBe(0);
+  });
+
+  it.each([
+    { name: 'a named period without clocks', changes: { namedTimePeriod: 'evening' } },
+    { name: 'a start without an end', changes: { startTime: '17:00' } },
+  ])('does not accept a hard fixed interval for $name: the provider contract rejects it and the repair keeps the registration request pending', async ({ changes }) => {
+    const h = harness([wire([...seminar(), interval(changes)], [request({ localId: 'seminar' })], 'create_plan'),
+      // The repair prompt says "Remove or change unsupported temporal constraints; do not invent missing date/time bounds."
+      wire(seminar(), [request({ localId: 'seminar' })], 'create_plan')]);
+    const result = await h.turn('火曜のゼミは夕方です。ゼミを登録して');
+    expect(result.interpretation).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    expect(result).toMatchObject({ readiness: 'needs_resolution', question: { code: 'invalid_commitment_interval' }, preview: null });
+    expect(h.state().graph.temporalConstraints).toHaveLength(0);
+    expect(h.saves()).toBe(0);
+  });
+
+  it('an answer that states both clocks consumes the question and registers the candidate once', async () => {
+    const h = harness([wire(seminar(), [request({ localId: 'seminar' })], 'create_plan'),
+      (context: Context) => { const id = context.activeFacts.tasks.find(task => task.title === 'ゼミ')!.id;
+        return wire([{ kind: 'temporal_constraint', localId: 'seminar-answer', taskRef: { factId: id }, targetRef: { factId: id },
+          constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: null,
+          startTime: '17:00', endTime: '18:00', precision: 'exact' }], [], 'discuss'); }]);
+    await h.turn('火曜のゼミは夕方です。ゼミを登録して');
+    const answered = await h.turn('17時から18時です');
+    expect(answered.question).toBeNull();
+    expect(answered.draftCandidates?.map(candidate => [candidate.source, candidate.date, candidate.startTime, candidate.endTime]))
+      .toEqual([['fixed_event_registration', '2026-11-03', '17:00', '18:00']]);
+    expect(h.state()).not.toHaveProperty('pendingEventRegistrationTargetIds');
+  });
+});
+
 describe('a blocked preview never shows an internal code (system reply)', () => {
   const task = (id: string, title: string): VNextAddFact => ({ kind: 'task', localId: id, category: 'study', title });
   const minutes = (id: string, amount: number): VNextAddFact => ({ kind: 'workload', localId: `${id}-work`, taskRef: { localId: id }, componentRef: null,
