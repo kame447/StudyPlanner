@@ -219,6 +219,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const estimateCalibration = deriveWeeklyPlanningEstimateCalibration({
     plans: input.plans,
     actuals,
+    asOfDate: requestContext.currentDate,
   });
   const observedPaceProjection = projectWeeklyPlanningMemoryObservedPaceV5({
     plans: input.plans,
