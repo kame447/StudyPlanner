@@ -59,6 +59,11 @@ function readSourceBlockId(draft: PlanDraft): string {
   return identity.sourceDraftBlockId;
 }
 
+function createWeeklyPlanningTestDraftBlockDraft(id: string): PlanDraft {
+  return { userId: 'user-1', title: id, subject: '数学', date: '2026-07-14', startTime: '18:00', endTime: '19:00', repeat: 'none', repeatUntil: null,
+    excludedDates: [], recurrenceRules: [], type: 'study', memo: '', sourceType: 'manual', sourceId: null, materialId: null, materialName: '' };
+}
+
 function persistedPlan(draft: PlanDraft, id: string): Plan {
   return {
     ...createPlanFromDraft(draft),
@@ -241,5 +246,58 @@ describe('weeklyPlanningApprovalApplication', () => {
     expect(store.getState().weekStartDate).toBe('2026-07-20');
     expect(store.getState().pendingApproval).toBeUndefined();
     expect(store.getState().lastAssistantMessage).toBeUndefined();
+  });
+
+  describe('the saved plan memo', () => {
+    function storeWith(blocks: ReturnType<typeof createWeeklyPlanningTestDraftBlock>[]) {
+      let state = createInitialPlanningState('2026-07-13');
+      state = weeklyPlanningReducer(state, { type: 'add_draft_blocks', blocks });
+      return {
+        getState: () => state,
+        dispatch(action: WeeklyPlanningAction) { state = weeklyPlanningReducer(state, action); return state; },
+      };
+    }
+    const approve = (store: ReturnType<typeof storeWith>, plans: Plan[], saved: PlanDraft[]) => approveWeeklyPlanningDraftBlocks({
+      userId: 'user-1', plans, approvalOperations: [],
+      saveWeeklyApprovedPlan: async draft => { saved.push(draft); return persistedPlan(draft, `persisted-${saved.length}`); },
+      getState: store.getState, dispatch: store.dispatch, onOperationCompleted: () => undefined,
+    });
+
+    it('is only the user\'s own text: no source or operation marker, with the identity kept in sourceId', async () => {
+      const saved: PlanDraft[] = [];
+      const store = storeWith([
+        createWeeklyPlanningTestDraftBlock({ id: 'block-1', previewMetadata: metadata, overrides: { memo: '図書館で' } }),
+        createWeeklyPlanningTestDraftBlock({ id: 'block-2', previewMetadata: metadata, overrides: { memo: '' } }),
+      ]);
+      await approve(store, [], saved);
+      expect(saved.map(draft => draft.memo)).toEqual(['図書館で', '']);
+      for (const draft of saved) {
+        expect(draft.memo).not.toMatch(/weekly-source|weekly-approval/u);
+        expect(parseWeeklyPlanningPlanSourceId(draft.sourceId)).toMatchObject({ sourceDraftBlockId: draft.sourceId!.split(':')[2] });
+        expect(draft.sourceType).toBe(WEEKLY_PLANNING_PLAN_SOURCE_TYPE);
+      }
+      expect(saved.map(readSourceBlockId)).toEqual(['block-1', 'block-2']);
+    });
+
+    it('still recognises a plan an older version saved (its memo carries the source marker) and does not save it again', async () => {
+      const saved: PlanDraft[] = [];
+      const store = storeWith([
+        createWeeklyPlanningTestDraftBlock({ id: 'block-1', previewMetadata: metadata }),
+        createWeeklyPlanningTestDraftBlock({ id: 'block-2', previewMetadata: metadata }),
+      ]);
+      const legacy: Plan = { ...persistedPlan({ ...createWeeklyPlanningTestDraftBlockDraft('block-1') }, 'legacy-plan-1'),
+        sourceType: 'manual', memo: 'Stable V5 preview / graphRevision: 1 / workItemKey: w1 / [weekly-source:block-1] / [weekly-approval:old-op]' };
+      await approve(store, [legacy], saved);
+      expect(saved.map(readSourceBlockId)).toEqual(['block-2']);
+    });
+
+    it('does not take another user\'s or a weekly-planning-typed plan for the legacy marker match', async () => {
+      const saved: PlanDraft[] = [];
+      const store = storeWith([createWeeklyPlanningTestDraftBlock({ id: 'block-1', previewMetadata: metadata })]);
+      const base = persistedPlan({ ...createWeeklyPlanningTestDraftBlockDraft('block-1') }, 'other');
+      await approve(store, [{ ...base, id: 'other-user', userId: 'user-2', sourceType: 'manual', memo: '[weekly-source:block-1]' },
+        { ...base, id: 'typed', sourceType: WEEKLY_PLANNING_PLAN_SOURCE_TYPE, memo: '[weekly-source:block-1]' }], saved);
+      expect(saved.map(readSourceBlockId)).toEqual(['block-1']);
+    });
   });
 });

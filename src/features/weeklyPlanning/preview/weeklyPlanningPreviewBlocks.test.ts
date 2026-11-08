@@ -60,10 +60,8 @@ describe('weekly planning preview block contract', () => {
       createdAt: CREATED_AT,
       updatedAt: CREATED_AT,
     });
-    expect(block?.memo).toContain('year: 2020');
-    expect(block?.memo).toContain('estimatedMinutes: 60');
-    expect(block?.memo).toContain(`workItemKey: ${source.workItemKey}`);
-    expect(block?.memo).toContain('dry-run preview');
+    // The memo is the user's text once saved: a generated block carries no internal identifiers in it.
+    expect(block?.memo).toBe('');
     expect(block).not.toHaveProperty('isSaved');
     expect(block).not.toHaveProperty('approvalStatus');
   });
