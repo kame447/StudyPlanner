@@ -1,3 +1,4 @@
+import type { PlanningQuestionCode, PlanningTurnRejectionReason } from '../../../shared/productObservabilityContract';
 import type { WeeklyPlanningSemanticTurnObservation } from './trace/weeklyPlanningSemanticCensusTypes';
 import type { WeeklyPlanningStableV5DebugTraceEvent } from './trace/weeklyPlanningStableV5DebugTrace';
 import type { ControlledCandidateCommitRejection } from '../../../shared/controlledCandidateCommit';
@@ -85,6 +86,10 @@ export interface WeeklyPlanningTurnObservability {
   schedulerVersion: string | null;
   previewCount: number | null;
   unscheduledCount: number | null;
+  /** The typed question this turn ended by asking; a closed list, never text. */
+  questionCode?: PlanningQuestionCode | null;
+  /** Why this turn failed, when it did; a closed list, never text. */
+  rejectionReason?: PlanningTurnRejectionReason | null;
 }
 
 /** Turn-local application outcome; never persisted as a planning authority. */

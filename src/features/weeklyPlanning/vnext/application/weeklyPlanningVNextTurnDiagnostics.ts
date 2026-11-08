@@ -1,3 +1,4 @@
+import { isPlanningQuestionCode, isPlanningTurnRejectionReason } from '../../../../../shared/productObservabilityContract';
 import type { WeeklyPlanningTurnExecutionResult } from '../../weeklyPlanningTurnExecutionTypes';
 import {
   createWeeklyPlanningAiRenderedDialogueTrace, createWeeklyPlanningFallbackDialogueTrace,
@@ -95,7 +96,10 @@ export function captureWeeklyPlanningVNextTurnDiagnostics(requestId: string, por
       interactionOutcome: { kind: turn.outcome === 'answer_represented' ? 'explain_pending_question' : 'apply' },
       observability: { repairUsed: interpretation ? interpretation.metrics.repairs > 0 : null,
         schedulerVersion: turn.preview ? WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION : null,
-        previewCount: turn.preview?.blocks.length ?? 0, unscheduledCount: turn.unplacedOwnerKeys.length },
+        previewCount: turn.preview?.blocks.length ?? 0, unscheduledCount: turn.unplacedOwnerKeys.length,
+        // Typed codes only. An optional invitation is not a question the user must answer, so it is not counted.
+        questionCode: turn.question && !turn.question.optionalInvitation && isPlanningQuestionCode(turn.question.code) ? turn.question.code : null,
+        rejectionReason: failed ? (isPlanningTurnRejectionReason(reason) ? reason : 'other') : null },
       ...(failed ? { failure: { code: providerError ? 'stable_v5_provider_failure'
         : interpretation?.status === 'failed' ? 'stable_v5_normalization_rejected' : 'stable_v5_canonicalization_rejected',
         userMessage: turn.reply, traceCode: `vnext_${reason}`, diagnostics: {

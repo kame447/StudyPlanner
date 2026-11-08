@@ -254,4 +254,24 @@ describe('weekly planning typed outcome observability', () => {
       port,
     })).not.toThrow();
   });
+  it('records the question a turn ended by asking, as a typed code only', () => {
+    const { port, events } = recordingPort();
+    const committed = { ...createInitialPlanningState('2026-08-24'), revision: 2, updatedAt: '2026-08-28T01:02:00.000Z' };
+    recordWeeklyPlanningTurnCommitted({ pending: turnPending(1), committed, port, result: result({
+      observability: { repairUsed: false, schedulerVersion: null, previewCount: null, unscheduledCount: null, questionCode: 'missing_effort_estimate' } }) });
+    expect(events).toEqual([expect.objectContaining({ outcomeType: 'question_asked', questionCode: 'missing_effort_estimate', dedupeKey: 'weekly-request-1' })]);
+    // No question, no event.
+    const none = recordingPort();
+    recordWeeklyPlanningTurnCommitted({ pending: turnPending(2), committed, port: none.port, result: result() });
+    expect(none.events).toEqual([]);
+  });
+
+  it('puts the failure reason on the failed event, and nothing when it is unknown', () => {
+    const { port, events } = recordingPort();
+    const failedState = { ...createInitialPlanningState('2026-08-24'), revision: 2, updatedAt: '2026-08-28T01:02:00.000Z' };
+    recordWeeklyPlanningTurnFailed({ pending: turnPending(1), failedState, port, result: result({
+      observability: { repairUsed: true, schedulerVersion: null, previewCount: 0, unscheduledCount: 0, rejectionReason: 'rejected_after_repair' } }) });
+    recordWeeklyPlanningTurnFailed({ pending: turnPending(2), failedState, port, result: result() });
+    expect(events.filter(event => event.outcomeType === 'failed').map(event => event.rejectionReason)).toEqual(['rejected_after_repair', undefined]);
+  });
 });

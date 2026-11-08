@@ -124,6 +124,16 @@ export function recordWeeklyPlanningTurnCommitted(params: {
     });
   }
 
+  // The question this turn ended by asking, as a typed code only (never its text or the user's words).
+  if (observability?.questionCode) {
+    recordBestEffort(port, {
+      ...base,
+      outcomeType: 'question_asked',
+      dedupeKey: params.pending.requestId,
+      questionCode: observability.questionCode,
+    });
+  }
+
   if (
     params.result.responseSource === 'deterministic_fallback'
     || params.result.responseSource === 'rules'
@@ -190,6 +200,7 @@ export function recordWeeklyPlanningTurnFailed(params: {
       || params.result?.responseSource === 'rules',
     repairUsed: observability?.repairUsed ?? null,
     schedulerVersion: observability?.schedulerVersion ?? null,
+    ...(observability?.rejectionReason ? { rejectionReason: observability.rejectionReason } : {}),
   });
 
   if (observability?.repairUsed === true) {

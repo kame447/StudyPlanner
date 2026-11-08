@@ -2,6 +2,8 @@ import {
   PRODUCT_OBSERVABILITY_SCHEMA_VERSION,
   type PlanningOutcomeTelemetryDraft,
   type PlanningOutcomeType,
+  type PlanningQuestionCode,
+  type PlanningTurnRejectionReason,
 } from '../../../shared/productObservabilityContract';
 import type { ProductTelemetrySink } from './productTelemetry';
 import { createFirebaseProductTelemetrySink } from './productTelemetryRemoteSink';
@@ -23,6 +25,10 @@ export interface PlanningOutcomeTelemetryInput {
   schedulerVersion?: string | null;
   promptVersion?: string | null;
   model?: string | null;
+  /** `question_asked` only. */
+  questionCode?: PlanningQuestionCode;
+  /** `failed` only. */
+  rejectionReason?: PlanningTurnRejectionReason;
   occurredAt?: string;
 }
 
@@ -89,6 +95,9 @@ export function createPlanningOutcomeTelemetryPort(
           schedulerVersion: input.schedulerVersion ?? null,
           promptVersion: input.promptVersion ?? null,
           model: input.model ?? null,
+          // Only when set: every other event keeps its existing shape, so an older Worker still accepts it.
+          ...(input.questionCode ? { questionCode: input.questionCode } : {}),
+          ...(input.rejectionReason ? { rejectionReason: input.rejectionReason } : {}),
         },
       };
       void options.sink.write(event).catch(onError);

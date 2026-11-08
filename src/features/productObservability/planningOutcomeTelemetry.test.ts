@@ -128,4 +128,19 @@ describe('planning outcome telemetry', () => {
     expect(() => createPlanningOutcomeEventId('failed', '   '))
       .toThrow('Planning outcome dedupeKey is required.');
   });
+  it('carries the question code and the rejection reason only on their own events, and omits the keys elsewhere', async () => {
+    const written: PlanningOutcomeTelemetryDraft[] = [];
+    const port = createPlanningOutcomeTelemetryPort({ appVersion: '1.2.3', now: () => new Date('2026-08-28T00:00:00.000Z'),
+      sink: { async write(event) { if (event.eventType === 'planning_outcome') written.push(event); } } });
+    port.recordOutcome({ outcomeType: 'question_asked', featureSessionId: 'c1', dedupeKey: 'r1', questionCode: 'duplicate_quantity' });
+    port.recordOutcome({ outcomeType: 'failed', featureSessionId: 'c1', dedupeKey: 'r2', rejectionReason: 'rejected_after_repair' });
+    port.recordOutcome({ outcomeType: 'preview_generated', featureSessionId: 'c1', dedupeKey: 'r3' });
+    await Promise.resolve();
+    expect(written.map(event => event.payload.questionCode)).toEqual(['duplicate_quantity', undefined, undefined]);
+    expect(written.map(event => event.payload.rejectionReason)).toEqual([undefined, 'rejected_after_repair', undefined]);
+    // An older Worker still accepts every event that does not carry the new keys.
+    expect(Object.keys(written[2].payload)).not.toContain('questionCode');
+    expect(Object.keys(written[2].payload)).not.toContain('rejectionReason');
+    for (const event of written) expect(validatePlanningOutcomeTelemetryDraft(event).ok).toBe(true);
+  });
 });

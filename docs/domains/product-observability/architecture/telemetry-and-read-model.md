@@ -310,6 +310,16 @@ model
 
 実際のlifecycle event catalogはweekly-planning canonical contractとの対応を確認してから固定する。
 
+#### Typed question and rejection dimensions (#213 / Stage B SB11)
+
+planning turnが最後に尋ねた質問と、失敗した理由を、**閉じた列挙の件数だけ**で記録する。利用者の発話・質問文・題名・IDは含めない。
+
+- `question_asked` outcomeは `questionCode`（`PLANNING_QUESTION_CODES`、VNextの質問codeと同じ12値）を持つ。`failed` outcomeは任意で `rejectionReason`（`PLANNING_TURN_REJECTION_REASONS`）を持つ。この2つは自分のoutcomeだけが持てる。別のeventが持つ、または値が列挙の外ならingestionが拒否し、rollupは列挙の外の値を数えずに捨てる。
+- 他のeventにはこの2 keyを付けない（古いWorkerが受け付ける形を変えない）。optional invitationは「利用者が答える質問」ではないので数えない。
+- read modelは `ObservabilityPlanningAggregate` の `questionCodeCounts`・`rejectionReasonCounts`（optional）に件数を持つ。**欠損は未計測で、0ではない**。期間の集計は、これを持つ日のrollupだけを合算し、その日数を `questionCountDays` に持つ。持つ日が1つもなければ未計測のまま。admin overviewは「未計測」と「計測した日数」を表示する。
+- `question_asked` は計画の段階（journey）ではなくdimensionなので、利用者の `lastPlanningOutcome` にはしない。
+- 目的: 質問や拒否の発話形の頻度（T）を、推測でなく実測で出す。Worker（ingestion）を先に配信してからClientを配信する。
+
 ### System health event
 
 telemetry ingestion failure、rollup failure、stale read model等、観測基盤自身の状態を表す。

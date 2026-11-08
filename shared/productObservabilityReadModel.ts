@@ -2,6 +2,8 @@ import type {
   AiRequestMetricStatus,
   ObservabilityEnvironment,
   PlanningOutcomeType,
+  PlanningQuestionCode,
+  PlanningTurnRejectionReason,
   ProductActivityAction,
 } from './productObservabilityContract';
 
@@ -70,6 +72,15 @@ export interface ObservabilityPlanningAggregate {
   previewCountUnknownCount: number;
   unscheduledCountSum: number;
   unscheduledCountUnknownCount: number;
+  /**
+   * Turns that ended by asking a question, by typed code. Absent on a day recorded before this was counted: such a day is
+   * unmeasured, never zero. A rollup carries `{}` once it counts; a period merges only the days that carry it.
+   */
+  questionCodeCounts?: Partial<Record<PlanningQuestionCode, number>>;
+  /** Failed turns by typed reason, with the same absent-means-unmeasured rule. */
+  rejectionReasonCounts?: Partial<Record<PlanningTurnRejectionReason, number>>;
+  /** Period only: how many daily rollups carried the counts above (the others are unmeasured). */
+  questionCountDays?: number;
 }
 
 export interface ObservabilityProductActivityAggregate {

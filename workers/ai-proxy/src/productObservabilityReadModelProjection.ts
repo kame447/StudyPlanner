@@ -20,6 +20,7 @@ import {
   type ObservabilityPlanningAggregate,
   type ObservabilityUserSummary,
 } from '../../../shared/productObservabilityReadModel';
+import { isPlanningQuestionCode, isPlanningTurnRejectionReason } from '../../../shared/productObservabilityContract';
 import { classifyObservabilityEventError } from './productObservabilityUserEnrichment';
 
 export type StoredProductObservabilityEvent =
@@ -160,6 +161,8 @@ function createEmptyPlanningAggregate(): ObservabilityPlanningAggregate {
     previewCountUnknownCount: 0,
     unscheduledCountSum: 0,
     unscheduledCountUnknownCount: 0,
+    questionCodeCounts: {},
+    rejectionReasonCounts: {},
   };
 }
 
@@ -324,6 +327,11 @@ function addPlanningPayload(
     );
   }
 
+  // Only a value of the closed lists is counted; anything else is dropped (never stored under a made-up key).
+  const questionCode = payload.outcomeType === 'question_asked' && isPlanningQuestionCode(payload.questionCode)
+    ? payload.questionCode : null;
+  const rejectionReason = payload.outcomeType === 'failed' && isPlanningTurnRejectionReason(payload.rejectionReason)
+    ? payload.rejectionReason : null;
   return {
     outcomeCounts: {
       ...current.outcomeCounts,
@@ -333,6 +341,11 @@ function addPlanningPayload(
     previewCountUnknownCount,
     unscheduledCountSum,
     unscheduledCountUnknownCount,
+    // A rollup recorded before these counts existed starts counting from now; it carries the counts from then on.
+    questionCodeCounts: questionCode === null ? current.questionCodeCounts ?? {}
+      : { ...current.questionCodeCounts, [questionCode]: (current.questionCodeCounts?.[questionCode] ?? 0) + 1 },
+    rejectionReasonCounts: rejectionReason === null ? current.rejectionReasonCounts ?? {}
+      : { ...current.rejectionReasonCounts, [rejectionReason]: (current.rejectionReasonCounts?.[rejectionReason] ?? 0) + 1 },
   };
 }
 
@@ -543,7 +556,8 @@ export function projectUserSummary(params: {
     aiRequestCount: base.aiRequestCount + (params.event.eventType === 'ai_request_metric' ? 1 : 0),
     planningOutcomeCount: base.planningOutcomeCount + (planningPayload ? 1 : 0),
     lastProductAction: isLater && productPayload ? productPayload.action : base.lastProductAction,
-    lastPlanningOutcome: isLater && planningPayload
+    // A question count is a dimension, not a step of the planning journey: it never becomes the user's last outcome.
+    lastPlanningOutcome: isLater && planningPayload && planningPayload.outcomeType !== 'question_asked'
       ? planningPayload.outcomeType
       : base.lastPlanningOutcome,
     ...(enrichmentReady ? {
