@@ -274,3 +274,49 @@ describe('lineage resolution', () => {
     }
   });
 });
+
+// SB5 (Stage B): when completed work is more than the total, and when it is not. The question is only for a real excess.
+describe('completed work against the total', () => {
+  const unitsOf = (...facts: WorkloadFactV5[]) => computeVNextWorkUnits(graphWithWorkloads(facts))[0];
+  const pages = (id: string, role: WorkloadFactV5['quantityRole'], amount: number) => workload({ id, role, amount, unitCode: 'page', unitLabel: '枚' });
+  const time = (id: string, role: WorkloadFactV5['quantityRole'], amount: number, unitCode: 'hour' | 'minute') =>
+    workload({ id, role, amount, unitCode, unitLabel: unitCode === 'hour' ? '時間' : '分' });
+  const percent = (id: string, role: WorkloadFactV5['quantityRole'], amount: number) =>
+    workload({ id, role, amount, unitCode: 'custom', unitLabel: '%' });
+
+  it('is not asked when everything is done: nothing is left and no work is scheduled', () => {
+    const owner = unitsOf(pages('total', 'scope_total', 10), pages('done', 'completed', 10));
+    expect(owner.issue).toBeNull();
+    expect(owner.units).toEqual([]);
+  });
+
+  it('asks when more is done than the total, and names both facts the answer would correct', () => {
+    const owner = unitsOf(pages('total', 'scope_total', 10), pages('done', 'completed', 11));
+    expect(owner.issue).toMatchObject({ code: 'completed_exceeds_total', lineageIds: ['total', 'done'] });
+    expect(owner.units).toEqual([]);
+  });
+
+  it.each([
+    ['2 hours total, 120 minutes done: equal', time('total', 'scope_total', 2, 'hour'), time('done', 'completed', 120, 'minute'), null],
+    ['2 hours total, 121 minutes done: one minute over', time('total', 'scope_total', 2, 'hour'), time('done', 'completed', 121, 'minute'), 'completed_exceeds_total'],
+    ['60 minutes total, 1 hour done: equal', time('total', 'scope_total', 60, 'minute'), time('done', 'completed', 1, 'hour'), null],
+    ['60 minutes total, 2 hours done: over', time('total', 'scope_total', 60, 'minute'), time('done', 'completed', 2, 'hour'), 'completed_exceeds_total'],
+  ] as const)('compares across hour and minute units at the boundary: %s', (_name, total, done, code) => {
+    expect(unitsOf(total, done).issue?.code ?? null).toBe(code);
+  });
+
+  it.each([
+    ['100% done with no stated total is finished', 100, null],
+    ['120% done is over the implied total of 100', 120, 'completed_exceeds_total'],
+  ] as const)('uses 100 as the total for percent progress: %s', (_name, amount, code) => {
+    const owner = unitsOf(percent('done', 'completed', amount));
+    expect(owner.issue?.code ?? null).toBe(code);
+    expect(owner.units).toEqual([]);
+  });
+
+  it('is not a question when completed work is stated with no total: it is a record of progress, not work', () => {
+    const owner = unitsOf(pages('done', 'completed', 12));
+    expect(owner.issue).toBeNull();
+    expect(owner.units).toEqual([]);
+  });
+});
