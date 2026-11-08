@@ -42,6 +42,8 @@ vi.mock('./services/ai/openAiCompatibleClient', () => ({ createOpenAiCompatibleC
 // Replace peripheral surfaces and the DOM portal only. App, AI view/application,
 // normalizer/controller, calendar, dialog, planner mutations and storage are real.
 vi.mock('react-dom', () => ({ createPortal: (node: unknown) => node }));
+// The focus hook needs a real DOM; its contract is covered by useDialogFocus.test.tsx.
+vi.mock('./hooks/useDialogFocus', async () => { const { useRef } = await import('react'); return { useDialogFocus: () => ({ dialogRef: useRef(null), initialFocusRef: useRef(null) }) }; });
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
 vi.mock('./components/PrimaryAppHeader', () => ({ PrimaryAppHeader: forwardRef(() => <header />) }));

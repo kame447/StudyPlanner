@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Keyboard
 import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useTimelineDragController } from '../hooks/useTimelineDragController';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import {
@@ -154,7 +155,8 @@ export function AiPlanningPreviewDialog({
   const actionPressRef = useRef<PreviewActionPress | null>(null);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
   const previewBodyRef = useRef<HTMLDivElement | null>(null);
-  const dialogRef = useRef<HTMLElement | null>(null);
+  // Initial focus, Escape, Tab containment and focus return, as for the other dialogs.
+  const { dialogRef } = useDialogFocus<HTMLElement>(true, onClose);
   // Promotion disables the focused promote button; keep keyboard focus inside the
   // dialog on an inert target instead of moving it to Save (#751).
   const promoteHadFocus = useRef(false);
