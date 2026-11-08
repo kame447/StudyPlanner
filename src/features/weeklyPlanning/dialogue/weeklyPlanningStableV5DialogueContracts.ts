@@ -207,6 +207,8 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
     askQuestion: boolean;
     /** Optional typed values this turn changed from an earlier accepted value (VNext only). */
     corrections?: readonly unknown[];
+    /** Works in the shown preview that are only placed with a provisional timebox, not an estimate (VNext only). */
+    provisionalWork?: readonly { taskId: string; label: string; minutes: number }[];
   } & Partial<WeeklyPlanningFixedEventCommunicationFacts>;
   actionId: string;
   currentUserMessage: string;

@@ -8,6 +8,7 @@
 // Storage: VNext writes only its own checkpoint slot. A saved Stable V5
 // checkpoint is read (never written) and migrated when the VNext slot is empty,
 // so rolling back to V5 finds its own data exactly as it was.
+import { vnextProvisionalWorkFacts } from './weeklyPlanningVNextProvisionalWorkFacts';
 import { closeConsultation, commitStoredAdvice } from '../../consultation/storage';
 import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
 import { parseWeeklyApprovalLedger } from '../../planning/weeklyPlanningApprovalCore';
@@ -707,6 +708,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
   const renderBase = (shownQuestion: VNextQuestion | null, shownPreview: WeeklyPlanningVNextShownPreview | null) =>
     createWeeklyPlanningVNextRenderInput({
       state, question: shownQuestion, preview: shownPreview, actionId: `${scope.conversationId}:${params.turnId}`,
+      provisionalWork: vnextProvisionalWorkFacts({ state, projection, preview: shownPreview }),
       turnId: params.turnId, previousQuestionCode: presentedQuestion?.code ?? null, userText: params.userText,
       recentConversation: read.checkpoint.messages,
       authorizationRequired,
