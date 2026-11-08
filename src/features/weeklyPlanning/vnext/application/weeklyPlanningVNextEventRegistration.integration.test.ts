@@ -1056,3 +1056,30 @@ describe('invalid_commitment_interval characterization (a vague time such as "�
     expect(h.state()).not.toHaveProperty('pendingEventRegistrationTargetIds');
   });
 });
+
+describe('a blocked preview never shows an internal code (system reply)', () => {
+  const task = (id: string, title: string): VNextAddFact => ({ kind: 'task', localId: id, category: 'study', title });
+  const minutes = (id: string, amount: number): VNextAddFact => ({ kind: 'workload', localId: `${id}-work`, taskRef: { localId: id }, componentRef: null,
+    quantityRole: 'remaining', amount, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null });
+  const bound = (id: string, constraintKind: string, dateExpression: string | null, extra: Record<string, unknown> = {}): VNextAddFact => ({ kind: 'temporal_constraint',
+    localId: `${id}-${constraintKind}-${dateExpression}`, taskRef: { localId: id }, targetRef: { localId: id }, constraintKind, constraintLevel: 'hard', dateExpression,
+    namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact', ...extra } as VNextAddFact);
+  const OTHER = '予定案を作れませんでした。条件の中に、うまく組み合わせられないものがあるようです。内容を見直して、もう一度教えてください。';
+  const CAPACITY = '予定案を作れませんでした。指定の期間の空き時間に入りきらないようです。量を減らすか、期間や日付の指定を見直して、もう一度教えてください。';
+  it.each([
+    { name: 'more work than the week can hold', code: 'insufficient_capacity', reply: CAPACITY, add: [task('m', '数学'), minutes('m', 6000)] },
+    { name: 'a hard deadline before the planning week (an explicit past date)', code: 'hard_date_bound_outside_planning_window', reply: OTHER,
+      add: [task('m', '数学'), minutes('m', 60), bound('m', 'deadline', '2026-10-30')] },
+    { name: 'a start date after its own deadline', code: 'contradictory_hard_date_bound', reply: OTHER,
+      add: [task('m', '数学'), minutes('m', 60), bound('m', 'earliest_start', '2026-11-05'), bound('m', 'deadline', '2026-11-03')] },
+    { name: 'a fixed time with no date', code: 'missing_commitment_date_scope', reply: OTHER,
+      add: [task('m', '数学'), minutes('m', 60), task('c', '会議'), bound('c', 'fixed_interval', null, { startTime: '14:00', endTime: '15:00' })] },
+  ])('$name: tells the user what to change and keeps the code only in previewBlockedBy', async ({ code, reply, add }) => {
+    const h = harness([wire(add, [], 'create_plan')]);
+    const result = await h.turn('数学をやります。会議があります。今週の予定案を作って');
+    expect(result).toMatchObject({ outcome: 'applied', question: null, preview: null, replySource: 'system', reply });
+    expect(result.previewBlockedBy).toContain(code);
+    expect(result.reply).not.toContain(code);
+    expect(h.saves()).toBe(0);
+  });
+});

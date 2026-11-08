@@ -228,6 +228,8 @@ function computeUnits(graph: WeeklyPlanningVNextGraph, workRelations: readonly V
   const lineageOf = (fact: { id: string }) => resolver.lineageOf(fact.id);
   const distinct = new Set(workRelations.filter(relation => relation.kind === 'distinct')
     .map(relation => JSON.stringify([...relation.lineageIds].sort())));
+  const same = new Set(workRelations.filter(relation => relation.kind === 'same')
+    .map(relation => JSON.stringify([...relation.lineageIds].sort())));
   const sourceWorkloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads)
     .map(workload => declaredAs && workload.quantityRole === 'declared' ? { ...workload, quantityRole: declaredAs } : workload);
   const sourceById = new Map(sourceWorkloads.map(workload => [workload.id, workload]));
@@ -285,18 +287,23 @@ function computeUnits(graph: WeeklyPlanningVNextGraph, workRelations: readonly V
     const units: VNextWorkUnit[] = [];
     let issue: VNextWorkUnitIssue | null = null;
     for (const [basisKey, group] of groups) {
-      const totals = byRole(group, 'scope_total');
-      const completed = byRole(group, 'completed');
-      const remaining = byRole(group, 'remaining');
-      const targets = byRole(group, 'target');
+      // The user said these are the same work and the amount is the same: one quantity, not a duplicate.
+      // Only an explicit same relation folds; equal amounts alone never do, and a different amount still asks.
+      const foldExplicitSame = (facts: WorkloadFactV5[]) => facts.filter((fact, index) => !facts.slice(0, index).some(earlier =>
+        earlier.amount === fact.amount && same.has(JSON.stringify([lineageOf(earlier), lineageOf(fact)].sort()))));
+      const totals = foldExplicitSame(byRole(group, 'scope_total'));
+      const completed = foldExplicitSame(byRole(group, 'completed'));
+      const remaining = foldExplicitSame(byRole(group, 'remaining'));
+      const statedTargets = byRole(group, 'target');
+      const targets = foldExplicitSame(statedTargets);
       // Multiple stated targets are independent only when every pair is explicitly distinct.
       // This exception cannot pair totals/progress by guesswork. DistinctTargets tests compare
       // the ordinary and calibration paths with V5 and retain the unresolved/mixed-role controls.
-      const distinctTargetsOnly = targets.length > 1 && group.length === targets.length
-        && targets.every((a, index) => targets.slice(index + 1).every(b =>
+      const distinctTargetsOnly = statedTargets.length > 1 && group.length === statedTargets.length
+        && statedTargets.every((a, index) => statedTargets.slice(index + 1).every(b =>
           distinct.has(JSON.stringify([lineageOf(a), lineageOf(b)].sort()))));
       if (distinctTargetsOnly) {
-        units.push(...targets.filter(workload => workload.amount > 0).map(workload => ({ workLineageId: lineageOf(workload), definingFactId: workload.id,
+        units.push(...statedTargets.filter(workload => workload.amount > 0).map(workload => ({ workLineageId: lineageOf(workload), definingFactId: workload.id,
           ownerKey, basisKey, role: 'target' as const, derivedFromTotal: false, amount: workload.amount, workload })));
         continue;
       }

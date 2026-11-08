@@ -86,7 +86,7 @@ The next failure was an immediate redirect-related TypeError from the Worker's o
 Prerequisites are an existing authenticated Wrangler session and `OPENROUTER_API_KEY` registered as a Secret on the selected Worker. The optional smoke uses a short-lived authenticated remote dev script and a fixed synthetic authorization input; it does not publish production code or change routing. Never export the Secret or print raw provider responses, exception messages or headers. The harness stops the development server and removes temporary files on completion. Verify an actual validated decision and usage, not just preview upload HTTP 200; record gate abstention separately from successful transport. The current pinned invocation is kept here rather than in the public-facing project README. It requires an authenticated Wrangler session and the existing Worker Secret, and does not prove that a live API test passed:
 
 ```bash
-npm exec --yes --package=wrangler@4.151.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
+npm exec --yes --package=wrangler@4.156.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
 ```
 
 The pin is owned by `package.json` and verified by `scripts/ci/worker-toolchain-security.test.mjs`. Do not silently use an older CLI version.
@@ -509,7 +509,9 @@ Keep storage/codec validation behind the audited module that owns that responsib
 
 ## Worker tooling transport: package overrides do not patch CLI bundles
 
-Last verified: 2026-10-21. This is a partial mitigation, not full toolchain security clearance.
+Last verified: 2026-11-09 (Wrangler 4.156.0 update, #859). Package overrides still cannot patch a CLI bundle, so every toolchain update must read the embedded version from the bundle itself.
+
+- **2026-11-09:** the published Wrangler 4.156.0 `wrangler-dist/cli.js` embeds Undici 7.30.1 (read from its module paths in the downloaded tarball, not executed), and its Miniflare 5.20261023.3-beta declares Undici 7.30.1 and sharp 0.35.5 itself. Both copies are therefore patched and the embedded-transport risk below no longer applies to the pinned version. The two scoped Miniflare overrides in `package.json` name older Miniflare versions and no longer match anything; they are inert, and `scripts/ci/worker-toolchain-security.test.mjs` still asserts them. The text below is kept as the history of why the check reads the bundle.
 
 - The pinned Wrangler 4.151.0 uses Miniflare 5.20261012.0-beta. Its separately resolved Undici 7.29.1 is affected by the [Undici 7.30.1 security fixes](https://github.com/nodejs/undici/releases/tag/v7.30.1). A scoped Miniflare override selects 7.30.1 without changing Wrangler, workerd, or unrelated dependency versions. The existing sharp override remains unchanged.
 - Wrangler also embeds its own Undici 7.29.1 in `wrangler-dist/cli.js`. npm overrides and updating the Node executable do not rewrite that copy. The published Wrangler 4.151.3 artifact (latest at inspection) still embeds 7.29.1, and its Miniflare 5.20261019.1-beta still declares 7.29.1. Upgrading to that release is not a security fix for this issue.

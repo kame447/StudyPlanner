@@ -8,6 +8,9 @@ import type { WeeklyPlanningVNextInterpretationInput } from '../weeklyPlanningVN
 import { withoutConfirmedUserContext } from '../application/weeklyPlanningVNextTurnDiagnostics';
 import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../../shared/aiProxyContract';
 import {
+  MAX_PROVIDER_MESSAGE_BYTES, recordWeeklyPlanningStableV5DebugTrace, takeWeeklyPlanningStableV5DebugTrace,
+} from '../../trace/weeklyPlanningStableV5DebugTrace';
+import {
   parseVNextConfirmedUserContext, selectVNextConfirmedUserContext, VNEXT_CONFIRMED_USER_CONTEXT_MAX_BYTES,
   VNEXT_CONFIRMED_USER_CONTEXT_MAX_RECORDS, type VNextConfirmedUserContext,
 } from '../weeklyPlanningVNextConfirmedUserContext';
@@ -123,6 +126,25 @@ describe('confirmed user context in the generic interpreter request', () => {
     expect(messages[1].content).not.toContain('"ownerId"');
     expect(body.supplementalContext).toBeNull();
     expect(JSON.stringify(body.activeFacts)).not.toContain('志望校合格');
+  });
+
+  it('keeps the whole memory-bearing request in the trace: the system message (longer by the reading rule) fits the collector and is stored as sent, the memory words are not', () => {
+    const utf8 = (text: string) => new TextEncoder().encode(text).byteLength;
+    const sent = buildWeeklyPlanningVNextProviderMessages(interpretationInput(memory));
+    const requestId = 'trace-memory-bearing-request';
+    recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: 'semantic_provider_request',
+      data: { attempt: 'vnext_1', requestBytes: utf8(JSON.stringify(sent)),
+        request: withoutConfirmedUserContext({ messages: sent, purpose: 'weekly_planning_semantic_interpreter' }) } });
+    const events = takeWeeklyPlanningStableV5DebugTrace(requestId).filter(event => event.stage === 'semantic_provider_request');
+    expect(events).toHaveLength(1);
+    const traced = (events[0].data as { request: { messages: Array<{ role: string; content: string }> } }).request.messages;
+    // The plain request's system message is shorter by the reading rule, so only a memory-bearing request can pass the collector's cap first.
+    expect(sent[0].content).toContain(VNEXT_CONFIRMED_USER_CONTEXT_REQUIREMENT);
+    expect(utf8(sent[0].content)).toBeLessThanOrEqual(MAX_PROVIDER_MESSAGE_BYTES);
+    expect(traced[0]).toEqual(sent[0]);
+    expect(traced[0].content).not.toContain('trace head-tail');
+    expect(traced[1].content).not.toContain('志望校合格');
+    expect(JSON.parse(traced[1].content)).toMatchObject({ userText: 'それを予定に入れて', confirmedUserContext: { omittedFromTrace: true, records: 1 } });
   });
 
   it('measures the real request growth at the largest memory, which stays far below the proxy limit', () => {

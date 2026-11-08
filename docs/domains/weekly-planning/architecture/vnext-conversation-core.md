@@ -40,6 +40,19 @@ transaction内の作業用cloneを変更することは許容するが、呼出�
 
 focused の回答 schema は `hasAdditionalRequest` を必須とし、回答とは独立して、現在発話に有効な追加依頼があるかを AI が判定する。回答のみ・依頼の否定・同じ発話内の撤回・引用だけなら false とする。true、欠落、不正値は発話全体を既存の native 経路へ渡し、false の有効な回答だけを focused で適用する。Worker の Jev が既存の AI gate で受理した単独の数量回答にも false を添え、field 欠落による追加呼出を避ける。この信号自体は計画・保存の認可ではなく、checkpoint に保存しない。実際の request/response は既存の trace/outbox/Worker 境界で保持する。
 
+## Where AI output becomes application state (#345)
+
+AI の出力は、形の検査と意味の検査を別の層で受けてから、はじめてアプリの状態になる。モデルの出力が事実・予定・保存を直接所有することはない。provider や model を足す、または Jev に置き換えるときは、下の同じ入口を通す。受入の規則を provider ごとに複製しない。
+
+| 入口 | 形の検査 | 意味・領域の検査 | 失敗したとき |
+| --- | --- | --- | --- |
+| 計画の解釈（VNext provider） | `decodeVNextProviderOutput`（`semantic/weeklyPlanningVNextProviderSchema.ts`）。未知の key・型違い・非有限の数値を拒否する。provider へ送る schema と同じものを使う | 参照の解決 `decodeReading`（`...ProviderReferences.ts`）、`validateReading`（`...Provider.ts`）。回答は `bindWeeklyPlanningVNextAnswer`（`application/...AnswerBinding.ts`）で、数量の回答が有限かつ正でなければ束縛しない。delta は `applyWeeklyPlanningVNextTurn`（`application/...Transaction.ts`）が最終の graph を `validateWeeklyPlanningFactGraphValueV5` で検査する。保存 graph の読み取りも同じ検査を共有する（#400〜#417） | 修復の要求（小さな書込み範囲）、または失敗として扱う。部分的に適用しない |
+| 学習相談の助言（#246） | `validateConsultationSessionState`（`consultation/persistence.ts`）が、checkpoint の consultation を exact key・lineage・サイズ・重複で検査し、不正なら読み込まない | 状態遷移は `consultation/state.ts`（`commitAdviceProposal`・`applyReviewDecision`）だけが行い、採用は利用者の操作で 1 回に限る | fail closed。助言は fact・preview・保存を作らない |
+| 長期記憶の整理結果 | `parseUserPlanningContextNaturalLanguageResultV2`（`userPlanningContext/...NaturalLanguageV2Contract.ts`）が enum・型・保存先ごとの null の組合せを検査する | 長さの上限と owner は record を作る側と読み出し側（`userPlanningContextSpace.ts`）が検査する | 保存せず、利用者に整理できなかったことを伝える |
+| MCP の入力（ChatGPT など） | 各 tool の入力 schema と、reader・committer の入力検査（`src/features/mcp/`） | owner の照合、行ごとの `userId` の再検査、既存の schedule authority。保存は preview の後の明示操作だけ | 部分的に返さず、typed error にする |
+
+この表は現在のコードの記述であり、新しい契約ではない。入口を足したら、この表に行を足す。形の検査が通っても、領域の検査（範囲・参照・所有者）を通らない値は、preview にも保存にも届かない。
+
 ## A transaction is ordered by dependencies, not by a convenient array loop
 
 期間の追加・訂正・取消をすべて反映して有効な期間を先に確定し、その同じ最終期間で同ターンの日付を固定する。取消だけで期間がなくなる場合には、変更前の期間と既定の選択週を混同しない。将来の依存事実も、途中状態ではなく依存先の確定状態を読む。

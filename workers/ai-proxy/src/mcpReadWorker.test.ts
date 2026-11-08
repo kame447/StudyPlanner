@@ -3,7 +3,7 @@ import { createScheduleRangeReader } from '../../../src/features/mcp/readSchedul
 import { createScheduleEventPreparer } from '../../../src/features/mcp/prepareScheduleEvent';
 import { ScheduleEventCommitError, createScheduleEventCommitter } from '../../../src/features/mcp/commitScheduleEvent';
 import type { Plan } from '../../../src/types/domain';
-import defaultWorker, { createMcpReadWorker, type McpReadPrincipal } from './mcpReadWorker';
+import defaultWorker, { MAX_MCP_REQUEST_BODY_BYTES, createMcpReadWorker, type McpReadPrincipal } from './mcpReadWorker';
 
 const enabled = { MCP_READ_ENABLED: 'true' };
 const principal: McpReadPrincipal = { ownerId: 'owner-a', scopes: ['schedule:read'] };
@@ -117,6 +117,25 @@ describe('disabled private MCP read Worker entry', () => {
     const worker = createMcpReadWorker({ authenticate: async () => principal });
     expect(await (await worker.fetch(rpc('tools/call', { name: 'read_schedule_range', arguments: query }), enabled)).json())
       .toMatchObject({ result: { isError: true } });
+  });
+
+  it('refuses an oversized body (declared or streamed) before parsing or repository work, and still serves one at the limit', async () => {
+    const h = setup();
+    const padding = (size: number) => JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping', pad: 'x'.repeat(size) });
+    const exact = padding(MAX_MCP_REQUEST_BODY_BYTES - padding(0).length);
+    expect(new TextEncoder().encode(exact).length).toBe(MAX_MCP_REQUEST_BODY_BYTES);
+    expect((await h.worker.fetch(new Request('https://private.example/mcp', { method: 'POST', headers, body: exact }), enabled)).status).toBe(200);
+    const over = padding(MAX_MCP_REQUEST_BODY_BYTES);
+    const declared = await h.worker.fetch(new Request('https://private.example/mcp', { method: 'POST',
+      headers: { ...headers, 'Content-Length': String(over.length) }, body: over }), enabled);
+    expect(declared.status).toBe(413);
+    // No Content-Length: the stream itself is counted and cut off.
+    const chunks = [over.slice(0, 40_000), over.slice(40_000)];
+    const streamed = new ReadableStream<Uint8Array>({ start(controller) {
+      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk)); controller.close(); } });
+    const response = await h.worker.fetch(new Request('https://private.example/mcp', { method: 'POST', headers, body: streamed, duplex: 'half' } as RequestInit), enabled);
+    expect(response.status).toBe(413);
+    expect(h.snapshot).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON and unsupported batch input without repository work', async () => {

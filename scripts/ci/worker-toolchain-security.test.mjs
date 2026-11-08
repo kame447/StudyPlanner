@@ -40,15 +40,14 @@ describe('Worker toolchain security and launcher pin contract', () => {
     expect(sharp.versions.rsvg).toBe('2.63.2');
   });
 
-  it('records the still-unpatched embedded CLI transport separately from the Miniflare mitigation', () => {
+  it('uses the patched transport embedded in the Wrangler CLI bundle', () => {
     const wranglerPackagePath = require.resolve('wrangler/package.json');
     const installed = JSON.parse(fs.readFileSync(wranglerPackagePath, 'utf8'));
     expect(installed.version).toBe(pinnedVersion);
     const cli = fs.readFileSync(resolve(dirname(wranglerPackagePath), 'wrangler-dist/cli.js'), 'utf8');
-    // This is a known unresolved risk, not a patched-transport assertion.
-    // The scoped Miniflare override cannot rewrite Wrangler's embedded dependency.
-    // Published bundle module paths identify the embedded copy that npm audit cannot see.
+    // A scoped override cannot rewrite Wrangler's embedded dependency, so read the version from the published bundle's
+    // module paths (the copy npm audit cannot see). The pinned Wrangler 4.156.0 embeds 7.30.1.
     const embeddedVersions = [...new Set([...cli.matchAll(/\.pnpm\/undici@([^/]+)\/node_modules\/undici\//g)].map((match) => match[1]))];
-    expect(embeddedVersions).toEqual(['7.29.1']);
+    expect(embeddedVersions).toEqual(['7.30.1']);
   });
 });
