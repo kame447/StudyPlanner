@@ -1,7 +1,6 @@
 // What a conversation shows of the latest stored advice (#246 slice 3). Typed state only, never prose. Lives with the
 // consultation contracts so the UI can name it without importing from the VNext composition.
 import type { ConsultationSessionState } from './contracts';
-import { isAdviceReviewable } from './state';
 
 export interface AdviceView {
   status: 'reviewable' | 'approved' | 'withdrawn';
@@ -19,7 +18,10 @@ export function projectAdviceView(consultation: ConsultationSessionState | undef
   const base = { adviceId: leaf.adviceId, adviceRevision: leaf.revision, consultationRevision: consultation.revision,
     optionTitles: leaf.answer.options.map(option => option.title) };
   if (leaf.withdrawnAt) return { ...base, status: 'withdrawn', optionTitles: [] };
-  if (isAdviceReviewable(consultation, leaf.adviceId, leaf.revision)) return { ...base, status: 'reviewable' };
+  // The same rule as `isAdviceReviewable` (state.ts), kept here so the entry chunk does not carry the transitions; a test pins the two together.
+  if (!consultation.reviewDecisions.some(decision => decision.targetAdviceId === leaf.adviceId && decision.expectedAdviceRevision === leaf.revision)) {
+    return { ...base, status: 'reviewable' };
+  }
   return consultation.reviewDecisions.some(decision => decision.targetAdviceId === leaf.adviceId && decision.action === 'approve')
     ? { ...base, status: 'approved' } : null;
 }

@@ -19,7 +19,7 @@ import { createWeeklyPlanningVNextLocalSession, type WeeklyPlanningVNextLocalSes
 import { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt, removeForgottenRecordFromVNextDurableReceipt } from './weeklyPlanningVNextRuntimeGateway';
 import { subscribeUserPlanningContextForgottenV1 } from '../../../userPlanningContext/userPlanningContextSyncEvents';
 import { readUserPlanningContextSnapshotV1 } from '../../../userPlanningContext/userPlanningContextSpace';
-import { projectWeeklyPlanningVNextAdvice } from './weeklyPlanningVNextAdvice';
+import { projectAdviceView } from '../../consultation/adviceView';
 import { durableWeeklyPlanningEnabled, cancelDurableWeeklyTurn } from '../../application/weeklyPlanningDurableTurnClient';
 import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../application/weeklyPlanningDurableRecovery';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
@@ -449,7 +449,7 @@ export function useWeeklyPlanningVNextApplication(
   }, [runtime, runtime.state, revision, savedActualMinutes, input.actuals]);
   // The latest advice and whether the user may still adopt it. Read from the checkpoint, never from the chat text.
   const pendingAdvice = useMemo(() => {
-    try { return projectWeeklyPlanningVNextAdvice(runtime.local.readCheckpoint()?.vnext.consultation); } catch { return null; }
+    try { return projectAdviceView(runtime.local.readCheckpoint()?.vnext.consultation); } catch { return null; }
   }, [runtime, runtime.state, revision]);
   // Adopting or declining is the user's own click on the one active proposal; it is a recorded decision only, never a plan input or a save.
   const reviewAdvice = async (action: 'approve' | 'dismiss', optionIndex?: number) => {
