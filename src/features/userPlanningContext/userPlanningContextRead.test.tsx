@@ -9,7 +9,8 @@ import {
   resetUserPlanningContextRuntimeForTestV1,
   stageUserPlanningContextFactsV1,
 } from './userPlanningContextSpace';
-import { selectUserPlanningContextPromptRecordsV2, userPlanningContextPromptSelectionV2 } from './userPlanningContextPromptSelectionV2';
+import { subscribeUserPlanningContextForgottenV1 } from './userPlanningContextSyncEvents';
+import { selectUserPlanningContextPromptRecordsV2,userPlanningContextPromptSelectionV2 } from './userPlanningContextPromptSelectionV2';
 import { createEmptyUserPlanningContextSnapshotV1, type UserPlanningContextRecordV1 } from './userPlanningContextTypes';
 
 const repository = vi.hoisted(() => ({ initialize: vi.fn(), subscribe: vi.fn(), saveUserConfirmedRecord: vi.fn(), removeRecord: vi.fn() }));
@@ -190,6 +191,21 @@ describe('existing-format memory reads', () => {
     await act(async () => { await mutate(); });
     expect(operation === 'removeRecord' ? repository.removeRecord : repository.saveUserConfirmedRecord).toHaveBeenCalledOnce();
     expect(storage.setItem).toHaveBeenCalled();
+  });
+
+  it('announces a forget only after it succeeded, by record id alone, so other copies of the memory can be dropped', async () => {
+    raw.set(key, JSON.stringify({ ...createEmptyUserPlanningContextSnapshotV1(ownerId), records: [record()] }));
+    await act(async () => { renderer = create(<UserPlanningContextProvider ownerId={ownerId}><Consumer /></UserPlanningContextProvider>); });
+    const forgotten = vi.fn();
+    const stop = subscribeUserPlanningContextForgottenV1(forgotten);
+    try {
+      repository.removeRecord.mockRejectedValueOnce(new Error('offline'));
+      await act(async () => { await memory.removeRecord('prior-concern').catch(() => undefined); });
+      expect(forgotten).not.toHaveBeenCalled();
+      await act(async () => { await memory.removeRecord('prior-concern'); });
+      expect(forgotten).toHaveBeenCalledOnce();
+      expect(forgotten).toHaveBeenCalledWith({ ownerId, recordId: 'prior-concern' });
+    } finally { stop(); }
   });
 
   it('also checks the source before a settings save if it becomes unreadable after initialization', async () => {
