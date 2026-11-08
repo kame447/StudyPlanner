@@ -1,11 +1,12 @@
 import type {
   ProductActivityAction,
 } from '../../../shared/productObservabilityContract';
-import type {
-  ObservabilityAiAggregate,
-  ObservabilityDailyRollup,
-  ObservabilityPeriodAggregate,
-  ObservabilityPlanningAggregate,
+import {
+  aiCacheWriteUsage,
+  type ObservabilityAiAggregate,
+  type ObservabilityDailyRollup,
+  type ObservabilityPeriodAggregate,
+  type ObservabilityPlanningAggregate,
 } from '../../../shared/productObservabilityReadModel';
 import {
   createEmptyLatencyHistogram,
@@ -38,6 +39,8 @@ function emptyAiAggregate(): ObservabilityAiAggregate {
     totalTokensUnknownCount: 0,
     cachedTokens: 0,
     cachedTokensUnknownCount: 0,
+    cacheWriteTokens: 0,
+    cacheWriteTokensUnknownCount: 0,
     estimatedCostMicros: 0,
     estimatedCostUnknownCount: 0,
     latency: createEmptyLatencyHistogram(),
@@ -47,23 +50,29 @@ function emptyAiAggregate(): ObservabilityAiAggregate {
 function mergeAiAggregates(
   values: readonly ObservabilityAiAggregate[],
 ): ObservabilityAiAggregate {
-  return values.reduce<ObservabilityAiAggregate>((merged, value) => ({
-    requestCount: merged.requestCount + value.requestCount,
-    successCount: merged.successCount + value.successCount,
-    failureCount: merged.failureCount + value.failureCount,
-    statusCounts: addCountRecord(merged.statusCounts, value.statusCounts),
-    promptTokens: merged.promptTokens + value.promptTokens,
-    promptTokensUnknownCount: merged.promptTokensUnknownCount + value.promptTokensUnknownCount,
-    completionTokens: merged.completionTokens + value.completionTokens,
-    completionTokensUnknownCount: merged.completionTokensUnknownCount + value.completionTokensUnknownCount,
-    totalTokens: merged.totalTokens + value.totalTokens,
-    totalTokensUnknownCount: merged.totalTokensUnknownCount + value.totalTokensUnknownCount,
-    cachedTokens: merged.cachedTokens + value.cachedTokens,
-    cachedTokensUnknownCount: merged.cachedTokensUnknownCount + value.cachedTokensUnknownCount,
-    estimatedCostMicros: merged.estimatedCostMicros + value.estimatedCostMicros,
-    estimatedCostUnknownCount: merged.estimatedCostUnknownCount + value.estimatedCostUnknownCount,
-    latency: mergeLatencyHistograms([merged.latency, value.latency]),
-  }), emptyAiAggregate());
+  return values.reduce<ObservabilityAiAggregate>((merged, value) => {
+    const mergedCacheWrite = aiCacheWriteUsage(merged);
+    const valueCacheWrite = aiCacheWriteUsage(value);
+    return {
+      requestCount: merged.requestCount + value.requestCount,
+      successCount: merged.successCount + value.successCount,
+      failureCount: merged.failureCount + value.failureCount,
+      statusCounts: addCountRecord(merged.statusCounts, value.statusCounts),
+      promptTokens: merged.promptTokens + value.promptTokens,
+      promptTokensUnknownCount: merged.promptTokensUnknownCount + value.promptTokensUnknownCount,
+      completionTokens: merged.completionTokens + value.completionTokens,
+      completionTokensUnknownCount: merged.completionTokensUnknownCount + value.completionTokensUnknownCount,
+      totalTokens: merged.totalTokens + value.totalTokens,
+      totalTokensUnknownCount: merged.totalTokensUnknownCount + value.totalTokensUnknownCount,
+      cachedTokens: merged.cachedTokens + value.cachedTokens,
+      cachedTokensUnknownCount: merged.cachedTokensUnknownCount + value.cachedTokensUnknownCount,
+      cacheWriteTokens: mergedCacheWrite.tokens + valueCacheWrite.tokens,
+      cacheWriteTokensUnknownCount: mergedCacheWrite.unknownCount + valueCacheWrite.unknownCount,
+      estimatedCostMicros: merged.estimatedCostMicros + value.estimatedCostMicros,
+      estimatedCostUnknownCount: merged.estimatedCostUnknownCount + value.estimatedCostUnknownCount,
+      latency: mergeLatencyHistograms([merged.latency, value.latency]),
+    };
+  }, emptyAiAggregate());
 }
 
 function mergePlanningAggregates(

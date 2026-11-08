@@ -125,6 +125,16 @@ describe('aggregateOverviewPeriod', () => {
     expect(aggregate).not.toHaveProperty('activeActorCount');
   });
 
+  it('merges cache-write tokens and reads a day without the field as unknown for all its requests', () => {
+    const current = daily('2026-11-08', 90);
+    const legacy = daily('2026-11-07', 90);
+    delete (legacy.ai as { cacheWriteTokens?: number }).cacheWriteTokens;
+    delete (legacy.ai as { cacheWriteTokensUnknownCount?: number }).cacheWriteTokensUnknownCount;
+    const withWrite = { ...current, ai: { ...current.ai, cacheWriteTokens: 300, cacheWriteTokensUnknownCount: 1 } };
+
+    expect(aggregateOverviewPeriod([legacy, withWrite]).ai).toMatchObject({ cacheWriteTokens: 300, cacheWriteTokensUnknownCount: 3 });
+  });
+
   it('returns explicit zero aggregates for an empty period', () => {
     const aggregate = aggregateOverviewPeriod([]);
 

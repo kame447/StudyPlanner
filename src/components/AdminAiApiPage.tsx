@@ -14,6 +14,7 @@ import type {
   ObservabilityAiAnalysisReadModel,
   ObservabilityAiDimensionSummary,
 } from '../../shared/productObservabilityAdminReadModel';
+import { aiCacheWriteUsage } from '../../shared/productObservabilityReadModel';
 import { useAdminDateRange } from '../lib/adminDateRange';
 import { useAdminDataLoader } from '../hooks/useAdminData';
 import { getAdminObservabilityAiAnalysis } from '../services/adminObservabilityService';
@@ -105,12 +106,14 @@ function Metric({ icon, label, value, note }: {
 }
 
 function TokenUsage({ row }: { row: ObservabilityAiDimensionSummary }) {
+  const cacheWrite = aiCacheWriteUsage(row.aggregate);
   return (
     <div className="admin-ai-token-breakdown">
       <span>prompt {formatTokens(row.aggregate.promptTokens, row.aggregate.promptTokensUnknownCount)}</span>
       <span>completion {formatTokens(row.aggregate.completionTokens, row.aggregate.completionTokensUnknownCount)}</span>
       <span>total {formatTokens(row.aggregate.totalTokens, row.aggregate.totalTokensUnknownCount)}</span>
       <span>cached {formatTokens(row.aggregate.cachedTokens, row.aggregate.cachedTokensUnknownCount)}</span>
+      <span>cache書込 {formatTokens(cacheWrite.tokens, cacheWrite.unknownCount)}</span>
     </div>
   );
 }
