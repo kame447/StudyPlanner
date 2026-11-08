@@ -26,7 +26,10 @@ export function presentWeeklyPlanningVNextQuestion(
   const unitOfWork = (lineageId: string) => owner?.units.find((unit) => unit.workLineageId === lineageId);
   const amountOf = (lineageId: string) => {
     const unit = unitOfWork(lineageId);
-    return unit ? `${unit.amount}${unit.workload.unitLabel}` : '';
+    if (unit) return `${unit.amount}${unit.workload.unitLabel}`;
+    // An owner with a blocking issue has no units; a duplicate-quantity question still names its stated quantities.
+    const fact = factOf(lineageId);
+    return fact ? `${fact.amount}${fact.unitLabel}` : '';
   };
 
   const issue = owner?.issue?.code === 'remaining_inconsistent' ? owner.issue : null;
@@ -52,6 +55,8 @@ export function presentWeeklyPlanningVNextQuestion(
   } else if (issue) {
     text = `「${title}」の残りの量が、全体${issue.totalAmount}${remainingUnit}と終わった${issue.totalAmount - issue.derivedAmount}${remainingUnit}`
       + `から計算した${issue.derivedAmount}${remainingUnit}と合いません（残りは${issue.statedAmount}${remainingUnit}と伺いました）。どちらに合わせますか？${choices}`;
+  } else if (question.code === 'duplicate_quantity' && question.options.length) {
+    text = `「${title}」に、同じ種類の量が${question.subjectLineageIds.map(amountOf).join('と')}と複数あります。どうしますか？${choices}`;
   } else if (question.code === 'same_or_distinct_work') {
     text = `「${title}」の${question.subjectLineageIds.map(amountOf).join('と')}は、同じ作業ですか？${choices}`;
   } else {

@@ -139,6 +139,33 @@ function amountOption(optionId: string, targetFactId: string, amount: number): V
   };
 }
 
+/**
+ * Two quantities of the same role on one basis: the choices the user can actually make. Equal amounts can be the same
+ * work stated twice (`same`, which the work identity then folds); different amounts are a conflict, so the user keeps one
+ * (the other statement is removed, as for `same_or_distinct_work`). Separate works are only expressible for targets,
+ * where every pair being `distinct` makes them independent. More than two quantities keep the plain question.
+ */
+function duplicateQuantityOptions(issue: Extract<VNextWorkUnitIssue, { code: 'duplicate_quantity' }>, context: ProjectionContext): VNextQuestionOption[] {
+  if (issue.lineageIds.length !== 2) return [];
+  const facts = issue.lineageIds.map(lineageId => context.workloadsById.get(context.resolver.leafOf(lineageId) ?? lineageId));
+  if (facts.some(fact => fact === undefined)) return [];
+  const [a, b] = facts as [WorkloadFactV5, WorkloadFactV5];
+  const options: VNextQuestionOption[] = [];
+  // A duplicate group never mixes units (a different unit is its own group), so amounts compare as stated.
+  if (a.amount === b.amount) {
+    options.push({ optionId: 'same', value: 1, delta: { ...EMPTY_DELTA, relate: [{ kind: 'same', a: { factId: a.id }, b: { factId: b.id } }] } });
+  } else {
+    for (const [keep, drop] of [[a, b], [b, a]] as const) {
+      options.push({ optionId: `keep:${context.resolver.lineageOf(keep.id)}`, value: keep.amount,
+        delta: { ...EMPTY_DELTA, remove: [{ targetFactId: drop.id }] } });
+    }
+  }
+  if (a.quantityRole === 'target' && b.quantityRole === 'target') {
+    options.push({ optionId: 'distinct', value: 0, delta: { ...EMPTY_DELTA, relate: [{ kind: 'distinct', a: { factId: a.id }, b: { factId: b.id } }] } });
+  }
+  return options;
+}
+
 function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; componentId: string | null }, context: ProjectionContext): VNextTaskQuestion {
   const base = {
     code: issue.code,
@@ -155,6 +182,7 @@ function issueQuestion(issue: VNextWorkUnitIssue, owner: { taskId: string; compo
     forWork: null,
     options: [] as VNextQuestionOption[],
   };
+  if (issue.code === 'duplicate_quantity') return { ...base, options: duplicateQuantityOptions(issue, context) };
   if (issue.code !== 'remaining_inconsistent') return base;
   // Time inconsistencies are compared in minutes; each correction still writes its fact's stated unit.
   const inFactUnits = (amount: number, factId: string) =>

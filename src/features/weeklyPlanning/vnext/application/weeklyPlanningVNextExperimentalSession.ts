@@ -716,7 +716,8 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
           || (question.code === 'remaining_inconsistent' && question.key.startsWith('remaining_inconsistent:'))
           || (question.code === 'same_or_distinct_work' && question.key.startsWith('same_or_distinct_work:'))
           || (question.code === 'effort_inconsistent' && question.key.startsWith('effort_inconsistent:') && question.options.length === 0)
-          || (question.code === 'completed_exceeds_total' && question.key.startsWith('completed_exceeds_total:') && question.options.length === 0))
+          || (question.code === 'completed_exceeds_total' && question.key.startsWith('completed_exceeds_total:') && question.options.length === 0)
+          || (question.code === 'duplicate_quantity' && question.key.startsWith('duplicate_quantity:')))
         && unansweredQuestionStreak !== undefined && unansweredQuestionStreak.count >= 3,
       registrationCommunication: 'registrationCommunication' in made ? made.registrationCommunication : undefined,
       corrections,
