@@ -4,6 +4,8 @@ import { addDays } from '../../lib/date';
 import { canonicalScheduleTimeZone, createScheduleRangeReader, isScheduleCalendarDate,
   ScheduleRangeReadError, type ScheduleRangeItem } from './readScheduleRange';
 
+/** Longest title a single prepared or committed event may carry (UTF-16 code units, as `String.length`). */
+export const MAX_SCHEDULE_EVENT_TITLE_LENGTH = 200;
 export interface PrepareScheduleEventInput {
   title: string;
   start: ScheduleOccurrencePoint;
@@ -53,7 +55,7 @@ export function createScheduleEventPreparer(source: Parameters<typeof createSche
   return async (actorOwnerId, input) => {
     if (!actorOwnerId || actorOwnerId !== ownerId) throw new ScheduleRangeReadError('owner_mismatch');
     if (!exactObject(input, ['title', 'start', 'end', 'timeZone']) || typeof input.title !== 'string'
-      || !input.title.trim() || !point(input.start) || !point(input.end)
+      || !input.title.trim() || input.title.length > MAX_SCHEDULE_EVENT_TITLE_LENGTH || !point(input.start) || !point(input.end)
       || pointKey(input.start) >= pointKey(input.end)) throw new ScheduleEventPrepareError('invalid_event');
     if (typeof input.timeZone !== 'string') throw new ScheduleRangeReadError('invalid_time_zone');
     if (canonicalScheduleTimeZone(input.timeZone) !== timeZone) throw new ScheduleRangeReadError('time_zone_mismatch');
