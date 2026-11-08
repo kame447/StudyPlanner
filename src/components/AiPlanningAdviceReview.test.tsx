@@ -35,7 +35,9 @@ describe('advice adoption controls (#246 slice 3)', () => {
     const adopted = renderToStaticMarkup(<AiPlanningAdviceReview advice={view({ status: 'approved' })} disabled={false} onReview={() => undefined} />);
     expect(adopted).toContain('予定にはまだ入っていません');
     const withdrawn = renderToStaticMarkup(<AiPlanningAdviceReview advice={view({ status: 'withdrawn', optionTitles: [] })} disabled={false} onReview={() => undefined} />);
-    expect(withdrawn).toContain('内容を消しました');
+    expect(withdrawn).toContain('保存した案は消しました');
+    // It does not claim the reply already shown in the conversation is gone.
+    expect(withdrawn).toContain('表示済みの返信は残っています');
     expect(`${adopted}${withdrawn}`).not.toContain('<button');
   });
 });

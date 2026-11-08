@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ConsultationSessionState, ProposalAnswer } from './contracts';
-import { CONSULTATION_MAX_PROPOSALS, CONSULTATION_WITHDRAWN_ANSWER, validateConsultationSessionState } from './persistence';
+import { CONSULTATION_MAX_PROPOSALS, CONSULTATION_MAX_PROPOSAL_BYTES, CONSULTATION_WITHDRAWN_ANSWER, validateConsultationSessionState } from './persistence';
 import { applyReviewDecision } from './state';
 import { closeConsultation, commitStoredAdvice, trimConsultationHistory, withdrawProposalsDerivedFrom } from './storage';
 
@@ -35,7 +35,7 @@ describe('stored advice transitions (#246 slice 3)', () => {
   });
 
   it('refuses to store a proposal over the size bound, and a closed consultation starts a fresh one', () => {
-    expect(commitStoredAdvice(undefined, { ...scope, answer: answer('あ'.repeat(4096)), derivedFromRecordIds: [], now: at(1) })).toBeNull();
+    expect(commitStoredAdvice(undefined, { ...scope, answer: answer('あ'.repeat(CONSULTATION_MAX_PROPOSAL_BYTES)), derivedFromRecordIds: [], now: at(1) })).toBeNull();
     const first = commit(undefined, 1);
     const closed = closeConsultation(first);
     expect(closed).toMatchObject({ lifecycle: 'closed', activeAdviceId: null });

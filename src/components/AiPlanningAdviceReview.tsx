@@ -14,7 +14,7 @@ interface AiPlanningAdviceReviewProps {
  */
 export function AiPlanningAdviceReview({ advice, disabled, onReview }: AiPlanningAdviceReviewProps) {
   if (advice.status === 'withdrawn') {
-    return <p className="ai-planning-advice-review-note" role="status">削除された記憶に基づく助言のため、内容を消しました。</p>;
+    return <p className="ai-planning-advice-review-note" role="status">削除された記憶に基づく助言のため、この助言の保存した案は消しました。会話に表示済みの返信は残っています。</p>;
   }
   if (advice.status === 'approved') {
     return <p className="ai-planning-advice-review-note" role="status">この助言を採用しました。予定にはまだ入っていません。予定にするときは、条件を伝えて「予定を作って」と送ってください。</p>;
