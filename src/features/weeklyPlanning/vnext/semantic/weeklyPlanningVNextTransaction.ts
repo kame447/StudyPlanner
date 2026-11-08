@@ -20,6 +20,7 @@ import {
   computeVNextWorkUnits,
   createVNextLineageResolver,
   isValidVNextQuantityBasis,
+  vnextRangeFixedAmount,
   resolveVNextEffortBinding,
   vnextUnitIdentity,
   vnextLineageIdByFactId,
@@ -237,7 +238,7 @@ export function applyWeeklyPlanningVNextTurn(
         role: fact.role, label: fact.label };
       case 'workload': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
         componentId: fact.componentRef ? ref(fact.componentRef, `${path}.componentRef`) : null,
-        quantityRole: fact.quantityRole, amount: fact.amount, unitCode: fact.unitCode, unitLabel: fact.unitLabel,
+        quantityRole: fact.quantityRole, amount: vnextRangeFixedAmount(fact) ?? fact.amount, unitCode: fact.unitCode, unitLabel: fact.unitLabel,
         rangeStart: fact.rangeStart, rangeEnd: fact.rangeEnd, perOccurrence: fact.perOccurrence, periodExpression: fact.periodExpression };
       case 'effort_estimate': return { taskId: ref(fact.taskRef, `${path}.taskRef`),
         targetFactId: 'workLineageId' in fact.targetRef
@@ -317,6 +318,11 @@ export function applyWeeklyPlanningVNextTurn(
       ? freezeWindow({ ...found.fact, ...changes }, `${path}.changes`, patch.localId,
         'value' in changes && !('start' in changes) && !('end' in changes))
       : { ...found.fact, ...changes };
+    // A range stated now fixes its own amount, unless the same patch also states an amount (an explicit correction wins).
+    if (patch.kind === 'workload' && ('rangeStart' in changes || 'rangeEnd' in changes) && !('amount' in changes)
+      && !('amountDelta' in patch && patch.amountDelta !== null)) {
+      payload.amount = vnextRangeFixedAmount(payload as Parameters<typeof vnextRangeFixedAmount>[0]) ?? payload.amount;
+    }
     if ('dateExpression' in changes) payload.dateExpression = fixDate(changes.dateExpression as string,
       dateMeaning(patch.kind, payload.recurrenceKind), `${path}.changes.dateExpression`, patch.localId);
     const sameValues = Object.entries(payload).every(([key, value]) => JSON.stringify(found.fact[key]) === JSON.stringify(value));
