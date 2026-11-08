@@ -42,6 +42,28 @@ const COMMIT_TOOL = { name: 'commit_schedule_event', title: 'Save one schedule e
     acceptOverlaps: { type: 'boolean', description: 'Only true when the user explicitly accepted the listed overlaps. Duplicates are never saved.' } },
   required: [...PREPARE_TOOL.inputSchema.required, 'idempotencyKey'], additionalProperties: false },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } };
+/** A request carries one JSON-RPC message of a few hundred bytes; this is far above any valid one. */
+export const MAX_MCP_REQUEST_BODY_BYTES = 64 * 1024;
+/** Reads at most the limit; returns null when the body is larger (declared or streamed). Never buffers more than the limit. */
+async function readBoundedText(request: Request): Promise<string | null> {
+  const declared = Number(request.headers.get('Content-Length'));
+  if (Number.isFinite(declared) && declared > MAX_MCP_REQUEST_BODY_BYTES) return null;
+  const reader = request.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_MCP_REQUEST_BODY_BYTES) { await reader.cancel(); return null; }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(bytes);
+}
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 type RpcId = string | number;
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -69,7 +91,9 @@ export function createMcpReadWorker(dependencies: McpReadDependencies = {}) {
     const accept = (request.headers.get('Accept') ?? '').split(',').map(value => value.split(';')[0].trim().toLowerCase());
     if (!accept.includes('application/json') || !accept.includes('text/event-stream')) return new Response('Not acceptable', { status: 406 });
     let message: unknown;
-    try { message = await request.json(); }
+    const text = await readBoundedText(request).catch(() => null);
+    if (text === null) return new Response('Payload too large', { status: 413 });
+    try { message = JSON.parse(text); }
     catch { return rpcError(null, -32700, 'Parse error', 400); }
     if (!record(message) || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
       return rpcError(null, -32600, 'Invalid request', 400);

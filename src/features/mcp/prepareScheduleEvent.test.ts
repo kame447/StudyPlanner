@@ -4,7 +4,7 @@ import { scheduleEventFromMonthEvent, scheduleEventToMonthEvent } from '../../do
 import { createLocalScheduleEventAuthority } from '../../repositories/localScheduleEventAuthority';
 import { createLocalPlannerStorageGateway } from '../../repositories/localStorageGateway';
 import type { MonthEvent, Plan } from '../../types/domain';
-import { createScheduleEventPreparer } from './prepareScheduleEvent';
+import { MAX_SCHEDULE_EVENT_TITLE_LENGTH, createScheduleEventPreparer } from './prepareScheduleEvent';
 
 const OWNER = 'owner-a';
 const range = { startDate: '2026-11-01', endDate: '2026-11-30' };
@@ -107,6 +107,16 @@ describe('single-event unsaved schedule preview', () => {
     const ports = source();
     await expect(createScheduleEventPreparer(ports)(OWNER, input)).rejects.toMatchObject({ code: 'invalid_event' });
     expect(ports.authority.getScheduleSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('caps the title length: the limit itself is accepted, one more is refused before any read', async () => {
+    const accepted = source();
+    const preview = await createScheduleEventPreparer(accepted)(OWNER, { ...candidate, title: 'あ'.repeat(MAX_SCHEDULE_EVENT_TITLE_LENGTH) });
+    expect(preview.event.title).toHaveLength(MAX_SCHEDULE_EVENT_TITLE_LENGTH);
+    const refused = source();
+    await expect(createScheduleEventPreparer(refused)(OWNER, { ...candidate, title: 'あ'.repeat(MAX_SCHEDULE_EVENT_TITLE_LENGTH + 1) }))
+      .rejects.toMatchObject({ code: 'invalid_event' });
+    expect(refused.authority.getScheduleSnapshot).not.toHaveBeenCalled();
   });
 
   it.each([{ timeZone: 0, code: 'invalid_time_zone' }, { timeZone: 'invalid', code: 'invalid_time_zone' },
