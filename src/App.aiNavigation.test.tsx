@@ -179,7 +179,7 @@ it('pauses the retained surface during settings and drops it for owner changes a
 });
 
 
-it('refreshes retained starter suggestions from the owned planner snapshot and hides unavailable targets', async () => {
+it('keeps starter suggestions disabled as owned planner data changes', async () => {
   await act(async () => { renderer = create(<App state={state} />); });
   await act(async () => { nav().onOpenAiPlanning(); });
   const firstInput = input();
@@ -189,11 +189,12 @@ it('refreshes retained starter suggestions from the owned planner snapshot and h
   await act(async () => { renderer!.update(<App state={state} />); });
   await act(async () => { nav().onOpenAiPlanning(); });
   expect(input() === firstInput).toBe(true);
-  const starters = () => renderer!.root.findByProps({ 'aria-label': '入力例' });
-  expect(JSON.stringify(starters().findAllByType('span').map(node => node.children))).toContain('追加した課題');
+  const starters = () => renderer!.root.findAllByProps({ 'aria-label': '入力例' });
+  expect(starters()).toHaveLength(0);
   state = { ...state, plannerDataAvailability: { status: 'loading', ownerId: 'owner-a', observedAt: 'now', lastSuccessfulAt: null } };
   await act(async () => { renderer!.update(<App state={state} />); });
-  expect(JSON.stringify(starters().findAllByType('span').map(node => node.children))).not.toContain('追加した課題');
+  expect(starters()).toHaveLength(0);
+  expect(input() === firstInput).toBe(true);
   expect(boundary.todos).not.toHaveBeenCalled(); expect(boundary.materials).not.toHaveBeenCalled();
 });
 

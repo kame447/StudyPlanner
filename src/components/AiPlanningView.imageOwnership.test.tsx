@@ -84,6 +84,17 @@ afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
+it('hides all starter suggestions while retaining normal chat input', async () => {
+  await mount();
+  expect(renderer!.root.findAllByProps({ 'aria-label': '入力例' })).toHaveLength(0);
+  const composer = renderer!.root.findByProps({ 'aria-label': '週間計画にしたいこと' });
+  expect(composer.props.placeholder).toBe('予定や目標を入力...');
+  await act(async () => { composer.props.onChange({ target: { value: '今週、数学を2時間勉強したい' } }); });
+  expect(send().props.disabled).toBe(false);
+  await act(async () => { send().props.onClick(); });
+  expect(mocks.execute).toHaveBeenCalledTimes(1);
+});
+
 it('keeps normal image submission functional and saves its own chat', async () => {
   const pending = createDeferred<{ text: string }>(); mocks.ocr.mockReturnValue(pending.promise);
   await mount(); const before = index(); await attach();
