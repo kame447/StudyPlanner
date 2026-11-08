@@ -904,12 +904,9 @@ export function AiPlanningView({
           </button>}
           <div>
             <h1>AI計画</h1>
-            <p>
-              {activeChat?.title === '新しいチャット'
-                ? '対話で学習計画を作成・必要に応じて調整'
-                : activeChat?.title ??
-                  '対話で学習計画を作成・必要に応じて調整'}
-            </p>
+            {activeChat?.title && activeChat.title !== '新しいチャット' && (
+              <p>{activeChat.title}</p>
+            )}
           </div>
         </div>
 
