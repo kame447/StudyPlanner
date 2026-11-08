@@ -109,6 +109,17 @@ function recurringPerOccurrenceSlices(params: {
     days: recurrence.days,
     dates: boundedDates,
   });
+  if (recurrence.kind === 'times_per_week' && recurrenceResolution.invalidDays.length === 0) {
+    // "N times in the period" fixes how many sessions there are but not which days: N copies with no required date, and
+    // placement chooses the days. A count that is not a whole number of at least 2 leaves the single item as it was.
+    const count = Number.isInteger(recurrence.count) ? Math.min(Number(recurrence.count), boundedDates.length) : 0;
+    if (count < 2) return [params.item];
+    return Array.from({ length: count }, (_, index) => ({
+      ...params.item,
+      id: `${params.item.id}:recurrence:${recurrence.id}:${index + 1}`,
+      sourceFactRefs: [...new Set([...params.item.sourceFactRefs, recurrence.id])],
+    }));
+  }
   if (
     recurrenceResolution.calendarDates === null
     || recurrenceResolution.invalidDays.length > 0
