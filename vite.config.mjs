@@ -118,7 +118,7 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         codeSplitting: {
-          groups: [{ name: id => resolveVendorChunk(id) ?? null, debugName: 'vendor' }],
+          groups: [{ name: id => resolveVendorChunk(id) ?? null, debugName: 'vendor', includeDependenciesRecursively: false }],
         },
       },
     },
