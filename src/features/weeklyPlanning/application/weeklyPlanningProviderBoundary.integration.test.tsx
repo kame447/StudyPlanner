@@ -4,7 +4,7 @@ import { materialIdentityDocument, materialIdentityEffortFixture, MATERIAL_IDENT
 import { classifyWeeklyPlanningApprovalAvailability } from './weeklyPlanningApprovalAvailability';
 import { createUserConfirmedPlanningContextRecordV1, hydrateUserPlanningContextSnapshotV1, exportUserPlanningContextSnapshotV1 } from '../../userPlanningContext/userPlanningContextSpace';
 import { createEmptyUserPlanningContextSnapshotV1 } from '../../userPlanningContext/userPlanningContextTypes';
-import { recordWeeklyPlanningStableV5DebugTrace, takeWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+import { MAX_PROVIDER_MESSAGE_BYTES, recordWeeklyPlanningStableV5DebugTrace, takeWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { StudyMaterial, PlanDraft } from '../../../types/domain';
 import { createPlanFromDraft } from '../../../domain/planner';
 import { createLocalPlannerRepository } from '../../../repositories/createLocalPlannerRepository';
@@ -368,7 +368,7 @@ it.each(['preview', 'draft'] as const)('binds the current owner bookshelf throug
   expect(execution.failure).toBeUndefined(); expect(execution.responseSource).toBe('ai');
   const pending = spy.mock.calls[0][0].pending;
   const request = calls[0].body;
-  for (const message of request.messages) expect(new TextEncoder().encode(message.content).byteLength).toBeLessThanOrEqual(20_000);
+  for (const message of request.messages) expect(new TextEncoder().encode(message.content).byteLength).toBeLessThanOrEqual(MAX_PROVIDER_MESSAGE_BYTES);
   const providerInput = JSON.parse(request.messages[request.messages.length - 1].content);
   expect(providerInput.publicStateSummary.registeredMaterials).toEqual([
     expect.objectContaining({ materialId: shelf.id, name: shelf.name, remainingUnits: 800 }),

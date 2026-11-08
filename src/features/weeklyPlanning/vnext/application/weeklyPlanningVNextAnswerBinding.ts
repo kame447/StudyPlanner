@@ -14,6 +14,7 @@ import type {
   WeeklyPlanningVNextProjection,
 } from '../weeklyPlanningVNextTypes';
 import { createVNextLineageResolver } from '../weeklyPlanningVNextWorkIdentity';
+import { vnextQuestionKeyAllowsProvisionalTimebox } from '../projection/weeklyPlanningVNextProjection';
 import type { WeeklyPlanningVNextInterpretedAnswer } from '../weeklyPlanningVNextInterpretationContract';
 
 /** What was shown with the assistant message, stored inside the presentation record. */
@@ -202,7 +203,7 @@ function restatedOptionChange(option: VNextTurnDelta, delta: VNextTurnDelta, gra
  * session must apply the same thing. Tests: ExperimentalSession integration "…restated as a fact in
  * the same reading is one statement…" (estimate, Astra F02; option).
  */
-export function resolveWeeklyPlanningVNextTurnDelta(params: {
+function resolveBoundTurnDelta(params: {
   presentationFresh: boolean;
   presented: WeeklyPlanningVNextPresentedQuestion | null;
   projection: WeeklyPlanningVNextProjection;
@@ -223,4 +224,31 @@ export function resolveWeeklyPlanningVNextTurnDelta(params: {
     : restatedOptionChange(binding.delta, params.interpreted.delta, params.graph);
   if (restated.length) return { status: 'conflict', errors: restated };
   return { status: 'delta', delta: mergeDeltas(binding.delta, params.interpreted.delta) };
+}
+
+/**
+ * The user's explicit "the same for every remaining one" (`scope: all_pending`, provisional timebox only) becomes one
+ * ordinary deferral per pending question that allows a provisional timebox, before the transaction. Nothing else is
+ * widened: a deferral without that scope names only its own question, a question that does not allow a timebox stays
+ * asked, and a scope on an allocation that is not a provisional timebox is left for the transaction to reject.
+ */
+function expandProvisionalDeferScope(delta: VNextTurnDelta, projection: WeeklyPlanningVNextProjection): VNextTurnDelta {
+  if (!delta.defer.some(item => item.scope === 'all_pending')) return delta;
+  const eligible = projection.questions.filter(question => !question.optionalInvitation && vnextQuestionKeyAllowsProvisionalTimebox(question.key))
+    .map(question => question.key);
+  const defer: VNextTurnDelta['defer'] = [];
+  const add = (item: VNextTurnDelta['defer'][number]) => {
+    if (!defer.some(existing => existing.questionKey === item.questionKey && existing.allocation === item.allocation)) defer.push(item);
+  };
+  for (const item of delta.defer) {
+    if (item.scope !== 'all_pending' || item.allocation !== 'provisional_timebox') { add(item); continue; }
+    add({ questionKey: item.questionKey, allocation: 'provisional_timebox', scope: 'presented' });
+    for (const key of eligible) add({ questionKey: key, allocation: 'provisional_timebox', scope: 'presented' });
+  }
+  return { ...delta, defer };
+}
+
+export function resolveWeeklyPlanningVNextTurnDelta(params: Parameters<typeof resolveBoundTurnDelta>[0]): ReturnType<typeof resolveBoundTurnDelta> {
+  const resolved = resolveBoundTurnDelta(params);
+  return resolved.status === 'delta' ? { status: 'delta', delta: expandProvisionalDeferScope(resolved.delta, params.projection) } : resolved;
 }

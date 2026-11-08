@@ -154,6 +154,26 @@ export function isValidVNextQuantityBasis(workload: Pick<WorkloadFactV5, 'rangeS
   return (workload.rangeStart === null) === (workload.rangeEnd === null);
 }
 
+/** Numbered units whose range "from N to M" counts every item, both ends included (pages 30–50 are 21 pages). */
+const RANGE_COUNTED_UNIT_CODES: ReadonlySet<string> = new Set(['page', 'problem', 'word', 'lesson', 'chapter', 'section']);
+const plainInteger = (value: string | null): number | null => {
+  const text = value?.normalize('NFKC').trim() ?? '';
+  return /^\d{1,6}$/.test(text) ? Number(text) : null;
+};
+
+/**
+ * The amount a stated range itself fixes: both ends plain integers (start ≤ end) on a numbered unit. Anything else
+ * (a non-numeric end such as 「第3章」, a percentage or time unit, a reversed range) fixes nothing and returns null, so the
+ * stated amount stands. The model's own arithmetic on a range is unreliable (30〜50 came back as 30, 40 and 50); the typed
+ * ends are exact. Applied when a range is stated, never over an explicit later amount correction.
+ */
+export function vnextRangeFixedAmount(workload: Pick<WorkloadFactV5, 'unitCode' | 'rangeStart' | 'rangeEnd'>): number | null {
+  if (!RANGE_COUNTED_UNIT_CODES.has(workload.unitCode)) return null;
+  const start = plainInteger(workload.rangeStart);
+  const end = plainInteger(workload.rangeEnd);
+  return start !== null && end !== null && start <= end ? end - start + 1 : null;
+}
+
 export interface VNextWorkUnit {
   workLineageId: string;
   definingFactId: string;

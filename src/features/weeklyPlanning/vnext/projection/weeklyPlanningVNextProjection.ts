@@ -635,6 +635,11 @@ export function projectWeeklyPlanningVNext(
   for (const { question } of owners) {
     if (question) (deferredKeys.has(question.key) ? deferredQuestions : questions).push(question);
   }
+  // Whole picture first (priority 5): what work there is and how much come before how long one piece takes. Only the
+  // order changes (stable, so task order holds within a rank); no question is added, removed or reworded.
+  const detailRank = (question: VNextQuestion) => question.optionalInvitation ? 0
+    : question.code === 'missing_effort_estimate' || question.code === 'effort_inconsistent' ? 2 : 1;
+  questions.sort((left, right) => detailRank(left) - detailRank(right));
   const hasWork = owners.some((owner) => owner.work.length > 0 || owner.calibration);
   return {
     graphRevision: graph.revision,

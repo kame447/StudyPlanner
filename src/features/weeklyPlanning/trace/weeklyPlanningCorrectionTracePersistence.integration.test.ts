@@ -28,6 +28,7 @@ import {
   prepareWeeklyPlanningTraceServerWrite,
 } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import {
+  MAX_PROVIDER_MESSAGE_BYTES,
   beginWeeklyPlanningStableV5DebugTrace,
   recordWeeklyPlanningStableV5DebugTrace,
   resetWeeklyPlanningStableV5DebugTraceForTest,
@@ -776,7 +777,7 @@ async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair' | 'd
     data.request.messages.forEach((message, messageIndex) => {
       const original = requests[index].messages[messageIndex];
       expect(message.role).toBe(original.role);
-      if (new TextEncoder().encode(original.content).byteLength <= 20_000) expect(message.content).toBe(original.content);
+      if (new TextEncoder().encode(original.content).byteLength <= MAX_PROVIDER_MESSAGE_BYTES) expect(message.content).toBe(original.content);
       else {
         expect(message.content).toContain(original.content.slice(0, 100));
         expect(message.content).toContain(original.content.slice(-100));

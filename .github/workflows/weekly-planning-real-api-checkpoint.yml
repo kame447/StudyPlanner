@@ -17,6 +17,8 @@ on:
           - smoke
           - vnext
           - vnext-worker
+          - f-measure
+          - f-measure-p56
       repetitions:
         description: 'Run 1-10 independent repetitions in parallel'
         required: true
@@ -62,7 +64,7 @@ jobs:
             fi
           fi
           case "$profile" in
-            checkpoint|merge-gate|smoke|vnext|vnext-worker) ;;
+            checkpoint|merge-gate|smoke|vnext|vnext-worker|f-measure|f-measure-p56) ;;
             *) echo "unsupported profile: $profile" >&2; exit 1 ;;
           esac
           case "$repetitions" in
@@ -213,6 +215,52 @@ jobs:
             src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalSession.realApi.observation.test.ts \
             src/features/weeklyPlanning/evals/vnextRealApiComparison.observation.test.ts \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+
+      # Frequency (F) measurement for the #992 backlog items: only the synthetic provider cases added for it (the F_MEASURE
+      # scenarios and the extra #1005 negation phrasings). Nothing that already passed is re-run.
+      - name: Run F measurement provider observations
+        if: ${{ env.REAL_API_PROFILE == 'f-measure' }}
+        shell: bash
+        env:
+          VITE_AI_MAX_PROCESS_REQUESTS: '300'
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProvider.realApi.observation.test.ts \
+            -t '(f-busy-|f-dup-|f-session-count-|sb1-|sb2-|sb4-|sb5-|sb6-)|answer-negated-request-[b-e]$' \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+          # SB3: the quantityRole observation (one repetition per job; the matrix repetitions give the sample count).
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextQuantityRole.realApi.observation.test.ts \
+            2>&1 | tee -a "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+
+      # Stage B priority 5 and 6 observations only (p5-*, p6-*). Run on a branch that carries the behaviour under observation
+      # (the all_pending defer, the question order); the cases already measured by f-measure are not run again.
+      - name: Run F measurement p5/p6 provider observations
+        if: ${{ env.REAL_API_PROFILE == 'f-measure-p56' }}
+        shell: bash
+        env:
+          VITE_AI_MAX_PROCESS_REQUESTS: '120'
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProvider.realApi.observation.test.ts \
+            -t '(p5-|p6-|tp-(afternoon|evening|morning)|range-(pages|problems|chapters|subset|correction)|cap-(daily-hard|daily-soft|weekdays|named-days|control))' \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+
+      # SB3 (QuietLovelace's quantityRole observation). In run 42498006565 this never ran: it was the second command of a
+      # `set -e` step whose first command failed. A step of its own, `always()`, so an earlier failure cannot skip it.
+      - name: Run F measurement SB3 quantity-role observation
+        # SB3 already measured in run 42501328876 (12 passed x3); not repeated.
+        if: ${{ false }}
+        shell: bash
+        env:
+          VITE_AI_MAX_PROCESS_REQUESTS: '120'
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextQuantityRole.realApi.observation.test.ts \
+            2>&1 | tee -a "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Upload observations
         if: always()

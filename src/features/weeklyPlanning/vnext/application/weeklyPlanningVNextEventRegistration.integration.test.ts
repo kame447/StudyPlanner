@@ -75,6 +75,27 @@ function harness(responses: Array<unknown | ((context: Context) => unknown)>, fa
   return { turn, local, memory, ports, slots, saved, state, oracle, rendererInputs, calls: () => calls, saves: () => saves };
 }
 
+// SB6: a registration that states only a part of the day is repaired into the start/end question, not rejected.
+describe('a part-of-day registration reaches the commitment-time question after one repair', () => {
+  const meeting = (): VNextAddFact[] => [{ kind: 'task', localId: 'meeting', category: 'non_study', title: '面談' }];
+  const partOfDay: VNextAddFact = { kind: 'temporal_constraint', localId: 'meeting-time', taskRef: { localId: 'meeting' }, targetRef: { localId: 'meeting' },
+    constraintKind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-11-03', namedTimePeriod: 'afternoon', startTime: null, endTime: null, precision: 'approximate' };
+  const date: VNextAddFact = { kind: 'task_date_rule', localId: 'meeting-date', taskRef: { localId: 'meeting' }, targetRef: { localId: 'meeting' },
+    ruleKind: 'allowed_date', dateExpression: '2026-11-03', constraintLevel: 'hard' };
+
+  it('asks for the start and end once the repair removes the interval, keeping the request and the date', async () => {
+    const h = harness([wire([...meeting(), partOfDay], [request({ localId: 'meeting' })], 'create_plan'),
+      wire([...meeting(), date], [request({ localId: 'meeting' })], 'create_plan')]);
+    const result = await h.turn('明日の午後に面談があるので予定に入れてください');
+    const id = h.state().graph.tasks[0].id;
+    expect(result.interpretation).toMatchObject({ status: 'interpreted', metrics: { calls: 2, repairs: 1 } });
+    expect(result).toMatchObject({ outcome: 'applied', readiness: 'needs_resolution', preview: null, question: { code: 'invalid_commitment_interval', taskId: id } });
+    expect(h.state().pendingEventRegistrationTargetIds).toEqual([id]);
+    expect(h.state().graph.temporalConstraints).toHaveLength(0);
+    expect(h.saves()).toBe(0);
+  });
+});
+
 describe('VNext native fixed-event registration through the unchanged V5 projection and approval', () => {
   it.each([
     { complete: true, repeat: false, requested: true, broad: false, fixedStudy: false },

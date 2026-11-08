@@ -538,7 +538,8 @@ describe('VNext learning strategy adapters use V5 policy', () => {
     ] });
     state = decide(state, 'accept');
     const projection = projectWeeklyPlanningVNext(state);
-    expect(projection.questions[0]).toMatchObject({ code: 'missing_effort_estimate', effortMeasurement: 'session_duration' });
+    // The other task's missing quantity (the whole picture) is asked before this detail, so the session question is found by its kind.
+    expect(projection.questions.find(question => question.code === 'missing_effort_estimate')).toMatchObject({ effortMeasurement: 'session_duration' });
     expect(compileWeeklyPlanningVNextSchedulerInput({ state, projection, context }).status).toBe('not_ready');
   });
 
