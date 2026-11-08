@@ -62,6 +62,6 @@ describe('Admin entry preload recovery', () => {
     for (const css of admin.viteMetadata.importedCss) assert.ok(preloads.includes(css));
     assert.equal(admin.viteMetadata.importedCss.size, 1);
     assert.match(entry.code, /return baseModule\(\)\.catch\(handlePreloadError\)/);
-    assert.match(entry.code, /link\.addEventListener\("load", res\)/);
+    assert.match(entry.code, /link\.addEventListener\("load", \w+\)/);
   });
 });

@@ -113,9 +113,13 @@ export default defineConfig({
           : dependencies;
       },
     },
-    rollupOptions: {
+    // Vite 8 (Rolldown): `rollupOptions`/`output.manualChunks` are deprecated. The same per-module
+    // vendor chunk names are returned from one `codeSplitting` group (null = the group ignores the module).
+    rolldownOptions: {
       output: {
-        manualChunks: resolveVendorChunk,
+        codeSplitting: {
+          groups: [{ name: id => resolveVendorChunk(id) ?? null, debugName: 'vendor' }],
+        },
       },
     },
   },
