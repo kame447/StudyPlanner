@@ -239,5 +239,12 @@ describe('disabled private MCP read Worker entry', () => {
         .toMatchObject({ error: { code: -32602, message: 'possible_duplicate' } });
       expect(authority.upsertMonthEvent).toHaveBeenCalledTimes(1);
     });
+
+    it('tells the client why a daily limit refusal happened and that nothing was saved', async () => {
+      const commit = vi.fn().mockRejectedValue(new ScheduleEventCommitError('daily_limit_exceeded', 'at most 20 events can be saved per day; nothing was saved'));
+      const worker = createMcpReadWorker({ authenticate: async () => ({ ...principal, scopes: commitScopes }), commitScheduleEvent: commit });
+      expect(await (await call(worker, commitEnabled)).json()).toMatchObject({ error: { code: -32602,
+        message: expect.stringMatching(/^daily_limit_exceeded: .*nothing was saved/) } });
+    });
   });
 });

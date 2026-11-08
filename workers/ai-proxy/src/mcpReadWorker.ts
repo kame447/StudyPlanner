@@ -117,7 +117,7 @@ export function createMcpReadWorker(dependencies: McpReadDependencies = {}) {
         // An unknown outcome is not a failure the client may treat as "not saved" nor a success.
         if (error.code === 'save_outcome_unknown') return result({ isError: true, content: [{ type: 'text',
           text: 'Save outcome unknown. It is not confirmed saved; retry with the same idempotencyKey.' }] });
-        return rpcError(id, -32602, error.code);
+        return rpcError(id, -32602, error.message);
       }
       if (error instanceof ScheduleRangeReadError) {
         if (error.code === 'owner_mismatch') return rpcError(id, -32001, 'Forbidden', 403);
