@@ -3,7 +3,7 @@ import { createScheduleOccurrenceProjection } from '../../domain/scheduleOccurre
 import { createLocalScheduleEventAuthority } from '../../repositories/localScheduleEventAuthority';
 import { createLocalPlannerStorageGateway } from '../../repositories/localStorageGateway';
 import type { MonthEvent } from '../../types/domain';
-import { createScheduleEventCommitter } from './commitScheduleEvent';
+import { createScheduleEventCommitter, type ScheduleEventCommitAudit } from './commitScheduleEvent';
 import { createScheduleRangeReader } from './readScheduleRange';
 
 const OWNER = 'owner-a';
@@ -15,7 +15,7 @@ const existing = (changes: Partial<MonthEvent> = {}): MonthEvent => ({ id: 'exis
   date: candidate.start.date, startTime: '14:30', endTime: '16:00', repeat: 'none', repeatUntil: null, excludedDates: [],
   url: '', memo: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '', ...changes });
 
-async function harness(events: MonthEvent[] = []) {
+async function harness(events: MonthEvent[] = [], options: { dailyLimit?: number; now?: () => string; audit?: (entry: ScheduleEventCommitAudit) => void } = {}) {
   const values = new Map<string, string>();
   const storage: Storage = { get length() { return values.size; }, key: index => [...values.keys()][index] ?? null,
     getItem: key => values.get(key) ?? null, setItem: vi.fn((key, value) => { values.set(key, value); }),
@@ -25,7 +25,7 @@ async function harness(events: MonthEvent[] = []) {
   const timetable = { getScheduleTemplates: async () => [], getTimetableTerms: async () => [] };
   const upsert = vi.spyOn(authority, 'upsertMonthEvent');
   const commit = createScheduleEventCommitter({ ownerId: OWNER, timeZone: candidate.timeZone, range, authority, timetable,
-    now: () => '2026-11-08T00:00:00.000Z' });
+    now: () => '2026-11-08T00:00:00.000Z', audit: () => undefined, ...options });
   const read = createScheduleRangeReader({ ownerId: OWNER, timeZone: candidate.timeZone, authority, timetable });
   const day = () => read(OWNER, { startDate: candidate.start.date, endDate: candidate.start.date, timeZone: candidate.timeZone });
   return { authority, commit, upsert, day, timetable, storage, values };
@@ -138,5 +138,93 @@ describe('commit_schedule_event application adapter', () => {
       read.mockRejectedValue(new Error('read failed')); return event;
     });
     await expect(h.commit(OWNER, input)).rejects.toMatchObject({ code: 'save_outcome_unknown' });
+  });
+
+  describe('daily limit and audit', () => {
+    const at = (iso: string) => ({ now: () => iso });
+    const key = (n: number) => ({ ...input, idempotencyKey: `request-${String(n).padStart(4, '0')}`,
+      start: { date: '2026-11-09', time: `${String(8 + n).padStart(2, '0')}:00` }, end: { date: '2026-11-09', time: `${String(8 + n).padStart(2, '0')}:30` } });
+
+    it('saves up to the limit, then refuses without saving and says why', async () => {
+      const h = await harness([], { dailyLimit: 2 });
+      expect((await h.commit(OWNER, key(1))).status).toBe('saved');
+      expect((await h.commit(OWNER, key(2))).status).toBe('saved');
+      h.upsert.mockClear();
+      await expect(h.commit(OWNER, key(3))).rejects.toMatchObject({ code: 'daily_limit_exceeded',
+        message: expect.stringContaining('at most 2 events can be saved per day') });
+      expect(h.upsert).not.toHaveBeenCalled();
+      expect((await h.authority.getMonthEvents(OWNER)).filter(event => event.id.startsWith('mcp-'))).toHaveLength(2);
+    });
+
+    it('does not count a resend of an already saved event, even at the limit', async () => {
+      const h = await harness([], { dailyLimit: 1 });
+      await h.commit(OWNER, key(1));
+      expect((await h.commit(OWNER, key(1))).status).toBe('already_saved');
+      await expect(h.commit(OWNER, key(2))).rejects.toMatchObject({ code: 'daily_limit_exceeded' });
+    });
+
+    it('does not count events the owner made in the UI, nor rejected duplicates', async () => {
+      const h = await harness([existing({ id: 'manual-1', title: '手動', startTime: '08:00', endTime: '08:10' })], { dailyLimit: 1 });
+      expect((await h.commit(OWNER, key(1))).status).toBe('saved');
+    });
+
+    it('resets at the owner-local midnight, not UTC midnight (Asia/Tokyo)', async () => {
+      // 2026-11-08T14:59Z is 23:59 in Tokyo; 15:00Z is already the next local day.
+      let now = '2026-11-08T14:59:00.000Z';
+      const h = await harness([], { dailyLimit: 1, now: () => now });
+      await h.commit(OWNER, key(1));
+      await expect(h.commit(OWNER, key(2))).rejects.toMatchObject({ code: 'daily_limit_exceeded' });
+      now = '2026-11-08T15:00:00.000Z';
+      expect((await h.commit(OWNER, key(2))).status).toBe('saved');
+    });
+
+    it('rejects an invalid limit instead of silently disabling it', async () => {
+      await expect(harness([], { dailyLimit: 0 })).rejects.toMatchObject({ code: 'invalid_commit' });
+      await expect(harness([], { dailyLimit: 1.5 })).rejects.toMatchObject({ code: 'invalid_commit' });
+    });
+
+    it('uses a default limit of 20', async () => {
+      const h = await harness([], at('2026-11-08T00:00:00.000Z'));
+      const keys = Array.from({ length: 21 }, (_, n) => ({ ...input, idempotencyKey: `request-${String(n).padStart(4, '0')}`,
+        start: { date: '2026-11-09', time: `${String(Math.floor(n / 2)).padStart(2, '0')}:${n % 2 ? '30' : '00'}` },
+        end: { date: '2026-11-09', time: `${String(Math.floor(n / 2)).padStart(2, '0')}:${n % 2 ? '59' : '29'}` } }));
+      for (const request of keys.slice(0, 20)) expect((await h.commit(OWNER, request)).status).toBe('saved');
+      await expect(h.commit(OWNER, keys[20])).rejects.toMatchObject({ code: 'daily_limit_exceeded' });
+    });
+
+    it('audits each attempt with ids, outcome, reason and time, and never the title, key or memo', async () => {
+      const entries: ScheduleEventCommitAudit[] = [];
+      const h = await harness([existing({ title: 'ゼミ', startTime: '09:00', endTime: '09:30', memo: 'secret memo' })],
+        { dailyLimit: 1, audit: entry => entries.push(entry) });
+      const saved = await h.commit(OWNER, key(2));
+      await h.commit(OWNER, key(2));
+      await expect(h.commit(OWNER, { ...key(1), title: 'ゼミ', start: { date: '2026-11-09', time: '09:00' }, end: { date: '2026-11-09', time: '09:30' } }))
+        .rejects.toBeTruthy();
+      await expect(h.commit(OWNER, key(3))).rejects.toMatchObject({ code: 'daily_limit_exceeded' });
+      await expect(h.commit(OWNER, { ...input, idempotencyKey: 'x' })).rejects.toMatchObject({ code: 'invalid_commit' });
+      await expect(h.commit('other', key(1))).rejects.toMatchObject({ code: 'owner_mismatch' });
+      expect(entries.map(({ outcome, reason }) => [outcome, reason])).toEqual([['saved', 'saved'], ['duplicate', 'idempotent_resend'],
+        ['duplicate', 'possible_duplicate'], ['rejected', 'daily_limit_exceeded'], ['rejected', 'invalid_commit'], ['rejected', 'owner_mismatch']]);
+      expect(entries[0]).toEqual({ event: 'mcp_schedule_commit', ownerId: OWNER, eventId: saved.event.id, outcome: 'saved',
+        reason: 'saved', at: '2026-11-08T00:00:00.000Z' });
+      expect(entries[4].eventId).toBeNull();
+      const text = JSON.stringify(entries);
+      for (const secret of ['ゼミ', 'request-0002', 'secret memo', candidate.timeZone]) expect(text).not.toContain(secret);
+    });
+
+    it('a failing audit sink does not change or block the commit result', async () => {
+      const h = await harness([], { audit: () => { throw new Error('sink down'); } });
+      expect((await h.commit(OWNER, input)).status).toBe('saved');
+      await expect(h.commit(OWNER, { ...input, idempotencyKey: 'bad key!' })).rejects.toMatchObject({ code: 'invalid_commit' });
+    });
+
+    it('writes the default audit line in the Worker log format without sensitive fields', async () => {
+      const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+      const h = await harness([], { audit: undefined });
+      await h.commit(OWNER, input);
+      expect(info).toHaveBeenCalledWith('[MCP Schedule Commit] audit', expect.objectContaining({ outcome: 'saved', ownerId: OWNER }));
+      expect(JSON.stringify(info.mock.calls)).not.toContain('ゼミ');
+      info.mockRestore();
+    });
   });
 });

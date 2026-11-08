@@ -85,3 +85,10 @@ Worker: scope `schedule:commit` を新設。scope が無ければ 403、`MCP_COM
 - 同じ key で内容の異なる同時リクエストは後勝ちになり、片方は `save_outcome_unknown` を受ける。
 - title の長さの上限は無い（UI にも無く、新規のギャップではない）。1 MiB を超えれば保存は失敗し `save_outcome_unknown` になる。
 - flag 無効で `schedule:commit` scope も無い呼び出しは、unknown tool ではなく 403 になる。
+
+### R2 実装: 日次上限と監査ログ（`feat/issue355-commit-guardrails`、既定で無効のまま）
+
+- 日次上限: owner ごと・owner の IANA timezone の暦日ごとに、保存できる commit は既定 20 件（`createScheduleEventCommitter` の `dailyLimit` で変更。正の整数以外は構成エラー）。超過時は保存せず `daily_limit_exceeded`（上限値・timezone・「保存していない」ことをメッセージに含む）。冪等な再送（`already_saved`）、重複・重なりの拒否は数えない。既定値の根拠は、会話で人が1日に登録する数は数件であり、暴走した agent の被害を小さく確認可能な件数に抑えること。
+- 計数の保存先: 新しい store は作らない。既存の authority の canonical snapshot から、その owner の `mcp-` 接頭辞の event のうち `createdAt` が当日（owner の暦日）のものを数える。DO / KV / Firestore の新 collection や Rules は不要。UI で削除された event は数えなくなる（agent に削除 tool は無く、利用者の操作による）。
+- 監査ログ: commit 試行ごとに `[MCP Schedule Commit] audit` + `{event, ownerId, eventId|null, outcome: saved|duplicate|rejected, reason, at}` を `console.info`（既存 Worker の `[Tag] message` + 構造化フィールドの形式）で出す。title・メモ・idempotencyKey・timezone は含めない。`audit` で差し替え可能で、sink が失敗しても commit の結果は変わらない。
+- 残り（範囲外）: R1（同意画面・host の確認）、有効化そのもの、実認証と authority admission。
