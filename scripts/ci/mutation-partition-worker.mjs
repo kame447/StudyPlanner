@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { assertExactKeys, assertPolicy, detectionPolicy, mutantIdentity, partitionRanges, provePartition, relativeSource, sha256, shardIds, targets, validateReport } from './mutation-partition.mjs';
+import { anchorTestFile, assertExactKeys, assertPolicy, detectionPolicy, mutantIdentity, partitionRanges, provePartition, relativeSource, sha256, shardIds, targets, validateReport } from './mutation-partition.mjs';
 import { assertReporterComplete, createReporterState, reporterState, strictReporter } from './mutation-partition-reporter.mjs';
 import { snapshotLockedToolchain } from './locked-test-toolchain.mjs';
 
@@ -61,8 +61,8 @@ export async function executeShardApi({ run, readEvidence, manifest, shard, root
   assertExactKeys(planKeys, manifest.shards[shard], 'Mutation plan');
   check(dry.result?.status === 'complete' && dry.result.tests.length > 0, 'Incomplete mutation dry run');
   check(dry.result.tests.every(test => test.status === 0), 'Failed/skipped mutation dry-run test');
-  const wire = dry.result.tests.filter(test => test.fileName.endsWith('/focusedContextualBindingWire.test.ts'));
-  check(wire.length === 32, 'Missing historical Worker compatibility tests');
+  const wire = dry.result.tests.filter(test => test.fileName.endsWith(anchorTestFile));
+  check(wire.length > 0, 'Missing the target\'s own unit tests in the related selection');
   const testIds = dry.result.tests.map(test => test.id).sort();
   // Parameterized tests can share a runner ID. Hash the complete sorted array,
   // retaining every occurrence; report-local numeric IDs remain unique.

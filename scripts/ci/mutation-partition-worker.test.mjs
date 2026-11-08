@@ -19,7 +19,7 @@ function evidence(status = 'Killed') {
   const report = { config: { ...base, plugins: [...base.plugins, reporterPlugin], reporters: ['strict-mutation-evidence'], mutate: ranges.a.map(range => `${range.file}:${range.start}-${range.end}`) }, thresholds: base.thresholds, files: { [targets[0]]: { source: sources[targets[0]], mutants: [mutant] } } };
   const apiResults = [{ ...mutant, fileName: path.join(root, targets[0]) }];
   const plans = { mutantPlans: [{ mutant: { ...apiResults[0], location: { start: { line: 18, column: 0 }, end: { line: 18, column: 1 } } } }] };
-  const dry = { result: { status: 'complete', tests: Array.from({ length: 32 }, (_, i) => ({ id: 'wire-' + i, status: 0, fileName: '/fixture/focusedContextualBindingWire.test.ts' })) } };
+  const dry = { result: { status: 'complete', tests: Array.from({ length: 32 }, (_, i) => ({ id: 'wire-' + i, status: 0, fileName: '/fixture/weeklyPlanningVNextWorkIdentity.test.ts' })) } };
   return { manifest, report, apiResults, plans, dry };
 }
 async function run(mode) {
@@ -43,7 +43,8 @@ async function run(mode) {
     return e.apiResults;
   };
   if (mode === 'skip') e.dry.result.tests[0].status = 2;
-  if (mode === 'wire') e.dry.result.tests.pop();
+  // The related selection lost the target's own unit tests: every dry-run test belongs to some other file.
+  if (mode === 'wire') e.dry.result.tests.forEach(test => { test.fileName = '/fixture/unrelated.test.ts'; });
   if (mode === 'repeated-id') e.dry.result.tests.push(...Array.from({ length: 2 }, () => ({ id: 'shared-parameterized-id', status: 0, fileName: '/fixture/parameterized.test.ts' })));
   if (mode === 'plan') e.plans.mutantPlans = [];
   if (mode === 'status') e.apiResults[0].status = 'CompileError';
@@ -78,15 +79,17 @@ describe('resolved public API score-only boundary', () => {
 });
 
 describe('independent full-scope instrumenter inventory', () => {
+  // Two points inside shard a's range, three inside shard b's (before the range, and after it).
+  const [a] = ranges.a;
   const points = [
     { file: targets[0], line: 18 }, { file: targets[0], line: 56 },
-    { file: targets[1], line: 100 }, { file: targets[1], line: 200 }, { file: targets[1], line: 500 },
+    { file: targets[0], line: a.start + 5 }, { file: targets[0], line: a.end - 5 }, { file: targets[0], line: a.end + 3 },
   ];
   function fakeInstrumenter(mode) {
     return { async instrument(files, options) {
       expect(options).toEqual({ plugins: null, excludedMutations: [], ignorers: [] });
       const candidates = [...points];
-      if (mode === 'crossing') candidates.push({ file: targets[1], line: 182, end: 185 });
+      if (mode === 'crossing') candidates.push({ file: targets[0], line: a.start - 2, end: a.start + 1 });
       const mutants = candidates.filter(point => {
         const file = files.find(f => f.name === path.join(root, point.file));
         return file.mutate === true || file.mutate.some(range => range.start.line <= point.line && (point.end ?? point.line) <= range.end.line);

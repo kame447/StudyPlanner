@@ -1,10 +1,13 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 
+// The production VNext work-identity kernel. The Stable V5 files this scope used to name run only behind
+// `VITE_WEEKLY_PLANNING_CORE=stable_v5` on a local host, never on the production path.
 export const targets = [
-  'src/features/weeklyPlanning/semantic/weeklyPlanningPendingQuestionV5.ts',
-  'src/features/weeklyPlanning/semantic/weeklyPlanningStableV5ContextualAnswer.ts',
+  'src/features/weeklyPlanning/vnext/weeklyPlanningVNextWorkIdentity.ts',
 ];
+// The target's own unit tests must be part of every shard's related-test selection (`related: true` follows imports).
+export const anchorTestFile = '/weeklyPlanningVNextWorkIdentity.test.ts';
 export const shardIds = ['a', 'b'];
 export const thresholds = { high: 80, low: 60, break: 50 };
 export const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -40,19 +43,26 @@ export function partitionRanges(sources, ts) {
     assert(matches.length === 1, `Missing/ambiguous partition anchor: ${name}`);
     return source.getLineAndCharacterOfPosition(matches[0].end - 1).line + 1;
   };
-  const [p, c] = targets;
+  const [file] = targets;
   const lines = source => source.split('\n').length - Number(source.endsWith('\n'));
-  const pe = lines(sources[p]);
-  const ce = lines(sources[c]);
-  const pb = endOfFunction(p, 'readWeeklyPlanningPendingQuestionV5');
-  const c1 = endOfFunction(c, 'isSemanticUncertaintyReplyEnvelope');
-  const c2 = endOfFunction(c, 'applyQuantityRoleAnswer');
-  assert(pb < pe && c1 < c2 && c2 < ce, 'Partition anchors out of order');
+  const end = lines(sources[file]);
+  // Shard a is `computeUnits` (the one large function, about 55% of the mutants); shard b is everything before and after it.
+  const before = endOfFunction(file, 'computeVNextWorkUnits');
+  const last = endOfFunction(file, 'computeUnits');
+  assert(before < last && last < end, 'Partition anchors out of order');
   return {
-    a: [{ file: p, start: 1, end: pb }, { file: c, start: c1 + 1, end: c2 }],
-    b: [{ file: p, start: pb + 1, end: pe }, { file: c, start: 1, end: c1 }, { file: c, start: c2 + 1, end: ce }],
+    a: [{ file, start: before + 1, end: last }],
+    b: [{ file, start: 1, end: before }, { file, start: last + 1, end }],
   };
 }
+
+// One mutant identity per mutant: hashing the whole source for each of them is quadratic in the source size, which the
+// larger target makes slow enough to matter (tens of thousands of mutants in the score-boundary test).
+const sourceHashes = new Map();
+const sourceHash = source => {
+  if (!sourceHashes.has(source)) sourceHashes.set(source, sha256(source));
+  return sourceHashes.get(source);
+};
 
 export function mutantIdentity(file, source, mutant, apiLocation = false) {
   assert(targets.includes(file), `Unexpected mutation source: ${file}`);
@@ -61,7 +71,7 @@ export function mutantIdentity(file, source, mutant, apiLocation = false) {
     assert(Number.isInteger(value?.line) && Number.isInteger(value?.column), 'Invalid mutant location');
     return [value.line + offset, value.column + offset];
   };
-  return JSON.stringify([file, sha256(source), position(mutant.location?.start), position(mutant.location?.end), mutant.mutatorName, mutant.replacement]);
+  return JSON.stringify([file, sourceHash(source), position(mutant.location?.start), position(mutant.location?.end), mutant.mutatorName, mutant.replacement]);
 }
 
 export function relativeSource(root, file) {
@@ -142,7 +152,7 @@ export function aggregateReports(manifest, workers, identity) {
     assert(completion.kind === 'complete' && completion.guardsVerified === true, `Failed shard: ${shard}`);
     assert(completion.shard === shard && completion.manifestHash === sha256(JSON.stringify(manifest)), 'Shard inventory mismatch');
     assert(equal(completion.identity, identity), 'Shard identity/run mismatch');
-    assert(completion.wireTests === 32 && completion.dryTests > 0 && typeof completion.dryTestIdsHash === 'string', 'Incomplete shard dry-run evidence');
+    assert(completion.wireTests > 0 && completion.dryTests > 0 && typeof completion.dryTestIdsHash === 'string', 'Incomplete shard dry-run evidence');
     assert(Number.isInteger(completion.dryDistinctIds) && completion.dryDistinctIds > 0 && completion.dryDistinctIds <= completion.dryTests, 'Incomplete shard dry-run ID counts');
     assert(completion.dryTests === workers.a.completion.dryTests && completion.dryDistinctIds === workers.a.completion.dryDistinctIds && completion.dryTestIdsHash === workers.a.completion.dryTestIdsHash, 'Shard related test populations differ');
     const score = validateReport(manifest, shard, worker.report);

@@ -12,8 +12,7 @@ describe('weekly-planning mutation capacity contract', () => {
   it('keeps the detection policy while using four execution processes', () => {
     expect(config.concurrency).toBe(4);
     expect(config.mutate).toEqual([
-      'src/features/weeklyPlanning/semantic/weeklyPlanningPendingQuestionV5.ts',
-      'src/features/weeklyPlanning/semantic/weeklyPlanningStableV5ContextualAnswer.ts',
+      'src/features/weeklyPlanning/vnext/weeklyPlanningVNextWorkIdentity.ts',
     ]);
     expect(config.testRunner).toBe('vitest');
     expect(config.checkers).toEqual(['typescript']);
