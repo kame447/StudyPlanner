@@ -273,46 +273,66 @@ it.each(['reduced', 'off'] as const)('plays the intro with saved app UI motion %
   expect(onComplete).not.toHaveBeenCalled();
 });
 
-it.each(['reject', 'throw'])('keeps blocked autoplay available for explicit playback after %s', async failure => {
+it.each(['reject', 'throw'])('automatically retries transient playback failure after %s without a manual gate', async failure => {
   const denied = new DOMException('User activation required', 'NotAllowedError');
   if (failure === 'reject') media.play.mockRejectedValueOnce(denied);
   else media.play.mockImplementationOnce(() => { throw denied; });
-  await act(async () => { renderer = create(surface('/provided-video.mp4', false), { createNodeMock: node => node.type === 'video' ? media : null }); });
+  await mount();
   const original = video();
-  expect(button().props).toMatchObject({ disabled: false, 'aria-label': '起動アニメーションを再生' });
-  expect(onComplete).not.toHaveBeenCalled();
-  expect(vi.getTimerCount()).toBe(0);
-  act(() => { vi.advanceTimersByTime(10_000); });
+  expect(renderer!.root.findAllByProps({ 'aria-label': '起動アニメーションを再生' })).toHaveLength(0);
+  expect(media.pause).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  expect(media.play).toHaveBeenCalledTimes(2);
   expect(video()).toBe(original);
-  expect(onComplete).not.toHaveBeenCalled();
-  const play = button().props.onClick;
-  await act(async () => {
-    play();
-    // It must call play in the activation handler, not in a later effect.
-    expect(media.play).toHaveBeenCalledTimes(2);
-  });
-  expect(video()).toBe(original);
-  expect(button().props.disabled).toBe(true);
   expect(onComplete).not.toHaveBeenCalled();
   act(() => video().props.onEnded());
   expect(onComplete).toHaveBeenCalledExactlyOnceWith('ended');
 });
 
-it('requires an explicit ready skip even when manual playback is still blocked', async () => {
+it('bounds automatic retries and persistent denial without indefinitely blocking startup', async () => {
   media.play.mockRejectedValue(new DOMException('User activation required', 'NotAllowedError'));
   await mount();
-  const original = video();
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_750); });
+  expect(media.play).toHaveBeenCalledTimes(4);
   expect(onComplete).not.toHaveBeenCalled();
-  const play = renderer!.root.findByProps({ 'aria-label': '起動アニメーションを再生' });
-  await act(async () => play.props.onClick());
+  expect(media.pause).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(2_250); });
+  expect(onComplete).toHaveBeenCalledExactlyOnceWith('stalled');
+  expectStaticLoading();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('canplay recovers once and cancels the pending timer retry', async () => {
+  Object.assign(media, { paused: true });
+  media.play.mockRejectedValueOnce(new DOMException('Temporarily denied', 'NotAllowedError'));
+  await mount();
+  await act(async () => video().props.onCanPlay());
   expect(media.play).toHaveBeenCalledTimes(2);
-  expect(video()).toBe(original);
+  await act(async () => video().props.onCanPlay());
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  expect(media.play).toHaveBeenCalledTimes(2);
+  expect(onComplete).not.toHaveBeenCalled();
+});
+
+it('cancels an automatic retry when hidden and resumes only when visible', async () => {
+  media.play.mockRejectedValueOnce(new DOMException('Temporarily denied', 'NotAllowedError'));
+  await mount();
+  act(() => page.setHidden(true));
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  expect(media.play).toHaveBeenCalledOnce();
+  await act(async () => page.setHidden(false));
+  expect(media.play).toHaveBeenCalledTimes(2);
+  expect(onComplete).not.toHaveBeenCalled();
+});
+
+it('cancels pending automatic retries when unmounted', async () => {
+  media.play.mockRejectedValueOnce(new DOMException('Temporarily denied', 'NotAllowedError'));
+  await mount();
+  act(() => renderer!.unmount()); renderer = undefined;
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  expect(media.play).toHaveBeenCalledOnce();
   expect(onComplete).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
-  const skipButton = renderer!.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' });
-  act(() => skipButton.props.onClick());
-  expect(onComplete).toHaveBeenCalledExactlyOnceWith('skipped');
-  expectStaticLoading();
 });
 
 it('changing app UI motion during playback does not finish the intro, but an OS change does', async () => {

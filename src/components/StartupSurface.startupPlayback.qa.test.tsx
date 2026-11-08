@@ -26,7 +26,6 @@ const tree = (loading: boolean) => <StartupSurface loading={loading}><Content />
 const visible = () => renderer!.root.findByProps({ 'data-testid': 'qa-content' }).props['data-visible'];
 const videos = () => renderer!.root.findAllByType('video');
 const buttons = (name: string) => renderer!.root.findAllByType('button').filter(node => node.props['aria-label'] === name);
-const retry = () => buttons('起動アニメーションを再生')[0];
 const blocked = () => new DOMException('Synthetic user activation required', 'NotAllowedError');
 async function mount(loading: boolean) {
   await act(async () => { renderer = create(tree(loading), { createNodeMock: node => {
@@ -40,8 +39,7 @@ function assertBlocked() {
   expect(videos()).toHaveLength(1);
   expect(visible()).toBe(false);
   expect(renderer!.root.findByType(SplashScreen).props.videoOutcome).toBeNull();
-  expect(retry()).toBeDefined();
-  expect(retry().props.disabled).not.toBe(true);
+  expect(buttons('起動アニメーションを再生')).toHaveLength(0);
 }
 beforeEach(() => {
   vi.useFakeTimers(); resetMotionPreferenceForTests();
@@ -92,34 +90,37 @@ it('ended before data readiness retains the still and never releases pending con
   expect(renderer!.root.findByType(SplashScreen).props.videoOutcome).toBe('ended');
   ready(); expect(visible()).toBe(true);
 });
-it.each(['reject', 'throw'] as const)('NotAllowedError %s retains media and retries synchronously before data is ready', async kind => {
+it.each(['reject', 'throw'] as const)('NotAllowedError %s retries automatically without releasing pending content', async kind => {
   if (kind === 'reject') media.play.mockRejectedValueOnce(blocked());
   else media.play.mockImplementationOnce(() => { throw blocked(); });
   await mount(true); assertBlocked();
-  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); }); assertBlocked();
+  await act(async () => { await vi.advanceTimersByTimeAsync(249); });
+  expect(media.play).toHaveBeenCalledOnce();
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(media.play).toHaveBeenCalledTimes(2);
   expect(buttons('起動アニメーションをスキップ').every(button => button.props.disabled)).toBe(true);
-  act(() => { retry().props.onClick(); expect(media.play).toHaveBeenCalledTimes(2); });
-  await act(async () => {});
   expect(videos()).toHaveLength(1); expect(visible()).toBe(false);
   ended(); expect(visible()).toBe(false); ready(); expect(visible()).toBe(true);
 });
-it.each([true, false])('ready before late autoplay rejection waits for explicit skip, initial loading=%s', async loading => {
-  let reject!: (reason: unknown) => void;
-  media.play.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
-  await mount(loading); ready(); expect(visible()).toBe(false);
-  await act(async () => reject(blocked())); assertBlocked();
-  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); }); assertBlocked();
-  const skip = buttons('起動アニメーションをスキップ')[0];
-  expect(skip).toBeDefined(); expect(skip.props.disabled).not.toBe(true);
-  act(() => skip.props.onClick()); expect(visible()).toBe(true); expect(videos()).toHaveLength(0);
-  expect(media.play).toHaveBeenCalledOnce();
+it.each([true, false])('persistent denial remains bounded without bypassing readiness, initial loading=%s', async loading => {
+  media.play.mockRejectedValue(blocked());
+  await mount(loading); assertBlocked();
+  await act(async () => { await vi.advanceTimersByTimeAsync(3_999); });
+  assertBlocked(); expect(media.play).toHaveBeenCalledTimes(4);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(videos()).toHaveLength(0);
+  if (loading) expect(renderer!.root.findByType(SplashScreen).props.videoOutcome).toBe('stalled');
+  expect(visible()).toBe(!loading);
+  ready(); expect(visible()).toBe(true);
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  expect(media.play).toHaveBeenCalledTimes(4);
 });
-it('a second denial remains recoverable and later successful play still requires ended', async () => {
+it('a second denial retries automatically and later successful play still requires ended', async () => {
   media.play.mockRejectedValueOnce(blocked()).mockRejectedValueOnce(blocked());
   await mount(false); assertBlocked();
-  await act(async () => retry().props.onClick()); assertBlocked();
-  act(() => { retry().props.onClick(); expect(media.play).toHaveBeenCalledTimes(3); });
-  await act(async () => {});
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); }); assertBlocked();
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+  expect(media.play).toHaveBeenCalledTimes(3);
   expect(visible()).toBe(false); ended(); expect(visible()).toBe(true);
 });
 it('an obsolete hidden attempt cannot replace the resumed denial or release content', async () => {
@@ -129,7 +130,7 @@ it('an obsolete hidden attempt cannot replace the resumed denial or release cont
   await act(async () => { await vi.advanceTimersByTimeAsync(10_000); page.hide(false); });
   assertBlocked();
   await act(async () => reject(new DOMException('Old interrupted attempt', 'AbortError'))); assertBlocked();
-  await act(async () => retry().props.onClick());
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
   expect(media.play).toHaveBeenCalledTimes(3); expect(visible()).toBe(false); ended(); expect(visible()).toBe(true);
 });
 it('an OS reduced-motion change is respected while autoplay is blocked', async () => {

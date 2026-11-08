@@ -386,48 +386,26 @@ test('video transfer observer detects a deliberately downloaded MP4 under reduce
   await expectStaticLoading(page);
 });
 
-test('blocked autoplay retains the clip until an explicit playback gesture completes it', async ({ page }, testInfo) => {
+test('transient autoplay denial recovers automatically without a playback gesture', async ({ page }) => {
   await page.addInitScript(() => {
     const play = HTMLMediaElement.prototype.play;
-    let playbackGesture = null;
-    const permission = window.__startupPlaybackPermission = { blocked: 0, trustedReplay: 0, nativeCalls: 0 };
-    // Scope the permission fixture to this real replay click, not a browser's
-    // transient userActivation state during automation or initialization.
-    window.addEventListener('click', event => {
-      const button = event.target instanceof Element
-        ? event.target.closest('button.startup-video[aria-label="起動アニメーションを再生"]') : null;
-      if (!event.isTrusted || !button) return;
-      permission.trustedReplay += 1;
-      playbackGesture = { event, button };
-    }, true);
+    const permission = window.__startupPlaybackPermission = { blocked: 0, nativeCalls: 0 };
     HTMLMediaElement.prototype.play = function () {
-      if (!playbackGesture || playbackGesture.event.eventPhase === Event.NONE || !playbackGesture.button.contains(this)) {
+      if (!permission.blocked) {
         permission.blocked += 1;
-        this.autoplay = false;
-        this.pause();
-        return Promise.reject(new DOMException('Blocked autoplay fixture', 'NotAllowedError'));
+        return Promise.reject(new DOMException('Transient autoplay fixture', 'NotAllowedError'));
       }
-      playbackGesture = null;
       permission.nativeCalls += 1;
       return play.call(this);
     };
   });
   await boot(page);
-  await expect.poll(() => page.evaluate(() => window.__startupPlaybackPermission.blocked)).toBeGreaterThan(0);
-  const replay = page.getByRole('button', { name: '起動アニメーションを再生', exact: true });
-  await expect(replay).toBeEnabled();
-  await expect(page.getByRole('button', { name: skipName })).toHaveCount(0);
-  await expect(page.locator('.home-main:visible')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__startupPlaybackPermission.nativeCalls)).toBeGreaterThan(0);
+  await expect(page.getByRole('button', { name: '起動アニメーションを再生', exact: true })).toHaveCount(0);
   const video = page.locator('video');
   const media = await video.elementHandle();
   await observeEnded(video);
-  await testInfo.attach('startup-autoplay-permission', { body: await page.screenshot(), contentType: 'image/png' });
-  // The real tap calls native play synchronously even before app readiness.
-  await replay.tap();
-  expect(await page.evaluate(() => ({ trustedReplay: window.__startupPlaybackPermission.trustedReplay,
-    nativeCalls: window.__startupPlaybackPermission.nativeCalls }))).toEqual({ trustedReplay: 1, nativeCalls: 1 });
   await expect.poll(() => video.evaluate(node => node.currentTime)).toBeGreaterThan(0);
-  expect(await media.evaluate(node => node === document.querySelector('video'))).toBe(true);
   await readyPlanner(page);
   await expectRealCompletion(page);
   await expect(page.locator('.home-main')).toBeVisible();
@@ -435,33 +413,27 @@ test('blocked autoplay retains the clip until an explicit playback gesture compl
 });
 
 for (const width of [390, 1280]) {
-  test(`blocked autoplay permits only an explicit ready skip at ${width}px`, async ({ page }, testInfo) => {
+  test(`persistent autoplay denial does not create a manual-play gate at ${width}px`, async ({ page }) => {
     await page.addInitScript(() => {
       HTMLMediaElement.prototype.play = function () {
+        // Simulate a browser that cannot play, not app-owned stopping behavior.
         this.autoplay = false;
         this.pause();
         return Promise.reject(new DOMException('Blocked autoplay fixture', 'NotAllowedError'));
       };
     });
     await boot(page, width);
-    await expect(page.getByRole('button', { name: '起動アニメーションを再生', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: skipName })).toHaveCount(0);
-    await readyPlanner(page);
-    const skip = page.getByRole('button', { name: skipName });
-    const box = await skip.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box.height).toBeGreaterThanOrEqual(44);
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(width);
-    expect(box.y).toBeGreaterThanOrEqual(0);
-    expect(box.y + box.height).toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
-    await skip.focus();
-    await expect(skip).toBeFocused();
-    await expect(page.locator('video')).toHaveCount(1);
-    await testInfo.attach(`startup-blocked-ready-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
-    await skip.tap();
+    await expect(page.getByRole('button', { name: '起動アニメーションを再生', exact: true })).toHaveCount(0);
+    await expect(page.locator('video')).toHaveCount(0, { timeout: 6_000 });
+    await expectStaticLoading(page);
+    await expect(page.locator('.home-main:visible')).toHaveCount(0);
+    // The intro has already fallen back, so readiness must not require a
+    // video-specific skip button. Keep the data gate closed until released.
+    await startPlanner(page);
+    await expectStaticLoading(page);
+    await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
     await expect(page.locator('.home-main')).toBeVisible();
-    await expect(page.locator('video')).toHaveCount(0);
+    await expect(page.locator('.splash-screen:visible')).toHaveCount(0);
   });
 }
 
