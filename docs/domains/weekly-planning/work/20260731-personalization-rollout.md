@@ -18,17 +18,6 @@ Depends on:
 - trace / conversation / approval repository separation
 - current-only acceptance を durable preference へ無断昇格しない境界
 
-## Current observation wiring (2026-11-08, checked against main)
-
-| Remaining item | State | Where |
-| --- | --- | --- |
-| 1 observation repository | No separate store. Plan `weeklyPlanningEstimate` / `weeklyPlanningObservationSource` and Actual `weeklyPlanningObservationResult` are the observations, written through the approval path | `weeklyPlanningApprovalApplication.ts`, `weeklyPlanningEstimateCalibration.ts` |
-| 2 invalidation | Deleting a plan or actual removes it from the next recomputation. An actual marked `isAlignedToPlan: false` is not an observation of the plan (pace and estimate calibration both exclude it) | `weeklyPlanningMemoryPaceObservationsV5.ts`, `weeklyPlanningEstimateCalibration.ts` |
-| 3 recomputable aggregate | One global multiplier recomputed from active plan/actual pairs on every compile; no stored aggregate. `subjectEstimateMultipliers` in the profile is unused | `deriveWeeklyPlanningEstimateCalibration`, VNext `compilePreviewInput` |
-| 4 time decay / effective sample | Not implemented (shrinkage `n/(n+3)` only) | — |
-| 5 safe ordering | Not implemented | — |
-| 6 consent / TTL / audit | Not implemented | — |
-
 ## Remaining work
 
 1. versioned planning / outcome observation repository
