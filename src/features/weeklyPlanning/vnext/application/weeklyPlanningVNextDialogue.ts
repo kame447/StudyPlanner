@@ -94,6 +94,8 @@ export function createWeeklyPlanningVNextRenderInput(params: {
   repeatedQuestionGuidance?: boolean;
   registrationCommunication?: WeeklyPlanningFixedEventCommunicationFacts;
   corrections?: readonly VNextAcceptedCorrection[];
+  /** Works of the shown preview placed only provisionally; carried as a typed fact when there are any. */
+  provisionalWork?: readonly { taskId: string; label: string; minutes: number }[];
 }): VNextDialogueRenderInput {
   const { state, question, preview } = params;
   // The renderer's helpers follow exact ids, so they read the facts with current references.
@@ -127,6 +129,7 @@ export function createWeeklyPlanningVNextRenderInput(params: {
       askQuestion: actionKind === 'question',
       ...params.registrationCommunication,
       ...(params.corrections?.length ? { corrections: params.corrections } : {}),
+      ...(params.provisionalWork?.length ? { provisionalWork: params.provisionalWork } : {}),
       ...(params.authorizationRequired ? { previewAuthorization: {
         status: 'authorization_required' as const, requestedPlanningIntent: 'create_plan' as const,
       } } : {}),
