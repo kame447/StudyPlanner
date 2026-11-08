@@ -20,6 +20,7 @@ import type { Plan } from '../types/domain';
 import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
 import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
 import { AiPlanningActualRecordsSection } from './AiPlanningActualRecordsSection';
+import { AiPlanningAdviceReview } from './AiPlanningAdviceReview';
 import { AiPlanningView as AiPlanningViewLegacy, type AiPlanningStarterCatalog } from './AiPlanningViewLegacy';
 import './AiPlanningPreviewDialog.css';
 import './AiPlanningPreviewDialogLayout.css';
@@ -306,6 +307,10 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   const checkpointNotice = application.conversationSync
     ? <><AiPlanningConversationSync sync={application.conversationSync} />{localCheckpointNotice}</>
     : localCheckpointNotice;
+  const adviceReview = application.pendingAdvice && application.reviewAdvice ? (
+    <AiPlanningAdviceReview advice={application.pendingAdvice} disabled={isBusy}
+      onReview={(action, optionIndex) => { if (presentationActive.current && !isBusy) void application.reviewAdvice?.(action, optionIndex); }} />
+  ) : null;
 
   return (
     <div
@@ -318,7 +323,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
         {...props}
         cancellationEpoch={cancellationEpoch}
         onCancelPendingTurn={cancelPendingTurn}
-        checkpointNotice={showingPreview ? null : checkpointNotice}
+        checkpointNotice={showingPreview ? null : <>{adviceReview}{checkpointNotice}</>}
       />
       {showingPreview ? (
         <div

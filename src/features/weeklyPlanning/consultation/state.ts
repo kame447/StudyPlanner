@@ -138,6 +138,8 @@ export function applyReviewDecision(
       || proposal.revision !== decision.expectedAdviceRevision) {
     return { accepted: false, state, reason: 'not_active_advice_leaf' };
   }
+  // A proposal withdrawn after a forgotten memory keeps none of its words and cannot be adopted.
+  if (proposal.withdrawnAt) return { accepted: false, state, reason: 'advice_withdrawn' };
   if (!scopeExists(proposal, decision.targetScope)) {
     return { accepted: false, state, reason: 'invalid_review_scope' };
   }
@@ -192,6 +194,7 @@ export function isAdviceReviewable(
 ): boolean {
   if (state.lifecycle !== 'active') return false;
   if (state.activeAdviceId !== adviceId || state.activeAdviceRevision !== adviceRevision) return false;
+  if (state.proposals.some((proposal) => proposal.adviceId === adviceId && proposal.revision === adviceRevision && proposal.withdrawnAt)) return false;
   return !state.reviewDecisions.some(
     (decision) => decision.targetAdviceId === adviceId
       && decision.expectedAdviceRevision === adviceRevision,

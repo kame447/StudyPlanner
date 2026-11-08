@@ -5,6 +5,7 @@
 // The advice is shown text only: it is never a user fact, an approved strategy, a preview or a saved plan.
 // Tests: weeklyPlanningVNextConsultation.test.ts (requests, validation, failures), the session test (routing).
 import type { OpenAiCompatibleClient, JsonSchemaResponseFormat } from '../../../../services/ai/openAiCompatibleClientTypes';
+import type { ProposalAnswer } from '../../consultation/contracts';
 import { LEARNING_CONSULTATION_ANSWER_VERSION, LEARNING_CONSULTATION_TURN_PURPOSE_VERSION,
   validateAdviceAnswerDocument, validateTurnPurposeDocument, type AdviceAnswerDocument, type TurnPurposeKind } from '../weeklyPlanningVNextV5Boundary';
 
@@ -23,7 +24,7 @@ export interface WeeklyPlanningVNextConsultationPort {
   /** The turn purpose, or null when the provider failed or answered outside the contract. */
   classify(input: WeeklyPlanningVNextConsultationInput): Promise<TurnPurposeKind | null>;
   /** The text to show for a consultation, or null when the provider failed or answered outside the contract. */
-  answer(input: WeeklyPlanningVNextConsultationInput): Promise<{ kind: 'proposal' | 'clarification'; text: string } | null>;
+  answer(input: WeeklyPlanningVNextConsultationInput): Promise<{ kind: 'proposal' | 'clarification'; text: string; proposal?: ProposalAnswer } | null>;
 }
 
 const CONTEXT_MESSAGES = 4;
@@ -128,7 +129,9 @@ export function createWeeklyPlanningVNextConsultation(client: OpenAiCompatibleCl
       const checked: ReturnType<typeof validateAdviceAnswerDocument> = validateAdviceAnswerDocument(document, { allowedEvidenceRefs: [] });
       if (!checked.ok) return null;
       const value: AdviceAnswerDocument = checked.value;
-      return { kind, text: value.kind === 'proposal' ? `${value.userFacingAnswer.trim()}\n\n${VNEXT_ADVICE_NOTICE}` : value.userFacingAnswer.trim() };
+      return value.kind === 'proposal'
+        ? { kind, text: `${value.userFacingAnswer.trim()}\n\n${VNEXT_ADVICE_NOTICE}`, proposal: value }
+        : { kind, text: value.userFacingAnswer.trim() };
     },
   };
 }

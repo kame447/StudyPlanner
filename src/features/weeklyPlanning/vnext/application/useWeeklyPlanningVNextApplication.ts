@@ -8,7 +8,6 @@ import { submitWeeklyPlanningApplicationTurnWithServices, weeklyPlanningTurnAppl
 import { createWeeklyPlanningTurnOutcomeLifecycle } from '../../application/weeklyPlanningTurnOutcomeLifecycle';
 import { approveWeeklyPlanningDraftBlocks } from '../../application/weeklyPlanningApprovalApplication';
 import { classifyWeeklyPlanningApprovalAvailability } from '../../application/weeklyPlanningApprovalAvailability';
-import { readUserPlanningContextSnapshotV1 } from '../../../userPlanningContext/userPlanningContextSpace';
 import { loadWeeklyPlanningApprovalOperations, saveWeeklyPlanningApprovalOperations } from '../../application/weeklyPlanningApprovalLedgerStorage';
 import { startOfWeeklyPlanningWeek } from '../../personalization/weeklyPlanningWeek';
 import { useWeeklyPlanningPersonalization } from '../../personalization/WeeklyPlanningPersonalizationContext';
@@ -19,6 +18,8 @@ import { hasStoredAiPlanningChatIndex, readAiPlanningChatSnapshotRaw, saveAiPlan
 import { createWeeklyPlanningVNextLocalSession, type WeeklyPlanningVNextLocalSession, type WeeklyPlanningActualSaveAttempt } from './weeklyPlanningVNextLocalSession';
 import { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt, removeForgottenRecordFromVNextDurableReceipt } from './weeklyPlanningVNextRuntimeGateway';
 import { subscribeUserPlanningContextForgottenV1 } from '../../../userPlanningContext/userPlanningContextSyncEvents';
+import { readUserPlanningContextSnapshotV1 } from '../../../userPlanningContext/userPlanningContextSpace';
+import { projectWeeklyPlanningVNextAdvice } from './weeklyPlanningVNextAdvice';
 import { durableWeeklyPlanningEnabled, cancelDurableWeeklyTurn } from '../../application/weeklyPlanningDurableTurnClient';
 import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../application/weeklyPlanningDurableRecovery';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
@@ -371,9 +372,39 @@ export function useWeeklyPlanningVNextApplication(
     if (!input.userId) return;
     const userId = input.userId;
     return subscribeUserPlanningContextForgottenV1(event => {
-      if (event.ownerId === userId) removeForgottenRecordFromVNextDurableReceipt(userId, event.recordId);
+      if (event.ownerId !== userId) return;
+      removeForgottenRecordFromVNextDurableReceipt(userId, event.recordId);
+      void withdrawAdviceRef.current(new Set([event.recordId]));
     });
   }, [input.userId]);
+  // Advice written from a memory the user later forgot keeps none of its words (#246). The open conversation is withdrawn at
+  // the forget; every conversation is checked against the forgotten records when it is opened, so a forget made elsewhere
+  // or while this one was closed is applied too. Other, unopened conversations keep their saved advice until then.
+  const withdrawAdvice = async (recordIds: ReadonlySet<string>) => {
+    if (!input.userId || !current() || recordIds.size === 0 || chat.requiresInitialization) return;
+    const local = runtime.local;
+    const scope = { ownerId, weekStartDate: runtime.state.weekStartDate, conversationId: runtime.session.conversationId };
+    let wrote = false;
+    try {
+      const { withdrawWeeklyPlanningVNextAdviceForRecords } = await loadWeeklyPlanningVNextRuntimeModule();
+      if (!current() || runtime.local !== local) return;
+      wrote = withdrawWeeklyPlanningVNextAdviceForRecords(scope, { checkpoint: local.checkpoint,
+        legacyV5Checkpoint: local.legacyV5Checkpoint, now: services.now }, recordIds);
+    } catch { return; }
+    if (!wrote) return;
+    chat.checkpoint();
+    try { await cloud.persist(); } catch { /* The local copy is already withdrawn; sync retries with the next save. */ }
+    redraw(value => value + 1);
+  };
+  const withdrawAdviceRef = useRef(withdrawAdvice);
+  useLayoutEffect(() => { withdrawAdviceRef.current = withdrawAdvice; });
+  useEffect(() => {
+    if (!input.userId || chat.requiresInitialization) return;
+    const read = readUserPlanningContextSnapshotV1({ ownerId: input.userId, currentDate: services.now().slice(0, 10) });
+    if (read.kind !== 'available') return;
+    const forgotten = new Set(read.snapshot.records.filter(record => record.status === 'revoked').map(record => record.id));
+    if (forgotten.size > 0) void withdrawAdviceRef.current(forgotten);
+  }, [input.userId, runtime, runtime.session.conversationId, chat.requiresInitialization]);
   // A reply that finished while the app was away is read back by its saved request identity, never re-run.
   // Each chat has its own receipt conversation and checkpoint slot, so it resumes only into its own chat.
   useEffect(() => {
@@ -416,6 +447,28 @@ export function useWeeklyPlanningVNextApplication(
       .filter(record => savedActualMinutes.get(record.id) !== record.minutes), savedMinutes);
     // `revision` changes after every committed turn and every mark.
   }, [runtime, runtime.state, revision, savedActualMinutes, input.actuals]);
+  // The latest advice and whether the user may still adopt it. Read from the checkpoint, never from the chat text.
+  const pendingAdvice = useMemo(() => {
+    try { return projectWeeklyPlanningVNextAdvice(runtime.local.readCheckpoint()?.vnext.consultation); } catch { return null; }
+  }, [runtime, runtime.state, revision]);
+  // Adopting or declining is the user's own click on the one active proposal; it is a recorded decision only, never a plan input or a save.
+  const reviewAdvice = async (action: 'approve' | 'dismiss', optionIndex?: number) => {
+    const advice = pendingAdvice;
+    if (!advice || advice.status !== 'reviewable' || !input.userId || !current() || chat.requiresInitialization
+      || runtime.state.pendingTurn || runtime.state.pendingApproval) return;
+    const local = runtime.local;
+    const scope = { ownerId, weekStartDate: runtime.state.weekStartDate, conversationId: runtime.session.conversationId };
+    const { reviewWeeklyPlanningVNextAdvice } = await loadWeeklyPlanningVNextRuntimeModule();
+    if (!current() || runtime.local !== local) return;
+    const result = reviewWeeklyPlanningVNextAdvice(scope, { checkpoint: local.checkpoint, legacyV5Checkpoint: local.legacyV5Checkpoint, now: services.now },
+      { adviceId: advice.adviceId, adviceRevision: advice.adviceRevision, consultationRevision: advice.consultationRevision, action,
+        ...(optionIndex === undefined ? {} : { optionIndex }) });
+    if (result.status === 'reviewed') {
+      chat.checkpoint();
+      try { await cloud.persist(); } catch { /* The decision is saved locally; sync retries with the next save. */ }
+    }
+    redraw(value => value + 1);
+  };
   const approveActualRecords = async () => {
     const records = pendingActualRecords;
     // Nothing to save, an owner that is not signed in, or a save already running: never write (no owner mismatch writes).
@@ -606,6 +659,8 @@ export function useWeeklyPlanningVNextApplication(
     removeDraftBlock: blockId => { dispatch({ type: 'remove_draft_block', blockId }); },
     clearDraftBlocks: () => { dispatch({ type: 'clear_draft_blocks' }); },
     pendingActualRecords,
+    pendingAdvice,
+    reviewAdvice,
     approveActualRecords,
     approveDraftBlocks: async () => {
       const beforeSync = runtime.state;
