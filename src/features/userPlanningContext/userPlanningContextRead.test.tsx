@@ -11,6 +11,7 @@ import {
 } from './userPlanningContextSpace';
 import { subscribeUserPlanningContextForgottenV1 } from './userPlanningContextSyncEvents';
 import { selectUserPlanningContextPromptRecordsV2,userPlanningContextPromptSelectionV2 } from './userPlanningContextPromptSelectionV2';
+import { AiProviderError } from '../../../shared/aiProviderFailure';
 import { createEmptyUserPlanningContextSnapshotV1, type UserPlanningContextRecordV1 } from './userPlanningContextTypes';
 
 const repository = vi.hoisted(() => ({ initialize: vi.fn(), subscribe: vi.fn(), saveUserConfirmedRecord: vi.fn(), removeRecord: vi.fn() }));
@@ -191,6 +192,46 @@ describe('existing-format memory reads', () => {
     await act(async () => { await mutate(); });
     expect(operation === 'removeRecord' ? repository.removeRecord : repository.saveUserConfirmedRecord).toHaveBeenCalledOnce();
     expect(storage.setItem).toHaveBeenCalled();
+  });
+
+  describe('failure messages for an action the user just took', () => {
+    const mountReady = async () => { await act(async () => { renderer = create(<UserPlanningContextProvider ownerId={ownerId}><Consumer /></UserPlanningContextProvider>); }); };
+
+    it('says an AI failure before saving changed nothing, instead of showing the provider message', async () => {
+      await mountReady();
+      interpret.mockRejectedValueOnce(new AiProviderError('AI request timed out after 30000 ms.', { kind: 'timeout' }));
+      let caught: unknown;
+      await act(async () => { caught = await memory.saveNaturalLanguage({ text: '英語を復習したい' }).catch((error: unknown) => error); });
+      expect((caught as Error).message).toBe('AIが内容を整理できませんでした（保存されていません）。通信を確認して、もう一度お試しください。');
+      expect((caught as Error).message).not.toContain('timed out');
+      expect(repository.saveUserConfirmedRecord).not.toHaveBeenCalled();
+    });
+
+    it('keeps its own authored messages when the AI result itself is unusable', async () => {
+      await mountReady();
+      interpret.mockRejectedValueOnce(new Error('AIが覚える内容を整理できませんでした。'));
+      let caught: unknown;
+      await act(async () => { caught = await memory.saveNaturalLanguage({ text: '英語を復習したい' }).catch((error: unknown) => error); });
+      expect((caught as Error).message).toBe('AIが覚える内容を整理できませんでした。');
+    });
+
+    it('says a failed save was not saved, in the error shown on the page as well', async () => {
+      await mountReady();
+      repository.saveUserConfirmedRecord.mockRejectedValueOnce(new Error('offline'));
+      let caught: unknown;
+      await act(async () => { caught = await memory.saveNaturalLanguage({ text: '英語を復習したい' }).catch((error: unknown) => error); });
+      const message = 'この内容を覚えておけませんでした（保存されていません）。通信を確認して、もう一度お試しください。';
+      expect((caught as Error).message).toBe(message);
+      expect(memory.error).toBe(message);
+    });
+
+    it('says a failed forget left the memory in place', async () => {
+      raw.set(key, JSON.stringify({ ...createEmptyUserPlanningContextSnapshotV1(ownerId), records: [record()] }));
+      await mountReady();
+      repository.removeRecord.mockRejectedValueOnce(new Error('offline'));
+      await act(async () => { await memory.removeRecord('prior-concern').catch(() => undefined); });
+      expect(memory.error).toBe('この内容を忘れられませんでした（まだ覚えています）。通信を確認して、もう一度お試しください。');
+    });
   });
 
   it('announces a forget only after it succeeded, by record id alone, so other copies of the memory can be dropped', async () => {
