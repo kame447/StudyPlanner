@@ -110,7 +110,9 @@ export function deriveWeeklyPlanningEstimateCalibration(params: {
 }): WeeklyPlanningEstimateCalibration {
   const planById = new Map(params.plans.map((plan) => [plan.id, plan]));
   const ratios = params.actuals.flatMap((actual) => {
-    if (!actual.planId) return [];
+    // An actual the user marked "different from the plan" is not an observation of that plan's estimate,
+    // even though it keeps the planId (the pace observations already exclude it the same way).
+    if (!actual.planId || actual.isAlignedToPlan === false) return [];
     const plan = planById.get(actual.planId);
     if (!plan) return [];
     const metadata = readWeeklyPlanningEstimateMetadata(plan);
