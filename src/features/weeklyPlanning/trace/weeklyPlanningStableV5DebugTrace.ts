@@ -24,14 +24,19 @@ interface ActiveWeeklyPlanningStableV5DebugTrace {
 
 const MAX_ACTIVE_REQUESTS = 128;
 const MAX_EVENTS_PER_REQUEST = 64;
-const MAX_EVENT_BYTES = 32 * 1024;
+// One provider-request event holds the interpreter system prompt (~20 KB), the user message, and the
+// compacted response format. Keep this above MAX_PROVIDER_MESSAGE_BYTES + the other messages, or the whole
+// request is replaced by a truncation marker.
+const MAX_EVENT_BYTES = 48 * 1024;
 const MAX_REQUEST_BYTES = 128 * 1024;
 const MAX_GENERIC_ARRAY_ITEMS = 40;
 const MAX_GENERIC_OBJECT_KEYS = 50;
 const MAX_GENERIC_DEPTH = 5;
 const MAX_GENERIC_STRING_BYTES = 2_000;
 const MAX_CONTEXT_MESSAGE_BYTES = 1_500;
-const MAX_PROVIDER_MESSAGE_BYTES = 20_000;
+// Only this in-memory collector is bounded here. The persisted turn diagnostic keeps 1,500 bytes per message
+// (weeklyPlanningTurnDiagnosticV2.ts), and the proxy accepts 96,000 characters per message.
+export const MAX_PROVIDER_MESSAGE_BYTES = 28_000;
 const MAX_RAW_RESPONSE_BYTES = 4_000;
 const activeTraces = new Map<string, ActiveWeeklyPlanningStableV5DebugTrace>();
 
