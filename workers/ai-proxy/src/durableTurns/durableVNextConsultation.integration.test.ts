@@ -47,7 +47,7 @@ function harness() {
     output: () => { expect(record?.status).toBe('completed'); return JSON.parse(record!.result!) as WeeklyPlanningVNextDurableTurnResult; } };
 }
 
-function provider(replies: { purpose?: unknown; advice?: unknown; unavailable?: 'purpose' | 'advice' } = {}) {
+function provider(replies: { purpose?: unknown; advice?: unknown; unavailable?: 'purpose' | 'advice'; native?: string } = {}) {
   const calls: { schema: string; model: string | undefined }[] = [];
   vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init?: RequestInit) => {
     const body = JSON.parse(init!.body as string);
@@ -56,7 +56,7 @@ function provider(replies: { purpose?: unknown; advice?: unknown; unavailable?: 
     if ((replies.unavailable === 'purpose' && schema === purposeSchema) || (replies.unavailable === 'advice' && schema === adviceSchema)) {
       return Response.json({ error: { message: 'synthetic unavailable' } }, { status: 503 });
     }
-    const content = schema === nativeSchema ? nothingToPlan
+    const content = schema === nativeSchema ? (replies.native ?? nothingToPlan)
       : schema === purposeSchema ? JSON.stringify(replies.purpose ?? { schemaVersion: LEARNING_CONSULTATION_TURN_PURPOSE_VERSION, kind: 'learning_consultation' })
       : schema === adviceSchema ? JSON.stringify(replies.advice ?? advice)
       : await successfulWeeklyPlanningRendererCompletion(body);
@@ -128,4 +128,26 @@ it.each(['purpose', 'advice'] as const)('ends a turn whose %s call failed at the
   await h.create().run(h.execute);
   expect(calls).toHaveLength(sent);
   expect(h.read()?.result).toBe(JSON.stringify(out));
+});
+
+const onlyATask = JSON.stringify({ planningIntent: 'discuss', conversationActs: [], answer: null,
+  delta: { add: [{ kind: 'task', localId: 'task', category: 'study', title: '英語' }], patch: [], remove: [], relate: [], defer: [] } });
+
+it('answers a consultation whose reading only named a task with advice, dropping the task name (#246 slice 2)', async () => {
+  const calls = provider({ native: onlyATask }); const h = harness();
+  await h.create().accept(h.input); await h.create().run(h.execute);
+  expect(calls.map(call => call.schema)).toEqual([nativeSchema, purposeSchema, adviceSchema]);
+  const out = h.output();
+  expect(out.result.message).toContain(VNEXT_ADVICE_NOTICE);
+  const stored = parseWeeklyPlanningVNextSessionCheckpoint({ raw: out.checkpointAfter!, ownerId: 'alice', weekStartDate: week })!.vnext;
+  expect(stored.state.graph.tasks).toEqual([]);
+  expect(stored.state.graph.revision).toBe(0);
+});
+
+it('keeps the task name and asks the planning question when a task-only reading is not a consultation', async () => {
+  const calls = provider({ native: onlyATask, purpose: { schemaVersion: LEARNING_CONSULTATION_TURN_PURPOSE_VERSION, kind: 'planning_operation' } }); const h = harness();
+  await h.create().accept(h.input); await h.create().run(h.execute);
+  expect(calls.map(call => call.schema)).toEqual([nativeSchema, purposeSchema, rendererSchema]);
+  const stored = parseWeeklyPlanningVNextSessionCheckpoint({ raw: h.output().checkpointAfter!, ownerId: 'alice', weekStartDate: week })!.vnext;
+  expect(stored.state.graph.tasks.map(task => task.title)).toEqual(['英語']);
 });
