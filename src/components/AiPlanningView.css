@@ -546,3 +546,6 @@
   .ai-planning-composer-side { display: none; }
   .ai-planning-composer { grid-template-columns: minmax(0, 1fr) auto auto; }
 }
+
+/* Visually hidden live region for new assistant replies (the report view's .sr-only rule, scoped here). */
+.ai-planning-view .ai-planning-live-reply { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

@@ -57,6 +57,7 @@ import {
 import { extractPlanningImageAttachment } from '../lib/planningImageAttachment';
 import { plannerRepository } from '../repositories';
 import { useAiPlanningViewport } from '../hooks/useAiPlanningViewport';
+import { useAssistantReplyAnnouncement } from '../hooks/useAssistantReplyAnnouncement';
 import type { Plan, StudyMaterial, TodoTask } from '../types/domain';
 import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
 import { WeeklyPlanningAllocationSummary } from './WeeklyPlanningAllocationSummary';
@@ -223,6 +224,8 @@ export function AiPlanningView({
   const chatIndex = application.chat.index;
   const chatSession = application.chat;
   const activeChatId = chatIndex.activeChatId;
+  // The hidden live region below gives a screen reader the text of a new assistant reply (and nothing else).
+  const liveReply = useAssistantReplyAnnouncement(activeChatId, state.messages);
   const [imageAttachment, setImageAttachment] =
     useState<PendingPlanningImageAttachment | null>(null);
   const [isReadingAttachment, setIsReadingAttachment] = useState(false);
@@ -908,6 +911,7 @@ export function AiPlanningView({
           </div>
         </div>
 
+        <div className="ai-planning-live-reply" role="status">{liveReply}</div>
         <div className="ai-planning-conversation" ref={conversationRef}>
           {state.messages.length === 0 &&
           displayedDraftCount === 0 &&
