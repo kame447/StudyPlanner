@@ -427,8 +427,13 @@ for (const width of [390, 1280]) {
     await expect(page.locator('video')).toHaveCount(0, { timeout: 6_000 });
     await expectStaticLoading(page);
     await expect(page.locator('.home-main:visible')).toHaveCount(0);
-    await readyPlanner(page);
+    // The intro has already fallen back, so readiness must not require a
+    // video-specific skip button. Keep the data gate closed until released.
+    await startPlanner(page);
+    await expectStaticLoading(page);
+    await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
     await expect(page.locator('.home-main')).toBeVisible();
+    await expect(page.locator('.splash-screen:visible')).toHaveCount(0);
   });
 }
 
