@@ -7,6 +7,9 @@ const READ_SCOPE = 'schedule:read';
 const PREPARE_SCOPE = 'schedule:prepare';
 const COMMIT_SCOPE = 'schedule:commit';
 export interface McpReadPrincipal { ownerId: string; scopes: readonly string[] }
+/** One line per tool call of an authenticated owner: ids, tool name, outcome code and time. Never arguments, titles, memos or error text. */
+export interface McpToolCallAudit { event: 'mcp_tool_call'; ownerId: string; tool: string; outcome: 'ok' | 'denied' | 'error'; reason: string; at: string }
+export const logMcpToolCallAudit = (entry: McpToolCallAudit) => console.info('[MCP Tool Call] audit', entry);
 export interface McpReadEnvironment { MCP_READ_ENABLED?: string; MCP_COMMIT_ENABLED?: string }
 export interface McpReadDependencies {
   /** Must validate credentials; resolving a bearer string to itself is not authentication. */
@@ -18,6 +21,9 @@ export interface McpReadDependencies {
   /** Persists one event; only reachable with its own scope and MCP_COMMIT_ENABLED=true. */
   commitScheduleEvent?: CommitScheduleEvent;
   allowedOrigins?: readonly string[];
+  /** Defaults to a Worker log line. A failing sink never changes the response. commit_schedule_event keeps its own audit. */
+  audit?: (entry: McpToolCallAudit) => void;
+  now?: () => string;
 }
 
 const READ_TOOL = { name: 'read_schedule_range', title: 'Read my schedule',
@@ -127,16 +133,23 @@ export function createMcpReadWorker(dependencies: McpReadDependencies = {}) {
     }
     const prepare = message.params.name === PREPARE_TOOL.name;
     const commit = message.params.name === COMMIT_TOOL.name;
-    if (prepare && !principal.scopes.includes(PREPARE_SCOPE)) return rpcError(id, -32001, 'Forbidden', 403);
-    if (commit && !principal.scopes.includes(COMMIT_SCOPE)) return rpcError(id, -32001, 'Forbidden', 403);
+    const tool = message.params.name as string;
+    const audit = (outcome: McpToolCallAudit['outcome'], reason: string) => {
+      try { (dependencies.audit ?? logMcpToolCallAudit)({ event: 'mcp_tool_call', ownerId: principal.ownerId, tool, outcome, reason,
+        at: (dependencies.now ?? (() => new Date().toISOString()))() }); }
+      catch { /* auditing must not alter the response */ }
+    };
+    if (prepare && !principal.scopes.includes(PREPARE_SCOPE)) { audit('denied', 'scope'); return rpcError(id, -32001, 'Forbidden', 403); }
+    if (commit && !principal.scopes.includes(COMMIT_SCOPE)) { audit('denied', 'scope'); return rpcError(id, -32001, 'Forbidden', 403); }
     if (commit && environment.MCP_COMMIT_ENABLED !== 'true') return rpcError(id, -32602, 'Unknown tool');
     try {
       const operation = commit ? dependencies.commitScheduleEvent : prepare ? dependencies.prepareScheduleEvent : dependencies.readScheduleRange;
       if (!operation) throw new Error('Unconfigured schedule capability');
       const data = await operation(principal.ownerId, message.params.arguments);
+      if (!commit) audit('ok', 'ok');
       return result({ structuredContent: data, content: [{ type: 'text', text: JSON.stringify(data) }] });
     } catch (error) {
-      if (error instanceof ScheduleEventPrepareError) return rpcError(id, -32602, error.code);
+      if (error instanceof ScheduleEventPrepareError) { audit('error', error.code); return rpcError(id, -32602, error.code); }
       if (error instanceof ScheduleEventCommitError) {
         // An unknown outcome is not a failure the client may treat as "not saved" nor a success.
         if (error.code === 'save_outcome_unknown') return result({ isError: true, content: [{ type: 'text',
@@ -144,9 +157,10 @@ export function createMcpReadWorker(dependencies: McpReadDependencies = {}) {
         return rpcError(id, -32602, error.message);
       }
       if (error instanceof ScheduleRangeReadError) {
-        if (error.code === 'owner_mismatch') return rpcError(id, -32001, 'Forbidden', 403);
-        if (error.code !== 'source_unavailable') return rpcError(id, -32602, error.code);
+        if (error.code === 'owner_mismatch') { audit('denied', error.code); return rpcError(id, -32001, 'Forbidden', 403); }
+        if (error.code !== 'source_unavailable') { audit('error', error.code); return rpcError(id, -32602, error.code); }
       }
+      if (!commit) audit('error', 'unavailable');
       // A failed read is distinct from an empty calendar; never return repository error details or partial data.
       return result({ isError: true, content: [{ type: 'text', text: commit ? 'Schedule save unavailable. Not confirmed saved; retry with the same idempotencyKey.' : prepare ? 'Schedule preview unavailable.' : 'Schedule read unavailable.' }] });
     }
