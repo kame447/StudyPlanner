@@ -1,7 +1,7 @@
 import type { WeeklyPlanningVNextInterpretation, WeeklyPlanningVNextInterpretationInput,
   WeeklyPlanningVNextInterpreter } from '../weeklyPlanningVNextInterpretationContract';
 import type { VNextTurnError } from '../weeklyPlanningVNextTypes';
-import { resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
+import { expandProvisionalDeferScope, resolveWeeklyPlanningVNextTurnDelta } from '../application/weeklyPlanningVNextAnswerBinding';
 import { applyWeeklyPlanningVNextTurn } from './weeklyPlanningVNextTransaction';
 import { buildWeeklyPlanningVNextProviderMessages } from './weeklyPlanningVNextProviderPrompt';
 import { decodeVNextProviderOutput, describeVNextProviderField, VNEXT_ESTIMATE_ANSWER_REQUIREMENT,
@@ -99,7 +99,11 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
     const records = applyVNextStudyRecords({ records: [], readings: reading.studyRecords ?? [], restDays: reading.studyRestDays, acceptedDate: input.clock.currentDate, ownerId: 'native-provider-dry-run' });
     if (records.status === 'rejected') return records.errors;
   }
-  const result = !Object.values(reading.delta).some(items => items.length) ? { status: 'noop' as const, state: input.state } : applyWeeklyPlanningVNextTurn(input.state, reading.delta, {
+  // The session expands "the same for every remaining question" before the transaction; so does this dry run, or a reading
+  // that only defers would be rejected here for a scope the session accepts (the shared answer resolver alone does not run
+  // for a reading without an answer).
+  const delta = expandProvisionalDeferScope(reading.delta, input.projection);
+  const result = !Object.values(delta).some(items => items.length) ? { status: 'noop' as const, state: input.state } : applyWeeklyPlanningVNextTurn(input.state, delta, {
     observedMemoryPace: input.observedMemoryPace,
     expectedRevision: input.state.graph.revision,
     acceptedDate: input.clock.currentDate,
@@ -110,7 +114,7 @@ function validateReading(input: WeeklyPlanningVNextInterpretationInput, reading:
     conversationId: 'native-provider-dry-run', turnId: 'native-provider-dry-run', sourceText: input.userText,
   });
   if (result.status === 'rejected') return result.errors;
-  const registration = resolveVNextEventRegistrationActs({ state: result.state, delta: reading.delta,
+  const registration = resolveVNextEventRegistrationActs({ state: result.state, delta,
     acts: reading.conversationActs, currentTurnId: 'native-provider-dry-run' });
   return registration.status === 'rejected' ? registration.errors : [];
 }

@@ -64,6 +64,36 @@ function changedUnitInput(): WeeklyPlanningVNextInterpretationInput {
 }
 
 describe('VNext native provider', () => {
+  it('accepts a reading that only defers every pending question with a provisional timebox (the scope is expanded, not rejected)', async () => {
+    const params = input([]);
+    const seed = applyWeeklyPlanningVNextTurn(params.state, { ...emptyDelta(), add: [task('t1', '数学'), { ...workload('w1'), taskRef: { localId: 't1' }, quantityRole: 'target', amount: 20 },
+      task('t2', '英語'), { ...workload('w2'), taskRef: { localId: 't2' }, quantityRole: 'target', amount: 15 },
+      task('t3', '物理'), { ...workload('w3'), taskRef: { localId: 't3' }, quantityRole: 'target', amount: 10 }] as never }, {
+      expectedRevision: 0, acceptedDate: params.clock.currentDate, weekStartsOn: params.clock.weekStartsOn, planningHorizon: { startDate: params.clock.planningStartDate, endDate: params.clock.planningEndDate },
+      defaultPlanningHorizon: params.clock.defaultPlanningHorizon, turnKey: 'seed', conversationId: 'synthetic', turnId: 'seed', sourceText: 'synthetic' });
+    if (seed.status !== 'applied') throw new Error(JSON.stringify(seed));
+    params.state = seed.state;
+    params.projection = projectWeeklyPlanningVNext(seed.state);
+    params.presentedQuestion = params.projection.questions[0];
+    params.presentedText = 'Synthetic displayed question';
+    params.userText = 'どれも時間は分からないから、仮でいいから全部入れて';
+    expect(params.projection.questions).toHaveLength(3);
+    // The model names only the presented question (the only key it is shown), with the all_pending scope.
+    params.client = { createChatCompletion: vi.fn(async (request: { messages: { content: string }[] }) => {
+      const shown = JSON.parse(request.messages[1].content) as { presentedQuestion: { key: string } };
+      return JSON.stringify({ ...output(), planningIntent: 'create_plan', delta: { ...emptyDelta(),
+        defer: [{ questionKey: shown.presentedQuestion.key, allocation: 'provisional_timebox', scope: 'all_pending' }] } });
+    }) };
+    const result = await createWeeklyPlanningVNextProviderInterpreter()(params);
+    expect(result, JSON.stringify(result)).toMatchObject({ status: 'interpreted', metrics: { repairs: 0 } });
+    // An ordinary deferral with that scope is still not accepted by the dry run (it is repaired, then rejected).
+    params.client = { createChatCompletion: vi.fn(async (request: { messages: { content: string }[] }) => {
+      const shown = JSON.parse(request.messages[1].content) as { presentedQuestion: { key: string } };
+      return JSON.stringify({ ...output(), delta: { ...emptyDelta(), defer: [{ questionKey: shown.presentedQuestion.key, allocation: 'none', scope: 'all_pending' }] } });
+    }) };
+    expect(await createWeeklyPlanningVNextProviderInterpreter()(params)).toMatchObject({ status: 'failed', reason: 'rejected_after_repair' });
+  });
+
   it('requests no more output than the production Worker grants, on the first call and the repair', async () => {
     expect(VNEXT_PROVIDER_MAX_COMPLETION_TOKENS).toBeLessThanOrEqual(AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens);
     const request = input([JSON.stringify(output([task(), { ...workload(), amount: 'many' }])), JSON.stringify(output([task(), workload()]))]);
