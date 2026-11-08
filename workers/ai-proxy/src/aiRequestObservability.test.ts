@@ -83,6 +83,25 @@ describe('AI request observability', () => {
     expect(resolveAiRequestPhase(undefined, [])).toBe('unknown');
   });
 
+  it('classifies the VNext repair request ({ instruction, errors }) as repair, and nothing else that looks like it', () => {
+    const repair = JSON.stringify({ instruction: 'Formal repair only.', errors: [{ path: 'delta.add[0]', localId: 'a' }] });
+    expect(resolveAiRequestPhase('weekly_planning_semantic_normalizer', [
+      { role: 'system', content: 'system' },
+      { role: 'user', content: '{"publicStateSummary":{}}' },
+      { role: 'assistant', content: '{}' },
+      { role: 'user', content: repair },
+    ])).toBe('repair');
+    // The first request of the same turn has no assistant context: it stays initial, even with this shape in it.
+    expect(resolveAiRequestPhase('weekly_planning_semantic_normalizer', [{ role: 'user', content: repair }])).toBe('initial');
+    // A user's own text, or a JSON without both keys of the right types, is not a repair envelope.
+    for (const content of ['please fix the "errors" and the "instruction"', JSON.stringify({ instruction: 'x' }),
+      JSON.stringify({ instruction: 'x', errors: 'none' }), JSON.stringify({ instruction: 1, errors: [] }), '[{"instruction":"x","errors":[]}]']) {
+      expect(resolveAiRequestPhase('weekly_planning_semantic_normalizer', [
+        { role: 'assistant', content: '{}' }, { role: 'user', content },
+      ])).toBe('initial');
+    }
+  });
+
   it('requires the server-only identity secret before attempting persistence', () => {
     expect(isAiRequestObservabilityConfigured({
       FIREBASE_PROJECT_ID: 'project',
