@@ -19,7 +19,7 @@ function evidence(status = 'Killed') {
   const report = { config: { ...base, plugins: [...base.plugins, reporterPlugin], reporters: ['strict-mutation-evidence'], mutate: ranges.a.map(range => `${range.file}:${range.start}-${range.end}`) }, thresholds: base.thresholds, files: { [targets[0]]: { source: sources[targets[0]], mutants: [mutant] } } };
   const apiResults = [{ ...mutant, fileName: path.join(root, targets[0]) }];
   const plans = { mutantPlans: [{ mutant: { ...apiResults[0], location: { start: { line: 18, column: 0 }, end: { line: 18, column: 1 } } } }] };
-  const dry = { result: { status: 'complete', tests: Array.from({ length: 31 }, (_, i) => ({ id: 'wire-' + i, status: 0, fileName: '/fixture/focusedContextualBindingWire.test.ts' })) } };
+  const dry = { result: { status: 'complete', tests: Array.from({ length: 32 }, (_, i) => ({ id: 'wire-' + i, status: 0, fileName: '/fixture/focusedContextualBindingWire.test.ts' })) } };
   return { manifest, report, apiResults, plans, dry };
 }
 async function run(mode) {
@@ -55,7 +55,7 @@ async function run(mode) {
 describe('resolved public API score-only boundary', () => {
   it('accepts complete successful execution', async () => {
     const { completion } = await run('success');
-    expect(completion).toMatchObject({ kind: 'complete', scoreDeferred: false, originalExitCode: 0, wireTests: 31 });
+    expect(completion).toMatchObject({ kind: 'complete', scoreDeferred: false, originalExitCode: 0, wireTests: 32 });
     expect(completion).not.toHaveProperty('guardsVerified');
   });
   it('defers only a completed below-threshold score, retaining the original exit', async () => {
@@ -72,8 +72,8 @@ describe('resolved public API score-only boundary', () => {
   });
   it('preserves repeated dry-run IDs as separate successful executions', async () => {
     const { completion } = await run('repeated-id');
-    expect(completion).toMatchObject({ kind: 'complete', dryTests: 33, dryDistinctIds: 32, wireTests: 31 });
-    expect(completion.dryTestIdsHash).toBe(sha256(JSON.stringify([...Array.from({ length: 31 }, (_, i) => 'wire-' + i), 'shared-parameterized-id', 'shared-parameterized-id'].sort())));
+    expect(completion).toMatchObject({ kind: 'complete', dryTests: 34, dryDistinctIds: 33, wireTests: 32 });
+    expect(completion.dryTestIdsHash).toBe(sha256(JSON.stringify([...Array.from({ length: 32 }, (_, i) => 'wire-' + i), 'shared-parameterized-id', 'shared-parameterized-id'].sort())));
   });
 });
 

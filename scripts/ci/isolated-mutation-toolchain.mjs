@@ -57,6 +57,7 @@ export async function withIsolatedMutationTools(useTools) {
   verifyRootPool();
   const tinypoolVersion = rootPool?.version;
   const typescriptVersion = version('typescript');
+  const viteVersion = version('vite');
   const before = snapshotLockedToolchain(root);
   const manifestPaths = ['package.json', 'package-lock.json'];
   const manifests = manifestPaths.map(file => fs.readFileSync(path.join(root, file)));
@@ -75,15 +76,18 @@ export async function withIsolatedMutationTools(useTools) {
     fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({
       name: 'studyplanner-mutation-tools', private: true, overrides: manifest.overrides ?? {},
     }));
+    // Every peer the tools need (core, vitest, typescript, vite) is listed at its locked version,
+    // so npm must not resolve optional peers from the registry: a newly published
+    // @vitest/browser-playwright crashed npm 10's peer-set loader (edgesOut of null).
     run(npmCli, [
-      'install', '--prefix', directory, '--no-save', '--no-audit', '--no-fund',
+      'install', '--prefix', directory, '--no-save', '--no-audit', '--no-fund', '--legacy-peer-deps',
       '@stryker-mutator/core@10.1.1',
       '@stryker-mutator/instrumenter@10.1.1',
       '@stryker-mutator/vitest-runner@10.1.1',
       '@stryker-mutator/typescript-checker@10.1.1',
-      'vitest@' + vitestVersion, 'typescript@' + typescriptVersion,
+      'vitest@' + vitestVersion, 'typescript@' + typescriptVersion, 'vite@' + viteVersion,
     ]);
-    for (const [name, expected] of [['vitest', vitestVersion], ['typescript', typescriptVersion]]) {
+    for (const [name, expected] of [['vitest', vitestVersion], ['typescript', typescriptVersion], ['vite', viteVersion]]) {
       const actual = JSON.parse(fs.readFileSync(path.join(directory, 'node_modules', name, 'package.json'), 'utf8')).version;
       if (actual !== expected) throw new Error('Isolated ' + name + ' version mismatch');
       console.log('Isolated ' + name + ': ' + actual);

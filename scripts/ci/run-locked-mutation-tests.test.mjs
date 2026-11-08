@@ -14,7 +14,7 @@ function execute(mode = 'success', vitestVersion = '3.2.7') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mutation-launcher-fixture-'));
   roots.push(root);
   const packages = {};
-  for (const [name, version] of [['vitest', vitestVersion], ['typescript', '5.9.3'], ...(/^5\./.test(vitestVersion) ? [] : [['tinypool', '2.1.2']])]) {
+  for (const [name, version] of [['vitest', vitestVersion], ['typescript', '5.9.3'], ['vite', '6.4.4'], ...(/^5\./.test(vitestVersion) ? [] : [['tinypool', '2.1.2']])]) {
     const directory = path.join(root, 'node_modules', name);
     fs.mkdirSync(directory, { recursive: true });
     fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ name, version, dependencies: name === 'vitest' && mode === 'root-modern-pool-dependency' ? { tinypool: '2.1.2' } : undefined, exports: name === 'tinypool' ? { './package.json': './package.json' } : undefined }));
@@ -43,7 +43,7 @@ function execute(mode = 'success', vitestVersion = '3.2.7') {
       const version = process.env.FIXTURE_MODE === 'wrong-pool' ? '1.1.1' : manifest.overrides['vitest@3.2.7'].tinypool;
       fs.writeFileSync(path.join(pool, 'package.json'), JSON.stringify({ name: 'tinypool', version, exports: { './package.json': './package.json' } }));
     }
-    for (const name of ['vitest', 'typescript']) {
+    for (const name of ['vitest', 'typescript', 'vite']) {
       const version = args.find(arg => arg.startsWith(name + '@')).slice(name.length + 1);
       const dir = path.join(prefix, 'node_modules', name);
       fs.mkdirSync(dir, {recursive:true});
@@ -89,7 +89,7 @@ describe('isolated mutation launcher integration', () => {
     const { root, result, prefix } = execute();
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(fs.readFileSync(path.join(root, 'install-args.json'), 'utf8')))
-      .toEqual(expect.arrayContaining(['vitest@3.2.7', 'typescript@5.9.3', '@stryker-mutator/core@10.1.1', '@stryker-mutator/instrumenter@10.1.1', '@stryker-mutator/vitest-runner@10.1.1', '@stryker-mutator/typescript-checker@10.1.1']));
+      .toEqual(expect.arrayContaining(['vitest@3.2.7', 'typescript@5.9.3', '@stryker-mutator/core@10.1.1', '@stryker-mutator/instrumenter@10.1.1', '@stryker-mutator/vitest-runner@10.1.1', '@stryker-mutator/typescript-checker@10.1.1', 'vite@6.4.4', '--legacy-peer-deps']));
     expect(JSON.parse(fs.readFileSync(path.join(root, 'isolated-manifest.json'), 'utf8')).overrides).toEqual({ ...applicationOverrides, 'vitest@3.2.7': { tinypool: '2.1.2' } });
     expect(result.stdout).toContain('Isolated tinypool resolved from Vitest: 2.1.2');
     expect(fs.existsSync(prefix)).toBe(false);

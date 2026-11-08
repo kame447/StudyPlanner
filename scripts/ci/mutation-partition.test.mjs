@@ -19,7 +19,7 @@ function fixture(statusA = ['Killed'], statusB = ['Survived']) {
   const reporterPlugin = './scripts/ci/mutation-partition-plugin.mjs';
   for (const [shard, r] of Object.entries(reports)) r.config = { ...base, plugins: [...base.plugins, reporterPlugin], reporters: ['strict-mutation-evidence'], mutate: ranges[shard].map(range => `${range.file}:${range.start}-${range.end}`) };
   const manifest = { schemaVersion: 1, guardsVerified: true, sources, ranges, reporterPlugin, policy: detectionPolicy(base), shards, full: [...shards.a, ...shards.b], identity };
-  const workers = Object.fromEntries(Object.entries(reports).map(([shard, r]) => [shard, { report: r, completion: { kind: 'complete', shard, guardsVerified: true, identity, manifestHash: sha256(JSON.stringify(manifest)), dryTests: 31, dryDistinctIds: 31, wireTests: 31, dryTestIdsHash: 'same-population', score: scoreMutants(r.files[file].mutants) } }]));
+  const workers = Object.fromEntries(Object.entries(reports).map(([shard, r]) => [shard, { report: r, completion: { kind: 'complete', shard, guardsVerified: true, identity, manifestHash: sha256(JSON.stringify(manifest)), dryTests: 31, dryDistinctIds: 31, wireTests: 32, dryTestIdsHash: 'same-population', score: scoreMutants(r.files[file].mutants) } }]));
   return { manifest, workers };
 }
 

@@ -142,7 +142,7 @@ export function aggregateReports(manifest, workers, identity) {
     assert(completion.kind === 'complete' && completion.guardsVerified === true, `Failed shard: ${shard}`);
     assert(completion.shard === shard && completion.manifestHash === sha256(JSON.stringify(manifest)), 'Shard inventory mismatch');
     assert(equal(completion.identity, identity), 'Shard identity/run mismatch');
-    assert(completion.wireTests === 31 && completion.dryTests > 0 && typeof completion.dryTestIdsHash === 'string', 'Incomplete shard dry-run evidence');
+    assert(completion.wireTests === 32 && completion.dryTests > 0 && typeof completion.dryTestIdsHash === 'string', 'Incomplete shard dry-run evidence');
     assert(Number.isInteger(completion.dryDistinctIds) && completion.dryDistinctIds > 0 && completion.dryDistinctIds <= completion.dryTests, 'Incomplete shard dry-run ID counts');
     assert(completion.dryTests === workers.a.completion.dryTests && completion.dryDistinctIds === workers.a.completion.dryDistinctIds && completion.dryTestIdsHash === workers.a.completion.dryTestIdsHash, 'Shard related test populations differ');
     const score = validateReport(manifest, shard, worker.report);
