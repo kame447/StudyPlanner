@@ -39,6 +39,7 @@ const {
   const VNEXT_NAMED_TIME_PERIOD_REQUIREMENT = `namedTimePeriod is null when no named period within a day is stated; otherwise use one of ${SEMANTIC_NAMED_TIME_PERIODS_V5.join(', ')} or custom:<label> with a non-empty label for another named period. Calendar days, weeks and dates belong in dateExpression, never namedTimePeriod.`;
   const VNEXT_RELATE_REFERENCE_REQUIREMENT = 'relate a/b reference workload facts: an existing workload uses its supplied F alias in factId; a workload added in this delta uses its localId. For derived work use the F alias of its total workload fact (definingFactId). W aliases and workLineageId are not valid relation references; never put a W alias in localId.';
   const VNEXT_DEFER_ALLOCATION_REQUIREMENT = 'allocation none for an ordinary deferral. provisional_timebox only for a missing_effort_estimate or missing_schedulable_work question, when the user explicitly says the effort is unknown or must not become an estimate and explicitly asks to proceed by provisionally placing the work anyway. It is scheduler permission only: never an amount, estimate, completion or new fact, so add no workload or effort_estimate for it. A stated or approximate time is an estimate answer, not provisional_timebox.';
+  const VNEXT_DEFER_SCOPE_REQUIREMENT = 'scope presented defers only the named question and is the default. scope all_pending only with allocation provisional_timebox, when the user explicitly says the same unknown effort and provisional placement apply to every remaining open question or to all of the works (for example "all of them"), not merely the presented one; never infer it from a single work.';
   const VNEXT_ESTIMATE_ANSWER_REQUIREMENT = 'A whole-work or per-unit estimate about the work in a presented missing_effort_estimate question answers that question regardless of its displayed wording, including a question phrased as total time. Use answer for that work, not a new workload or effort_estimate fact. Choose per whole_work or unit from what the user states; the question\'s wording does not require conversion to a total. This answer rule takes precedence over the time-only workload rule. whole_work = minutes for all of the asked work; unit = minutes for one unit in the unitCode/unitLabel shown in presentedQuestion.forWork. Return the stated minutes without multiplying or computing a total. The application binds that answer to the asked work and its quantity basis. Time already spent on completed work or time for another task is not an answer to this work question; represent it as an ordinary delta fact. State the asked work\'s estimate once in answer; do not repeat it in delta. An option answer already carries that option\'s change; do not restate it in delta. For an option answer, per is null.';
   const VNEXT_STUDY_RECORD_REQUIREMENT = 'studyRecords: only what the user says they actually studied (past or today), one entry per day and subject. dateExpression is the absolute date YYYY-MM-DD resolved from the clock, never future; subject as the user said it; minutes exactly as stated (hours converted), never estimated, split or computed. A rest day (a day the user did not study) is never an entry: put its absolute date in studyRestDays. A plan or intention is never a record (it belongs in delta). Restating a day and subject with other minutes is a correction: emit that same date and subject again. No clock times. If a part is unclear (vague minutes, a total over several days, no date, no subject), leave it out and set studyRecordQuestion to that one thing: reason missing_minutes, missing_date, missing_subject or split_needed, label in the user\'s words; clear entries are still emitted. When pendingStudyRecordQuestion is supplied and the user answers it, emit the completed entry.';
   const text: Schema = { type: 'string' }, number: Schema = { type: 'number' };
@@ -111,7 +112,8 @@ const {
       a: { ...ref, description: VNEXT_RELATE_REFERENCE_REQUIREMENT }, b: { ...ref, description: VNEXT_RELATE_REFERENCE_REQUIREMENT } }),
       description: VNEXT_RELATE_REFERENCE_REQUIREMENT }),
     defer: array(object({ questionKey: text,
-      allocation: { ...enumeration(['none', 'provisional_timebox']), description: VNEXT_DEFER_ALLOCATION_REQUIREMENT } })),
+      allocation: { ...enumeration(['none', 'provisional_timebox']), description: VNEXT_DEFER_ALLOCATION_REQUIREMENT },
+      scope: { ...enumeration(['presented', 'all_pending']), description: VNEXT_DEFER_SCOPE_REQUIREMENT } })),
   }),
     studyRecords: { ...array(object({ dateExpression: text, subject: text, minutes: number })), description: VNEXT_STUDY_RECORD_REQUIREMENT },
     studyRestDays: { ...array(text), description: 'Absolute dates YYYY-MM-DD the user says were rest days or days without study (not in the future); no subject and no minutes. Empty when none.' },
@@ -245,12 +247,17 @@ export function decodeVNextProviderOutput(value: unknown, allowLabelEvidence = f
     if (patch) return record(item.changes) ? { ...item, changes: { yearBasis: null, ...item.changes } } : item;
     return { yearBasis: null, ...item };
   }) : items;
+  // A reading recorded before a deferral had a scope named only its own question: absence means `presented`.
+  const withScope = (items: unknown) => Array.isArray(items) ? items.map(item => record(item) && !('scope' in item) ? { ...item, scope: 'presented' } : item) : items;
   const complete = record(value) ? { studyRecords: [], studyRecordQuestion: null, studyRestDays: [], planningRequestEvidence: null, ...value,
-    ...(record(value.delta) ? { delta: { ...value.delta, add: withBasis(value.delta.add, false), patch: withBasis(value.delta.patch, true) } } : {}),
+    ...(record(value.delta) ? { delta: { ...value.delta, add: withBasis(value.delta.add, false), patch: withBasis(value.delta.patch, true),
+      defer: withScope(value.delta.defer) } } : {}),
   } : value;
   const errors = validate(allowLabelEvidence ? labelRepairRoot : root, complete, '', null);
   if (errors.length) return { status: 'rejected', errors };
   const wire = structuredClone(complete) as { planningIntent: VNextPlanningIntent; planningRequestEvidence: VNextPlanningRequestEvidence | null; conversationActs: VNextEventRegistrationAct[]; delta: VNextTurnDelta; labelEvidence?: VNextTitleQuotation[]; studyRecords: VNextStudyRecordReading[]; studyRecordQuestion: VNextStudyRecordQuestion | null; studyRestDays: string[]; answer: Record<string, unknown> | null };
+  // `presented` is the meaning of no scope, so it is not kept: only an explicit all_pending survives decoding.
+  wire.delta.defer = wire.delta.defer.map(({ scope, ...item }) => scope === 'all_pending' ? { ...item, scope } : item);
   let answer: WeeklyPlanningVNextInterpretedAnswer | null = null;
   if (wire.answer) {
     if (wire.answer.kind === 'proposal_decision' && typeof wire.answer.proposalId === 'string'

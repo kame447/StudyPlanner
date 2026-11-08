@@ -332,9 +332,17 @@ export interface VNextRelate {
   b: VNextFactRef;
 }
 
+/**
+ * `presented` (the default and the only stored form) defers the one named question. `all_pending` is the user's explicit
+ * "every remaining one too" for a provisional timebox; the session expands it to the pending questions that allow one
+ * before the transaction, so it is never stored and the checkpoint shape does not change.
+ */
+export type VNextDeferScope = 'presented' | 'all_pending';
+
 export interface VNextDefer {
   questionKey: string;
   allocation: VNextDeferralAllocation;
+  scope?: VNextDeferScope;
 }
 
 /** Bound only from a fresh presented proposal; the transaction is its sole writer. */
