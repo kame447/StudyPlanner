@@ -174,9 +174,9 @@ async function execute(params, vnext) {
     };
 }
 
-// Durable receipt reading is production code (browser storage only); the harness aliases the module, so
-// it is re-exported from the real gateway rather than faked.
-export { readWeeklyPlanningVNextDurableReceipt } from '../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway';
+// Durable receipt reading and the forgotten-memory removal are production code (browser storage only); the harness
+// aliases the module, so they are re-exported from the real gateway rather than faked.
+export { readWeeklyPlanningVNextDurableReceipt, removeForgottenRecordFromVNextDurableReceipt } from '../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway';
 
 export const weeklyPlanningTurnRuntimeGateway = {
   execute: params => execute(params),

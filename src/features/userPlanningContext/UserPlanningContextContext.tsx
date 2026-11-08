@@ -24,7 +24,7 @@ import {
   userPlanningContextExternalOwnerMessageV2,
 } from './userPlanningContextNaturalLanguageV2';
 import { getUserPlanningContextRepositoryV1 } from './userPlanningContextRepository';
-import { subscribeUserPlanningContextCommittedV1 } from './userPlanningContextSyncEvents';
+import { publishUserPlanningContextForgottenV1, subscribeUserPlanningContextCommittedV1 } from './userPlanningContextSyncEvents';
 import type {
   UserPlanningContextRecordV1,
   UserPlanningContextSemanticKindV1,
@@ -257,6 +257,7 @@ export function UserPlanningContextProvider({
     try {
       const next = await repository.removeRecord(ownerId, recordId);
       applyRepositoryState(next);
+      publishUserPlanningContextForgottenV1({ ownerId, recordId });
     } catch (removeError) {
       const message = reportSyncFailure(removeError, 'forget failed');
       setError(message);

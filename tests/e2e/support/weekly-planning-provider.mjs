@@ -62,6 +62,6 @@ export function unaliasedRuntimeGatewayStubBody(root) {
   const real = path => JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/${path}`);
   return [
     `export { weeklyPlanningTurnRuntimeGateway } from ${real('application/weeklyPlanningTurnRuntimeGateway.ts')};`,
-    `export { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt } from ${real('vnext/application/weeklyPlanningVNextRuntimeGateway.ts')};`,
+    `export { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt, removeForgottenRecordFromVNextDurableReceipt } from ${real('vnext/application/weeklyPlanningVNextRuntimeGateway.ts')};`,
   ].join('\n');
 }

@@ -20,6 +20,8 @@ const MAX_CONTEXT_RECORDS = 200;
 const MAX_LABEL_LENGTH = 240;
 const MAX_VALUE_LENGTH = 1000;
 const MAX_SOURCE_TEXT_LENGTH = 2000;
+/** The stored `sourceText` of a record written in settings, and of a forgotten tombstone (which keeps no words). */
+export const USER_PLANNING_CONTEXT_SETTINGS_SOURCE_TEXT_V1 = 'ユーザー設定で確認・編集';
 const MAX_PROMPT_RECORDS = 30;
 
 const inMemoryStorage = new Map<string, string>();
