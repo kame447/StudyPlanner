@@ -229,6 +229,10 @@ export function serializeWeeklyPlanningVNextSessionCheckpoint(
     requiredCapabilities: [WEEKLY_PLANNING_VNEXT_SESSION_CAPABILITY],
     ...checkpoint,
   };
+  // A writer never produces bytes its own reader refuses: an invalid consultation (e.g. a proposal over the size bound)
+  // is not written, and the caller treats null as it treats a checkpoint over the storage limit.
+  if (envelope.vnext.consultation !== undefined && !validateConsultationSessionState(envelope.vnext.consultation,
+    { ownerId: envelope.ownerId, conversationId: envelope.conversationId }).ok) return null;
   const raw = JSON.stringify(envelope);
   return new TextEncoder().encode(raw).byteLength <= MAX_CHECKPOINT_BYTES ? raw : null;
 }

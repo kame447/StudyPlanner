@@ -97,6 +97,20 @@ describe('consultation persistence reader (#246 slice 3)', () => {
     expect(check({ ...approved, reviewDecisions: [approved.reviewDecisions[0], approved.reviewDecisions[0]] }).ok).toBe(false);
   });
 
+  it('accepts the shape a trimmed history leaves: the oldest kept proposal is a root and no review points at a dropped one (F2)', () => {
+    let state = fresh();
+    for (let index = 1; index <= 4; index += 1) state = propose(state, `advice-${index}`);
+    const approved = applyReviewDecision(state, { ...scope, decision: { ...decision(state), decisionId: 'decision-kept' } });
+    if (!approved.accepted) throw new Error(approved.reason);
+    const [, second, third, fourth] = approved.state.proposals;
+    const trimmed = { ...approved.state, proposals: [{ ...second, supersedes: null }, third, fourth] };
+    expect(check(trimmed).ok).toBe(true);
+    // The same drop without clearing the link, or with a review that still points at the dropped proposal, is refused.
+    expect(check({ ...approved.state, proposals: [second, third, fourth] }).ok).toBe(false);
+    const dangling = { ...trimmed, reviewDecisions: [...trimmed.reviewDecisions, { ...approved.state.reviewDecisions[0], decisionId: 'decision-dropped', targetAdviceId: 'advice-1' }] };
+    expect(check(dangling).ok).toBe(false);
+  });
+
   it('keeps a typical two-option proposal inside the size bound', () => {
     const typical: ProposalAnswer = { ...answer('あ'.repeat(400)), options: [0, 1].map(index => ({ title: `案${index}の名前`, strategySummary: 'い'.repeat(60), tradeoffs: ['う'.repeat(30)],
       recommendations: [0, 1].map(() => ({ recommendationKind: 'study_method', method: 'え'.repeat(30), rationale: 'お'.repeat(40), assumptionRefs: [], evidenceRefs: [], uncertainty: 'low' as const })) })) };

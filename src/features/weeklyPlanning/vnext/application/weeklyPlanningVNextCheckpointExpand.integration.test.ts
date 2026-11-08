@@ -152,6 +152,18 @@ describe('consultation field in the expanded checkpoint (#246 slice 3, reader on
     }
   });
 
+  it('does not write a consultation its own reader would refuse (F1): null, so the caller writes nothing', () => {
+    const consultation = storedConsultation('expand-conversation');
+    const serialize = (value: unknown) => serializeWeeklyPlanningVNextSessionCheckpoint({ ...scope, conversationId: 'expand-conversation',
+      savedAt: '2026-11-02T09:00:00.000Z', vnext: { ...emptyBase().vnext, consultation: value as never } });
+    expect(serialize(consultation)).not.toBeNull();
+    const oversized = { ...consultation, proposals: [{ ...consultation.proposals[0],
+      answer: { ...consultation.proposals[0].answer, userFacingAnswer: 'あ'.repeat(5000) } }] };
+    expect(serialize(oversized)).toBeNull();
+    expect(serialize({ ...consultation, ownerId: 'someone-else' })).toBeNull();
+    expect(serialize({ ...consultation, conversationId: 'other' })).toBeNull();
+  });
+
   it('keeps an approved consultation (a review decision) readable', () => {
     const proposed = storedConsultation('expand-conversation');
     const approved = applyReviewDecision(proposed, { ownerId, conversationId: 'expand-conversation', decision: {
