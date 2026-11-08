@@ -139,4 +139,44 @@ describe('weekly planning estimate calibration', () => {
       multiplier: 1,
     });
   });
+
+  describe('time decay', () => {
+    const plans = [plan('plan-1', metadata(60)), plan('plan-2', metadata(60)), plan('plan-3', metadata(60))];
+    const on = (id: string, planId: string, date: string, end: string): Actual => ({
+      ...actual(id, planId, '19:00', end), occurrenceDate: date,
+    });
+
+    it('weighs a newer observation more: the newer one decides the median when the older one disagrees', () => {
+      const result = deriveWeeklyPlanningEstimateCalibration({
+        plans, asOfDate: '2026-11-08',
+        actuals: [on('old', 'plan-1', '2026-06-01', '21:00'), on('new', 'plan-2', '2026-11-07', '19:30')],
+      });
+      expect(result.medianRatio).toBe(0.5);
+      const undecayed = deriveWeeklyPlanningEstimateCalibration({
+        plans, actuals: [on('old', 'plan-1', '2026-06-01', '21:00'), on('new', 'plan-2', '2026-11-07', '19:30')],
+      });
+      expect(undecayed.medianRatio).toBe(1.25);
+    });
+
+    it('returns toward 1 as every observation ages, and halves the weight per half-life', () => {
+      const actuals = (date: string) => [on('a', 'plan-1', date, '20:30'), on('b', 'plan-2', date, '20:30'), on('c', 'plan-3', date, '20:30')];
+      const multiplierAt = (date: string) => deriveWeeklyPlanningEstimateCalibration({ plans, actuals: actuals(date), asOfDate: '2026-11-08' });
+      const fresh = multiplierAt('2026-11-08');
+      const oneHalfLife = multiplierAt('2026-09-13'); // 56 days earlier
+      const stale = multiplierAt('2025-11-08');
+      expect(fresh).toMatchObject({ multiplier: 1.25, effectiveObservationCount: 3, observationCount: 3 });
+      expect(oneHalfLife.effectiveObservationCount).toBeCloseTo(1.5, 6);
+      expect(oneHalfLife.multiplier).toBeCloseTo(1 + 0.5 * (1.5 / 4.5), 6);
+      expect(stale.multiplier).toBeGreaterThan(1);
+      expect(stale.multiplier).toBeLessThan(1.01);
+      expect(stale.observationCount).toBe(3);
+    });
+
+    it('keeps multiplier 1 with no observation, and a future or unreadable date keeps full weight', () => {
+      expect(deriveWeeklyPlanningEstimateCalibration({ plans, actuals: [], asOfDate: '2026-11-08' }))
+        .toMatchObject({ multiplier: 1, observationCount: 0, medianRatio: null, effectiveObservationCount: 0 });
+      const future = deriveWeeklyPlanningEstimateCalibration({ plans, actuals: [on('f', 'plan-1', '2026-12-01', '20:30')], asOfDate: '2026-11-08' });
+      expect(future.effectiveObservationCount).toBe(1);
+    });
+  });
 });

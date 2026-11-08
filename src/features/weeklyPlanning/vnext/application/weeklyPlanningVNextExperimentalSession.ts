@@ -212,7 +212,8 @@ function compilePreviewInput(scope: WeeklyPlanningVNextExperimentalScope, ports:
     plans: calendar.plans, monthEvents: calendar.monthEvents, templates: calendar.scheduleTemplates,
     timetableTermId: calendar.timetableTermId,
     horizon: { startDate: context.planningStartDate, endDate: context.planningEndDate }, timeZone: context.timeZone });
-  const estimateCalibration = deriveWeeklyPlanningEstimateCalibration({ plans: calendar.plans, actuals: calendar.actuals });
+  const estimateCalibration = deriveWeeklyPlanningEstimateCalibration({ plans: calendar.plans, actuals: calendar.actuals,
+    asOfDate: context.currentDate });
   return compileWeeklyPlanningVNextSchedulerInput({ state, projection, context, externalSources,
     estimateCalibrationMultiplier: estimateCalibration.multiplier });
 }

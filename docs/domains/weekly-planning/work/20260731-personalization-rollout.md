@@ -24,7 +24,7 @@ Depends on:
 | --- | --- | --- |
 | 1 observation repository | No separate store. Plan `weeklyPlanningEstimate` / `weeklyPlanningObservationSource` and Actual `weeklyPlanningObservationResult` are the observations, written through the approval path | `weeklyPlanningApprovalApplication.ts`, `weeklyPlanningEstimateCalibration.ts` |
 | 2 invalidation | Deleting a plan or actual removes it from the next recomputation. An actual marked `isAlignedToPlan: false` is not an observation of the plan (pace and estimate calibration both exclude it) | `weeklyPlanningMemoryPaceObservationsV5.ts`, `weeklyPlanningEstimateCalibration.ts` |
-| 3 recomputable aggregate | One global multiplier recomputed from active plan/actual pairs on every compile; no stored aggregate. `subjectEstimateMultipliers` in the profile is unused | `deriveWeeklyPlanningEstimateCalibration`, VNext `compilePreviewInput` |
+| 3 recomputable aggregate | One global multiplier recomputed from active plan/actual pairs on every compile; no stored aggregate. Observations decay with a 56-day half-life (weighted median; the weights lower the effective count in the n/(n+3) shrinkage, so stale evidence returns toward 1; clamp 0.75-1.75 unchanged). `subjectEstimateMultipliers` in the profile is unused | `deriveWeeklyPlanningEstimateCalibration`, VNext `compilePreviewInput` |
 | 4 time decay / effective sample | Not implemented (shrinkage `n/(n+3)` only) | — |
 | 5 safe ordering | Not implemented | — |
 | 6 consent / TTL / audit | Not implemented | — |

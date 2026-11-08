@@ -21,7 +21,16 @@ export interface WeeklyPlanningEstimateCalibration {
   multiplier: number;
   observationCount: number;
   medianRatio: number | null;
+  /** Sum of the observation weights (equals observationCount when no `asOfDate` is given). */
+  effectiveObservationCount: number;
 }
+
+/**
+ * Observations lose half their weight every 8 weeks. There is no measured data yet to fit this; 8 weeks is
+ * deliberately slow (an observation still weighs 25% after 16 weeks), because a wrong fast decay would
+ * throw away the few observations a new user has. It still makes year-old observations negligible (about 1%). Revisit once production observations exist.
+ */
+export const WEEKLY_PLANNING_ESTIMATE_OBSERVATION_HALF_LIFE_DAYS = 56;
 
 type PlanWithEstimateMetadata = Plan & {
   weeklyPlanningEstimate?: WeeklyPlanningEstimateMetadataV1;
@@ -46,13 +55,36 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function median(values: number[]): number | null {
+/** Weighted median; with equal weights it is the ordinary median (the mean of the two middle values when even). */
+function weightedMedian(values: { value: number; weight: number }[]): number | null {
   if (values.length === 0) return null;
-  const sorted = values.slice().sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1
-    ? sorted[middle]
-    : (sorted[middle - 1] + sorted[middle]) / 2;
+  const sorted = values.slice().sort((left, right) => left.value - right.value);
+  const half = sorted.reduce((sum, item) => sum + item.weight, 0) / 2;
+  const epsilon = 1e-9;
+  let cumulative = 0;
+  for (let index = 0; index < sorted.length; index += 1) {
+    cumulative += sorted[index].weight;
+    if (Math.abs(cumulative - half) <= epsilon && index + 1 < sorted.length) {
+      return (sorted[index].value + sorted[index + 1].value) / 2;
+    }
+    if (cumulative > half) return sorted[index].value;
+  }
+  return sorted[sorted.length - 1].value;
+}
+
+function dayNumber(date: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const time = Date.parse(`${date}T00:00:00Z`);
+  return Number.isFinite(time) ? Math.floor(time / 86_400_000) : null;
+}
+
+/** 1 for today or a future date, halving every half-life. An unreadable date or no `asOfDate` keeps full weight. */
+function observationWeight(occurrenceDate: string, asOfDate: string | undefined): number {
+  if (!asOfDate) return 1;
+  const observed = dayNumber(occurrenceDate);
+  const now = dayNumber(asOfDate);
+  if (observed === null || now === null || observed >= now) return 1;
+  return 0.5 ** ((now - observed) / WEEKLY_PLANNING_ESTIMATE_OBSERVATION_HALF_LIFE_DAYS);
 }
 
 export function createWeeklyPlanningEstimateMetadata(
@@ -154,6 +186,8 @@ export function readWeeklyPlanningEstimateMetadata(
 export function deriveWeeklyPlanningEstimateCalibration(params: {
   plans: readonly Plan[];
   actuals: readonly Actual[];
+  /** YYYY-MM-DD "today"; older observations weigh less. Omitted: every observation weighs 1. */
+  asOfDate?: string;
 }): WeeklyPlanningEstimateCalibration {
   const planById = new Map(params.plans.map((plan) => [plan.id, plan]));
   const ratios = params.actuals.flatMap((actual) => {
@@ -166,24 +200,32 @@ export function deriveWeeklyPlanningEstimateCalibration(params: {
     const metadata = readWeeklyPlanningEstimateMetadata(plan);
     const actualMinutes = actualDurationMinutes(actual);
     if (!metadata || actualMinutes === null) return [];
-    return [clamp(actualMinutes / metadata.baseEstimateMinutes, 0.5, 2)];
+    return [{
+      value: clamp(actualMinutes / metadata.baseEstimateMinutes, 0.5, 2),
+      weight: observationWeight(actual.occurrenceDate, params.asOfDate),
+    }];
   });
-  const medianRatio = median(ratios);
+  const medianRatio = weightedMedian(ratios);
   if (medianRatio === null) {
     return {
       version: WEEKLY_PLANNING_ESTIMATE_CALIBRATION_VERSION,
       multiplier: 1,
       observationCount: 0,
       medianRatio: null,
+      effectiveObservationCount: 0,
     };
   }
 
-  const evidenceWeight = ratios.length / (ratios.length + 3);
+  // Decay lowers the effective count, so the existing shrinkage n/(n+3) pulls stale evidence back toward 1
+  // (all observations very old: effective count -> 0, multiplier -> 1). The 0.75..1.75 clamp is unchanged.
+  const effectiveCount = ratios.reduce((sum, item) => sum + item.weight, 0);
+  const evidenceWeight = effectiveCount / (effectiveCount + 3);
   const multiplier = clamp(1 + (medianRatio - 1) * evidenceWeight, 0.75, 1.75);
   return {
     version: WEEKLY_PLANNING_ESTIMATE_CALIBRATION_VERSION,
     multiplier,
     observationCount: ratios.length,
     medianRatio,
+    effectiveObservationCount: effectiveCount,
   };
 }
