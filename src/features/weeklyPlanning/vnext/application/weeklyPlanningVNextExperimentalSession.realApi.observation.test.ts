@@ -3,7 +3,7 @@
 // save and its resume → reload → rollback to the untouched V5 checkpoint.
 // Synthetic conversation only; runs only in the `vnext` real-API profile.
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { getAiConfig } from '../../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClient';
 import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
@@ -24,6 +24,7 @@ import { approveWeeklyPlanningVNextExperimentalPreview } from './weeklyPlanningV
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
 import type { UserPlanningContextRecordV1 } from '../../../userPlanningContext/userPlanningContextTypes';
 import { selectVNextConfirmedUserContext } from '../weeklyPlanningVNextConfirmedUserContext';
+import { createWeeklyPlanningVNextConsultation, type WeeklyPlanningVNextConsultationPort } from './weeklyPlanningVNextConsultation';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
 const outputDir = `${process.env.WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR ?? 'artifacts/issue156-real-api'}/vnext-session-e2e`;
@@ -409,5 +410,189 @@ describe('#294 memory observation oracle (scripted model, no API)', () => {
       const [missing, stated] = await observe(memoryPresent => memoryPresent ? base : [...base, window('hard')]);
       expect(() => expectMemoryIsBackgroundOnly(missing, stated, referenceCase)).toThrow();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// #246 learning consultation: real model, synthetic conversation, one turn on a fresh conversation per scenario.
+// Observed (recorded, never compared): what the native reading made of the words (empty delta or a task), whether the
+// purpose check ran, what it decided, whether the advice passed its contract, and the advice text for a person to read.
+// Judged automatically: an advice turn changes no fact, preview, question, approval or save; a plan or a greeting is
+// never answered with advice. `246-summary.json` records how often the purpose call was added (a reading found nothing).
+// ---------------------------------------------------------------------------------------------------------------------
+const CONSULTATION_CASES = [
+  { id: 'consult-english-weak', category: 'consultation', text: '英語が苦手なんだけど何から始めればいい？' },
+  { id: 'consult-math-books', category: 'consultation', text: '数学の点数を上げたいけど、どの参考書をいつまでに仕上げればいい？' },
+  { id: 'consult-book-too-hard', category: 'consultation', text: 'この参考書が難しすぎるけど変えた方がいい？' },
+  { id: 'consult-flow1', category: 'consultation', text: '英語の勉強法について相談したいです。計画はまだ作らず、アドバイスだけください。' },
+  { id: 'plan-math-30', category: 'planning', text: '数学を30分' },
+  { id: 'plan-create', category: 'planning', text: '予定を作って' },
+  { id: 'greeting-thanks', category: 'greeting', text: 'ありがとう' },
+  { id: 'greeting-hello', category: 'greeting', text: 'こんにちは' },
+] as const;
+type ConsultationCase = (typeof CONSULTATION_CASES)[number];
+
+function observedConsultation(client: OpenAiCompatibleClient) {
+  const inner = createWeeklyPlanningVNextConsultation(client);
+  const log: { classifyCalled: boolean; classification: string | null; answerCalled: boolean; answer: { kind: string; text: string } | null } =
+    { classifyCalled: false, classification: null, answerCalled: false, answer: null };
+  const port: WeeklyPlanningVNextConsultationPort = {
+    async classify(input) { log.classifyCalled = true; const kind = await inner.classify(input); log.classification = kind; return kind; },
+    async answer(input) { log.answerCalled = true; const answer = await inner.answer(input); log.answer = answer; return answer; },
+  };
+  return { port, log };
+}
+
+async function observeConsultationTurn(scenario: ConsultationCase) {
+  const h = createPorts();
+  // A synthetic renderer buys no renderer calls and keeps the planning path's reply typed.
+  h.ports.createRenderer = () => ({ render: async input => ({ status: 'rendered', text: `typed:${input.questionCode ?? input.actionKind}`, rawResponse: '' }) });
+  const consultation = observedConsultation(h.ports.client);
+  h.ports.consultation = consultation.port;
+  const consultationScope = { ...scope, conversationId: `consultation-${scenario.id}` };
+  const turn = await submitWeeklyPlanningVNextExperimentalTurn({ scope: consultationScope, ports: h.ports, turnId: 'consultation', userText: scenario.text, shownRevision: null });
+  const read = readWeeklyPlanningVNextExperimentalSession(consultationScope, h.ports);
+  const graph = read.status === 'ready' ? read.checkpoint.state.graph : null;
+  const interpreted = turn.interpretation?.status === 'interpreted' ? turn.interpretation : null;
+  const added = interpreted?.delta.add ?? [];
+  return {
+    scenario,
+    native: { status: turn.interpretation?.status ?? null, planningIntent: interpreted?.planningIntent ?? null,
+      deltaEmpty: interpreted ? added.length + interpreted.delta.patch.length + interpreted.delta.remove.length + interpreted.delta.relate.length + interpreted.delta.defer.length === 0 : null,
+      taskTitles: added.flatMap(fact => fact.kind === 'task' ? [fact.title] : []) },
+    purposeCheckRan: consultation.log.classifyCalled,
+    classification: consultation.log.classification,
+    answerCalled: consultation.log.answerCalled,
+    answerContractPassed: consultation.log.answerCalled ? consultation.log.answer !== null : null,
+    answerKind: consultation.log.answer?.kind ?? null,
+    replySource: turn.replySource,
+    adviceShown: turn.replySource === 'advice',
+    // For a person: does the advice state anything the user did not say (their materials, scores, goals, schedule)?
+    adviceText: turn.replySource === 'advice' ? turn.reply : null,
+    state: { graphRevision: graph?.revision ?? null,
+      tasks: graph ? filterActiveWeeklyPlanningFactsV5(graph, graph.tasks).length : null,
+      workloads: graph ? filterActiveWeeklyPlanningFactsV5(graph, graph.workloads).length : null,
+      efforts: graph ? filterActiveWeeklyPlanningFactsV5(graph, graph.effortEstimates).length : null,
+      temporal: graph ? filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints).length : null },
+    previewShown: turn.preview !== null, drafts: turn.draftCandidates?.length ?? 0, questionCode: turn.question?.code ?? null,
+    saves: h.saved.size, approvals: h.slots.has('ledger') ? 1 : 0, turn: snapshot(turn), raw: h.takeRawOutputs(),
+  };
+}
+
+/** Typed oracle: an advice turn is harmless; only a consultation may be answered with advice. */
+function expectConsultationOutcomeIsSafe(observed: Awaited<ReturnType<typeof observeConsultationTurn>>) {
+  // Whatever the turn was: nothing was saved or approved by a consultation path.
+  expect(observed.saves).toBe(0);
+  expect(observed.approvals).toBe(0);
+  if (observed.adviceShown) {
+    expect(observed.scenario.category).toBe('consultation');
+    expect(observed.classification).toBe('learning_consultation');
+    expect(observed.state).toMatchObject({ graphRevision: 0, tasks: 0, workloads: 0, efforts: 0, temporal: 0 });
+    expect(observed.previewShown).toBe(false);
+    expect(observed.drafts).toBe(0);
+    expect(observed.questionCode).toBeNull();
+    expect(observed.native.deltaEmpty).toBe(true);
+  } else {
+    // The planning path is the old behavior, never a half-advice turn.
+    expect(observed.replySource).not.toBe('advice');
+  }
+  if (observed.scenario.category !== 'consultation') {
+    expect(observed.adviceShown).toBe(false);
+    expect(observed.answerCalled).toBe(false);
+  }
+}
+
+const consultationObservations: Array<Awaited<ReturnType<typeof observeConsultationTurn>>> = [];
+
+function summarizeConsultation(observations: typeof consultationObservations) {
+  const categories = [...new Set(observations.map(item => item.scenario.category))];
+  const rate = (count: number, total: number) => (total === 0 ? null : Number((count / total).toFixed(3)));
+  return {
+    turns: observations.length,
+    // The purpose call is added only when the native reading found nothing to plan: this is that share of all turns.
+    purposeCheckRate: rate(observations.filter(item => item.purposeCheckRan).length, observations.length),
+    byCategory: Object.fromEntries(categories.map(category => {
+      const items = observations.filter(item => item.scenario.category === category);
+      return [category, { turns: items.length,
+        nativeDeltaEmpty: items.filter(item => item.native.deltaEmpty === true).length,
+        nativeTaskAdded: items.filter(item => item.native.taskTitles.length > 0).length,
+        purposeCheckRan: items.filter(item => item.purposeCheckRan).length,
+        classifiedConsultation: items.filter(item => item.classification === 'learning_consultation').length,
+        answerContractPassed: items.filter(item => item.answerContractPassed === true).length,
+        answerContractRefused: items.filter(item => item.answerContractPassed === false).length,
+        adviceShown: items.filter(item => item.adviceShown).length }];
+    })),
+    perScenario: observations.map(item => ({ id: item.scenario.id, planningIntent: item.native.planningIntent, deltaEmpty: item.native.deltaEmpty,
+      taskTitles: item.native.taskTitles, purposeCheckRan: item.purposeCheckRan, classification: item.classification, answerKind: item.answerKind,
+      answerContractPassed: item.answerContractPassed, adviceShown: item.adviceShown, replySource: item.replySource })),
+  };
+}
+
+run('#246 learning consultation is answered with advice, and only a consultation', () => {
+  afterAll(() => {
+    if (consultationObservations.length === 0) return;
+    mkdirSync(outputDir, { recursive: true });
+    writeFileSync(`${outputDir}/246-summary.json`, `${JSON.stringify(summarizeConsultation(consultationObservations), null, 2)}\n`);
+  });
+  it.each(CONSULTATION_CASES)('$id', async scenario => {
+    const artifact: Record<string, unknown> = { scenario, syntheticOnly: true, completed: false };
+    try {
+      const observed = await observeConsultationTurn(scenario);
+      consultationObservations.push(observed);
+      Object.assign(artifact, observed, { reviewNote: 'adviceText is for a person: it must not state facts about the user\'s materials, scores, goals or schedule that the words did not say.' });
+      expectConsultationOutcomeIsSafe(observed);
+      artifact.completed = true;
+    } finally {
+      mkdirSync(outputDir, { recursive: true });
+      writeFileSync(`${outputDir}/246-${scenario.id}.json`, `${JSON.stringify(artifact, null, 2)}\n`);
+    }
+  }, Number(process.env.WEEKLY_PLANNING_ISSUE156_TIMEOUT_MS ?? 420_000));
+});
+
+// Offline: the oracle and the summary against hand-made observations, so a broken oracle cannot pass the paid run unnoticed.
+describe('#246 consultation observation oracle (no API)', () => {
+  const base = (scenario: ConsultationCase, overrides: Partial<Awaited<ReturnType<typeof observeConsultationTurn>>> = {}) => ({
+    scenario, native: { status: 'interpreted', planningIntent: 'unknown', deltaEmpty: true, taskTitles: [] as string[] }, purposeCheckRan: true,
+    classification: 'learning_consultation', answerCalled: true, answerContractPassed: true, answerKind: 'proposal', replySource: 'advice', adviceShown: true,
+    adviceText: '助言', state: { graphRevision: 0, tasks: 0, workloads: 0, efforts: 0, temporal: 0 }, previewShown: false, drafts: 0, questionCode: null,
+    saves: 0, approvals: 0, turn: {}, raw: [], ...overrides }) as unknown as Awaited<ReturnType<typeof observeConsultationTurn>>;
+  const consult = CONSULTATION_CASES[0]; const greeting = CONSULTATION_CASES[6]; const planning = CONSULTATION_CASES[4];
+
+  it('passes a harmless advice turn, a refused advice that fell back to planning, and a planning turn', () => {
+    expect(() => expectConsultationOutcomeIsSafe(base(consult))).not.toThrow();
+    expect(() => expectConsultationOutcomeIsSafe(base(consult, { adviceShown: false, replySource: 'renderer', answerContractPassed: false, adviceText: null,
+      state: { graphRevision: 0, tasks: 0, workloads: 0, efforts: 0, temporal: 0 } }))).not.toThrow();
+    expect(() => expectConsultationOutcomeIsSafe(base(planning, { adviceShown: false, replySource: 'renderer', purposeCheckRan: false, classification: null,
+      answerCalled: false, answerContractPassed: null, adviceText: null, answerKind: null, native: { status: 'interpreted', planningIntent: 'discuss', deltaEmpty: false, taskTitles: ['数学'] } }))).not.toThrow();
+  });
+
+  it.each([
+    ['a fact changed on an advice turn', { state: { graphRevision: 1, tasks: 1, workloads: 0, efforts: 0, temporal: 0 } }],
+    ['a preview was shown with advice', { previewShown: true }],
+    ['a draft was made with advice', { drafts: 1 }],
+    ['a question was asked with advice', { questionCode: 'missing_schedulable_work' }],
+    ['a save happened', { saves: 1 }],
+    ['an approval happened', { approvals: 1 }],
+    ['advice followed a reading that was not empty', { native: { status: 'interpreted', planningIntent: 'unknown', deltaEmpty: false, taskTitles: ['英語'] } }],
+    ['advice was shown without the consultation classification', { classification: 'unresolved' }],
+  ])('fails when %s', (_name, overrides) => {
+    expect(() => expectConsultationOutcomeIsSafe(base(consult, overrides as never))).toThrow();
+  });
+
+  it('fails when a greeting or a plan is answered with advice', () => {
+    expect(() => expectConsultationOutcomeIsSafe(base(greeting))).toThrow();
+    expect(() => expectConsultationOutcomeIsSafe(base(planning))).toThrow();
+    expect(() => expectConsultationOutcomeIsSafe(base(greeting, { adviceShown: false, replySource: 'renderer', answerCalled: true }))).toThrow();
+  });
+
+  it('summarizes how often the purpose call was added and what each category did', () => {
+    const summary = summarizeConsultation([base(consult), base(consult, { purposeCheckRan: false, adviceShown: false, answerCalled: false, answerContractPassed: null, classification: null }),
+      base(greeting, { adviceShown: false, replySource: 'renderer', classification: 'unresolved', answerCalled: false, answerContractPassed: null }),
+      base(planning, { purposeCheckRan: false, adviceShown: false, replySource: 'renderer', classification: null, answerCalled: false, answerContractPassed: null })]);
+    expect(summary.turns).toBe(4);
+    expect(summary.purposeCheckRate).toBe(0.5);
+    expect(summary.byCategory.consultation).toMatchObject({ turns: 2, purposeCheckRan: 1, classifiedConsultation: 1, answerContractPassed: 1, adviceShown: 1 });
+    expect(summary.byCategory.greeting).toMatchObject({ turns: 1, purposeCheckRan: 1, classifiedConsultation: 0, adviceShown: 0 });
+    expect(summary.byCategory.planning).toMatchObject({ turns: 1, purposeCheckRan: 0 });
   });
 });
