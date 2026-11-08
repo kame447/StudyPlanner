@@ -1,17 +1,6 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
-function offsetDate(baseDate, days) {
-  const date = new Date(`${baseDate}T00:00:00`);
-  date.setDate(date.getDate() + days);
-  return date.toLocaleDateString('sv-SE');
-}
-
-function shortDate(date) {
-  const [, month, day] = date.split('-');
-  return `${Number(month)}/${Number(day)}`;
-}
-
-test('AI planning starters use registered exam, unfinished task, and active material', async ({ page }) => {
+test('AI planning hides starter suggestions even when exam, task, and material exist', async ({ page }) => {
   await page.addInitScript(() => {
     const today = new Date().toLocaleDateString('sv-SE');
     const dateAfter = (days) => {
@@ -83,30 +72,12 @@ test('AI planning starters use registered exam, unfinished task, and active mate
   });
 
   await page.goto('/');
-  const today = await page.evaluate(() => new Date().toLocaleDateString('sv-SE'));
-  const examDate = offsetDate(today, 7);
-  const todoDate = offsetDate(today, 4);
-  const materialDate = offsetDate(today, 12);
-
   await page.locator('.home-bottom-nav button').first().click();
-  await expect(page.locator('.ai-planning-starter-list button')).toHaveCount(3);
 
-  const expectedDisplay = [
-    `${shortDate(examDate)}の情報処理試験に向けて学習計画を作って`,
-    `英語レポートを${shortDate(todoDate)}までに終えられるように計画して`,
-    `基本情報問題集を${shortDate(materialDate)}までに終えられるように計画して`,
-  ];
-  const expectedRequest = [
-    `${shortDate(examDate)}のこの模試に向けて学習計画を作って`,
-    `このTodoを${shortDate(todoDate)}までに終えられるように計画して`,
-    `この教材を${shortDate(materialDate)}までに終えられるように計画して`,
-  ];
-
-  for (let index = 0; index < expectedDisplay.length; index += 1) {
-    await expect(page.locator('.ai-planning-starter-list button').nth(index)).toHaveText(expectedDisplay[index]);
-  }
-
-  await page.locator('.ai-planning-starter-list button').nth(1).click();
-  await expect(page.locator('.ai-planning-composer textarea')).toHaveValue(expectedRequest[1]);
-  await expect(page.locator('.ai-planning-composer textarea')).not.toHaveValue(/英語レポート/);
+  await expect(page.locator('.ai-planning-view')).toBeVisible();
+  await expect(page.locator('.ai-planning-starters')).toHaveCount(0);
+  const composer = page.locator('.ai-planning-composer textarea');
+  await expect(composer).toBeVisible();
+  await composer.fill('今週の数学の勉強を計画したい');
+  await expect(composer).toHaveValue('今週の数学の勉強を計画したい');
 });

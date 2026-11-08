@@ -74,7 +74,8 @@ test('weekly plan reset is separated from chat trash and requires explicit confi
     .click();
 
   await expect(page.locator('.ai-chat-drawer')).toHaveCount(0);
-  await expect(page.locator('.ai-planning-starters')).toBeVisible();
+  await expect(page.locator('.ai-planning-starters')).toHaveCount(0);
+  await expect(page.locator('.ai-planning-composer textarea')).toBeVisible();
 
   await page.locator('.ai-planning-chat-menu-button').click();
   await expect(page.locator('.ai-chat-row')).toHaveCount(2);

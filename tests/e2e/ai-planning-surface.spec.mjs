@@ -163,7 +163,7 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await expect(page.getByText('相談', { exact: true })).toHaveCount(0);
   await expect(page.getByText('週間計画', { exact: true })).toHaveCount(0);
   await expect(page.getByText('こんにちは。今週の目標や予定に合わせて、学習計画を作成します。')).toHaveCount(0);
-  await expect(page.locator('.ai-planning-starter-list button')).toHaveCount(3);
+  await expect(page.locator('.ai-planning-starter-list button')).toHaveCount(0);
 
   const onePixelPng = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2m5QAAAAASUVORK5CYII=',
@@ -433,7 +433,7 @@ for (const { viewport, theme } of [
 ].flatMap(viewport => ['light', 'dark'].map(theme => ({ viewport, theme })))) {
   // Preserve the reviewed light-case identities; add explicit dark variants.
   const themeSuffix = theme === 'light' ? '' : ' dark';
-  test(`desktop AI choices use the conversation width and retain draft/history at ${viewport.width}x${viewport.height}${themeSuffix}`, async ({ page }, testInfo) => {
+  test(`desktop AI composer uses the conversation width and retains draft/history at ${viewport.width}x${viewport.height}${themeSuffix}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await seedHome(page);
     await page.addInitScript(selectedTheme => localStorage.setItem('study-planner-theme-mode', selectedTheme), theme);
@@ -441,28 +441,21 @@ for (const { viewport, theme } of [
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await page.locator('.primary-bottom-nav button').first().click();
     await waitForVisualReady(page, '.ai-planning-card');
-    const geometry = await captureDesktopGeometry(page, testInfo, 'desktop-ai-choices', {
-      conversation: '.ai-planning-conversation', starters: '.ai-planning-starters',
-      first: '.ai-planning-starter-list button:nth-child(1)',
-      second: '.ai-planning-starter-list button:nth-child(2)',
-      third: '.ai-planning-starter-list button:nth-child(3)',
-      label: '.ai-planning-starter-list button span',
-      header: '.ai-planning-heading', composer: '.ai-planning-composer', nav: '.primary-bottom-nav',
-      primaryHeader: '.ai-planning-primary-header',
+    const geometry = await captureDesktopGeometry(page, testInfo, 'desktop-ai-composer', {
+      conversation: '.ai-planning-conversation', composer: '.ai-planning-composer',
+      input: '.ai-planning-composer textarea', header: '.ai-planning-heading',
+      nav: '.primary-bottom-nav', primaryHeader: '.ai-planning-primary-header',
     });
     expect(geometry.viewport).toEqual(viewport);
     expect(geometry.fonts).toBe('loaded');
     expect(geometry.document.width).toBeLessThanOrEqual(viewport.width);
+    await expect(page.locator('.ai-planning-starters')).toHaveCount(0);
     const { elements } = geometry;
-    expect(elements.starters.width).toBeGreaterThan(elements.conversation.width * 0.85);
-    expect(elements.label.fontSize).toBeGreaterThanOrEqual(14);
-    for (const name of ['first', 'second', 'third', 'header', 'composer', 'nav', 'primaryHeader']) {
+    expect(elements.composer.width).toBeGreaterThan(elements.conversation.width * 0.8);
+    expect(elements.input.fontSize).toBeGreaterThanOrEqual(14);
+    for (const name of ['header', 'composer', 'input', 'nav', 'primaryHeader']) {
       expectInsideViewport(elements[name], viewport);
     }
-    expect(elements.first.y).toBeCloseTo(elements.second.y, 0);
-    expect(elements.first.y).toBeCloseTo(elements.third.y, 0);
-    expect(elements.second.x).toBeGreaterThan(elements.first.right);
-    expect(elements.third.x).toBeGreaterThan(elements.second.right);
 
     const composer = page.locator('.ai-planning-composer textarea');
     await composer.fill('保存前の相談を残す');

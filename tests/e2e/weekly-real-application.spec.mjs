@@ -206,7 +206,8 @@ test.describe('real weekly application browser lifecycle through AiPlanningView'
     await expect(conversation(page).getByText('リセットする条件', { exact: true })).toHaveCount(0);
     await expect(conversation(page).getByText('テスト応答: リセットする条件', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
-    await expect(page.locator('.ai-planning-starters')).toBeVisible();
+    await expect(page.locator('.ai-planning-starters')).toHaveCount(0);
+    await composer(page);
 
     await page.reload();
 
