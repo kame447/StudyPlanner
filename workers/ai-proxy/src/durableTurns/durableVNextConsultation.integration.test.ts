@@ -9,6 +9,7 @@ import { createWeeklyPlanningTurnRequestContext } from '../../../../src/features
 import { parseWeeklyPlanningVNextSessionCheckpoint } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextSessionCheckpoint';
 import { VNEXT_PROVIDER_RESPONSE_FORMAT } from '../../../../src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProviderSchema';
 import { LEARNING_CONSULTATION_ANSWER_VERSION, LEARNING_CONSULTATION_TURN_PURPOSE_VERSION } from '../../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextV5Boundary';
+import { RENDERER_TECHNICAL_STOP } from '../../../../src/features/weeklyPlanning/vnext/weeklyPlanningVNextV5Boundary';
 import { VNEXT_ADVICE_NOTICE } from '../../../../src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextConsultation';
 import { successfulWeeklyPlanningRendererCompletion } from '../../../../src/features/weeklyPlanning/testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 
@@ -46,12 +47,15 @@ function harness() {
     output: () => { expect(record?.status).toBe('completed'); return JSON.parse(record!.result!) as WeeklyPlanningVNextDurableTurnResult; } };
 }
 
-function provider(replies: { purpose?: unknown; advice?: unknown } = {}) {
+function provider(replies: { purpose?: unknown; advice?: unknown; unavailable?: 'purpose' | 'advice' } = {}) {
   const calls: { schema: string; model: string | undefined }[] = [];
   vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init?: RequestInit) => {
     const body = JSON.parse(init!.body as string);
     const schema = body.response_format?.json_schema?.name ?? 'none';
     calls.push({ schema, model: body.model });
+    if ((replies.unavailable === 'purpose' && schema === purposeSchema) || (replies.unavailable === 'advice' && schema === adviceSchema)) {
+      return Response.json({ error: { message: 'synthetic unavailable' } }, { status: 503 });
+    }
     const content = schema === nativeSchema ? nothingToPlan
       : schema === purposeSchema ? JSON.stringify(replies.purpose ?? { schemaVersion: LEARNING_CONSULTATION_TURN_PURPOSE_VERSION, kind: 'learning_consultation' })
       : schema === adviceSchema ? JSON.stringify(replies.advice ?? advice)
@@ -103,4 +107,25 @@ it('answers with the planning question when the advice is outside the contract',
   await h.create().accept(h.input); await h.create().run(h.execute);
   expect(calls.map(call => call.schema)).toEqual([nativeSchema, purposeSchema, adviceSchema, rendererSchema]);
   expect(h.output().result.message).not.toContain(VNEXT_ADVICE_NOTICE);
+});
+
+// The durable job stops all dispatch after any provider failure (durableTurnJob.ts), so a failed consultation call is not
+// followed by the planning question's renderer call: the turn ends with the renderer's technical-stop reply, completed,
+// with nothing planned and nothing half-advised. Replay reuses the journal, including the failed dispatch.
+it.each(['purpose', 'advice'] as const)('ends a turn whose %s call failed at the provider with the technical-stop reply, nothing planned', async unavailable => {
+  const calls = provider({ unavailable }); const h = harness();
+  await h.create().accept(h.input); await h.create().run(h.execute);
+  expect(calls.map(call => call.schema)).toEqual(unavailable === 'purpose' ? [nativeSchema, purposeSchema] : [nativeSchema, purposeSchema, adviceSchema]);
+  expect(h.read()?.status).toBe('completed');
+  const out = h.output();
+  expect(out.result.message).toBe(RENDERER_TECHNICAL_STOP);
+  expect(out.result.responseSource).toBe('deterministic_fallback');
+  expect(out.result.draftCandidates).toEqual([]);
+  const stored = parseWeeklyPlanningVNextSessionCheckpoint({ raw: out.checkpointAfter!, ownerId: 'alice', weekStartDate: week })!.vnext;
+  expect(stored.state.graph.tasks).toEqual([]);
+  expect(stored.preview).toBeNull();
+  const sent = calls.length;
+  await h.create().run(h.execute);
+  expect(calls).toHaveLength(sent);
+  expect(h.read()?.result).toBe(JSON.stringify(out));
 });
