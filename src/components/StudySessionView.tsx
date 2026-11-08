@@ -33,7 +33,8 @@ import {
   getMaterialUnitLabel,
 } from '../lib/materialPace';
 import type { ActualDraft, Plan, StudyMaterial, StudySubject } from '../types/domain';
-import { createDefaultPomodoroSettings, getPomodoroCompletedAt, getPomodoroProgress, resolvePomodoroSettings, type PomodoroSettings, type ResolvedPomodoroSettings } from '../lib/pomodoroSession';
+import { getPomodoroCompletedAt, getPomodoroProgress, resolvePomodoroSettings, type PomodoroSettings, type ResolvedPomodoroSettings } from '../lib/pomodoroSession';
+import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
 import { StudySessionModePicker, type StudyMode } from './StudySessionModePicker';
 import { PomodoroSettingsView } from './PomodoroSettingsView';
 
@@ -200,8 +201,12 @@ function StudySessionView({
   const recordedElapsedMs = useRef<number | null>(restored?.recordedElapsedMs ?? null);
   const [phase, setPhase] = useState<SessionPhase>(restored?.phase ?? 'timer');
   const pageRef = useRef<HTMLDivElement>(null);
-  const [studyMode, setStudyMode] = useState<StudyMode>(restored?.studyMode ?? 'normal');
-  const [pomodoroSettings, setPomodoroSettings] = useState(restored?.pomodoroSettings ?? createDefaultPomodoroSettings);
+  // A restored session keeps its own choice; a new one starts from the saved default, which this session may override.
+  const { defaultStudyMode } = useWeeklyPlanningPersonalization();
+  const [studyMode, setStudyMode] = useState<StudyMode>(restored?.studyMode ?? defaultStudyMode.mode);
+  const [pomodoroSettings, setPomodoroSettings] = useState<PomodoroSettings>(
+    () => restored?.pomodoroSettings ?? { ...defaultStudyMode.pomodoro, setCount: null },
+  );
   const activePomodoro = useRef<ResolvedPomodoroSettings | null>(restored?.activePomodoro ?? null);
   const pomodoroCompletedAt = useRef<number | null>(restored?.pomodoroCompletedAt ?? null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);

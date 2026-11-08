@@ -5,7 +5,7 @@ import { AppSettingsDialog } from './AppSettingsDialog';
 
 vi.mock('../features/userPlanningContext/UserPlanningContextContext', () => ({ useOptionalUserPlanningContextV1: () => null }));
 vi.mock('../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext', () => ({
-  useWeeklyPlanningPersonalization: () => ({ weekStartsOn: 'monday', setWeekStartsOn: vi.fn(), resetProfile: vi.fn() }),
+  useWeeklyPlanningPersonalization: () => ({ weekStartsOn: 'monday', setWeekStartsOn: vi.fn(), defaultStudyMode: { mode: 'normal', pomodoro: { preset: '25-5' } }, setDefaultStudyMode: vi.fn(), resetProfile: vi.fn() }),
 }));
 
 const MODE_KEY = 'study-planner-theme-mode';

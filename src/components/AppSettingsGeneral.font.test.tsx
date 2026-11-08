@@ -8,7 +8,7 @@ vi.mock('../lib/fontPreset', async importOriginal => ({
   loadAllWebFontStylesheets: fontLoads.loadAll,
 }));
 vi.mock('../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext', () => ({
-  useWeeklyPlanningPersonalization: () => ({ weekStartsOn: 'monday', setWeekStartsOn: vi.fn(), resetProfile: vi.fn() }),
+  useWeeklyPlanningPersonalization: () => ({ weekStartsOn: 'monday', setWeekStartsOn: vi.fn(), defaultStudyMode: { mode: 'normal', pomodoro: { preset: '25-5' } }, setDefaultStudyMode: vi.fn(), resetProfile: vi.fn() }),
 }));
 let renderer: ReactTestRenderer;
 afterEach(() => { act(() => renderer?.unmount()); fontLoads.loadAll.mockReset(); fontLoads.loadAll.mockImplementation(() => Promise.resolve()); });

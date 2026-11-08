@@ -25,7 +25,7 @@ async function advance(ms = PERSONALIZATION_READ_TIMEOUT_MS) {
 }
 beforeEach(() => {
   vi.useFakeTimers();
-  repository = { getProfile: vi.fn(async () => profile), setWeekStartsOn: vi.fn(async () => profile), resetProfile: vi.fn(async () => {}) };
+  repository = { getProfile: vi.fn(async () => profile), setWeekStartsOn: vi.fn(async () => profile), setDefaultStudyMode: vi.fn(async () => profile), resetProfile: vi.fn(async () => {}) };
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.useRealTimers(); vi.restoreAllMocks(); });
 

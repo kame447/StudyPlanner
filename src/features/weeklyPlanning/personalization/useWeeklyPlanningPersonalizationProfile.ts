@@ -4,7 +4,7 @@ import {
   getWeeklyPlanningPersonalizationRepository,
   type WeeklyPlanningPersonalizationRepository,
 } from './weeklyPlanningPersonalizationRepository';
-import type { WeeklyPlanningPersonalizationProfile } from './weeklyPlanningPersonalizationTypes';
+import type { DefaultStudyMode, WeeklyPlanningPersonalizationProfile } from './weeklyPlanningPersonalizationTypes';
 
 // Match consent-read recovery UX, not a network SLO or an SDK request timeout.
 export const PERSONALIZATION_READ_TIMEOUT_MS = 15_000;
@@ -16,6 +16,7 @@ export interface WeeklyPlanningPersonalizationProfileState {
   readFailed: boolean;
   refresh(): Promise<void>;
   setWeekStartsOn(value: WeeklyPlanningWeekStartsOn): Promise<boolean>;
+  setDefaultStudyMode(value: DefaultStudyMode): Promise<boolean>;
   resetProfile(): Promise<boolean>;
 }
 
@@ -125,6 +126,10 @@ export function useWeeklyPlanningPersonalizationProfile(
     mutate(() => repository.setWeekStartsOn(userId, value))
   ), [mutate, repository, userId]);
 
+  const setDefaultStudyMode = useCallback((value: DefaultStudyMode) => (
+    mutate(() => repository.setDefaultStudyMode(userId, value))
+  ), [mutate, repository, userId]);
+
   const resetProfile = useCallback(() => mutate(async () => {
     await repository.resetProfile(userId);
     return null;
@@ -135,5 +140,5 @@ export function useWeeklyPlanningPersonalizationProfile(
     loading: true, profile: null, error: '', readFailed: false,
   };
   return { loading: current.loading, profile: current.profile, error: current.error,
-    readFailed: current.readFailed, refresh, setWeekStartsOn, resetProfile };
+    readFailed: current.readFailed, refresh, setWeekStartsOn, setDefaultStudyMode, resetProfile };
 }
