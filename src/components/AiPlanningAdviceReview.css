@@ -1,0 +1,22 @@
+.ai-planning-advice-review {
+  display: grid;
+  gap: 8px;
+  padding: 8px 16px;
+}
+
+.ai-planning-advice-review p,
+.ai-planning-advice-review-note {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.ai-planning-advice-review-note {
+  padding: 8px 16px;
+  opacity: 0.8;
+}
+
+.ai-planning-advice-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

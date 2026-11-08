@@ -21,7 +21,6 @@ import { StudySessionProvider } from './components/StudySessionView';
 import { PublicPageBoundary } from './components/PublicPageBoundary';
 import { usePublicPageNavigation } from './components/PublicPageLink';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
-import { FirstRunTutorial } from './components/FirstRunTutorial';
 import { AppViewSwitcher } from './components/AppViewSwitcher';
 import type { BookshelfInitialAction } from './components/BookshelfView';
 import { DeferredBookshelfView as BookshelfView } from './components/DeferredBookshelfView';
@@ -52,6 +51,10 @@ import { isPlannerDataReadyForOwner } from './domain/plannerDataReadAuthority';
 import { resolveActiveTimetableTerm } from './domain/timetableTerm';
 import type { ViewMode } from './types/domain';
 
+// Shown once, on a user's first run, so its code loads then: the entry chunk is at its size budget. Its stylesheet stays in the
+// entry stylesheet, because a separate lazy stylesheet gzips worse in total and would break the CSS budget.
+import './styles/first-run-tutorial.css';
+const FirstRunTutorial = lazy(() => import('./components/FirstRunTutorial').then(module => ({ default: module.FirstRunTutorial })));
 const StudyStreakPage = lazy(() => import('./components/StudyStreakPage').then(module => ({ default: module.StudyStreakPage })));
 
 const HomeAddFlow = lazy(() => import('./components/HomeAddFlow').then((module) => ({ default: module.HomeAddFlow })));
@@ -412,10 +415,10 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     onOpenTimetable: openTimetableSurface,
   };
 
-  if (showTutorial) return <FirstRunTutorial
+  if (showTutorial) return <Suspense fallback={null}><FirstRunTutorial
     onFinish={completeTutorial}
     onOpenAiPlanning={() => { completeTutorial(); openAiPlanningSurface(); }}
-  />;
+  /></Suspense>;
 
   return (
     <HomeDisplayClockProvider>

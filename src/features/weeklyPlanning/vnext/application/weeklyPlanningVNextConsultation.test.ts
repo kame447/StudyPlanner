@@ -58,7 +58,9 @@ describe('learning consultation provider calls (#246)', () => {
   it('asks for advice with the known context only, and shows a proposal with the notice that it is not a plan', async () => {
     const c = client(proposal);
     const answer = await createWeeklyPlanningVNextConsultation(c.port).answer(input);
-    expect(answer).toEqual({ kind: 'proposal', text: `まず文法の基礎問題集を1周しましょう。\n\n${VNEXT_ADVICE_NOTICE}` });
+    expect(answer).toMatchObject({ kind: 'proposal', text: `まず文法の基礎問題集を1周しましょう。\n\n${VNEXT_ADVICE_NOTICE}` });
+    // The validated proposal itself is returned too, so the session can keep it for review (#246 slice 3).
+    expect(answer?.proposal).toMatchObject({ kind: 'proposal', userFacingAnswer: 'まず文法の基礎問題集を1周しましょう。' });
     const [request] = c.requests;
     expect(request).toMatchObject({ temperature: 0.3, purpose: 'weekly_planning_renderer', maxCompletionTokens: 1800,
       responseFormat: { type: 'json_schema', json_schema: { name: 'weekly_planning_vnext_advice_v1' } } });
