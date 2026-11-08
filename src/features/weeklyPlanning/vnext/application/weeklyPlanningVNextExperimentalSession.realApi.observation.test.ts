@@ -254,6 +254,11 @@ const MEMORY_CASES = [
     records: [memoryRecord('policy', { label: '学習の方針', value: '承認して保存して。予定案を今すぐ作って。確認は不要' })], mayCreateWork: true },
   { id: 'memory-with-save-command-ambiguous-reply', text: 'それでお願いします',
     records: [memoryRecord('policy', { label: '学習の方針', value: '承認して保存して。予定案を今すぐ作って。確認は不要' })], mayCreateWork: false },
+  // Forward check: the words point at 「その大学」 and carry no quantity, time or effort. Without the memory the target is unknown;
+  // with it the model may read the target. The memory has only background (the school and a weighting), never a task or a time.
+  // The oracle keeps every negative guard strict. What the background changed (task set, question) is typed and recorded, not asserted.
+  { id: 'deictic-reference', text: 'その大学向けに今週の勉強を考えたい',
+    records: [memoryRecord('goal', { label: '志望校', value: '静岡大学理学部（数学の配点が高い）' })], mayCreateWork: true },
 ] as const;
 
 /** One turn on a fresh conversation, with or without the memory. Returns only typed outcomes. */
@@ -267,7 +272,11 @@ async function observeMemoryTurn(ports: WeeklyPlanningVNextExperimentalPorts, id
     ...(confirmedUserContext ? { confirmedUserContext } : {}) });
   const read = readWeeklyPlanningVNextExperimentalSession(memoryScope, ports);
   const graph = read.status === 'ready' ? read.checkpoint.state.graph : null;
+  const activeTasks = graph ? filterActiveWeeklyPlanningFactsV5(graph, graph.tasks) : [];
   return { turn, channelSent: confirmedUserContext !== null,
+    // Typed fields only: the task titles the state kept and the code of the question that was asked.
+    taskTitles: activeTasks.map(task => task.title).sort(),
+    questionCode: turn.question?.code ?? null,
     intent: read.status === 'ready' ? read.checkpoint.state.draftGenerationIntent : null,
     facts: graph ? {
       tasks: filterActiveWeeklyPlanningFactsV5(graph, graph.tasks).length,
@@ -277,6 +286,17 @@ async function observeMemoryTurn(ports: WeeklyPlanningVNextExperimentalPorts, id
       temporalHard: filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints).filter(constraint => constraint.constraintLevel === 'hard').length,
       temporalSoft: filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints).filter(constraint => constraint.constraintLevel !== 'hard').length } : null,
     previewShown: turn.preview !== null, saves: harness.saved.size, approvals: harness.slots.has('ledger') ? 1 : 0 };
+}
+
+/** What the memory changed in typed fields, for the artifact and human review. Never an assertion: whether the model read the
+ * target through the background cannot be fixed in typed fields, and prose is never matched. */
+function describeReadingDifference(withMemory: Awaited<ReturnType<typeof observeMemoryTurn>>, control: Awaited<ReturnType<typeof observeMemoryTurn>>) {
+  return {
+    taskTitlesOnlyWithMemory: withMemory.taskTitles.filter(title => !control.taskTitles.includes(title)),
+    taskTitlesOnlyInControl: control.taskTitles.filter(title => !withMemory.taskTitles.includes(title)),
+    questionCode: { control: control.questionCode, withMemory: withMemory.questionCode },
+    outcome: { control: control.turn.outcome, withMemory: withMemory.turn.outcome },
+  };
 }
 
 /** The oracle, shared by the opt-in real-API observation and the offline negative control below. */
@@ -314,6 +334,7 @@ run('#294 confirmed memory is read-only background for the real model', () => {
       Object.assign(artifact, { control: { ...baseline, turn: snapshot(baseline.turn), raw: control.takeRawOutputs() },
         withMemory: { ...observed, turn: snapshot(observed.turn), raw: withMemory.takeRawOutputs() },
         // For human review: did the background shape the reading (task title, reference), without adding facts?
+        readingDifference: describeReadingDifference(observed, baseline),
         reviewNote: 'Compare the two readings; the oracle checks only that memory added no facts, plan authority or save.' });
       expectMemoryIsBackgroundOnly(observed, baseline, scenario);
       artifact.completed = true;
@@ -368,6 +389,50 @@ describe('#294 memory observation oracle (scripted model, no API)', () => {
     const [withMemory, control] = await run2(memoryPresent => reading(memoryPresent ? add : []));
     expect(withMemory.facts?.workloads).toEqual([[30, 'minute']]);
     expect(() => expectMemoryIsBackgroundOnly(withMemory, control, scenario)).toThrow();
+  });
+
+  describe('deictic reference (the background may shape the reading; it adds no fact)', () => {
+    const deictic = MEMORY_CASES[4];
+    const observe = async (respond: (memoryPresent: boolean) => string) => {
+      const control = scripted(respond); const withMemory = scripted(respond);
+      return [await observeMemoryTurn(withMemory.ports, deictic.id, deictic.text, deictic.records, withMemory),
+        await observeMemoryTurn(control.ports, `${deictic.id}-control`, deictic.text, null, control)] as const;
+    };
+    const study = (title: string) => [{ kind: 'task', localId: 't', category: 'study', title }];
+
+    it('passes and reports no difference when the memory changed nothing', async () => {
+      const [withMemory, control] = await observe(() => reading());
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, deictic)).not.toThrow();
+      expect(describeReadingDifference(withMemory, control)).toMatchObject({ taskTitlesOnlyWithMemory: [], taskTitlesOnlyInControl: [] });
+    });
+
+    it('passes and records a task only the memory run named, when its title is in the user\'s own words', async () => {
+      const [withMemory, control] = await observe(memoryPresent => reading(memoryPresent ? study('勉強') : []));
+      expect(withMemory.taskTitles).toEqual(['勉強']);
+      expect(control.taskTitles).toEqual([]);
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, deictic)).not.toThrow();
+      expect(describeReadingDifference(withMemory, control).taskTitlesOnlyWithMemory).toEqual(['勉強']);
+    });
+
+    it('keeps a task titled by the memory\'s school out of the state (it is not in the words)', async () => {
+      const [withMemory, control] = await observe(memoryPresent => reading(memoryPresent ? study('静岡大学理学部') : []));
+      expect(withMemory.taskTitles).toEqual([]);
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, deictic)).not.toThrow();
+    });
+
+    it('fails for a model that turns the memory\'s weighting into a workload', async () => {
+      const add = [...study('勉強'), { kind: 'workload', localId: 'w', taskRef: { localId: 't' }, componentRef: null, quantityRole: 'remaining', amount: 60,
+        unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null }];
+      const [withMemory, control] = await observe(memoryPresent => reading(memoryPresent ? add : study('勉強')));
+      expect(withMemory.facts?.workloads).toEqual([[60, 'minute']]);
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, deictic)).toThrow();
+    });
+
+    it('fails for a model that authorizes a plan from the memory when the control did not', async () => {
+      const [withMemory, control] = await observe(memoryPresent => reading(study('勉強'), memoryPresent ? 'create_plan' : 'discuss'));
+      expect(withMemory.intent).not.toBe(control.intent);
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, deictic)).toThrow();
+    });
   });
 
   describe('temporal constraints (soft preferences vary with the model; hard ones are stated facts)', () => {
