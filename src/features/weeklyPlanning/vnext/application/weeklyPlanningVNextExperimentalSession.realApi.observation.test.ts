@@ -23,6 +23,7 @@ import { readWeeklyPlanningVNextExperimentalSession, submitWeeklyPlanningVNextEx
 import { approveWeeklyPlanningVNextExperimentalPreview } from './weeklyPlanningVNextExperimentalApproval';
 import { filterActiveWeeklyPlanningFactsV5 } from '../../semantic/weeklyPlanningFactLifecycleV5';
 import type { UserPlanningContextRecordV1 } from '../../../userPlanningContext/userPlanningContextTypes';
+import { resolveCanonicalDateExpression } from '../../semantic/weeklyPlanningCalendarResolver';
 import { selectVNextConfirmedUserContext } from '../weeklyPlanningVNextConfirmedUserContext';
 
 const shouldRun = process.env.WEEKLY_PLANNING_ISSUE156_REAL_API === '1';
@@ -261,6 +262,28 @@ const MEMORY_CASES = [
     records: [memoryRecord('goal', { label: '志望校', value: '静岡大学理学部（数学の配点が高い）' })], mayCreateWork: true },
 ] as const;
 
+/**
+ * Which canonical dateExpression the user's own words state. A hard constraint whose dateExpression is stated here is read from
+ * the words (the model sometimes reads 「今週は」 as a hard end and sometimes does not), so it is recorded, not compared. One whose
+ * dateExpression is absent from the table, or whose word is not in the utterance, can only have come from elsewhere (the memory):
+ * it stays strictly compared. A table lookup and a plain substring test, never a pattern over meaning.
+ */
+const STATED_DATE_WORDS: Record<string, readonly string[]> = {
+  this_week: ['今週'], next_week: ['来週'], today: ['今日'], tomorrow: ['明日'],
+};
+/** The state stores the frozen range of a symbolic expression, so the stated expression is compared in both its symbolic and its resolved form. */
+function isDateStatedInWords(dateExpression: string | null, text: string): boolean {
+  if (dateExpression === null) return false;
+  return Object.entries(STATED_DATE_WORDS).some(([expression, words]) => {
+    if (!words.some(word => text.includes(word))) return false;
+    if (dateExpression === expression) return true;
+    const resolved = resolveCanonicalDateExpression({ expression, currentDate: scope.clock.currentDate, weekStartsOn: scope.clock.weekStartsOn });
+    if (resolved.status !== 'resolved') return false;
+    const { start, end } = resolved.range;
+    return start === end ? dateExpression === start : dateExpression === `${start}/${end}` || dateExpression === `${start}..${end}`;
+  });
+}
+
 /** One turn on a fresh conversation, with or without the memory. Returns only typed outcomes. */
 async function observeMemoryTurn(ports: WeeklyPlanningVNextExperimentalPorts, id: string, text: string,
   records: readonly UserPlanningContextRecordV1[] | null, harness: { saved: Map<string, unknown>; slots: Map<string, string> }) {
@@ -272,11 +295,16 @@ async function observeMemoryTurn(ports: WeeklyPlanningVNextExperimentalPorts, id
     ...(confirmedUserContext ? { confirmedUserContext } : {}) });
   const read = readWeeklyPlanningVNextExperimentalSession(memoryScope, ports);
   const graph = read.status === 'ready' ? read.checkpoint.state.graph : null;
+  const hardConstraints = graph ? filterActiveWeeklyPlanningFactsV5(graph, graph.temporalConstraints)
+    .filter(constraint => constraint.constraintLevel === 'hard')
+    .map(constraint => ({ kind: constraint.kind, dateExpression: constraint.dateExpression, statedInWords: isDateStatedInWords(constraint.dateExpression, text) }))
+    .sort((a, b) => `${a.kind}|${a.dateExpression}`.localeCompare(`${b.kind}|${b.dateExpression}`)) : [];
   const activeTasks = graph ? filterActiveWeeklyPlanningFactsV5(graph, graph.tasks) : [];
   return { turn, channelSent: confirmedUserContext !== null,
     // Typed fields only: the task titles the state kept and the code of the question that was asked.
     taskTitles: activeTasks.map(task => task.title).sort(),
     questionCode: turn.question?.code ?? null,
+    hardConstraints,
     intent: read.status === 'ready' ? read.checkpoint.state.draftGenerationIntent : null,
     facts: graph ? {
       tasks: filterActiveWeeklyPlanningFactsV5(graph, graph.tasks).length,
@@ -296,6 +324,8 @@ function describeReadingDifference(withMemory: Awaited<ReturnType<typeof observe
     taskTitlesOnlyInControl: control.taskTitles.filter(title => !withMemory.taskTitles.includes(title)),
     questionCode: { control: control.questionCode, withMemory: withMemory.questionCode },
     outcome: { control: control.turn.outcome, withMemory: withMemory.turn.outcome },
+    // Hard constraints the words state (recorded) next to the ones they cannot explain (compared by the oracle).
+    hardConstraintsStatedInWords: { control: control.hardConstraints.filter(c => c.statedInWords), withMemory: withMemory.hardConstraints.filter(c => c.statedInWords) },
   };
 }
 
@@ -313,10 +343,12 @@ function expectMemoryIsBackgroundOnly(withMemory: Awaited<ReturnType<typeof obse
   // And it adds no quantity, time or effort: what the turn stated alone is what stays, with or without the background.
   expect(withMemory.facts?.workloads).toEqual(control.facts?.workloads);
   expect(withMemory.facts?.efforts).toEqual(control.facts?.efforts);
-  // Hard constraints are facts the words state: identical with and without the background. Soft temporal preferences
-  // ("今週は") are optional readings that swing either way between runs (runs 42416334536 and 42427924936 went opposite
-  // directions), so they are recorded in the artifact (`facts.temporalSoft`) and never compared.
-  expect(withMemory.facts?.temporalHard).toBe(control.facts?.temporalHard);
+  // A hard constraint the user's words cannot explain (a date only the memory holds) is identical with and without the background.
+  // A temporal reading of the user's own words ("今週は") swings either way between runs, hard or soft (runs 42416334536 and
+  // 42427924936 for soft, 42450980679 for hard), so it is recorded in the artifact (`facts.temporalSoft`, `hardConstraints`,
+  // `readingDifference.hardConstraintsStatedInWords`) and never compared.
+  const unexplainedHard = (observed: typeof withMemory) => observed.hardConstraints.filter(constraint => !constraint.statedInWords);
+  expect(unexplainedHard(withMemory)).toEqual(unexplainedHard(control));
   if (!scenario.mayCreateWork) {
     expect(withMemory.facts).toMatchObject({ tasks: 0, workloads: [], efforts: [], temporalHard: 0 });
     expect(withMemory.previewShown).toBe(false);
@@ -468,11 +500,39 @@ describe('#294 memory observation oracle (scripted model, no API)', () => {
       expect(() => expectMemoryIsBackgroundOnly(withMemory, control, referenceCase)).not.toThrow();
     });
 
-    it('fails when the memory run has a hard constraint the control did not, or lacks one the control had', async () => {
-      const [added, control] = await observe(memoryPresent => memoryPresent ? [...base, window('hard')] : base);
+    it('accepts the recorded run-42450980679 shape: only the memory run read 「今週は」 as a hard end, and records it', async () => {
+      const [withMemory, control] = await observe(memoryPresent => memoryPresent ? [...base, window('hard')] : base);
+      expect(withMemory.hardConstraints).toEqual([{ kind: 'deadline', dateExpression: '2026-11-02/2026-11-08', statedInWords: true }]);
+      expect(control.hardConstraints).toEqual([]);
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, referenceCase)).not.toThrow();
+      expect(describeReadingDifference(withMemory, control).hardConstraintsStatedInWords.withMemory).toHaveLength(1);
+    });
+
+    it('accepts a hard 今週 only the control read', async () => {
+      const [withMemory, control] = await observe(memoryPresent => memoryPresent ? base : [...base, window('hard')]);
+      expect(() => expectMemoryIsBackgroundOnly(withMemory, control, referenceCase)).not.toThrow();
+    });
+
+    // A hard constraint from a date the words do not state is strict, in either direction.
+    const memoryDate = (dateExpression: string) => ({ ...window('hard'), dateExpression });
+    it('fails when the memory run has a hard constraint on a date the words do not state, e.g. an exam day only the memory holds', async () => {
+      const [added, control] = await observe(memoryPresent => memoryPresent ? [...base, memoryDate('2026-11-20')] : base);
+      expect(added.hardConstraints).toEqual([{ kind: 'deadline', dateExpression: '2026-11-20', statedInWords: false }]);
       expect(() => expectMemoryIsBackgroundOnly(added, control, referenceCase)).toThrow();
-      const [missing, stated] = await observe(memoryPresent => memoryPresent ? base : [...base, window('hard')]);
-      expect(() => expectMemoryIsBackgroundOnly(missing, stated, referenceCase)).toThrow();
+      const [missing, had] = await observe(memoryPresent => memoryPresent ? base : [...base, memoryDate('2026-11-20')]);
+      expect(() => expectMemoryIsBackgroundOnly(missing, had, referenceCase)).toThrow();
+    });
+
+    it('fails for a hard 今週 when the user\'s words do not contain it (the grounding is the words, not the expression)', async () => {
+      const noWeek = MEMORY_CASES[2]; // 「数学は残り20分です」
+      const items = [{ kind: 'task', localId: 't', category: 'study', title: '数学' },
+        { kind: 'workload', localId: 'w', taskRef: { localId: 't' }, componentRef: null, quantityRole: 'remaining', amount: 20, unitCode: 'minute',
+          unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null }];
+      const control = scripted(() => reading(items)); const withMemory = scripted(memoryPresent => reading(memoryPresent ? [...items, window('hard')] : items));
+      const c = await observeMemoryTurn(control.ports, `${noWeek.id}-control`, noWeek.text, null, control);
+      const m = await observeMemoryTurn(withMemory.ports, noWeek.id, noWeek.text, noWeek.records, withMemory);
+      expect(m.hardConstraints).toEqual([{ kind: 'deadline', dateExpression: '2026-11-02/2026-11-08', statedInWords: false }]);
+      expect(() => expectMemoryIsBackgroundOnly(m, c, noWeek)).toThrow();
     });
   });
 });
