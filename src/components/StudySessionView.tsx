@@ -37,6 +37,7 @@ import { getPomodoroCompletedAt, getPomodoroProgress, resolvePomodoroSettings, t
 import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
 import { StudySessionModePicker, type StudyMode } from './StudySessionModePicker';
 import { PomodoroSettingsView } from './PomodoroSettingsView';
+import { visiblePlanMemo } from '../lib/planInternalMemo';
 
 interface StudySessionProviderProps {
   userId: string;
@@ -596,7 +597,7 @@ function StudySessionView({
                       {plan ? <div><dt>内容</dt><dd>{plan.title}</dd></div> : null}
                       {plan?.subject ? <div><dt>科目</dt><dd>{plan.subject}</dd></div> : null}
                       {material || plan?.materialName?.trim() ? <div><dt>教材</dt><dd>{material?.name ?? plan?.materialName}</dd></div> : null}
-                      {plan?.memo.trim() ? <div><dt>メモ</dt><dd>{plan.memo}</dd></div> : null}
+                      {plan && visiblePlanMemo(plan.memo).trim() ? <div><dt>メモ</dt><dd>{visiblePlanMemo(plan.memo)}</dd></div> : null}
                     </dl>
                   </details>
                 ) : null}
