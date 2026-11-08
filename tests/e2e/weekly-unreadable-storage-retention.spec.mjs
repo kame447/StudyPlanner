@@ -88,7 +88,7 @@ for (const width of [1280, 390]) {
     await composer(page).fill(NEW_TEXT);
     await page.getByRole('button', { name: '送信', exact: true }).click();
     await expect(page.locator('.ai-planning-message-row.user').getByText(NEW_TEXT, { exact: true })).toBeVisible();
-    await expect(page.getByText(`テスト応答: ${NEW_TEXT}`, { exact: true })).toBeVisible();
+    await expect(page.locator('.ai-planning-conversation').getByText(`テスト応答: ${NEW_TEXT}`, { exact: true })).toBeVisible();
     expect(await runtimeEvents(page), 'the observer records the one scripted dispatch').toHaveLength(1);
     await expectBothPreserved(page);
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toBe(durablePlans);
@@ -96,7 +96,7 @@ for (const width of [1280, 390]) {
     await reloadDurableProfile(page);
     await expectBothPreserved(page);
     await expect(page.locator('.ai-planning-message-row.user').getByText(NEW_TEXT, { exact: true })).toBeVisible();
-    await expect(page.getByText(`テスト応答: ${NEW_TEXT}`, { exact: true })).toBeVisible();
+    await expect(page.locator('.ai-planning-conversation').getByText(`テスト応答: ${NEW_TEXT}`, { exact: true })).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toBe(durablePlans);
     expect(await runtimeEvents(page)).toEqual([]);
     expect(externalRequests, 'no provider or live account request may escape loopback').toEqual([]);
@@ -142,9 +142,9 @@ for (const width of [1280, 390]) {
     // A real VNext conversation first, so its chat, index record and `.core`/`.ui` exist exactly as production writes them.
     await composer(page).fill(SEED_TEXT);
     await page.getByRole('button', { name: '送信', exact: true }).click();
-    await expect(page.getByText(`テスト応答: ${SEED_TEXT}`, { exact: true })).toBeVisible();
+    await expect(page.locator('.ai-planning-conversation').getByText(`テスト応答: ${SEED_TEXT}`, { exact: true })).toBeVisible();
     await reloadDurableProfile(page);
-    await expect(page.getByText(`テスト応答: ${SEED_TEXT}`, { exact: true })).toBeVisible();
+    await expect(page.locator('.ai-planning-conversation').getByText(`テスト応答: ${SEED_TEXT}`, { exact: true })).toBeVisible();
     const keys = (await vnextChatKeys(page)).filter(key => /\.(core|ui)$/.test(key));
     expect(keys.map(key => key.split('.').pop()), 'one VNext chat with a core and a ui slot').toEqual(['core', 'ui']);
     const durablePlans = await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'));
@@ -185,7 +185,7 @@ for (const width of [1280, 390]) {
     await expect(composer(page)).toBeEnabled();
     await composer(page).fill(NEW_TEXT);
     await page.getByRole('button', { name: '送信', exact: true }).click();
-    await expect(page.getByText(`テスト応答: ${NEW_TEXT}`, { exact: true })).toBeVisible();
+    await expect(page.locator('.ai-planning-conversation').getByText(`テスト応答: ${NEW_TEXT}`, { exact: true })).toBeVisible();
     expect(await runtimeEvents(page), 'the observer records the one scripted dispatch').toHaveLength(1);
     const afterStart = await vnextBytes(page);
     for (const [key, bytes] of Object.entries(retained)) expect(afterStart[key], `${key} is retained byte for byte`).toBe(bytes);
@@ -193,7 +193,7 @@ for (const width of [1280, 390]) {
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toBe(durablePlans);
 
     await reloadDurableProfile(page);
-    await expect(page.getByText(`テスト応答: ${NEW_TEXT}`, { exact: true })).toBeVisible();
+    await expect(page.locator('.ai-planning-conversation').getByText(`テスト応答: ${NEW_TEXT}`, { exact: true })).toBeVisible();
     const afterReload = await vnextBytes(page);
     for (const [key, bytes] of Object.entries(retained)) expect(afterReload[key], `${key} survives the reload`).toBe(bytes);
     expect(await runtimeEvents(page)).toEqual([]);
