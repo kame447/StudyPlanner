@@ -9,7 +9,6 @@ import { getFirestoreDb } from '../../lib/firebaseClient';
 import {
   normalizeUserPlanningContextSnapshotV1,
   retainUserPlanningContextRecordsV1,
-  USER_PLANNING_CONTEXT_SETTINGS_SOURCE_TEXT_V1,
   userPlanningContextDurableKeyV1,
   userPlanningContextRecordIdentityV1,
 } from './userPlanningContextSpace';
@@ -169,10 +168,6 @@ export function replaceWithUserConfirmedContextRecordV1(params: {
  * record id and durable key prevents a later semantic extraction or an older
  * client snapshot from silently reviving the same fact. Revoked records are
  * excluded from UI and AI context by the application layer.
- *
- * The tombstone keeps only what the guard needs (id, kind, label: the durable key). The user's
- * own words (`sourceText`) and the remembered value and date are cleared, so a forgotten memory
- * is not left stored locally or in the shared document.
  */
 export function removeUserPlanningContextRecordFromSnapshotV1(params: {
   snapshot: UserPlanningContextSnapshotV1;
@@ -183,10 +178,6 @@ export function removeUserPlanningContextRecordFromSnapshotV1(params: {
     if (record.id !== params.recordId) return record;
     return {
       ...record,
-      value: null,
-      dateExpression: null,
-      resolvedDate: null,
-      sourceText: USER_PLANNING_CONTEXT_SETTINGS_SOURCE_TEXT_V1,
       status: 'revoked' as const,
       origin: 'user_confirmed' as const,
       recordedAt: params.now,

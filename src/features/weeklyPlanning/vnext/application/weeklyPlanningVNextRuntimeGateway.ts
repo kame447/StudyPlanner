@@ -36,19 +36,6 @@ export function readWeeklyPlanningVNextDurableReceipt(ownerId: string) {
   return receipt?.payload.core === 'vnext' ? receipt : null;
 }
 
-/** The saved turn receipt holds a copy of the memory the turn was given (up to 24 hours). When the user forgets a record,
- * that copy goes too; the receipt's identity, input and the rest of its memory are unchanged. Returns whether it changed. */
-export function removeForgottenRecordFromVNextDurableReceipt(ownerId: string, recordId: string): boolean {
-  const receipt = readWeeklyPlanningVNextDurableReceipt(ownerId);
-  const context = receipt?.payload.confirmedUserContext;
-  if (!receipt || !context || !context.records.some(record => record.id === recordId)) return false;
-  const records = context.records.filter(record => record.id !== recordId);
-  const { confirmedUserContext: _removed, ...rest } = receipt.payload;
-  const payload: WeeklyPlanningVNextDurableTurnInput = records.length ? { ...rest, confirmedUserContext: { records } } : rest;
-  saveDurableWeeklyTurnReceipt({ ...receipt, payload });
-  return true;
-}
-
 /** The existing controller owns admission and publication. Stage the session's single checkpoint
  * write until that controller prepares commit; cancellation/discard writes nothing. Rollback uses
  * the same receipt discipline as V5's staging lifecycle. LocalRuntime tests exercise both paths.

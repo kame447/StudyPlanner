@@ -17,8 +17,7 @@ import type { WeeklyPlanningAction, PlanningState } from '../../types';
 import { createAiPlanningChatSessionWithStore } from '../../chat/aiPlanningChatSession';
 import { hasStoredAiPlanningChatIndex, readAiPlanningChatSnapshotRaw, saveAiPlanningChatSearchText } from '../../chat/aiPlanningChatStore';
 import { createWeeklyPlanningVNextLocalSession, type WeeklyPlanningVNextLocalSession, type WeeklyPlanningActualSaveAttempt } from './weeklyPlanningVNextLocalSession';
-import { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt, removeForgottenRecordFromVNextDurableReceipt } from './weeklyPlanningVNextRuntimeGateway';
-import { subscribeUserPlanningContextForgottenV1 } from '../../../userPlanningContext/userPlanningContextSyncEvents';
+import { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt } from './weeklyPlanningVNextRuntimeGateway';
 import { durableWeeklyPlanningEnabled, cancelDurableWeeklyTurn } from '../../application/weeklyPlanningDurableTurnClient';
 import { durableReceiptTurnParams, recoverDurableWeeklyTurn } from '../../application/weeklyPlanningDurableRecovery';
 import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNextExperimentalSession';
@@ -358,14 +357,6 @@ export function useWeeklyPlanningVNextApplication(
       ? { ownerId, chatId: chat.index.activeChatId, conversationId: runtime.session.conversationId,
         weekStartDate: runtime.state.weekStartDate, revision: runtime.state.revision } : null;
   }
-  // A forgotten memory does not stay in the saved turn receipt (the receipt holds a copy of what the turn was given).
-  useEffect(() => {
-    if (!input.userId) return;
-    const userId = input.userId;
-    return subscribeUserPlanningContextForgottenV1(event => {
-      if (event.ownerId === userId) removeForgottenRecordFromVNextDurableReceipt(userId, event.recordId);
-    });
-  }, [input.userId]);
   // A reply that finished while the app was away is read back by its saved request identity, never re-run.
   // Each chat has its own receipt conversation and checkpoint slot, so it resumes only into its own chat.
   useEffect(() => {

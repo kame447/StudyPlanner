@@ -24,10 +24,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { AiPlanningView as PlanningView } from '../../../../components/AiPlanningViewLegacy';
 import { createAiPlanningChat, loadAiPlanningChatIndex, saveAiPlanningChatIndex, saveAiPlanningChatSnapshot, updateAiPlanningChatRecord, searchAiPlanningChats } from '../../chat/aiPlanningChatStore';
 import { buildAiPlanningStarterPromptOptions } from '../../ui/aiPlanningStarterPrompts';
-import { saveDurableWeeklyTurnReceipt } from '../../application/weeklyPlanningDurableTurnClient';
-import { durableReceipt } from '../../application/weeklyPlanningDurableTurn.testUtils';
-import { readWeeklyPlanningVNextDurableReceipt } from './weeklyPlanningVNextRuntimeGateway';
-import { publishUserPlanningContextForgottenV1 } from '../../../userPlanningContext/userPlanningContextSyncEvents';
 
 const OWNER = 'local-vnext-owner'; const WEEK = '2026-11-02'; const NOW = '2026-11-02T00:00:00.000Z';
 const seed: WeeklyPlanningVNextInterpretation = { status: 'interpreted', planningIntent: 'create_plan' as const, answer: null,
@@ -207,28 +203,6 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     const local = createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId });
     expect(local.checkpoint.read()).toBeNull();
     expect(ref.current!.state.previewCandidates).toEqual([]);
-  });
-
-  it('drops a forgotten memory from the saved turn receipt while the conversation is open, and stops listening when it closes', async () => {
-    const { input, services } = fixture();
-    const base = durableReceipt(); const startedAt = new Date().toISOString();
-    const memoryRecord = (id: string, value: string) => ({ id, ownerId: OWNER, kind: 'concern' as const, label: '進路', value,
-      dateExpression: null, scope: { type: 'global', key: null }, origin: 'user_confirmed' as const, observedDate: '2026-11-01',
-      recordedAt: '2026-11-01T09:00:00.000Z', sourceConversationId: 'c', sourceTurnId: 't' });
-    saveDurableWeeklyTurnReceipt({ ...base, ownerId: OWNER, pending: { ...base.pending, startedAt },
-      payload: { core: 'vnext', weekStartDate: '2026-10-12', checkpoint: null, legacyV5Checkpoint: null,
-        input: { ...base.payload.input, userId: OWNER },
-        confirmedUserContext: { records: [memoryRecord('secret', 'ひみつの志望校'), memoryRecord('keep', '苦手')] } } as never });
-    await act(async () => { renderer = create(<LocalHarness input={input} services={services} />); });
-
-    publishUserPlanningContextForgottenV1({ ownerId: 'someone-else', recordId: 'secret' });
-    expect(readWeeklyPlanningVNextDurableReceipt(OWNER)?.payload.confirmedUserContext?.records).toHaveLength(2);
-    publishUserPlanningContextForgottenV1({ ownerId: OWNER, recordId: 'secret' });
-    expect(readWeeklyPlanningVNextDurableReceipt(OWNER)?.payload.confirmedUserContext?.records.map(record => record.id)).toEqual(['keep']);
-
-    await act(async () => renderer!.unmount()); renderer = undefined;
-    publishUserPlanningContextForgottenV1({ ownerId: OWNER, recordId: 'keep' });
-    expect(readWeeklyPlanningVNextDurableReceipt(OWNER)?.payload.confirmedUserContext?.records.map(record => record.id)).toEqual(['keep']);
   });
 
   it('passes attachment evidence to the native provider on its supplemental channel without changing the user source', async () => {
