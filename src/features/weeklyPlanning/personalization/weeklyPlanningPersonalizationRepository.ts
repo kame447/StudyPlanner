@@ -2,9 +2,11 @@ import { deleteDoc, doc, getDoc, setDoc, type Firestore } from 'firebase/firesto
 import { getFirestoreDb } from '../../../lib/firebaseClient';
 import type { WeeklyPlanningWeekStartsOn } from './weeklyPlanningWeek';
 import {
+  createConfirmedDefaultStudyModeFact,
   createConfirmedWeekStartFact,
   createEmptyWeeklyPlanningPersonalizationProfile,
   sanitizeWeeklyPlanningPersonalizationProfile,
+  type DefaultStudyMode,
   type WeeklyPlanningPersonalizationProfile,
 } from './weeklyPlanningPersonalizationTypes';
 
@@ -16,6 +18,10 @@ export interface WeeklyPlanningPersonalizationRepository {
   setWeekStartsOn(
     userId: string,
     weekStartsOn: WeeklyPlanningWeekStartsOn,
+  ): Promise<WeeklyPlanningPersonalizationProfile>;
+  setDefaultStudyMode(
+    userId: string,
+    defaultStudyMode: DefaultStudyMode,
   ): Promise<WeeklyPlanningPersonalizationProfile>;
   resetProfile(userId: string): Promise<void>;
 }
@@ -59,6 +65,19 @@ export function createLocalWeeklyPlanningPersonalizationRepository(
       return next;
     },
 
+    async setDefaultStudyMode(userId, defaultStudyMode) {
+      const current = await this.getProfile(userId)
+        ?? createEmptyWeeklyPlanningPersonalizationProfile();
+      const now = new Date().toISOString();
+      const next: WeeklyPlanningPersonalizationProfile = {
+        ...current,
+        defaultStudyMode: createConfirmedDefaultStudyModeFact(defaultStudyMode, now),
+        updatedAt: now,
+      };
+      storage.setItem(localKey(userId), JSON.stringify(next));
+      return next;
+    },
+
     async resetProfile(userId) {
       storage.removeItem(localKey(userId));
     },
@@ -84,6 +103,20 @@ export function createFirestoreWeeklyPlanningPersonalizationRepository(
       const next: WeeklyPlanningPersonalizationProfile = {
         ...current,
         weekStartsOn: createConfirmedWeekStartFact(weekStartsOn, now),
+        updatedAt: now,
+      };
+      await setDoc(doc(firestore, COLLECTION, normalizedUserId), next, { merge: false });
+      return next;
+    },
+
+    async setDefaultStudyMode(userId, defaultStudyMode) {
+      const normalizedUserId = requireUserId(userId);
+      const current = await this.getProfile(normalizedUserId)
+        ?? createEmptyWeeklyPlanningPersonalizationProfile();
+      const now = new Date().toISOString();
+      const next: WeeklyPlanningPersonalizationProfile = {
+        ...current,
+        defaultStudyMode: createConfirmedDefaultStudyModeFact(defaultStudyMode, now),
         updatedAt: now,
       };
       await setDoc(doc(firestore, COLLECTION, normalizedUserId), next, { merge: false });

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppSettingsGeneral, type AppSettingsGeneralProps } from './AppSettingsGeneral';
 
 vi.mock('../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext', () => ({
-  useWeeklyPlanningPersonalization: () => ({ weekStartsOn: 'monday', setWeekStartsOn: vi.fn(), resetProfile: vi.fn() }),
+  useWeeklyPlanningPersonalization: () => ({ weekStartsOn: 'monday', setWeekStartsOn: vi.fn(), defaultStudyMode: { mode: 'normal', pomodoro: { preset: '25-5' } }, setDefaultStudyMode: vi.fn(), resetProfile: vi.fn() }),
 }));
 let renderer: ReactTestRenderer;
 afterEach(() => act(() => renderer?.unmount()));
