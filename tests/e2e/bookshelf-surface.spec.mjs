@@ -139,7 +139,7 @@ async function seedBookshelf(page, longTextFixture = null, materialCount = 2) {
     // Complete this opt-in fixture before the app's first real legacy migration.
     // Keep reloads read-only: the existing seeded guard preserves user edits.
     if (longTextFixture) {
-      const { name, subject, activity } = longTextFixture;
+      const { name, subject, activity, lastChapterTitle } = longTextFixture;
       const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
       Object.assign(materials[0], { name, subjectName: subject });
       localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(materials));
@@ -155,7 +155,7 @@ async function seedBookshelf(page, longTextFixture = null, materialCount = 2) {
       localStorage.setItem('studyplanner.actuals', JSON.stringify(actuals));
       const key = 'studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material';
       const preferences = JSON.parse(localStorage.getItem(key));
-      preferences.structureItems = Array.from({ length: 24 }, (_, index) => ({ id: `long-${index}`, title: `${name}${index + 1}`, startUnit: index * 8, endUnit: (index + 1) * 8 }));
+      preferences.structureItems = Array.from({ length: 24 }, (_, index) => ({ id: `long-${index}`, title: index === 23 && lastChapterTitle ? lastChapterTitle : `${name}${index + 1}`, startUnit: index * 8, endUnit: (index + 1) * 8 }));
       localStorage.setItem(key, JSON.stringify(preferences));
       localStorage.setItem('study-planner-appearance', 'pixel');
       localStorage.setItem('study-planner-theme-mode', 'light');
@@ -724,7 +724,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
       for (const contract of ['detail-cancel', 'save-reload']) {
         const purpose = contract === 'detail-cancel'
           ? 'keeps full detail text and cancels unsaved chapter edits'
-          : 'saves the last chapter and preserves it after full reload';
+          : 'saves the last chapter and shows it in the reopened editor';
         test(`${purpose} at ${percent}%`, async ({ page }, testInfo) => {
           // These three functional journeys exceed 30s on CI; this is not a latency fix (#805).
           if (testInfo.project.name === 'webkit-mobile' && viewport.width === 1920 && viewport.height === 1080
@@ -811,14 +811,22 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
             expect(saved.structureItems[23].title).toBe(`保存した章 ${percent}`);
             await detail.getByRole('button', { name: '編集', exact: true }).click();
             await expect(editor.getByLabel('章・節の名前 24', { exact: true })).toHaveValue(`保存した章 ${percent}`);
-            await openBookshelf(page);
-            await page.locator('.bookshelf-featured-card').filter({ hasText: longMaterialName }).click();
-            await page.getByRole('button', { name: '教材メニューを開く' }).click();
-            await page.getByRole('button', { name: '目次を編集', exact: true }).click();
-            await expect(page.getByLabel('章・節の名前 24', { exact: true })).toHaveValue(`保存した章 ${percent}`);
           }
         });
       }
+      // The reload half is its own journey: it starts from the record the save half stores
+      // (same storage shape), so neither test replays the other's long UI path. Same asserts, no timeout change.
+      test(`preserves the saved last chapter after full reload at ${percent}%`, async ({ page }) => {
+        await seedBookshelf(page, {
+          name: longMaterialName, subject: longMaterialSubject, activity: longMaterialActivity,
+          lastChapterTitle: `保存した章 ${percent}`,
+        });
+        await openBookshelf(page);
+        await page.locator('.bookshelf-featured-card').filter({ hasText: longMaterialName }).click();
+        await page.getByRole('button', { name: '教材メニューを開く' }).click();
+        await page.getByRole('button', { name: '目次を編集', exact: true }).click();
+        await expect(page.getByLabel('章・節の名前 24', { exact: true })).toHaveValue(`保存した章 ${percent}`);
+      });
     }
   });
 }
