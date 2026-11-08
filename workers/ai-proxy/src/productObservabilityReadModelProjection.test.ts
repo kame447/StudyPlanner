@@ -5,6 +5,7 @@ import type {
   ProductActivityTelemetryDraft,
 } from '../../../shared/productObservabilityContract';
 import {
+  createEmptyDailyRollup,
   latencyPercentileMs,
   mergeLatencyHistograms,
   observabilityReportingDate,
@@ -157,6 +158,19 @@ describe('product observability read model projection', () => {
     expect(second.aiByPurpose[0]?.aggregate.requestCount).toBe(2);
     expect(second.aiByOperationKind?.[0]?.key).toBe('chat_completion');
     expect(second.aiByOperationKind?.[0]?.aggregate.requestCount).toBe(2);
+  });
+
+  it('aggregates cache-write tokens and counts requests recorded before it existed as unknown, not zero', () => {
+    const empty = createEmptyDailyRollup({ environment: 'production', localDate: '2026-11-08', nowIso: '2026-11-08T00:00:00.000Z' });
+    const { cacheWriteTokens: _w, cacheWriteTokensUnknownCount: _u, ...legacyAi } = empty.ai;
+    const legacy = { ...empty, processedEventCount: 3, ai: { ...legacyAi, requestCount: 3, successCount: 3 } };
+    const withWrite = event<AiRequestMetricPayload>({ eventType: 'ai_request_metric', payload: aiPayload({ cacheWriteTokens: 120 }) });
+    const withoutWrite = event<AiRequestMetricPayload>({ eventType: 'ai_request_metric', payload: aiPayload({ cacheWriteTokens: null }) });
+    const once = projectDailyRollup({ current: legacy, event: withWrite, actorDayWasNew: false, nowIso: withWrite.observedAt });
+    const twice = projectDailyRollup({ current: once, event: withoutWrite, actorDayWasNew: false, nowIso: withoutWrite.observedAt });
+
+    expect(twice.ai).toMatchObject({ requestCount: 5, cacheWriteTokens: 120, cacheWriteTokensUnknownCount: 4 });
+    expect(twice.aiByModel[0]?.aggregate).toMatchObject({ requestCount: 2, cacheWriteTokens: 120, cacheWriteTokensUnknownCount: 1 });
   });
 
   it('keeps decision calls out of headline AI totals and breakdowns while retaining the operation dimension', () => {

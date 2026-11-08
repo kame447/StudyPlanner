@@ -1,5 +1,6 @@
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import {
+  aiCacheWriteUsage,
   PRODUCT_OBSERVABILITY_REPORTING_TIME_ZONE,
   type ObservabilityAiAggregate,
   type ObservabilityDailyRollup,
@@ -31,6 +32,8 @@ function emptyAiAggregate(): ObservabilityAiAggregate {
     totalTokensUnknownCount: 0,
     cachedTokens: 0,
     cachedTokensUnknownCount: 0,
+    cacheWriteTokens: 0,
+    cacheWriteTokensUnknownCount: 0,
     estimatedCostMicros: 0,
     estimatedCostUnknownCount: 0,
     latency: createEmptyLatencyHistogram(),
@@ -53,6 +56,8 @@ function mergeAiAggregate(
   left: ObservabilityAiAggregate,
   right: ObservabilityAiAggregate,
 ): ObservabilityAiAggregate {
+  const leftCacheWrite = aiCacheWriteUsage(left);
+  const rightCacheWrite = aiCacheWriteUsage(right);
   return {
     requestCount: left.requestCount + right.requestCount,
     successCount: left.successCount + right.successCount,
@@ -67,6 +72,8 @@ function mergeAiAggregate(
     totalTokensUnknownCount: left.totalTokensUnknownCount + right.totalTokensUnknownCount,
     cachedTokens: left.cachedTokens + right.cachedTokens,
     cachedTokensUnknownCount: left.cachedTokensUnknownCount + right.cachedTokensUnknownCount,
+    cacheWriteTokens: leftCacheWrite.tokens + rightCacheWrite.tokens,
+    cacheWriteTokensUnknownCount: leftCacheWrite.unknownCount + rightCacheWrite.unknownCount,
     estimatedCostMicros: left.estimatedCostMicros + right.estimatedCostMicros,
     estimatedCostUnknownCount:
       left.estimatedCostUnknownCount + right.estimatedCostUnknownCount,

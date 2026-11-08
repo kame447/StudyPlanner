@@ -6,6 +6,7 @@ import type {
   StoredObservabilityEvent,
 } from '../../../shared/productObservabilityContract';
 import {
+  aiCacheWriteUsage,
   OBSERVABILITY_LATENCY_BUCKET_UPPER_BOUNDS_MS,
   OBSERVABILITY_LATENCY_HISTOGRAM_VERSION,
   PRODUCT_OBSERVABILITY_READ_MODEL_VERSION,
@@ -144,6 +145,8 @@ function createEmptyAiAggregate(): ObservabilityAiAggregate {
     totalTokensUnknownCount: 0,
     cachedTokens: 0,
     cachedTokensUnknownCount: 0,
+    cacheWriteTokens: 0,
+    cacheWriteTokensUnknownCount: 0,
     estimatedCostMicros: 0,
     estimatedCostUnknownCount: 0,
     latency: createEmptyLatencyHistogram(),
@@ -210,7 +213,9 @@ function addAiPayload(
   const completionTokens = finiteNonNegative(payload.completionTokens);
   const totalTokens = finiteNonNegative(payload.totalTokens);
   const cachedTokens = finiteNonNegative(payload.cachedTokens);
+  const cacheWriteTokens = finiteNonNegative(payload.cacheWriteTokens);
   const estimatedCostMicros = finiteNonNegative(payload.estimatedCostMicros);
+  const currentCacheWrite = aiCacheWriteUsage(current);
   const [nextPrompt, promptUnknown] = addNullableMetric(
     current.promptTokens,
     current.promptTokensUnknownCount,
@@ -230,6 +235,11 @@ function addAiPayload(
     current.cachedTokens,
     current.cachedTokensUnknownCount,
     cachedTokens,
+  );
+  const [nextCacheWrite, cacheWriteUnknown] = addNullableMetric(
+    currentCacheWrite.tokens,
+    currentCacheWrite.unknownCount,
+    cacheWriteTokens,
   );
   const [nextCost, costUnknown] = addNullableMetric(
     current.estimatedCostMicros,
@@ -252,6 +262,8 @@ function addAiPayload(
     totalTokensUnknownCount: totalUnknown,
     cachedTokens: nextCached,
     cachedTokensUnknownCount: cachedUnknown,
+    cacheWriteTokens: nextCacheWrite,
+    cacheWriteTokensUnknownCount: cacheWriteUnknown,
     estimatedCostMicros: nextCost,
     estimatedCostUnknownCount: costUnknown,
     latency: recordLatency(current.latency, payload.durationMs),

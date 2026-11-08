@@ -43,9 +43,20 @@ export interface ObservabilityAiAggregate {
   totalTokensUnknownCount: number;
   cachedTokens: number;
   cachedTokensUnknownCount: number;
+  /** Absent in rollups written before cache-write was aggregated; read those as "unknown for every request". */
+  cacheWriteTokens?: number;
+  cacheWriteTokensUnknownCount?: number;
   estimatedCostMicros: number;
   estimatedCostUnknownCount: number;
   latency: ObservabilityLatencyHistogram;
+}
+
+/** Legacy aggregates never recorded cache-write, so every request they hold is unknown, not zero. */
+export function aiCacheWriteUsage(aggregate: ObservabilityAiAggregate): { tokens: number; unknownCount: number } {
+  return {
+    tokens: aggregate.cacheWriteTokens ?? 0,
+    unknownCount: aggregate.cacheWriteTokensUnknownCount ?? aggregate.requestCount,
+  };
 }
 
 export interface ObservabilityDimensionAggregate<TAggregate> {
