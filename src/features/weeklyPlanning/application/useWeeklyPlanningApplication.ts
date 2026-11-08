@@ -1,3 +1,4 @@
+import type { AdviceView } from '../consultation/adviceView';
 import type { ConversationSyncUi } from './weeklyPlanningConversationSyncContract';
 import { loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
 import { durableWeeklyPlanningEnabled, readDurableWeeklyTurnReceipt, cancelDurableWeeklyTurn } from './weeklyPlanningDurableTurnClient';
@@ -128,6 +129,10 @@ export interface WeeklyPlanningApplication {
   pendingActualRecords?: PendingWeeklyPlanningActualRecord[];
   /** Saves every pending record or none. Only the confirmation button may call it; a chat reply never does. */
   approveActualRecords?: () => Promise<void>;
+  /** The latest saved advice and whether it can still be adopted (#246). Absent = none (V5 keeps none). */
+  pendingAdvice?: AdviceView | null;
+  /** The user's own adopt (whole proposal or one option) or decline of the active advice. Records a decision only. */
+  reviewAdvice?: (action: 'approve' | 'dismiss', optionIndex?: number) => Promise<void>;
 }
 
 // Omitted optional inputs have the same identity across committed renders.
