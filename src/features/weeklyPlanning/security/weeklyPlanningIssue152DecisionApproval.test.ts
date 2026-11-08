@@ -131,9 +131,9 @@ function legacyDraftBlock(id: string): WeeklyPlanDraftBlock {
 }
 
 describe('Issue #152 V10 approval freshness boundary', () => {
-  it.fails('route #128: does not approve metadata-free draft blocks without freshness metadata', () => {
-    // Issue #152 V10 reproduced: metadata-free legacy drafts synthesize current revision and bypass conversation freshness.
-    // reachability: legacy/restore paths permit draft blocks with optional behaviorMetadata; see weeklyPlanningStorage.ts:257-283 and weeklyPlanningStorage.ts:628-697.
+  // #128-B decision (2026-11-08): a metadata-free legacy draft stays approvable. It has no freshness
+  // metadata to check, so the guard binds it to the current revision; owner and mixed-metadata checks still apply.
+  it('route #128: approves metadata-free legacy drafts of the owner, bound to the current revision (decided)', () => {
     const result = validateWeeklyPreviewApproval({
       blocks: [legacyDraftBlock('legacy-1')],
       currentStateRevision: 99,
@@ -141,7 +141,20 @@ describe('Issue #152 V10 approval freshness boundary', () => {
       proposalRecords: [],
       runtimeSnapshot: null,
     });
-    expect(result.allowed).toBe(false);
+    expect(result).toMatchObject({ allowed: true, metadata: { stateRevision: 99, authorizedUserId: 'user-152',
+      approvalEligibility: 'eligible', stale: false, assumptionDependencies: [] } });
+    expect(result.allowed && result.metadata.previewId).toMatch(/^legacy-weekly-preview:/);
+  });
+
+  it('route #128: still rejects a metadata-free legacy draft of another owner', () => {
+    expect(validateWeeklyPreviewApproval({
+      blocks: [{ ...legacyDraftBlock('legacy-1'), userId: 'someone-else' }],
+      currentStateRevision: 99,
+      userId: 'user-152',
+      proposalRecords: [],
+      runtimeSnapshot: null,
+    })).toMatchObject({ allowed: false, attempt: { kind: 'invalid_preview_approval_attempt',
+      reason: 'unauthorized-or-invalid-preview' } });
   });
 
   it('rejects cross-owner, stale-revision, and pending-assumption previews', () => {

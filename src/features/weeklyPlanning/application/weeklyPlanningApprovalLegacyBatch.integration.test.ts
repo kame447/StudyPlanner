@@ -123,22 +123,29 @@ describe('Issue #128 restored multi-block approval must check every block', () =
   });
 });
 
-describe('Issue #128-B unresolved metadata-free recovery policy (separate from batch fix)', () => {
-  it.fails('keeps restored metadata-free blocks unsaved until their approval provenance is recovered', async () => {
+// #128-B decision (2026-11-08): metadata-free legacy drafts stay approvable (`legacy_compatible`); the owner
+// check and the mixed-metadata rejection still apply. This crosses codec, application, executor, mock saves and reducer.
+describe('Issue #128-B metadata-free legacy drafts stay approvable (decided)', () => {
+  it('saves restored metadata-free blocks of the owner once and clears the draft batch', async () => {
     const first = block('metadata-free-a');
     const second = block('metadata-free-b');
     delete first.behaviorMetadata;
     delete second.behaviorMetadata;
     const result = await approveReloaded([first, second]);
-    // The existing security it.fails checks only the guard. This crosses codec,
-    // runtime resolution, application, executor, mock saves and reducer instead.
-    expect(result.save.mock.calls.length, JSON.stringify({
-      saved: result.save.mock.calls.length,
-      remainingDrafts: result.state.draftBlocks.length,
-      rejected: result.error !== undefined,
-    })).toBe(0);
+    expect(result.error).toBeUndefined();
+    expect(result.save).toHaveBeenCalledTimes(2);
+    expect(result.completed).toHaveBeenCalledTimes(1);
+    expect(result.state.draftBlocks).toEqual([]);
+  });
+
+  it('rejects a batch that mixes metadata-free and metadata blocks without any save', async () => {
+    const free = block('metadata-free');
+    delete free.behaviorMetadata;
+    const withMetadata = block('with-metadata');
+    const result = await approveReloaded([free, withMetadata]);
     expect(result.error).toBeInstanceOf(Error);
-    expect(result.state.draftBlocks).toEqual([first, second]);
+    expect(result.save).not.toHaveBeenCalled();
+    expect(result.state.draftBlocks).toEqual([free, withMetadata]);
   });
 });
 
