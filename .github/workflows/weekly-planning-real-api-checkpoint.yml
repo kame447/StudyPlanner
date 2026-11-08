@@ -17,6 +17,7 @@ on:
           - smoke
           - vnext
           - vnext-worker
+          - f-measure-rec
       repetitions:
         description: 'Run 1-10 independent repetitions in parallel'
         required: true
@@ -62,7 +63,7 @@ jobs:
             fi
           fi
           case "$profile" in
-            checkpoint|merge-gate|smoke|vnext|vnext-worker) ;;
+            checkpoint|merge-gate|smoke|vnext|vnext-worker|f-measure-rec) ;;
             *) echo "unsupported profile: $profile" >&2; exit 1 ;;
           esac
           case "$repetitions" in
@@ -212,6 +213,20 @@ jobs:
             src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProvider.realApi.observation.test.ts \
             src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalSession.realApi.observation.test.ts \
             src/features/weeklyPlanning/evals/vnextRealApiComparison.observation.test.ts \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+
+      # #958 item 2 (the accepted repetition in the reply): real provider and real renderer through the session. Run it on a branch
+      # without the renderer's recurrence sentence (the baseline) and on one with it; the artifact records the reply and flags.
+      - name: Run recurrence-reply observation (real provider and real renderer)
+        if: ${{ env.REAL_API_PROFILE == 'f-measure-rec' }}
+        shell: bash
+        env:
+          VITE_AI_MAX_PROCESS_REQUESTS: '120'
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRecurrenceReply.realApi.observation.test.ts \
+            -t 'rec-' \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Upload observations
