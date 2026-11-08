@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app';
-import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth } from 'firebase/auth';
-import { connectFirestoreEmulator, doc, getDoc, getFirestore, type Firestore } from 'firebase/firestore';
+import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { collection, connectFirestoreEmulator, doc, getDoc, getDocs, getFirestore, type Firestore } from 'firebase/firestore';
 import { scheduleEventIdForLegacy } from '../../src/domain/scheduleEvent';
 import type { PlanDraft } from '../../src/types/domain';
 import { createFirestoreWeeklyPlanningApprovalPlanRepository } from '../../src/features/weeklyPlanning/application/weeklyPlanningApprovalFirestoreRepository';
@@ -24,7 +24,7 @@ function localAddress(value: string): { host: string; port: number } {
   return { host: url.hostname, port: Number(url.port) };
 }
 
-async function context(label: string) {
+async function context(label: string, signInEmail?: string) {
   const app = initializeApp({ apiKey: 'demo-key', projectId: 'demo-studyplanner' },
     `approval-first-save-${label}-${Date.now()}`);
   apps.push(app);
@@ -33,9 +33,12 @@ async function context(label: string) {
   const db = getFirestore(app);
   const address = localAddress(firestoreHost!);
   connectFirestoreEmulator(db, address.host, address.port);
-  const credential = await createUserWithEmailAndPassword(auth,
-    `approval-${label}-${Date.now()}@example.test`, 'demo-test-password');
-  return { db, uid: credential.user.uid };
+  // A second client of the same account signs in with that account's email instead of creating a user.
+  const email = signInEmail ?? `approval-${label}-${Date.now()}@example.test`;
+  const credential = signInEmail
+    ? await signInWithEmailAndPassword(auth, email, 'demo-test-password')
+    : await createUserWithEmailAndPassword(auth, email, 'demo-test-password');
+  return { db, uid: credential.user.uid, email };
 }
 
 function draft(userId: string, suffix: string): PlanDraft {
@@ -101,5 +104,22 @@ describe.skipIf(!enabled)('Issue #51 first approval transaction — actual deplo
       .rejects.toMatchObject({ code: 'permission-denied' });
     await expect(getDoc(targetRef(foreign.db, input, 'legacy-plan')))
       .rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
+  it('two clients of the same account saving the same first approval at once converge on one Plan and one operation', async () => {
+    const second = await context('owner-second-client', owner.email);
+    expect(second.uid).toBe(owner.uid);
+    const input = draft(owner.uid, 'concurrent-save');
+    const [fromA, fromB] = await Promise.all([
+      createFirestoreWeeklyPlanningApprovalPlanRepository(owner.db).saveApprovedPlan(input),
+      createFirestoreWeeklyPlanningApprovalPlanRepository(second.db).saveApprovedPlan(input),
+    ]);
+    expect(fromB.id).toBe(fromA.id);
+    expect(fromA.id).toBe(resolveApprovalDraftIdentity(input).planId);
+    const operation = targetRef(owner.db, input, 'operation');
+    expect((await getDoc(operation)).exists()).toBe(true);
+    expect((await getDocs(collection(operation, 'weekly_planning_approval_items'))).size).toBe(1);
+    expect((await getDoc(targetRef(owner.db, input, 'legacy-plan'))).exists()).toBe(true);
+    expect((await getDoc(targetRef(owner.db, input, 'canonical-event'))).exists()).toBe(true);
   });
 });
