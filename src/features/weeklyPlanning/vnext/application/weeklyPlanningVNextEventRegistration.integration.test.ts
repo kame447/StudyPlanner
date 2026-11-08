@@ -1056,4 +1056,3 @@ describe('invalid_commitment_interval characterization (a vague time such as "å¤
     expect(h.state()).not.toHaveProperty('pendingEventRegistrationTargetIds');
   });
 });
-
