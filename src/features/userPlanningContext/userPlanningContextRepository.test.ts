@@ -145,6 +145,40 @@ describe('userPlanningContextRepository merge policy', () => {
     });
   });
 
+  it('leaves none of the forgotten words in the tombstone, only the id and durable key that guard against revival', () => {
+    const snapshot = {
+      ...createEmptyUserPlanningContextSnapshotV1(OWNER),
+      records: [
+        record({ id: 'keep', label: '残す', value: '残す値', sourceText: '残す原文', kind: 'concern', origin: 'user_confirmed' }),
+        record({ kind: 'goal_event', value: '第一志望の秘密', dateExpression: '来月の模試', resolvedDate: '2026-09-15',
+          origin: 'user_confirmed' }),
+      ],
+    };
+
+    const forgotten = removeUserPlanningContextRecordFromSnapshotV1({
+      snapshot, recordId: 'record-1', now: '2026-08-29T00:00:00.000Z',
+    });
+
+    const tombstone = forgotten.records.find((entry) => entry.id === 'record-1');
+    expect(tombstone).toMatchObject({ status: 'revoked', kind: 'goal_event', label: '第一志望',
+      value: null, dateExpression: null, resolvedDate: null });
+    expect(JSON.stringify(tombstone)).not.toContain('秘密');
+    expect(JSON.stringify(tombstone)).not.toContain('国公立大学の理系を志望');
+    expect(JSON.stringify(tombstone)).not.toContain('来月の模試');
+    // Only the forgotten record changes.
+    expect(forgotten.records.find((entry) => entry.id === 'keep')).toMatchObject({
+      value: '残す値', sourceText: '残す原文' });
+    // The guard still holds with the words gone: the same fact cannot be inferred back.
+    const merged = mergeInferredUserPlanningContextRecordsV1({
+      snapshot: forgotten,
+      records: [record({ id: 'again', kind: 'goal_event', value: '第一志望の秘密', origin: 'user_stated',
+        recordedAt: '2026-08-30T00:00:00.000Z' })],
+      now: '2026-08-30T00:00:01.000Z',
+    });
+    expect(merged.records.filter((entry) => entry.label === '第一志望')).toHaveLength(1);
+    expect(merged.records.find((entry) => entry.id === 'record-1')?.status).toBe('revoked');
+  });
+
   it('keeps an explicit forget tombstone and blocks later semantic revival', () => {
     const snapshot = {
       ...createEmptyUserPlanningContextSnapshotV1(OWNER),

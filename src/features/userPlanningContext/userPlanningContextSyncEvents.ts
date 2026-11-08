@@ -30,6 +30,32 @@ export function publishUserPlanningContextCommittedV1(
   }
 }
 
+export interface UserPlanningContextForgottenEventV1 {
+  ownerId: string;
+  recordId: string;
+}
+
+const forgottenListeners = new Set<(event: UserPlanningContextForgottenEventV1) => void>();
+
+/** A forget the user completed: other holders of a copy (a saved turn receipt) drop it. Ids only, never the words. */
+export function subscribeUserPlanningContextForgottenV1(
+  listener: (event: UserPlanningContextForgottenEventV1) => void,
+): () => void {
+  forgottenListeners.add(listener);
+  return () => forgottenListeners.delete(listener);
+}
+
+export function publishUserPlanningContextForgottenV1(event: UserPlanningContextForgottenEventV1): void {
+  for (const listener of forgottenListeners) {
+    try {
+      listener({ ...event });
+    } catch {
+      // Each holder clears its own copy; one failing must not stop the others or the forget itself.
+    }
+  }
+}
+
 export function resetUserPlanningContextSyncEventsForTestV1(): void {
   listeners.clear();
+  forgottenListeners.clear();
 }
