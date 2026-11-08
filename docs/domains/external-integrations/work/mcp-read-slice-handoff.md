@@ -95,3 +95,24 @@ Worker: scope `schedule:commit` を新設。scope が無ければ 403、`MCP_COM
 
 #### 同時 commit と日次上限（PR #1070 のレビュー P12）
 件数の確認から保存・読戻しまでを、owner ごとの排他区間（同一 isolate 内の直列化）に入れた。同時に commit しても上限を超えて保存されず、同じ key の同時再送も1回だけ保存される。新しい Firestore collection・Rules・counter は使わない。**限界**: この直列化は他の isolate には効かない。有効化の前に、実際の composition で owner の commit を1か所（例: owner ごとの Durable Object）で実行するようにする。これを満たすまで flag を有効にしない（有効化の前提に追加）。
+
+### owner ごとの commit 直列化を isolate 間で保証する（`feat/issue355-mcp-owner-serializer`、既定で無効のまま）
+
+**設計**: MCP Worker の entry は commit を owner ごとの Durable Object `McpOwnerCommitGate`（`idFromName(ownerId)`）へ委譲する。DO の中で既存の `createScheduleEventCommitter` を変更せずに実行する。DO は owner ごとに1インスタンスしか存在しないので、既存の owner 単位の直列化（件数確認から保存・読戻しまで）が、全 isolate に対する唯一の書込み経路になる。DO は規則を足さない（上限・重複・冪等性は従来の committer のまま）。型付きエラー（`daily_limit_exceeded` など）は DO の応答に載せて Worker 側で同じ class として投げ直す。想定外の失敗は詳細を境界の外に出さず、Worker は「保存を確認できていない。同じ idempotencyKey で再試行」と返す（「保存済み」とは言わない）。
+
+| 選択肢 | 判断 |
+|---|---|
+| 新しい DO class `McpOwnerCommitGate`（**採用**） | owner ごとの単一実行が構造で保証される。MCP 専用 Worker に閉じ、本番 Worker の binding・migration・secret に触れない。 |
+| 既存 `AI_TURNS` DO の流用 | 週間計画の turn の責務・storage・migration と混ざる。本番 Worker（traceWorker.ts）の変更が必須で、MCP の flag 無効の原則に反する。不採用。 |
+| Firestore transaction のカウンタ | 件数を数える新 collection と Rules が要り、ScheduleEvent に revision が無いため保存と同一 transaction にできない（別 key の重なりも防げない）。親への事前相談が必要な範囲で、不採用。 |
+
+**構成**: `workers/ai-proxy/wrangler.mcp.jsonc`（main は `src/mcpWorker.ts`、binding `MCP_OWNER_COMMIT_GATE`、migration `mcp-v1`）。`MCP_READ_ENABLED` / `MCP_COMMIT_ENABLED` は設定せず既定で無効。本番の `wrangler.jsonc`（main は `traceWorker.ts`）と `deploy:worker` は変更していない。この構成は deploy していない。`mcpWorker.ts` は `authenticate` を持たない（全 request が 401）うえ、DO の authority composition は未設定で、呼ばれると失敗する。
+
+**テスト**: 2 つの isolate（モジュールを別に読み込んだ committer）の対照で、gate なしでは上限を超えて保存されること、gate 経由では上限ちょうどで止まること、DO の失敗時に何も保存されないこと、再送が冪等なこと、別 owner が別の DO に行くこと、1つの DO が別 owner の要求を拒否すること。
+
+**所有者が判断すること（実装していない）**
+1. 実認証と OAuth: 認可サーバー、クライアント登録、同意画面（R1）、`schedule:*` scope の発行条件。
+2. アカウントリンク: MCP の利用者と Firebase の owner（uid）の対応づけ。
+3. 本番の authority composition: DO から ScheduleEvent authority（Firestore）へ到達する資格情報（サービスアカウントなど）の発行・保管（Worker secret）と、その権限の範囲。
+4. MCP Worker の公開: 別 Worker 名・ドメイン・Origin 許可、`wrangler.mcp.jsonc` の最初の deploy、DO migration の承認。
+5. flag を有効にする時期: 上の1〜4と R1 が済んだ後の `MCP_COMMIT_ENABLED` の承認。
