@@ -17,6 +17,7 @@ on:
           - smoke
           - vnext
           - vnext-worker
+          - f-measure
       repetitions:
         description: 'Run 1-10 independent repetitions in parallel'
         required: true
@@ -62,7 +63,7 @@ jobs:
             fi
           fi
           case "$profile" in
-            checkpoint|merge-gate|smoke|vnext|vnext-worker) ;;
+            checkpoint|merge-gate|smoke|vnext|vnext-worker|f-measure) ;;
             *) echo "unsupported profile: $profile" >&2; exit 1 ;;
           esac
           case "$repetitions" in
@@ -213,6 +214,24 @@ jobs:
             src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextExperimentalSession.realApi.observation.test.ts \
             src/features/weeklyPlanning/evals/vnextRealApiComparison.observation.test.ts \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+
+      # Frequency (F) measurement for the #992 backlog items: only the synthetic provider cases added for it (the F_MEASURE
+      # scenarios and the extra #1005 negation phrasings). Nothing that already passed is re-run.
+      - name: Run F measurement provider observations
+        if: ${{ env.REAL_API_PROFILE == 'f-measure' }}
+        shell: bash
+        env:
+          VITE_AI_MAX_PROCESS_REQUESTS: '300'
+        run: |
+          set -euo pipefail
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProvider.realApi.observation.test.ts \
+            -t '(f-busy-|f-dup-|f-session-count-|sb1-|sb2-|sb4-|sb5-|sb6-)|answer-negated-request-[b-e]$' \
+            2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
+          # SB3: the quantityRole observation (one repetition per job; the matrix repetitions give the sample count).
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
+            src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextQuantityRole.realApi.observation.test.ts \
+            2>&1 | tee -a "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Upload observations
         if: always()

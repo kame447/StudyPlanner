@@ -33,6 +33,8 @@ export interface VNextProviderScenario {
   seed: VNextAddFact[];
   clock?: WeeklyPlanningVNextInterpretationClock;
   turns: { text: string; expected: Expected }[];
+  /** Measurement only: the observation records the oracle's differences but a difference does not fail the test. */
+  observeOnly?: boolean;
 }
 const task: VNextAddFact = { kind: 'task', localId: 'task', title: '数学プリント', category: 'study' };
 const work = (localId: string, amount: number, quantityRole: 'scope_total' | 'completed' | 'remaining' | 'target' = 'remaining'): VNextAddFact => ({
