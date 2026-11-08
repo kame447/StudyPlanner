@@ -215,7 +215,7 @@ jobs:
             src/features/weeklyPlanning/evals/vnextRealApiComparison.observation.test.ts \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
-      # #958 item 2 (the accepted repetition in the reply): real provider and real renderer through the session. Run it on a branch
+      # #958 item 2 (the accepted repetition in the reply) and #1116 x #1125 1f (xf1f-: a defer-all while a duplicate_quantity question is presented): real provider and real renderer through the session. Run it on a branch
       # without the renderer's recurrence sentence (the baseline) and on one with it; the artifact records the reply and flags.
       - name: Run recurrence-reply observation (real provider and real renderer)
         if: ${{ env.REAL_API_PROFILE == 'f-measure-rec' }}
@@ -226,7 +226,8 @@ jobs:
           set -euo pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
             src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRecurrenceReply.realApi.observation.test.ts \
-            -t 'rec-' \
+            src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextDeferAllRepair.realApi.observation.test.ts \
+            -t 'rec-|xf1f-' \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       - name: Upload observations
