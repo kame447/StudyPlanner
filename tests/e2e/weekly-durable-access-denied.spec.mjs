@@ -75,6 +75,9 @@ for (const status of [401, 403]) {
           if (body.response_format?.json_schema?.name === 'weekly_planning_vnext_native_v1') {
             content = JSON.stringify({ planningIntent: 'discuss', conversationActs: [], answer: null,
               delta: { add: [], patch: [], remove: [], relate: [], defer: [] } });
+          } else if (body.response_format?.json_schema?.name === 'weekly_planning_vnext_turn_purpose_v1') {
+            // A reading with nothing to plan is also sent to the consultation purpose check (#246); this turn is not one.
+            content = JSON.stringify({ schemaVersion: 'learning-consultation-turn-purpose.v1', kind: 'unresolved' });
           } else {
             const prompt = body.messages.map(message => { try { return JSON.parse(message.content); } catch { return null; } })
               .find(value => value?.applicationDecision);
