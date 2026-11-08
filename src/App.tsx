@@ -1,5 +1,4 @@
 import { isFirebaseEnabled } from './lib/firebaseConfig';
-import { AccountDeletionDialog } from './components/AccountDeletionDialog';
 import { hasPendingAccountDeletion } from './services/accountDeletionService';
 import { useStudyProgressPreference } from './hooks/useStudyProgressPreference';
 import { StudyStreakProvider } from './components/StudyStreakContext';
@@ -20,7 +19,6 @@ import { RouteSkeleton } from './components/RouteSkeleton';
 import { StudySessionProvider } from './components/StudySessionView';
 import { PublicPageBoundary } from './components/PublicPageBoundary';
 import { usePublicPageNavigation } from './components/PublicPageLink';
-import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { AppViewSwitcher } from './components/AppViewSwitcher';
 import type { BookshelfInitialAction } from './components/BookshelfView';
 import { DeferredBookshelfView as BookshelfView } from './components/DeferredBookshelfView';
@@ -54,6 +52,11 @@ import type { ViewMode } from './types/domain';
 // Shown once, on a user's first run, so its code loads then: the entry chunk is at its size budget. Its stylesheet stays in the
 // entry stylesheet, because a separate lazy stylesheet gzips worse in total and would break the CSS budget.
 import './styles/first-run-tutorial.css';
+// Settings and account deletion open on demand, so their code loads then (the entry chunk is at its size budget). The settings stylesheet
+// stays in the entry stylesheet for the same reason as the tutorial's.
+import './styles/app-settings-page.css';
+const AppSettingsDialog = lazy(() => import('./components/AppSettingsDialog').then(module => ({ default: module.AppSettingsDialog })));
+const AccountDeletionDialog = lazy(() => import('./components/AccountDeletionDialog').then(module => ({ default: module.AccountDeletionDialog })));
 const FirstRunTutorial = lazy(() => import('./components/FirstRunTutorial').then(module => ({ default: module.FirstRunTutorial })));
 const StudyStreakPage = lazy(() => import('./components/StudyStreakPage').then(module => ({ default: module.StudyStreakPage })));
 
@@ -352,10 +355,10 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   }
 
   const deletionPending = pendingDeletionUid === user.id;
-  const deletionDialog = <AccountDeletionDialog key={user.id} uid={user.id}
+  const deletionDialog = <Suspense fallback={null}><AccountDeletionDialog key={user.id} uid={user.id}
     retry={deletionPending} onClose={() => setDeletionOpen(false)}
     onSignOut={signOut}
-    onCompleted={async () => { await signOut(); window.location.reload(); }} />;
+    onCompleted={async () => { await signOut(); window.location.reload(); }} /></Suspense>;
   if (deletionPending) return deletionDialog;
 
   function openQuickEntry(materialId?: string) {
@@ -815,6 +818,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
     </div>
       {deletionOpen ? deletionDialog : null}
+      {settingsNavigation.isOpen ? <Suspense fallback={<main className="app-settings-loading" aria-label="設定"><button type="button" onClick={settingsNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>
       <AppSettingsDialog
         onShowTutorial={() => { settingsNavigation.close(); setTutorialReplayOwner(user.id); }}
         onDeleteAccount={isFirebaseEnabled() ? () => setDeletionOpen(true) : undefined}
@@ -845,6 +849,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         fontError={fontError}
         onClose={settingsNavigation.close}
       />
+      </Suspense> : null}
       {streakNavigation.isOpen ? <Suspense fallback={<main className="app-settings-page" aria-label="学習記録"><button type="button" onClick={streakNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>
         <StudyStreakPage onClose={streakNavigation.close} />
       </Suspense> : null}
