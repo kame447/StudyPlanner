@@ -79,3 +79,46 @@
     height: 10px;
   }
 }
+
+/*
+ * Narrow / touch screens: input-focus-policy.css forces 16px on every input, and a
+ * 12-hour native time field at 16px cannot fit the period column (AM/PM is clipped, so
+ * 14:15 reads as 02:15). Show the stored 24h "HH:MM" label (the original design in
+ * timetable.css) and overlay the real input transparently, so a tap still opens the
+ * native picker at 16px. Keyboard focus reveals the input and hides the label.
+ */
+@media (max-width: 768px), (pointer: coarse) {
+  .timetable-period-cell .timetable-period-time-text {
+    display: block;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 28px;
+    letter-spacing: 0;
+  }
+
+  .timetable-period-cell .timetable-period-time-field input[type='time'] {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .timetable-period-cell .timetable-period-time-field input[type='time']::-webkit-calendar-picker-indicator {
+    opacity: 0;
+  }
+
+  .timetable-period-cell .timetable-period-time-field input[type='time']:focus-visible {
+    background: var(--surface);
+    color: var(--text);
+    -webkit-text-fill-color: currentColor;
+  }
+
+  .timetable-period-cell .timetable-period-time-field:has(input[type='time']:focus-visible) .timetable-period-time-text {
+    visibility: hidden;
+  }
+}

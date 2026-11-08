@@ -56,4 +56,26 @@ describe('timetable remaining-viewport contract', () => {
     });
     expect(properties).toMatchObject({ display: 'flex', 'flex-wrap': 'wrap', 'align-items': 'baseline' });
   });
+
+  it('shows the stored 24h time label over a transparent 16px input on narrow or touch screens', () => {
+    // input-focus-policy.css forces 16px; a 12-hour native field cannot fit the period column there.
+    const fix = postcss.parse(source('./timetable-time-input-fix.css'));
+    const media = fix.nodes.filter((node): node is postcss.AtRule => node.type === 'atrule' && node.params === '(max-width: 768px), (pointer: coarse)');
+    expect(media).toHaveLength(1);
+    const rules = (selector: string) => {
+      const result: Record<string, string> = {};
+      media[0].walkRules(rule => {
+        if (rule.selectors.includes(selector)) rule.walkDecls(decl => { result[decl.prop] = decl.value; });
+      });
+      return result;
+    };
+    expect(rules('.timetable-period-cell .timetable-period-time-text').display).toBe('block');
+    expect(rules(".timetable-period-cell .timetable-period-time-field input[type='time']"))
+      .toMatchObject({ position: 'absolute', inset: '0', color: 'transparent' });
+    expect(rules(".timetable-period-cell .timetable-period-time-field input[type='time']::-webkit-calendar-picker-indicator").opacity).toBe('0');
+    expect(rules(".timetable-period-cell .timetable-period-time-field:has(input[type='time']:focus-visible) .timetable-period-time-text").visibility)
+      .toBe('hidden');
+    // The 16px iOS zoom policy is not weakened.
+    expect(source('./input-focus-policy.css')).toContain('font-size: 16px !important');
+  });
 });
