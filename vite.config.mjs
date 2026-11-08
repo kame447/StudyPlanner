@@ -92,17 +92,8 @@ function resolveVendorChunk(id) {
 export default defineConfig({
   plugins: [react(), preferredNetworkUrlPlugin(), deduplicateLegalNoticesPlugin()],
   build: {
-    minify: 'terser',
-    terserOptions: {
-      maxWorkers: 2,
-      compress: {
-        passes: 2,
-        unsafe: false,
-        pure_getters: false,
-        drop_console: false,
-      },
-      mangle: { properties: false },
-    },
+    // Experiment C: Vite 8's default minifier (Oxc) instead of terser.
+    minify: 'oxc',
     modulePreload: {
       resolveDependencies(filename, dependencies, { hostType }) {
         // WebKit can retain a failed modulepreload across a real page reload
