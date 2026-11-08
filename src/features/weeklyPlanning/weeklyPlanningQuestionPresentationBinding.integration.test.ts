@@ -1,4 +1,5 @@
 import { peekWeeklyPlanningStableV5DebugTraceForTest } from './trace/weeklyPlanningStableV5DebugTrace';
+import { rendererTraceMessages } from './testUtils/__tests__/weeklyPlanningRendererTraceMessages';
 import { classifyWeeklyPlanningInteraction, type WeeklyPlanningInteractionPlan } from './application/weeklyPlanningInteractionDecision';
 import type { OpenAiCompatibleClient } from '../../services/ai/openAiCompatibleClient';
 import { loadWeeklyPlanningRuntimeModule } from './application/weeklyPlanningRuntimeModule';
@@ -818,7 +819,7 @@ describe('question presentation binding across the turn commit boundary', () => 
           expect(traceAttempts).toHaveLength(1);
           const stored = JSON.parse(storage.values.get('studyplanner.weeklyPlanning.trace.outbox.v1') ?? 'null');
           expect(stored.items[0].input).toEqual(queued[0].input);
-          const actualRendererMessages = rendered[0].messages;
+          const actualRendererMessages = rendererTraceMessages(rendered[0].messages);
           expect(queued[0].input.dialogueRendererTrace?.request?.promptContext).toMatchObject({ messages: actualRendererMessages });
           const genericRequest: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0] | undefined = calls.find(request => request.responseFormat?.json_schema.name === 'weekly_planning_semantic_document_v5');
           if (!genericRequest) throw new Error('Actual ordinary-act semantic request is required');

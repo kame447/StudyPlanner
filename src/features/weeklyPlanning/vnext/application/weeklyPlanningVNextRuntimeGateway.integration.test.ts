@@ -679,7 +679,7 @@ describe('VNext session → gateway → existing controller and trace owner', ()
     expect(result.dialogueRendererTrace?.response?.status).toBe('rendered');
     const actualInput = rendererInputs[3] as Parameters<typeof createWeeklyPlanningStableV5DialoguePrompt>[0];
     const actualPrompt = createWeeklyPlanningStableV5DialoguePrompt(actualInput);
-    expect(sent.messages).toEqual([{ role: 'system', content: actualPrompt.systemPrompt },
+    expect(sent.messages).toEqual([{ role: 'system', content: `${actualPrompt.systemPrompt}\n${actualPrompt.instructionPrompt}` },
       { role: 'user', content: actualPrompt.userPrompt }]);
     expect(result.dialogueRendererTrace?.request?.promptContext).toEqual(actualInput);
     const [queued] = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: CONVERSATION });

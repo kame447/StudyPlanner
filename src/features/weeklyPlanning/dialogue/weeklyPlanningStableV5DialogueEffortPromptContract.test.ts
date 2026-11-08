@@ -47,9 +47,9 @@ describe('Stable V5 dialogue effort prompt contract', () => {
       measurement: 'duration_per_unit',
       unitLabel: '問',
     });
-    expect(payload.request).toContain('measurementを変えないでください');
-    expect(payload.request).toContain('duration_per_unit=1単位あたり');
-    expect(payload.request).toContain('session_duration=1回');
-    expect(payload.request).toContain('total_duration=全体');
+    expect(prompt.instructionPrompt).toContain('measurementを変えないでください');
+    expect(prompt.instructionPrompt).toContain('duration_per_unit=1単位あたり');
+    expect(prompt.instructionPrompt).toContain('session_duration=1回');
+    expect(prompt.instructionPrompt).toContain('total_duration=全体');
   });
 });

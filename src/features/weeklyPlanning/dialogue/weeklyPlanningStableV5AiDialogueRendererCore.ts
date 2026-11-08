@@ -8,6 +8,9 @@ import {
 } from './weeklyPlanningStableV5DialogueContracts';
 import {
   createWeeklyPlanningStableV5DialoguePrompt,
+  weeklyPlanningStableV5DialogueMessages,
+  WEEKLY_PLANNING_STABLE_V5_DIALOGUE_INSTRUCTION_VERSION,
+  type WeeklyPlanningStableV5DialoguePrompt,
 } from './weeklyPlanningStableV5DialoguePrompt';
 import {
   parseWeeklyPlanningStableV5DialogueRendererResponse,
@@ -35,11 +38,13 @@ const GROUNDING_ACK_REPAIR_INSTRUCTION = [
   'currentUserMessageやrecentConversationに値があるだけでは反映済みの根拠になりません。旧値の否定と、新しく肯定する値を区別してください。',
 ].join('');
 
-function rendererPromptTraceContext(prompt: {
-  systemPrompt: string;
-  userPrompt: string;
-}, input: WeeklyPlanningStableV5DialogueRenderInput): Record<string, unknown> {
-  const messages = [
+function rendererPromptTraceContext(
+  prompt: WeeklyPlanningStableV5DialoguePrompt,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): Record<string, unknown> {
+  const sent = weeklyPlanningStableV5DialogueMessages(prompt);
+  // The fixed instructions are not copied into every trace (#977); their version is recorded instead.
+  const traced = [
     { role: 'system', content: prompt.systemPrompt },
     { role: 'user', content: prompt.userPrompt },
   ];
@@ -47,8 +52,9 @@ function rendererPromptTraceContext(prompt: {
     ...(input.existingScheduleGrounding
       ? { existingScheduleGrounding: input.existingScheduleGrounding }
       : {}),
-    messages,
-    requestBytes: new TextEncoder().encode(JSON.stringify(messages)).byteLength,
+    messages: traced,
+    fixedInstructions: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_INSTRUCTION_VERSION,
+    requestBytes: new TextEncoder().encode(JSON.stringify(sent)).byteLength,
   };
 }
 
@@ -162,10 +168,7 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
           input.actionId,
           promptContext,
         );
-        const baseMessages: ChatMessage[] = [
-          { role: 'system', content: prompt.systemPrompt },
-          { role: 'user', content: prompt.userPrompt },
-        ];
+        const baseMessages: ChatMessage[] = weeklyPlanningStableV5DialogueMessages(prompt);
         if (input.recovery && (options.canDispatchRecovery?.() !== true
           || (input.actionKind === 'question' && !input.recoveryQuestionEvidence))) {
           return { status: 'fallback', reason: 'recovery_verification_failed', rawResponse: null };

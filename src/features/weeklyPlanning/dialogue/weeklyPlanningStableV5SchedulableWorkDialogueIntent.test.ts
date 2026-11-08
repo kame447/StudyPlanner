@@ -154,10 +154,9 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
       fallbackText: '指定された作業は完了済みです。',
       previewCount: 0,
     });
-    const payload = JSON.parse(prompt.userPrompt) as { request: string };
-    expect(payload.request).toContain('all_requested_work_complete=完了済みとして');
-    expect(payload.request).toContain('同じ進捗を聞き直さず');
-    expect(payload.request).toContain('追加作業/制約だけ聞く');
+    expect(prompt.instructionPrompt).toContain('all_requested_work_complete=完了済みとして');
+    expect(prompt.instructionPrompt).toContain('同じ進捗を聞き直さず');
+    expect(prompt.instructionPrompt).toContain('追加作業/制約だけ聞く');
   });
 
   it('passes the open-ended progress contract to the renderer prompt', () => {
@@ -199,10 +198,11 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
       knownUnitLabel: null,
       requestedInformation: ['session_allocation'],
     });
-    expect(payload.request).toContain('existing_target_progress=現在進捗のみ');
-    expect(payload.request).toContain('別作業は聞かない');
-    expect(payload.request).toContain('open_ended_session=この計画期間の取組枠を相談');
-    expect(payload.request).toContain('完成率の質問へ戻らない');
+    expect(prompt.instructionPrompt).toContain('existing_target_progress=現在進捗のみ');
+    expect(prompt.instructionPrompt).toContain('別作業は聞かない');
+    expect(prompt.instructionPrompt).toContain('open_ended_session=この計画期間の取組枠を相談');
+    expect(prompt.instructionPrompt).toContain('完成率の質問へ戻らない');
+    expect(prompt.instructionPrompt).not.toContain('100%概算や工程を聞く');
     expect(payload.request).not.toContain('100%概算や工程を聞く');
   });
 });

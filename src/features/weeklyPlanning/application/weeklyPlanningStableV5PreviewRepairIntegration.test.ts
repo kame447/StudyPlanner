@@ -1,4 +1,5 @@
 import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
+import { rendererTraceMessages } from '../testUtils/__tests__/weeklyPlanningRendererTraceMessages';
 import type { MonthEvent } from '../../../types/domain';
 import { renderWeeklyPlanningStableV5AssistantMessage } from '../dialogue/weeklyPlanningStableV5TurnDialogue';
 import { boundWeeklyPlanningDialogueRendererTraceForTransport } from '../trace/weeklyPlanningDialogueRendererTrace';
@@ -222,7 +223,7 @@ async function persistDateScopeQuestion(
   const delivered = rendererClientMock.mock.calls[0][0];
   const rendererTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(rendered.dialogueRendererTrace!);
   const context = rendererTrace.request!.promptContext as Record<string, unknown>;
-  expect(context.messages).toEqual(delivered.messages);
+  expect(context.messages).toEqual(rendererTraceMessages(delivered.messages));
   context.futureDateScopeQuestionField = 'future-date-scope-question';
   const events = takeWeeklyPlanningStableV5DebugTrace(input.traceRequestId);
   const evaluation = events.find(event => event.stage === 'runtime_scheduler_dialogue_evaluated')!;
@@ -277,7 +278,7 @@ async function persistDateScopeQuestion(
         if (index === 0) {
           expect(serialized).toContain('future-date-scope-question');
           const renderer = (saved as { diagnostics: { dialogueRenderer: typeof rendererTrace } }).diagnostics.dialogueRenderer;
-          expect((renderer.request!.promptContext as Record<string, unknown>).messages).toEqual(delivered.messages);
+          expect((renderer.request!.promptContext as Record<string, unknown>).messages).toEqual(rendererTraceMessages(delivered.messages));
         } else {
           expect(serialized).toMatch(/traceProjectionTruncated|traceTruncated|truncated/u);
           expect(serialized).not.toContain('question-extension'.repeat(10_000));
@@ -552,7 +553,7 @@ describe('Stable V5 repair-safe preview integration', () => {
       const promptContext = rendererTrace.request!.promptContext as Record<string, unknown>;
       expect(promptContext.existingScheduleGrounding).toEqual(evidence);
       const delivered = rendererClientMock.mock.calls[0][0];
-      expect(promptContext.messages).toEqual(delivered.messages);
+      expect(promptContext.messages).toEqual(rendererTraceMessages(delivered.messages));
       (promptContext.existingScheduleGrounding as Record<string, unknown>).futureGroundingField = 'future-existing-schedule';
       const events = takeWeeklyPlanningStableV5DebugTrace(traceRequestId);
       const previewEvent = events.find((event) => event.stage === 'runtime_preview_scheduler_evaluated');
