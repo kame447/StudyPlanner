@@ -178,7 +178,8 @@ it('J2c preserves native C5 candidate, fallback, persistence and trace bytes aft
   // bytes. The former f6fab... snapshot was tied to the pre-integration runtime.
   // Keep the exact-byte sentinel in addition to the explicit semantic/authority checks.
   // #305 changed completion tokens; #876 changed prompt wording while keeping typed choice/receipt invariants above.
-  expect(digest).toBe('43b861d0dfa69b312119be91b11a9df6be3e59a74f3cfe6eb40dbf39eab65d35');
+  // #977 moved the turn-independent renderer instructions from the user JSON `request` into the system message.
+  expect(digest).toBe('0284e50b56ff4af02ae47ed166f4bdf792df856070fcbd571b2766fa9ff99f14');
 });
 
 it('actual application entry accepts Choice with zero semantic Luna and real question continuation plus durable consumption', async () => {

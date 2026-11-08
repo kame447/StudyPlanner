@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { rendererTraceMessages } from '../testUtils/__tests__/weeklyPlanningRendererTraceMessages';
+import { WEEKLY_PLANNING_STABLE_V5_DIALOGUE_INSTRUCTION_VERSION } from './weeklyPlanningStableV5DialoguePrompt';
 import type { AiConfig } from '../../../lib/aiConfig';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
@@ -86,11 +88,13 @@ function rendererTrace(): WeeklyPlanningDialogueRendererTrace {
 
 function tracePromptContext(): {
   messages: Array<{ role: string; content: string }>;
+  fixedInstructions?: unknown;
   requestBytes: number;
 } {
   const bounded = boundWeeklyPlanningDialogueRendererTraceForTransport(rendererTrace());
   return bounded.request?.promptContext as {
     messages: Array<{ role: string; content: string }>;
+    fixedInstructions?: unknown;
     requestBytes: number;
   };
 }
@@ -110,8 +114,10 @@ describe('Stable V5 renderer prompt trace', () => {
     const actualRequest = vi.mocked(client.createChatCompletion).mock.calls[0][0];
     const promptContext = tracePromptContext();
 
-    expect(promptContext.messages).toEqual(actualRequest.messages);
-    expect(promptContext.requestBytes).toBeGreaterThan(0);
+    expect(promptContext.messages).toEqual(rendererTraceMessages(actualRequest.messages));
+    expect(promptContext.fixedInstructions).toEqual(WEEKLY_PLANNING_STABLE_V5_DIALOGUE_INSTRUCTION_VERSION);
+    expect(JSON.stringify(promptContext)).not.toContain('applicationDecisionに従い自然な日本語を返す');
+    expect(promptContext.requestBytes).toBe(new TextEncoder().encode(JSON.stringify(actualRequest.messages)).byteLength);
     const userPayload = JSON.parse(promptContext.messages[1].content) as Record<string, unknown>;
     expect(userPayload).not.toHaveProperty('planningInformation');
     expect(userPayload).toMatchObject({
@@ -151,7 +157,7 @@ describe('Stable V5 renderer prompt trace', () => {
     });
     const actualRequest = vi.mocked(client.createChatCompletion).mock.calls[0][0];
     const promptContext = tracePromptContext();
-    expect(promptContext.messages).toEqual(actualRequest.messages);
+    expect(promptContext.messages).toEqual(rendererTraceMessages(actualRequest.messages));
     expect(promptContext.requestBytes).toBeGreaterThan(0);
   });
 });

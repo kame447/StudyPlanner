@@ -1,4 +1,5 @@
 import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
+import { rendererTraceMessages } from '../testUtils/__tests__/weeklyPlanningRendererTraceMessages';
 import { recordCommittedWeeklyPlanningApplicationTurn } from './weeklyPlanningTurnTraceSideEffects';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
@@ -149,7 +150,7 @@ describe('session cap actual runtime to current renderer disclosure', () => {
     const trace = structuredClone(rendered.dialogueRendererTrace!);
     const context = remembered.mock.calls.find(([actionId]) => actionId === trace.actionId)?.[1] as Record<string, unknown>;
     expect(context).toBeDefined();
-    expect(context.messages).toEqual(completion.mock.calls[0][0].messages);
+    expect(context.messages).toEqual(rendererTraceMessages(completion.mock.calls[0][0].messages));
     expect(JSON.parse(completion.mock.calls[0][0].messages[1].content).applicationDecision.previewConstraintSatisfaction).toEqual(run.result.previewConstraintSatisfaction);
     trace.request!.promptContext = { futureSessionCapSentinel: { preserved: true }, ...context, ...(large ? { largeFutureSessionCap: 'session-cap-data'.repeat(30_000) } : {}) };
     const writes: Array<{ session: WeeklyPlanningTraceSession; entries: WeeklyPlanningTraceEntry[] }> = [];

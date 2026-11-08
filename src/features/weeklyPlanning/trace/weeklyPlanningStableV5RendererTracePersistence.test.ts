@@ -1,4 +1,5 @@
 import { questionIntentForStableV5Dialogue } from '../dialogue/weeklyPlanningStableV5DialogueContext';
+import { rendererTraceMessages } from '../testUtils/__tests__/weeklyPlanningRendererTraceMessages';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
   WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
@@ -350,7 +351,7 @@ describe('Stable V5 renderer trace persistence', () => {
       decision: { branch: 'ai_rendered', responseSource: 'ai', finalMessage: text },
     });
     const context = trace.request!.promptContext as Record<string, unknown>;
-    expect(context.messages).toEqual(calls[0].messages);
+    expect(context.messages).toEqual(rendererTraceMessages(calls[0].messages));
     expect((context.recoveryVerification as Record<string, unknown>).messages).toEqual(calls[1].messages);
     expect((context.recoveryVerification as Record<string, unknown>).rawResponse).toBe(checkRaw);
     trace.request!.promptContext = { futureRecoverySentinel: { retained: true }, ...context,
@@ -516,7 +517,7 @@ describe('Stable V5 renderer trace persistence', () => {
       response: { status: 'rendered', reason: null, rawResponse: raw, renderedText: text },
       decision: { branch: 'ai_rendered', responseSource: 'ai', finalMessage: text } });
     const context = trace.request!.promptContext as Record<string, unknown>;
-    expect(context.messages).toEqual(calls[0].messages);
+    expect(context.messages).toEqual(rendererTraceMessages(calls[0].messages));
     trace.request!.promptContext = { futureSessionSentinel: { retained: true }, ...context,
       ...(large ? { futureLargeSessionField: 'session-data'.repeat(30_000) } : {}) };
     const harness = createRepositoryHarness(); harness.failNext(); setWeeklyPlanningTraceRepositoryForTests(harness.repository);

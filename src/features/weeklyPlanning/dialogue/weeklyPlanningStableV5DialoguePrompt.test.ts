@@ -102,11 +102,13 @@ describe('Stable V5 dialogue prompt', () => {
     expect(prompt.systemPrompt).toContain('決まった挨拶や回答例に固定せず');
     // Writing style is guidance, not a hard-coded user-visible response.
     expect(prompt.systemPrompt).not.toContain('もちろんです');
-    expect(request).toContain('currentTurnGrounding.acceptedFacts');
-    expect(request).toContain('groundingAcknowledgementは任意の補助メタデータ');
-    expect(request).toContain('requestedInformation');
-    expect(request).toContain('remaining_total_amount');
-    expect(request).toContain('task_relation');
+    const instructions = prompt.instructionPrompt;
+    expect(instructions).toContain('currentTurnGrounding.acceptedFacts');
+    expect(instructions).toContain('groundingAcknowledgementは任意の補助メタデータ');
+    expect(instructions).toContain('requestedInformation');
+    expect(instructions).toContain('remaining_total_amount');
+    expect(instructions).toContain('task_relation');
+    expect(request).not.toContain('currentTurnGrounding.acceptedFacts');
     expect(payload).toMatchObject({
       currentTurnGrounding: {
         mode: 'required_before_resume',

@@ -1,4 +1,6 @@
 import { renderWeeklyPlanningStableV5AssistantMessageCore, type WeeklyPlanningTurnDialoguePorts } from '../dialogue/weeklyPlanningStableV5TurnDialogueCore';
+import { rendererTraceMessages } from '../testUtils/__tests__/weeklyPlanningRendererTraceMessages';
+import { WEEKLY_PLANNING_STABLE_V5_DIALOGUE_INSTRUCTION_VERSION } from '../dialogue/weeklyPlanningStableV5DialoguePrompt';
 import type { WeeklyPlanningStableV5DialogueRenderInput } from '../dialogue/weeklyPlanningStableV5DialogueContracts';
 import { buildWeeklyPlanningPlanSourceId } from '../planning/weeklyPlanningPlanProvenance';
 import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
@@ -1792,7 +1794,8 @@ describe('Stable V5 human-scale conversation integration', () => {
           rawResponse: await rendererClient.mock.results[0].value, renderedText: first.result.message });
       }
       expect(rendererTrace.decision.finalMessage).toBe(first.result.message);
-      expect(rendererTrace.request?.promptContext).toEqual({ messages: sent.messages,
+      expect(rendererTrace.request?.promptContext).toEqual({ messages: rendererTraceMessages(sent.messages),
+        fixedInstructions: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_INSTRUCTION_VERSION,
         requestBytes: new TextEncoder().encode(JSON.stringify(sent.messages)).byteLength });
       const context = rendererTrace.request!.promptContext as Record<string, unknown>;
       context.futureHandoffSentinel = 'fixed-handoff-future-field';
@@ -1837,7 +1840,8 @@ describe('Stable V5 human-scale conversation integration', () => {
           rawResponse: await rendererClient.mock.results[1].value, renderedText: next.result.message });
       }
       expect(nextTrace.decision.finalMessage).toBe(next.result.message);
-      expect(nextTrace.request?.promptContext).toEqual({ messages: nextSent.messages,
+      expect(nextTrace.request?.promptContext).toEqual({ messages: rendererTraceMessages(nextSent.messages),
+        fixedInstructions: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_INSTRUCTION_VERSION,
         requestBytes: new TextEncoder().encode(JSON.stringify(nextSent.messages)).byteLength });
       const largeContext = nextTrace.request!.promptContext as Record<string, unknown>;
       largeContext.futureLargeHandoffField = '大'.repeat(30_000);

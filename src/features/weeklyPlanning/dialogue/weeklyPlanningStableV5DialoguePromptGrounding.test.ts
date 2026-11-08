@@ -69,7 +69,7 @@ describe('Stable V5 dialogue grounding boundary', () => {
       })],
     }));
     expect(typeof payload.request).toBe('string');
-    expect(String(payload.request).length).toBeGreaterThan(0);
+    expect(prompt.instructionPrompt.length).toBeGreaterThan(0);
   });
 
   it('does not mistake free-form examples for accepted scheduled facts', async () => {
