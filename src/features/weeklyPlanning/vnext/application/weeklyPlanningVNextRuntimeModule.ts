@@ -12,6 +12,7 @@ import type { WeeklyPlanningVNextExperimentalPorts } from './weeklyPlanningVNext
 export { executeIsolatedWeeklyPlanningVNextTurn } from './weeklyPlanningVNextIsolatedTurn';
 // The persisted "saved" mark of confirmed study records lives with the session; the hook reaches it only through this lazy module.
 export { markWeeklyPlanningVNextActualRecordsSaved } from './weeklyPlanningVNextExperimentalSession';
+export { reviewWeeklyPlanningVNextAdvice, withdrawWeeklyPlanningVNextAdviceForRecords } from './weeklyPlanningVNextAdvice';
 
 /** Frozen VNext dev calibration (luna-holdout-fallback-a25c9899); no V5 settings or retuning.
  * The native reader remains the complete fallback for both narrow Jev purposes.

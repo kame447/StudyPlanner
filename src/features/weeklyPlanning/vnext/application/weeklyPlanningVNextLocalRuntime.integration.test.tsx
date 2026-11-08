@@ -28,6 +28,8 @@ import { saveDurableWeeklyTurnReceipt } from '../../application/weeklyPlanningDu
 import { durableReceipt } from '../../application/weeklyPlanningDurableTurn.testUtils';
 import { readWeeklyPlanningVNextDurableReceipt } from './weeklyPlanningVNextRuntimeGateway';
 import { publishUserPlanningContextForgottenV1 } from '../../../userPlanningContext/userPlanningContextSyncEvents';
+import { hydrateUserPlanningContextSnapshotV1, resetUserPlanningContextRuntimeForTestV1 } from '../../../userPlanningContext/userPlanningContextSpace';
+import { USER_PLANNING_CONTEXT_STORAGE_VERSION } from '../../../userPlanningContext/userPlanningContextTypes';
 
 const OWNER = 'local-vnext-owner'; const WEEK = '2026-11-02'; const NOW = '2026-11-02T00:00:00.000Z';
 const seed: WeeklyPlanningVNextInterpretation = { status: 'interpreted', planningIntent: 'create_plan' as const, answer: null,
@@ -247,6 +249,77 @@ describe('explicit local VNext runtime and shared V5 approval', () => {
     await act(async () => renderer!.unmount()); renderer = undefined;
     publishUserPlanningContextForgottenV1({ ownerId: OWNER, recordId: 'keep' });
     expect(readWeeklyPlanningVNextDurableReceipt(OWNER)?.payload.confirmedUserContext?.records.map(record => record.id)).toEqual(['keep']);
+  });
+
+  describe('saved advice (#246 slice 3)', () => {
+    const advice = { schemaVersion: 'learning-consultation-answer.v1' as const, kind: 'proposal' as const, userFacingAnswer: '基礎問題集を毎日1ページ。',
+      assumptions: [], overallUncertainty: 'low' as const, options: [{ title: '毎日少しずつ', strategySummary: '短く続ける', tradeoffs: [],
+        recommendations: [{ recommendationKind: 'study_method', rationale: '続けやすい', assumptionRefs: [], evidenceRefs: [], uncertainty: 'low' as const }] }] };
+    const discuss: WeeklyPlanningVNextInterpretation = { status: 'interpreted', planningIntent: 'discuss', answer: null,
+      delta: { add: [], patch: [], remove: [], relate: [], defer: [] }, metrics: { calls: 1, repairs: 0, latencyMs: 1 } };
+    afterEach(() => resetUserPlanningContextRuntimeForTestV1());
+    async function withAdvice() {
+      const f = fixture(() => async () => discuss);
+      f.services.consultation = () => ({ classify: async () => 'learning_consultation' as const,
+        answer: async () => ({ kind: 'proposal' as const, text: `${advice.userFacingAnswer}\n\n※これは助言です。`, proposal: advice }) });
+      const ref = createRef<WeeklyPlanningApplication>();
+      await act(async () => { renderer = create(<LocalHarness ref={ref} input={f.input} services={f.services} />); });
+      await act(async () => { expect((await ref.current!.submitTurn('何から始めればいい？')).accepted).toBe(true); });
+      const local = () => createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId: ref.current!.chat.index.activeChatId });
+      return { ...f, ref, local };
+    }
+    const editProposal = (local: ReturnType<typeof createWeeklyPlanningVNextLocalSession>, change: object) => {
+      const raw = JSON.parse(local.checkpoint.read()!);
+      raw.vnext.consultation.proposals[0] = { ...raw.vnext.consultation.proposals[0], ...change };
+      local.checkpoint.write(JSON.stringify(raw));
+    };
+
+    it('offers the saved advice for adoption, records the adoption as one decision, and saves no plan', async () => {
+      const { ref, local, save } = await withAdvice();
+      expect(ref.current!.pendingAdvice).toMatchObject({ status: 'reviewable', optionTitles: ['毎日少しずつ'] });
+      await act(async () => { await ref.current!.reviewAdvice!('approve'); });
+      expect(ref.current!.pendingAdvice).toMatchObject({ status: 'approved' });
+      expect(local().readCheckpoint()!.vnext.consultation!.reviewDecisions).toHaveLength(1);
+      await act(async () => { await ref.current!.reviewAdvice!('approve'); });
+      expect(local().readCheckpoint()!.vnext.consultation!.reviewDecisions).toHaveLength(1);
+      expect(save).not.toHaveBeenCalled();
+      expect(local().readCheckpoint()!.vnext.preview).toBeNull();
+    });
+
+    it('declining hides the advice and records the decision', async () => {
+      const { ref, local } = await withAdvice();
+      await act(async () => { await ref.current!.reviewAdvice!('dismiss'); });
+      expect(ref.current!.pendingAdvice).toBeNull();
+      expect(local().readCheckpoint()!.vnext.consultation).toMatchObject({ lifecycle: 'closed' });
+    });
+
+    it('withdraws advice written from a memory when that memory is forgotten while the conversation is open', async () => {
+      const { ref, local } = await withAdvice();
+      editProposal(local(), { derivedFromRecordIds: ['goal-1'] });
+      await act(async () => { publishUserPlanningContextForgottenV1({ ownerId: 'someone-else', recordId: 'goal-1' }); });
+      expect(local().readCheckpoint()!.vnext.consultation!.proposals[0].withdrawnAt).toBeUndefined();
+      await act(async () => { publishUserPlanningContextForgottenV1({ ownerId: OWNER, recordId: 'goal-1' }); });
+      await vi.waitFor(() => expect(local().readCheckpoint()!.vnext.consultation!.proposals[0].withdrawnAt).toBeDefined());
+      // The stored proposal keeps none of its words (the reply already shown stays in the conversation text, as any reply does).
+      expect(JSON.stringify(local().readCheckpoint()!.vnext.consultation)).not.toContain('基礎問題集');
+      expect(ref.current!.pendingAdvice).toMatchObject({ status: 'withdrawn' });
+      await act(async () => { await ref.current!.reviewAdvice!('approve'); });
+      expect(local().readCheckpoint()!.vnext.consultation!.reviewDecisions).toEqual([]);
+    });
+
+    it('withdraws advice from a memory forgotten while the conversation was closed, when it is opened again', async () => {
+      const { ref, local: openLocal, input, services } = await withAdvice();
+      const chatId = ref.current!.chat.index.activeChatId;
+      const local = () => createWeeklyPlanningVNextLocalSession({ ownerId: OWNER, weekStartDate: WEEK, storage: storage.storage, chatId });
+      editProposal(openLocal(), { derivedFromRecordIds: ['goal-9'] });
+      await act(async () => renderer!.unmount()); renderer = undefined;
+      hydrateUserPlanningContextSnapshotV1({ version: USER_PLANNING_CONTEXT_STORAGE_VERSION, ownerId: OWNER, updatedAt: NOW, records: [{ id: 'goal-9', ownerId: OWNER, kind: 'study_goal',
+        label: '志望校', value: null, dateExpression: null, observedDate: '2026-11-01', resolvedDate: null, sourceText: 'ユーザー設定で確認・編集',
+        sourceConversationId: 'c', sourceTurnId: 't', recordedAt: NOW, status: 'revoked', origin: 'user_confirmed' }] });
+      const reopened = createRef<WeeklyPlanningApplication>();
+      await act(async () => { renderer = create(<LocalHarness ref={reopened} input={input} services={services} />); });
+      await vi.waitFor(() => expect(local().readCheckpoint()!.vnext.consultation!.proposals[0].withdrawnAt).toBeDefined());
+    });
   });
 
   it('passes attachment evidence to the native provider on its supplemental channel without changing the user source', async () => {

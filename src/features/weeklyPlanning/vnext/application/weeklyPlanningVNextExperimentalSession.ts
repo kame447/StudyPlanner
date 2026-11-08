@@ -8,6 +8,7 @@
 // Storage: VNext writes only its own checkpoint slot. A saved Stable V5
 // checkpoint is read (never written) and migrated when the VNext slot is empty,
 // so rolling back to V5 finds its own data exactly as it was.
+import { closeConsultation, commitStoredAdvice } from '../../consultation/storage';
 import type { OpenAiCompatibleClient } from '../../../../services/ai/openAiCompatibleClientTypes';
 import { parseWeeklyApprovalLedger } from '../../planning/weeklyPlanningApprovalCore';
 import { resolveVNextPlanningAuthorization, type VNextAuthorizationDecision } from './weeklyPlanningVNextPlanningAuthorization';
@@ -335,6 +336,10 @@ function interpretationFailureReply(failure: WeeklyPlanningVNextFailureRecovery,
   return `${cause}${unapplied}${retained}復旧後にもう一度送ってください。`;
 }
 
+/** The consultation key of a checkpoint body: written only when there is one, and carried unchanged by every other writer. */
+const consultationField = (consultation: WeeklyPlanningVNextSessionCheckpoint['vnext']['consultation']):
+  Pick<WeeklyPlanningVNextSessionCheckpoint['vnext'], 'consultation'> => consultation ? { consultation } : {};
+
 /** Study-record keys of a checkpoint body: written only when there is something, so a plain plan checkpoint is unchanged. */
 function studyRecordFields(records: readonly VNextActualRecord[], question: VNextStudyRecordQuestion | undefined):
   Pick<WeeklyPlanningVNextSessionCheckpoint['vnext'], 'actualRecords' | 'pendingStudyRecordQuestion'> {
@@ -525,9 +530,16 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       ? await ports.consultation.answer(consultation) : null;
     if (advice) {
       if (ports.checkpoint.read() !== rawBefore) return staleTurn();
+      // A proposal is kept for the user to adopt or decline (#246 slice 3); it stays advice, never a fact, a preview or a plan.
+      // One that cannot be stored is shown as before, and the earlier one is closed so only what is shown can be adopted.
+      const prior = read.checkpoint.consultation;
+      const consultation = advice.proposal
+        ? commitStoredAdvice(prior, { ownerId: scope.ownerId, conversationId: scope.conversationId, answer: advice.proposal,
+          derivedFromRecordIds: params.confirmedUserContext?.records.map(record => record.id) ?? [], now: ports.now() }) ?? (prior ? closeConsultation(prior) : undefined)
+        : prior;
       const raw = serializeWeeklyPlanningVNextSessionCheckpoint({
         ownerId: scope.ownerId, weekStartDate: scope.weekStartDate, conversationId: scope.conversationId,
-        vnext: { state, presentedQuestion: null, preview: null, ...studyRecordFields(priorRecords, undefined),
+        vnext: { state, presentedQuestion: null, preview: null, ...studyRecordFields(priorRecords, undefined), ...consultationField(consultation),
           messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
             { role: 'assistant' as const, content: advice.text }].slice(-VNEXT_RECENT_MESSAGE_LIMIT) },
         savedAt: ports.now(),
@@ -776,6 +788,7 @@ export async function submitWeeklyPlanningVNextExperimentalTurn(params: {
       ...(failureRecovery ? { failureRecovery } : {}),
       ...(unansweredQuestionStreak ? { unansweredQuestionStreak } : {}),
       ...studyRecordFields(nextRecords, nextRecordQuestion),
+      ...consultationField(read.checkpoint.consultation),
       messages: [...read.checkpoint.messages, { role: 'user' as const, content: params.userText },
         { role: 'assistant' as const, content: reply }].slice(-VNEXT_RECENT_MESSAGE_LIMIT),
     },
