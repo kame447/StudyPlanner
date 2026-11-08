@@ -462,6 +462,17 @@ Before the first implementation write, and again whenever interrupted work is re
 - Distinct concurrent tasks may proceed only when their responsibility boundaries and release units are genuinely separate; sharing a nearby file alone is not sufficient evidence of conflict, but shared semantic ownership or the same acceptance criterion is.
 - Repository evidence is the coordination source of truth. A missing memory of another chat is never evidence that no one else is working on the task.
 
+### Continuous delegation (user decision, 2026-11-09)
+
+When a parent agent delegates to child agents, idle children are not acceptable while useful independent work exists.
+
+- Give each child one current task and reserve one or two approved, non-overlapping next tasks at the same time. Record current task, reserved next tasks, owner, receipt, actual start, deliverable, and blocked reason in the parent's assignment ledger.
+- When the current task completes or becomes blocked (waiting for another PR's merge, an owner decision, a permission, or review of submitted work), the child reports the deliverable or blocker to the parent and moves to its next reserved task without waiting for a reply. A blocked task is a state of that task, not a reason for its owner to stop.
+- When the reservation runs out, the child asks the parent for the next assignment. The parent refills on receipt of each completion or blocked report; it does not wait for all merges or a periodic check before redistributing.
+- The parent serializes only dependency ordering and final integration (Git/GitHub writes, verification, deploy, merge). One child may own continuous discovery of ready, non-duplicate work.
+- Prefer unprocessed scope that advances features or fixes demonstrated defects. Do not inflate activity by repeating finished investigations, re-running verification that already passed on the same HEAD and conditions, or assigning trivial checks.
+- Safety boundaries are unchanged: work blocked on IAM, billing, personal data, production data, or an unapproved specification decision stays blocked, but unrelated work continues. Limit only concurrent heavy build/test runs by machine load; light implementation, reading, and review may run in parallel.
+
 ### Issue, branch, and pull request roles
 
 - Use an Issue for bugs, investigation, design decisions, backlog, verification tracking, operational work, and tasks that are not yet implementation-ready.
