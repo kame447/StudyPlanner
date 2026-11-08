@@ -174,6 +174,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       ...(input.currentTurnGrounding?.acceptedFacts.some(fact => fact.kind === 'effort_estimate') ? [
         '所要時間について説明する場合は、対象のタスク、全体の所要時間か1回・1単位の時間かという区別、概数か確定値かを守り、自然な表現で伝えてください。確認する必要のない数値を無理に繰り返さないでください。',
       ] : []),
+      ...(input.currentTurnGrounding?.acceptedFacts.some(fact => fact.kind === 'recurrence') ? [
+        'acceptedFactsのrecurrenceは、このturnで受理された繰り返しです。返信の本文（text）で、そのkind・days・countにあるものだけを使い、繰り返しの種類と曜日・回数を短く伝えてください（例: 毎週月曜日、週3回）。daysの識別子（weekday:monday など）は書かず、自然な日本語にしてください。ないkind・曜日・回数は足さないでください。',
+      ] : []),
       ...(input.communication?.corrections?.length ? [
         'communication.correctionsは、このturnで前の受理値から変わった値です。対象ごとに、beforeからafterへ変えたことを返信の本文（text）で短く伝えてください。groundingAcknowledgementにだけ入れて本文を直前の質問のままにしないでください。数値と単位はcorrectionsにあるものだけを使い、変わっていない値は言い換えて繰り返さないでください。',
       ] : []),
