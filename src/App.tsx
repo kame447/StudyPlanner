@@ -26,6 +26,7 @@ import { DeferredDayView as DayView } from './components/DeferredDayView';
 import { DeferredTimetableView as TimetableView } from './components/DeferredTimetableView';
 import { DeferredReportView as ReportView } from './components/DeferredReportView';
 import { DeferredMonthView as MonthView } from './components/DeferredMonthView';
+import { LazyLoadBoundary } from './components/LazyLoadBoundary';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
 import { PlannerDataRecoveryNotice } from './components/PlannerDataRecoveryNotice';
@@ -355,10 +356,10 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   }
 
   const deletionPending = pendingDeletionUid === user.id;
-  const deletionDialog = <Suspense fallback={null}><AccountDeletionDialog key={user.id} uid={user.id}
+  const deletionDialog = <LazyLoadBoundary message="アカウント削除の画面を読み込めませんでした。ページを再読み込みしてください。" onClose={() => setDeletionOpen(false)}><Suspense fallback={null}><AccountDeletionDialog key={user.id} uid={user.id}
     retry={deletionPending} onClose={() => setDeletionOpen(false)}
     onSignOut={signOut}
-    onCompleted={async () => { await signOut(); window.location.reload(); }} /></Suspense>;
+    onCompleted={async () => { await signOut(); window.location.reload(); }} /></Suspense></LazyLoadBoundary>;
   if (deletionPending) return deletionDialog;
 
   function openQuickEntry(materialId?: string) {
@@ -418,10 +419,10 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     onOpenTimetable: openTimetableSurface,
   };
 
-  if (showTutorial) return <Suspense fallback={null}><FirstRunTutorial
+  if (showTutorial) return <LazyLoadBoundary message="使い方の案内を読み込めませんでした。ページを再読み込みしてください。"><Suspense fallback={null}><FirstRunTutorial
     onFinish={completeTutorial}
     onOpenAiPlanning={() => { completeTutorial(); openAiPlanningSurface(); }}
-  /></Suspense>;
+  /></Suspense></LazyLoadBoundary>;
 
   return (
     <HomeDisplayClockProvider>
@@ -818,7 +819,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
     </div>
       {deletionOpen ? deletionDialog : null}
-      {settingsNavigation.isOpen ? <Suspense fallback={<main className="app-settings-loading" aria-label="設定"><button type="button" onClick={settingsNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>
+      {settingsNavigation.isOpen ? <LazyLoadBoundary message="設定を読み込めませんでした。ページを再読み込みしてください。" onClose={settingsNavigation.close}><Suspense fallback={<main className="app-settings-loading" aria-label="設定"><button type="button" onClick={settingsNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>
       <AppSettingsDialog
         onShowTutorial={() => { settingsNavigation.close(); setTutorialReplayOwner(user.id); }}
         onDeleteAccount={isFirebaseEnabled() ? () => setDeletionOpen(true) : undefined}
@@ -849,7 +850,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         fontError={fontError}
         onClose={settingsNavigation.close}
       />
-      </Suspense> : null}
+      </Suspense></LazyLoadBoundary> : null}
       {streakNavigation.isOpen ? <Suspense fallback={<main className="app-settings-page" aria-label="学習記録"><button type="button" onClick={streakNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>
         <StudyStreakPage onClose={streakNavigation.close} />
       </Suspense> : null}
