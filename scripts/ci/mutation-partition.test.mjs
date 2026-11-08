@@ -24,12 +24,34 @@ function fixture(statusA = ['Killed'], statusB = ['Survived']) {
 }
 
 describe('complete mutation partition', () => {
-  it('derives inclusive boundaries from current top-level functions and retains both related roots', () => {
+  // The end line of a top-level function, read independently of the code under test.
+  const endLine = (source, name) => {
+    const file = ts.createSourceFile('target.ts', source, ts.ScriptTarget.Latest, true);
+    const node = file.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === name);
+    return file.getLineAndCharacterOfPosition(node.end - 1).line + 1;
+  };
+  it('derives inclusive boundaries from the end of two top-level functions and covers every line exactly once', () => {
+    const [file] = targets;
     const ranges = partitionRanges(sources, ts);
-    expect(ranges.a).toEqual([{ file: targets[0], start: 1, end: 52 }, { file: targets[1], start: 184, end: 458 }]);
-    expect(ranges.b).toEqual([{ file: targets[0], start: 53, end: 58 }, { file: targets[1], start: 1, end: 183 }, { file: targets[1], start: 459, end: 716 }]);
-    const moved = { ...sources, [targets[1]]: '\n' + sources[targets[1]] };
-    expect(partitionRanges(moved, ts).a[1]).toMatchObject({ start: 185, end: 459 });
+    const before = endLine(sources[file], 'computeVNextWorkUnits');
+    const last = endLine(sources[file], 'computeUnits');
+    const lineCount = sources[file].split('\n').length - Number(sources[file].endsWith('\n'));
+    expect(ranges.a).toEqual([{ file, start: before + 1, end: last }]);
+    expect(ranges.b).toEqual([{ file, start: 1, end: before }, { file, start: last + 1, end: lineCount }]);
+    const covered = [...ranges.a, ...ranges.b].sort((x, y) => x.start - y.start);
+    expect(covered[0].start).toBe(1);
+    covered.slice(1).forEach((range, index) => expect(range.start).toBe(covered[index].end + 1));
+    expect(covered.at(-1).end).toBe(lineCount);
+    const moved = { ...sources, [file]: '\n' + sources[file] };
+    expect(partitionRanges(moved, ts).a[0]).toMatchObject({ start: before + 2, end: last + 1 });
+  });
+  it('keeps the large function in its own shard so that each shard holds a similar share of the mutants', () => {
+    const [file] = targets;
+    const [range] = partitionRanges(sources, ts).a;
+    // `computeUnits` is the dominant function of the target (about 280 of 506 generated mutants, measured with the pinned
+    // instrumenter), so shard a spans little else.
+    expect(range.end - range.start + 1).toBeGreaterThan(120);
+    expect(sources[file].split('\n').slice(range.start - 1, range.end).join('\n')).toContain('function computeUnits(');
   });
   it('rejects missing anchors rather than losing a source tail', () => {
     expect(() => partitionRanges({ ...sources, [targets[0]]: 'export const missing = 1;' }, ts)).toThrow('anchor');
