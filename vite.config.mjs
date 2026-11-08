@@ -65,30 +65,6 @@ function preferredNetworkUrlPlugin() {
   };
 }
 
-function resolveVendorChunk(id) {
-  if (!id.includes('node_modules')) {
-    return undefined;
-  }
-
-  if (id.includes('/firebase/') || id.includes('/@firebase/')) {
-    return 'vendor-firebase';
-  }
-
-  if (
-    id.includes('/react/') ||
-    id.includes('/react-dom/') ||
-    id.includes('/scheduler/')
-  ) {
-    return 'vendor-react';
-  }
-
-  if (id.includes('/lucide-react/')) {
-    return 'vendor-icons';
-  }
-
-  return 'vendor-runtime';
-}
-
 export default defineConfig({
   plugins: [react(), preferredNetworkUrlPlugin(), deduplicateLegalNoticesPlugin()],
   build: {
@@ -111,15 +87,6 @@ export default defineConfig({
         return hostType === 'js' && /(?:^|\/)AdminApp-[^/]+\.js$/.test(filename)
           ? dependencies.filter(dependency => dependency !== filename)
           : dependencies;
-      },
-    },
-    // Vite 8 (Rolldown): `rollupOptions`/`output.manualChunks` are deprecated. The same per-module
-    // vendor chunk names are returned from one `codeSplitting` group (null = the group ignores the module).
-    rolldownOptions: {
-      output: {
-        codeSplitting: {
-          groups: [{ name: id => resolveVendorChunk(id) ?? null, debugName: 'vendor' }],
-        },
       },
     },
   },
