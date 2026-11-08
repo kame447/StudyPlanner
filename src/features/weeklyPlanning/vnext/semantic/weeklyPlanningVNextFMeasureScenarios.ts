@@ -64,6 +64,19 @@ export const VNEXT_F_MEASURE_SCENARIOS: VNextProviderScenario[] = [
     ['cap-control', '数学を今週7時間やりたいです。'],
   ] as const).map(([id, text]) => one(id, text, [])),
 
+  // Softer wordings of the same daily limit (AshEdison's cap-soft-cases.md). In run 42502572367 `cap-daily-soft` ("...くらいにしたい")
+  // gave no capacity fact in 3/3 and instead a second task with a one-hour workload. Which wordings are read as a limit and which
+  // as work is the evidence for the owner decision (#1110). Read: capacity facts, whether the final reading has a second task
+  // (extra_task_in_final in tp-cap-extract.py), repairs. cap-soft-target-kurai is a goal meaning (a task is a fair reading);
+  // cap-soft-hard-ika is the hard control ("以内"). Expected roles are placeholders.
+  ...([
+    ['cap-soft-dekireba', 'できれば毎日1時間までにしたいです。数学を今週7時間やりたいです。'],
+    ['cap-soft-meyasu', '勉強は1日1時間を目安にします。数学を今週7時間やりたいです。'],
+    ['cap-soft-weekday-kurai', '平日は1時間くらいにしたいです。数学を今週7時間やりたいです。'],
+    ['cap-soft-target-kurai', '毎日1時間くらいは勉強したいです。数学を今週7時間やりたいです。'],
+    ['cap-soft-hard-ika', '毎日1時間以内にしてください。数学を今週7時間やりたいです。'],
+  ] as const).map(([id, text]) => one(id, text, [])),
+
   // Registration with only a part of the day (AshEdison's fixed-interval-repair.md). Without the repair the provider puts a named
   // time period on a fixed_interval with no times, the transaction rejects it and the repair repeats it (3/3 in run 42498006565).
   // Run on a branch that carries fixed-interval-repair.patch. Read `result` (status; interpreted vs rejected_after_repair), the repair

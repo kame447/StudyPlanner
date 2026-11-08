@@ -245,7 +245,7 @@ jobs:
           set -euo pipefail
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs --maxWorkers=1 run \
             src/features/weeklyPlanning/vnext/semantic/weeklyPlanningVNextProvider.realApi.observation.test.ts \
-            -t '(p6-|c6-|rangeabs-)' \
+            -t '(cap-soft-)' \
             2>&1 | tee "$WEEKLY_PLANNING_ISSUE156_OUTPUT_DIR/run.log"
 
       # SB3 (QuietLovelace's quantityRole observation). In run 42498006565 this never ran: it was the second command of a
