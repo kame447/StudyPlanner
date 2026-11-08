@@ -129,6 +129,16 @@ describe('browser harness stubs export what the application imports', () => {
       .toEqual([]);
   });
 
+  it('has no spec that writes its own runtime gateway stub body instead of the shared one (#1075: a copy went stale)', () => {
+    const specDir = path.join(path.dirname(srcDir), 'tests/e2e');
+    const serving = fs.readdirSync(specDir).filter(name => /\.spec\.mjs$/.test(name))
+      .map(name => ({ name, text: fs.readFileSync(path.join(specDir, name), 'utf8') }))
+      .filter(spec => spec.text.includes('weeklyPlanningTurnRuntimeGateway.stub.js'));
+    expect(serving.length).toBeGreaterThan(0);
+    expect(serving.filter(spec => !spec.text.includes('unaliasedRuntimeGatewayStubBody(')
+      || /export \{[^}]*createWeeklyPlanningVNextRuntimeGateway/.test(spec.text)).map(spec => spec.name)).toEqual([]);
+  });
+
   it('serves a spec stub body that exports every name both runtime gateways are imported for', () => {
     const body = unaliasedRuntimeGatewayStubBody('/repo') as string;
     const exported = exportedNames(parse('stub-body.mjs', body));

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
+import { unaliasedRuntimeGatewayStubBody } from './support/weekly-planning-provider.mjs';
 
 // Tier A+B: real client/semantic/runtime/application/UI and the existing local
 // repository. Only final Worker responses are stipulated; no real provider or Worker ingress executes.
@@ -158,7 +159,7 @@ async function boot(page, mode) {
   await page.route('**/weeklyPlanningTurnRuntimeGateway.stub.js*', async route => {
     audit.replacedModules.push('gateway');
     return route.fulfill({ contentType: 'application/javascript',
-      body: `export { weeklyPlanningTurnRuntimeGateway } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/application/weeklyPlanningTurnRuntimeGateway.ts`)};\nexport { createWeeklyPlanningVNextRuntimeGateway, readWeeklyPlanningVNextDurableReceipt } from ${JSON.stringify(`/@fs${root}/src/features/weeklyPlanning/vnext/application/weeklyPlanningVNextRuntimeGateway.ts`)};` });
+      body: unaliasedRuntimeGatewayStubBody(root) });
   });
   for (const [file, marker, injected] of [
     ['aiConfig.ts', 'function getCloudflareAiProxyUrl() {', `return ${JSON.stringify(PROXY)};`],
