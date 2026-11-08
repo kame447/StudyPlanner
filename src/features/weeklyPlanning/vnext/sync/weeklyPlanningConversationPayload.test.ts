@@ -43,9 +43,15 @@ describe('cloud conversation payload uses the production readers', () => {
     expect(new TextEncoder().encode(JSON.stringify(full)).byteLength).toBeLessThan(MAX_CONVERSATION_SYNC_BYTES / 10);
   });
   it('does not synchronize a damaged consultation or one of another conversation', () => {
-    const consultation = fullConsultation();
-    expect(validateConversationPayload(scope, payload({ ...consultation, conversationId: 'foreign' }))).toBe(false);
-    expect(validateConversationPayload(scope, payload({ ...consultation, activeAdviceId: 'missing' }))).toBe(false);
+    // The writer refuses to produce a damaged consultation, so the damaged bytes are made by hand.
+    const damaged = (change: object) => {
+      const value = payload(fullConsultation()); const core = JSON.parse(value.core!);
+      core.vnext.consultation = { ...core.vnext.consultation, ...change };
+      return { ...value, core: JSON.stringify(core) };
+    };
+    expect(validateConversationPayload(scope, damaged({}))).toBe(true);
+    expect(validateConversationPayload(scope, damaged({ conversationId: 'foreign' }))).toBe(false);
+    expect(validateConversationPayload(scope, damaged({ activeAdviceId: 'missing' }))).toBe(false);
   });
   it('rejects another owner, conversation, or planning week', () => {
     for (const altered of [{ ownerId: 'foreign' }, { conversationId: 'foreign' }, { weekStartDate: '2026-11-09' }]) {
