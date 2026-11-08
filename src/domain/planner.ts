@@ -258,6 +258,7 @@ export function createActualFromDraft(
     weeklyPlanningObservationResult: draft.weeklyPlanningObservationResult
       ? { ...draft.weeklyPlanningObservationResult }
       : undefined,
+    ...(draft.timesFromPlan ? { timesFromPlan: true as const } : {}),
     updatedAt: new Date().toISOString(),
   };
 }

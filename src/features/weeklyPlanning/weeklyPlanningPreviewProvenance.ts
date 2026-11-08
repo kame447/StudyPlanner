@@ -1,3 +1,4 @@
+import type { WeeklyPlanningCandidateEstimateV1 } from './personalization/weeklyPlanningEstimateCalibration';
 import type {
   PlanType,
   WeeklyPlanningMemoryPaceObservationSourceV1,
@@ -13,4 +14,6 @@ export interface WeeklyPlanningStableV5PreviewProvenance {
   sessionRole?: 'learning' | 'review';
   reviewRound?: 1 | 2;
   weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
+  /** Compact estimate: the rest of the plan's estimate metadata is derived from this candidate when its block is built. */
+  estimate?: WeeklyPlanningCandidateEstimateV1;
 }

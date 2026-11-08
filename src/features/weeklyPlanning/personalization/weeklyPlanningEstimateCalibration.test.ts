@@ -114,6 +114,16 @@ describe('weekly planning estimate calibration', () => {
     expect(onlyDifferent).toMatchObject({ observationCount: 0, medianRatio: null, multiplier: 1 });
   });
 
+  it('does not count a one-tap completion, which keeps the plan times, but counts a measured actual as before', () => {
+    const plans = [plan('plan-1', metadata(60)), plan('plan-2', metadata(60))];
+    const oneTap = { ...actual('one-tap', 'plan-1', '19:00', '20:00'), isAlignedToPlan: true, timesFromPlan: true as const };
+    const measured = { ...actual('measured', 'plan-2', '19:00', '20:30'), isAlignedToPlan: true };
+    expect(deriveWeeklyPlanningEstimateCalibration({ plans, actuals: [oneTap] }))
+      .toMatchObject({ observationCount: 0, medianRatio: null, multiplier: 1 });
+    expect(deriveWeeklyPlanningEstimateCalibration({ plans, actuals: [oneTap, measured] }))
+      .toMatchObject({ observationCount: 1, medianRatio: 1.5 });
+  });
+
   it('ignores plans without Stable V5 estimate metadata and supports overnight actuals', () => {
     const result = deriveWeeklyPlanningEstimateCalibration({
       plans: [plan('manual'), plan('weekly', metadata(60))],

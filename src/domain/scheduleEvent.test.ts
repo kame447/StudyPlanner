@@ -125,6 +125,15 @@ describe('canonical ScheduleEvent migration model', () => {
     expect(event.plan?.weeklyPlanningObservationSource).toBe(source.weeklyPlanningObservationSource);
   });
 
+  it('keeps the weekly-planning estimate through the schedule event and adds nothing when there is none', () => {
+    const weeklyPlanningEstimate = { version: 1 as const, baseEstimateMinutes: 30, estimateBasis: 'direct_effort', calibrationMultiplier: 1,
+      allocationMinutes: 45, roundingStepMinutes: 15 as const, sourceFactRefs: ['task-1'] };
+    const withEstimate = plan({ weeklyPlanningEstimate });
+    expect(scheduleEventFromPlan(withEstimate).plan?.weeklyPlanningEstimate).toEqual(weeklyPlanningEstimate);
+    expect(scheduleEventToPlan(scheduleEventFromPlan(withEstimate))).toEqual(withEstimate);
+    expect(scheduleEventToPlan(scheduleEventFromPlan(plan()))).not.toHaveProperty('weeklyPlanningEstimate');
+  });
+
   it('round-trips a rich multi-day MonthEvent without losing range or metadata', () => {
     const source = monthEvent();
     const event = scheduleEventFromMonthEvent(source);

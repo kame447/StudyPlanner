@@ -4,6 +4,7 @@ import type {
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
+import { createWeeklyPlanningCandidateEstimate } from '../personalization/weeklyPlanningEstimateCalibration';
 import { allocationBreakdownForWeeklyPlanningWorkItem } from './weeklyPlanningAllocationBreakdown';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
@@ -91,6 +92,7 @@ export function createPlacementCandidate(params: {
   const planType = task.category === 'study' ? 'study' : 'other';
   const observationSource = (params.item as WorkItemWithObservationSource)
     .weeklyPlanningObservationSource;
+  const estimate = createWeeklyPlanningCandidateEstimate(params.item, params.duration);
   const metadata: WeeklyPlanningStableV5CandidateMetadata = {
     runtime: 'stable_v5',
     conversationId: task.source.conversationId,
@@ -103,6 +105,7 @@ export function createPlacementCandidate(params: {
     ...(observationSource
       ? { weeklyPlanningObservationSource: { ...observationSource } }
       : {}),
+    ...(estimate ? { estimate } : {}),
   };
   const workItemKey = params.workItemKey ?? params.item.id;
   const allocationBreakdown = allocationBreakdownForWeeklyPlanningWorkItem(params.item, params.duration);

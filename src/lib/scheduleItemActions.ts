@@ -59,7 +59,8 @@ export function createDuplicatePlanDraft(plan: Plan): PlanDraft {
 }
 
 export function createCompletionDraft(plan: Plan): ActualDraft {
-  return { ...createActualDraftForPlan(plan), isAlignedToPlan: true };
+  // One tap saves the plan's own start and end: it says "done", not how long it took.
+  return { ...createActualDraftForPlan(plan), isAlignedToPlan: true, timesFromPlan: true };
 }
 
 export interface ScheduleActionCapabilities {

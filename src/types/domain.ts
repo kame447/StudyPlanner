@@ -77,6 +77,17 @@ export interface WeeklyPlanningMemoryPaceObservationSourceV1 {
   plannedSessionMinutes: number;
 }
 
+/** The estimate behind a weekly-planning block: numbers and fact ids only, never a user's words. */
+export interface WeeklyPlanningEstimateMetadataV1 {
+  version: 1;
+  baseEstimateMinutes: number;
+  estimateBasis: string | null;
+  calibrationMultiplier: number;
+  allocationMinutes: number;
+  roundingStepMinutes: 5 | 15;
+  sourceFactRefs: string[];
+}
+
 export interface WeeklyPlanningMemoryPaceObservationResultV1 {
   version: 1;
   kind: 'memory_pace_calibration';
@@ -111,6 +122,7 @@ export interface Plan {
   materialId?: string | null;
   materialName?: string;
   weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
+  weeklyPlanningEstimate?: WeeklyPlanningEstimateMetadataV1;
 }
 
 export interface ActualProgressSource {
@@ -134,6 +146,8 @@ interface ActualRecordBase {
   materialName?: string;
   materialProgressUpdates?: ActualMaterialProgressUpdate[];
   weeklyPlanningObservationResult?: WeeklyPlanningMemoryPaceObservationResultV1;
+  /** Set by the one-tap "complete": the start and end are the plan's own times, not measured. Not a duration observation. */
+  timesFromPlan?: true;
 }
 
 /** An actual with the clock times the user entered; its duration is derived from them. */
@@ -182,6 +196,7 @@ export interface PlanDraft {
   materialId?: string | null;
   materialName?: string;
   weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
+  weeklyPlanningEstimate?: WeeklyPlanningEstimateMetadataV1;
 }
 
 export interface ActualDraft {
@@ -198,6 +213,8 @@ export interface ActualDraft {
   materialName?: string;
   materialProgressUpdates?: ActualMaterialProgressUpdate[];
   weeklyPlanningObservationResult?: WeeklyPlanningMemoryPaceObservationResultV1;
+  /** Set by the one-tap "complete": the start and end are the plan's own times, not measured. Not a duration observation. */
+  timesFromPlan?: true;
 }
 
 export interface StudySubject {
