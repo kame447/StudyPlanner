@@ -4,6 +4,7 @@ import { createLocalScheduleEventAuthority } from '../../repositories/localSched
 import { createLocalPlannerStorageGateway } from '../../repositories/localStorageGateway';
 import type { MonthEvent } from '../../types/domain';
 import { createScheduleEventCommitter, type ScheduleEventCommitAudit } from './commitScheduleEvent';
+import { MAX_SCHEDULE_EVENT_TITLE_LENGTH } from './prepareScheduleEvent';
 import { createScheduleRangeReader } from './readScheduleRange';
 
 const OWNER = 'owner-a';
@@ -110,6 +111,12 @@ describe('commit_schedule_event application adapter', () => {
   ])('rejects a malformed or authority-bearing request before reads or writes: %j', async bad => {
     const h = await harness();
     await expect(h.commit(OWNER, bad)).rejects.toMatchObject({ code: 'invalid_commit' });
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses an over-long title before any write (the same limit as prepare)', async () => {
+    const h = await harness();
+    await expect(h.commit(OWNER, { ...input, title: 'あ'.repeat(MAX_SCHEDULE_EVENT_TITLE_LENGTH + 1) })).rejects.toMatchObject({ code: 'invalid_event' });
     expect(h.upsert).not.toHaveBeenCalled();
   });
 
