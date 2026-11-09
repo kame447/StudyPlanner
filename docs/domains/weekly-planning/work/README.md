@@ -1,11 +1,11 @@
 # Weekly Planning active work
 
 Status: active-work index
-Updated: 2026-10-07
+Updated: 2026-11-10
 
-This directory contains durable unfinished task/checkpoint records only when an Issue alone is insufficient for the technical acceptance detail.
+This directory holds durable task/checkpoint records. The current Issue and canonical VNext contract override any old task label or historical next step. As of 2026-11-10, Issues #305, #335, #488, #973 and #978 are closed; their legacy checkpoints below are historical evidence, not active implementation instructions. Retained historical work files require the archive invariant-transfer gate in `docs/DOCUMENT_DICTIONARY.md` before moving or deleting them.
 
-Current durable records:
+Work record catalog (including historical checkpoints):
 
 - [V5回帰のVNext移管](issue978-regression-migration.md) — #978。旧除外の日付・繰返し・固定予定を検査対象に戻し、ケースごとのWorker対応と未検証の意味読取を追跡する。
 
@@ -15,7 +15,7 @@ Current durable records:
 
 - [AI入力時のviewportと会話履歴の表示](20261007-ai-composer-viewport-history-handoff.md) — 入力中の会話可視領域・scroll ownershipに限定した暫定local checkpoint。Issue作成がcancelされたため再試行を停止中。#488のsemantic実装とは別scope。
 
-- [`20261010-issue488-staged-integration.md`](20261010-issue488-staged-integration.md) — Issue #488（公開source保全、独立release unit、依存・検証・未完了項目の台帳）
+- [`20261010-issue488-staged-integration.md`](20261010-issue488-staged-integration.md) — closed Issue #488 の過去の検証・source保全記録。現行VNextの実装指示ではない。
 - `20260728-trace-production-recovery.md` — Issue #89
 - `20260731-approval-operational-rollout.md` — Issue #51
 - `20260731-personalization-rollout.md` — Issue #47
@@ -42,7 +42,7 @@ Issue #52 was completed by PR #283 and is no longer an active scope. Its impleme
 
 Current execution ordering is owned by [`../roadmap/current.md`](../roadmap/current.md). Issue #136 / PR #275 is complete; its former semantic-regression branch is not a current implementation queue. Issue #152 is completed/closed; PR #174 is closed without merge and is historical evidence, not an active implementation or merge prerequisite. The merged replacement chain and retained security baseline are recorded in the roadmap and Issue #152. New release units must consume the applicable security contracts and current verification gates (including #335 where relevant), rather than restart #174. Re-fetch the owning checkpoint and exact target HEAD before reusing results; do not merge or remove retained evidence branches as ordinary cleanup.
 
-Issue #305 retains the Jev integration design and rollout decision. Its initial default-off implementation was merged through PR #332; that completed branch must not be reused for the next evaluation. Issue #333 owns Japanese semantic evaluation, including the same-case Jev/Luna comparison, Gemini first-pass review, the limited Opus judge and tuning/holdout separation (human blind review is no longer required by owner decision on 2026-09-27). Jev-first replacement units keep their durable technical record in this directory (one record per unit); branch, PR and orchestration checkpoints stay in #305. Keep provider/privacy, security and shared telemetry with #187, #152 and #213. The runtime remains off by default, and neither merging PR #332 nor passing mock tests establishes Japanese quality or production activation.
+Closed Issue #305 retains historical Jev integration and rollout decisions. Its initial default-off implementation was merged through PR #332; that completed branch must not be reused for new evaluation. Issue #333 owns Japanese semantic evaluation, including the same-case Jev/Luna comparison, Gemini first-pass review, the limited Opus judge and tuning/holdout separation (human blind review is no longer required by owner decision on 2026-09-27). Jev-first replacement units keep their durable technical record in this directory (one record per unit); branch, PR and orchestration checkpoints stay in #305. Keep provider/privacy, security and shared telemetry with #187, #152 and #213. The runtime remains off by default, and neither merging PR #332 nor passing mock tests establishes Japanese quality or production activation.
 
 Issue #246 is a special case where product/runtime requirements are canonicalized in [`../spec/learning-consultation-and-advice.md`](../spec/learning-consultation-and-advice.md). Phase 1A foundation was merged by PR #280; there is no active #246 branch at this checkpoint. Keep implementation status in Issue #246 rather than recreating the former branch or adding another duplicate work Markdown.
 

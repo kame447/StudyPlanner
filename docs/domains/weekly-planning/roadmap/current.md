@@ -70,7 +70,7 @@ The #246/#294 consultation and memory owners, #187 provider integration, #213 te
 
 [Issue #488](https://github.com/kame447/StudyPlanner/issues/488) resumes from preserved [Draft PR #563](https://github.com/kame447/StudyPlanner/pull/563). The 2026-10-10 restart replaces the former all-integrated-first ordering: audit responsibility and dependency boundaries, then implement, verify and merge genuinely independent release units sequentially. Start with the unreadable-checkpoint preservation unit before adopting new conversation-format fields; independent graph/window/scheduler fixes may precede the conversation core only when their dependency closure is demonstrated. Do not merge PR563 wholesale or ship a partially connected conversation feature.
 
-The [staged integration ledger](../work/20261010-issue488-staged-integration.md) owns source preservation, unit/PR mapping, missing inputs, exact verification checkpoints and unfinished acceptance. Conversation-affecting units still require real-model UI evidence and the applicable approval/save/reload, trace, security and browser gates. Issue #246 consultation runtime and other independent owners retain their scope.
+The closed [Issue #488 staged integration ledger](../work/20261010-issue488-staged-integration.md) preserves historical source/PR mapping and verification evidence; it is not the owner of current VNext execution or release gates. Current implementation and acceptance are governed by VNext code/tests, the production contract and the owning open Issues. Issue #246 and other independent owners retain their scope.
 
 ## Issue #246: learning consultation before scheduling
 

@@ -15,7 +15,7 @@
 ## ドメイン一覧 (Domains)
 
 - [Scheduling](domains/scheduling/README.md) — アプリ全体の scheduled-event authority / `ScheduleOccurrence` projection / canonical な `ScheduleEvent` 永続化。Issue #278 の移行は完了済みであり、今後の変更は新しい product requirement を所有する Issue から開始します。
-- [Weekly planning](domains/weekly-planning/README.md) — 本番会話コアは [VNext](domains/weekly-planning/architecture/vnext-conversation-core.md)（#926 完了）。Stable V5 はローカル比較・再利用する純粋処理の参照仕様です。Issue #973 の週間学習実績入力は開発中であり、Issue #246 の相談機能は [`learning-consultation-and-advice.md`](domains/weekly-planning/spec/learning-consultation-and-advice.md) が要件の正本です（runtime 実装は未完了）。
+- [Weekly planning](domains/weekly-planning/README.md) — 本番会話コアは [VNext](domains/weekly-planning/architecture/vnext-conversation-core.md)（#926 完了）。Stable V5 はローカル比較・再利用する純粋処理の参照仕様です。Issue #973 の週間学習実績入力は PR #974 で main に統合済みです（本番反映の判断はデプロイ証拠を参照）。Issue #246 の学習相談は助言の生成・表示・採用／却下まで段階導入済みですが、採用した助言を計画条件へ昇格する部分は未完了です。要件の正本は [`learning-consultation-and-advice.md`](domains/weekly-planning/spec/learning-consultation-and-advice.md) です。
 - [User context](domains/user-context/README.md) — アプリ全体の durable user context、semantic / episodic memory、retrieval、lifecycle / forget、会話への表出（conversation surfacing）。Current owner: Issue #294
 - [Client runtime](domains/client-runtime/README.md) — local planner read freshness / retry / consumer lease は [Planner read projection recovery](domains/client-runtime/architecture/planner-read-projection-recovery.md) が補足します。Issue #542 の [Firestore読取負荷・起動遅延の調査](domains/client-runtime/work/20261008-firestore-read-load-and-startup.md) は進行中の検証記録です
 - [Support](domains/support/README.md) — アプリ内問い合わせ・管理者お知らせ配信。
