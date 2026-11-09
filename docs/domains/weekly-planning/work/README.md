@@ -1,13 +1,13 @@
-# Weekly Planning active work
+# Weekly Planning work records
 
-Status: active-work index
+Status: work-record index (active and retained historical checkpoints)
 Updated: 2026-11-10
 
 This directory holds durable task/checkpoint records. The current Issue and canonical VNext contract override any old task label or historical next step. As of 2026-11-10, Issues #305, #335, #488, #973 and #978 are closed; their legacy checkpoints below are historical evidence, not active implementation instructions. Retained historical work files require the archive invariant-transfer gate in `docs/DOCUMENT_DICTIONARY.md` before moving or deleting them.
 
 Work record catalog (including historical checkpoints):
 
-- [V5回帰のVNext移管](issue978-regression-migration.md) — #978。旧除外の日付・繰返し・固定予定を検査対象に戻し、ケースごとのWorker対応と未検証の意味読取を追跡する。
+- [V5回帰のVNext移管](issue978-regression-migration.md) — closed #978 の移管結果と検証履歴。新しいVNextの不具合は現行Issueで扱う。
 
 - [AIチャットの送信をボタン操作に限定](ai-chat-button-only-send.md) — Enter/IME編集の送信を撤去。関連component回帰と型・buildは確認済み。公開承認とnative browser CI待ち。会話の意味解釈は変更しない。
 
@@ -36,15 +36,15 @@ Work record catalog (including historical checkpoints):
 - `20261020-issue305-d5-answer-proposal.md` — Issue #305（#305b 後の新規単位）：D5 の固定分数メニューを、回答中の数字から作る解釈前の閉集合へ置き換える既定 OFF の policy version。選択後の FactGraph 照合で曖昧な値を fail-closed にする。校正値・Worker・本番フラグは変更しない
 - 置換単位4（user context の保存先 owner の判定）の記録は user-context domain の [`../../user-context/work/20260927-issue305-jev-first-user-context-routing.md`](../../user-context/work/20260927-issue305-jev-first-user-context-routing.md) にある。単位1〜5 の結果の一覧は `20260926-issue333-japanese-semantic-evaluation.md` の「置換の結果」にある。
 
-Issue-only active scopes such as #128 and [#335](https://github.com/kame447/StudyPlanner/issues/335) do not need duplicate task Markdown unless durable technical detail/checkpoints exceed what should live in the Issue.
+Issue-only scopes do not need duplicate task Markdown unless durable technical detail exceeds what belongs in the Issue. #128 and [#335](https://github.com/kame447/StudyPlanner/issues/335) are closed historical examples, not active implementation owners.
 
 Issue #52 was completed by PR #283 and is no longer an active scope. Its implementation history remains in the closed Issue/PR and repository history rather than in this active-work index.
 
-Current execution ordering is owned by [`../roadmap/current.md`](../roadmap/current.md). Issue #136 / PR #275 is complete; its former semantic-regression branch is not a current implementation queue. Issue #152 is completed/closed; PR #174 is closed without merge and is historical evidence, not an active implementation or merge prerequisite. The merged replacement chain and retained security baseline are recorded in the roadmap and Issue #152. New release units must consume the applicable security contracts and current verification gates (including #335 where relevant), rather than restart #174. Re-fetch the owning checkpoint and exact target HEAD before reusing results; do not merge or remove retained evidence branches as ordinary cleanup.
+Current execution ordering is owned by [`../roadmap/current.md`](../roadmap/current.md). Issue #136 / PR #275 is complete; its former semantic-regression branch is not a current implementation queue. Issue #152 is completed/closed; PR #174 is closed without merge and is historical evidence, not an active implementation or merge prerequisite. The merged replacement chain and retained security baseline are recorded in the roadmap and Issue #152. New release units must consume the applicable security contracts and current verification gates; the completed #335 evidence remains historical, rather than a queue to restart. Re-fetch the owning checkpoint and exact target HEAD before reusing results; do not merge or remove retained evidence branches as ordinary cleanup.
 
-Closed Issue #305 retains historical Jev integration and rollout decisions. Its initial default-off implementation was merged through PR #332; that completed branch must not be reused for new evaluation. Issue #333 owns Japanese semantic evaluation, including the same-case Jev/Luna comparison, Gemini first-pass review, the limited Opus judge and tuning/holdout separation (human blind review is no longer required by owner decision on 2026-09-27). Jev-first replacement units keep their durable technical record in this directory (one record per unit); branch, PR and orchestration checkpoints stay in #305. Keep provider/privacy, security and shared telemetry with #187, #152 and #213. The runtime remains off by default, and neither merging PR #332 nor passing mock tests establishes Japanese quality or production activation.
+Closed Issue #305 retains historical Jev integration and rollout decisions. Its initial default-off implementation was merged through PR #332; that completed branch must not be reused for new evaluation. Issue #333 owns Japanese semantic evaluation, including the same-case Jev/Luna comparison, Gemini first-pass review, the limited Opus judge and tuning/holdout separation (human blind review is no longer required by owner decision on 2026-09-27). The old Jev-first replacement units retained durable technical records here; their branch/PR/orchestration checkpoints are in the closed #305. Provider/privacy, security and shared telemetry have separate owners. PR #332 was initially default-off; current activation must be verified from current deployed configuration, not inferred from historical documents or mock tests.
 
-Issue #246 is a special case where product/runtime requirements are canonicalized in [`../spec/learning-consultation-and-advice.md`](../spec/learning-consultation-and-advice.md). Phase 1A foundation was merged by PR #280; there is no active #246 branch at this checkpoint. Keep implementation status in Issue #246 rather than recreating the former branch or adding another duplicate work Markdown.
+Issue #246 is a special case where product/runtime requirements are canonicalized in [`../spec/learning-consultation-and-advice.md`](../spec/learning-consultation-and-advice.md). PR #280 was the early foundation; later VNext consultation slices were merged under separate PRs. Issue #246 remains open for unfinished advice-to-planning promotion. Keep the current implementation status in the Issue rather than duplicating a branch checklist here.
 
 Cross-domain Issue #164 belongs to [`../../client-runtime/`](../../client-runtime/README.md).
 
