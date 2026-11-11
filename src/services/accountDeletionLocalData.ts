@@ -17,6 +17,7 @@ export function clearAccountBrowserStorage(uid: string, local: Storage, session:
   const encoded = encodeURIComponent(uid);
   const exact = new Set([
     `studyplanner.conversationSync.v1.${encoded}`,
+    `studyplanner.conversationSync.paused.v1.${encoded}`,
     `studyplanner.accountDeletionStarted.v1.${encoded}`, `studyplanner.activeSession.v1.${encoded}`, `studyplanner.studyRestDays.v1:${encoded}`,
     `studyplanner-weekly-approval-ledger-v2.${encoded}`, `studyplanner-weekly-personalization-v1:${encoded}`,
     `studyplanner.durableWeeklyTurn.v1:${encoded}`, `studyplanner.durableWeeklyTurn.vnext.v1:${encoded}`, `studyplanner.aiPlanning.chats.v1.${uid}`,

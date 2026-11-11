@@ -34,6 +34,7 @@ export function createConversationWorkspace(ports: {
   changed(): void;
   installed(): void;
   online(): boolean;
+  shouldSync?(): boolean;
   now(): string;
 }) {
   const prefix = `studyplanner.weeklyPlanning.vnext.${ports.ownerId}.`;
@@ -198,16 +199,18 @@ export function createConversationWorkspace(ports: {
     const request = enqueue(async () => {
       if (!hydrated || ports.busy()) return false;
       await persistInner();
+      if (ports.shouldSync?.() === false) return false;
       if (!ports.online()) { status(); return false; }
       let cursor: string | null = null;
       const snapshots: ConversationSnapshot[] = [];
       let pages = 0;
       do {
+        if (ports.shouldSync?.() === false) return false;
         const page = await ports.remote.list(cursor); guard(); snapshots.push(...page.items); cursor = page.cursor;
         if (++pages >= 100 && cursor) throw new Error('conversation-page-limit');
       } while (cursor);
       // User activity while the network was pending is staged before remote state is accepted.
-      if (ports.busy()) return false;
+      if (ports.busy() || ports.shouldSync?.() === false) return false;
       await persistInner();
       // Merely checking an unchanged server version must not revoke a prepared send.
       // Freeze the runtime only when adopting genuinely different clean shared bytes.
@@ -232,9 +235,10 @@ export function createConversationWorkspace(ports: {
       for (const row of [...records.values()]) {
         if (!row.dirty && !row.pending || row.blocked) continue;
         if (row.working && JSON.parse(row.working.ui).actualSaveAttempt) continue;
+        if (ports.shouldSync?.() === false) return false;
         const result = await sync.flush(row.scope); guard(); remember(result.record);
         // A newer edit is a separate immutable operation, not a replacement of an uncertain send.
-        if (result.status === 'pending' && !ports.busy()) {
+        if (result.status === 'pending' && !ports.busy() && ports.shouldSync?.() !== false) {
           const next = await sync.flush(row.scope); guard(); remember(next.record);
         }
       }
@@ -249,7 +253,7 @@ export function createConversationWorkspace(ports: {
   }
   function resolve(choice: 'local' | 'remote') {
     return enqueue(async () => {
-      if (ports.busy()) return false;
+      if (ports.busy() || ports.shouldSync?.() === false) return false;
       const record = view.conflict;
       if (!record) return false;
       const next = await sync.resolve(record.scope, choice, record.generation); guard();

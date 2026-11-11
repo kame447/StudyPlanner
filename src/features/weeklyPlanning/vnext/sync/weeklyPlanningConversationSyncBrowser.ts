@@ -6,7 +6,7 @@ import type { ConversationSyncDependencies } from './useWeeklyPlanningConversati
 
 export async function createConversationSyncBrowser(ownerId: string, alive: () => boolean): Promise<ConversationSyncDependencies | null> {
   const auth = getFirebaseAuth(), db = getFirestoreDb();
-  if (!auth || !db) return null;
+  if (!auth || !db || typeof indexedDB === 'undefined' || typeof navigator === 'undefined' || !navigator.locks) return null;
   const active = () => alive() && auth.currentUser?.uid === ownerId && !accountClientWritesPaused(ownerId);
   const local = createIndexedDbConversationStore();
   return { local, remote: createFirestoreConversationStore(db, ownerId, active),

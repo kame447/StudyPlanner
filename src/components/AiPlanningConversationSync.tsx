@@ -3,21 +3,30 @@ import type { ConversationSyncUi } from '../features/weeklyPlanning/application/
 import './AiPlanningConversationSync.css';
 
 export function AiPlanningConversationSync({ sync }: { sync?: ConversationSyncUi }) {
-  const [offering, setOffering] = useState(false);
   const [acting, setActing] = useState(false);
+  const [actionError, setActionError] = useState('');
   if (!sync) return null;
   const run = async (action: () => Promise<void>) => {
     if (acting) return;
-    setActing(true);
-    try { await action(); } finally { setActing(false); }
+    setActing(true); setActionError('');
+    try { await action(); }
+    catch { setActionError('操作を完了できませんでした。もう一度お試しください。'); }
+    finally { setActing(false); }
   };
-  if (sync.status === 'disabled' || sync.status === 'checking') return (
+  if (sync.status === 'checking' || sync.status === 'disabled') return (
     <div className="ai-planning-sync" data-sync-state={sync.status}>
-      {offering ? <div role="region" aria-label="会話の端末間同期への同意">
-        <p>このアカウントの会話・作成途中の条件・仮予定をFirebaseに保存し、別端末で復元します。本文は最終更新から180日を目安に削除します。同期だけで予定や実績が登録されることはありません。</p>
-        <button type="button" disabled={acting} onClick={() => void run(sync.enable)}>同意して同期する</button>
-        <button type="button" disabled={acting} onClick={() => setOffering(false)}>今はしない</button>
-      </div> : <button type="button" disabled={sync.status === 'checking'} onClick={() => setOffering(true)}>端末間同期を有効にする</button>}
+      <span>{sync.status === 'checking' ? '端末間同期を準備しています' : 'この環境では端末間同期を利用できません'}</span>
+    </div>
+  );
+  if (sync.status === 'paused') return (
+    <div className="ai-planning-sync" data-sync-state="paused" aria-live="polite">
+      <span>この端末の同期は停止中</span>
+      <button type="button" disabled={acting} onClick={() => void run(sync.enable)}>この端末の同期を再開</button>
+      <details>
+        <summary>停止中の保存について</summary>
+        <p>この端末では会話を端末内に保存します。他端末の同期やクラウドの既存の会話は削除されません。再開時に変更が重なっていた場合は確認できます。</p>
+      </details>
+      {sync.message || actionError ? <p role="alert">{actionError || sync.message}</p> : null}
     </div>
   );
   const status = sync.status === 'synced' ? '同期済み' : sync.status === 'pending' ? '同期待ち'
@@ -25,7 +34,7 @@ export function AiPlanningConversationSync({ sync }: { sync?: ConversationSyncUi
     : sync.status === 'locked' ? '別タブで使用中' : sync.status === 'conflict' ? '会話の更新が重なりました' : '同期を確認してください';
   return <div className="ai-planning-sync" data-sync-state={sync.status} aria-live="polite">
     <span>{status}</span>
-    {sync.message ? <p role={sync.status === 'error' ? 'alert' : undefined}>{sync.message}</p> : null}
+    {sync.message || actionError ? <p role={sync.status === 'error' || actionError ? 'alert' : undefined}>{actionError || sync.message}</p> : null}
     {sync.status === 'conflict' ? <div role="region" aria-label="会話の同期競合">
       <p>{sync.remoteDeleted ? '別端末で削除された会話です。内容を確認してから削除を反映してください。'
         : '両方の内容を保持しています。どちらの内容で続けるか選んでください。'}</p>
@@ -42,5 +51,12 @@ export function AiPlanningConversationSync({ sync }: { sync?: ConversationSyncUi
     </div> : sync.status !== 'loading' ? <button type="button" disabled={acting} onClick={() => void run(sync.retry)}>
       {sync.status === 'synced' ? '会話を更新' : '同期を再試行'}
     </button> : null}
+    {['synced', 'pending', 'offline', 'error'].includes(sync.status) ? (
+      <button type="button" disabled={acting} onClick={() => void run(sync.pause)}>この端末の同期を停止</button>
+    ) : null}
+    <details>
+      <summary>同期する内容</summary>
+      <p>会話・作成途中の条件・仮予定をアカウントに紐づけてFirebaseに保存します。本文は最終更新から180日を目安に削除され、同期だけで予定や実績は登録されません。</p>
+    </details>
   </div>;
 }

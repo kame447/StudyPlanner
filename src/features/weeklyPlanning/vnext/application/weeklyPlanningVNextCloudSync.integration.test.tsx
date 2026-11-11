@@ -49,7 +49,8 @@ async function mount(fixture: ReturnType<typeof device>) {
   restore?.(); restore = installWeeklyPlanningTestStorage(fixture.storage.storage);
   const ref = createRef<WeeklyPlanningApplication>();
   await act(async () => { mounted = create(<Harness ref={ref} input={fixture.input} services={fixture.services} />); });
-  await act(async () => { await vi.waitFor(() => expect(ref.current?.conversationSync?.status).not.toBe('checking')); });
+  await act(async () => { await vi.waitFor(() =>
+    expect([undefined, 'disabled', 'synced', 'pending', 'offline', 'conflict', 'paused', 'locked', 'error']).toContain(ref.current?.conversationSync?.status)); });
   return ref;
 }
 async function waitSynced(ref: { current: WeeklyPlanningApplication | null }) {
@@ -101,14 +102,16 @@ describe('VNext actual application with shared conversation storage', () => {
     expect(validateConversationPayload(completed.scope, completed.working!)).toBe(true);
     await waitSynced(reloaded);
   });
-  it('requires explicit sync consent, migrates a real turn, and restores the same facts/preview on another device', async () => {
-    const a = device(); const first = await mount(a);
-    expect(first.current!.conversationSync?.status).toBe('disabled');
-    await act(async () => { expect((await first.current!.submitTurn('数学を60分、この条件で予定を作って')).accepted).toBe(true); });
-    const candidates = first.current!.state.previewCandidates;
+  it('automatically enables sync, migrates an existing local chat, and restores its facts/preview on another device', async () => {
+    const a = device(); const originalSync = a.services.conversationSync;
+    a.services.conversationSync = undefined;
+    const localOnly = await mount(a);
+    await act(async () => { expect((await localOnly.current!.submitTurn('数学を60分、この条件で予定を作って')).accepted).toBe(true); });
+    const candidates = localOnly.current!.state.previewCandidates;
     expect(candidates).toHaveLength(1); expect(a.server.writes).toBe(0);
     const legacy = new Map(a.storage.values);
-    await act(async () => { await first.current!.conversationSync!.enable(); });
+    a.services.conversationSync = originalSync;
+    const first = await mount(a);
     await waitSynced(first);
     expect(a.acquired).toHaveBeenCalledOnce(); expect(a.server.writes).toBe(1);
     for (const [key, value] of legacy) if (key.includes('weeklyPlanning.vnext.')) expect(a.storage.storage.getItem(key)).toBe(value);
@@ -161,7 +164,8 @@ describe('VNext actual application with shared conversation storage', () => {
       await act(async () => { await ref.current!.submitTurn('数学60分の計画'); });
       await act(async () => { ref.current!.createDraftBlocks(createWeeklyDraftBlocksFromPreviewCandidates({
         candidates: ref.current!.state.previewCandidates!, userId: OWNER, createdAt: SYNC_TEST_NOW })); });
-      if (syncEnabled) { await act(async () => { await ref.current!.conversationSync!.enable(); }); await waitSynced(ref); }
+      if (!syncEnabled) await act(async () => { await ref.current!.conversationSync!.pause(); });
+      else await waitSynced(ref);
       expect(ref.current!.pendingDraftBlocks).toHaveLength(1);
       return { a, ref, memory, save };
     }
@@ -207,6 +211,37 @@ describe('VNext actual application with shared conversation storage', () => {
         expect(fixture.ref.current!.pendingDraftBlocks).toHaveLength(0);
       }
     });
+  });
+  it('pauses only this device, keeps its local conversation through reload, and sends it after resume', async () => {
+    const a = device(); const first = await mount(a); await waitSynced(first);
+    await act(async () => { await first.current!.conversationSync!.pause(); });
+    expect(first.current!.conversationSync?.status).toBe('paused');
+    await act(async () => { expect((await first.current!.submitTurn('数学を60分')).accepted).toBe(true); });
+    expect(a.server.writes).toBe(0);
+    const restored = await mount(a);
+    expect(restored.current!.conversationSync?.status).toBe('paused');
+    expect(restored.current!.state.messages.map(row => row.content)).toContain('数学を60分');
+    expect(a.server.writes).toBe(0);
+    await act(async () => { await restored.current!.conversationSync!.enable(); });
+    await waitSynced(restored);
+    expect(a.server.writes).toBe(1);
+    const b = device(a.server); const second = await mount(b); await waitSynced(second);
+    expect(second.current!.state.messages.map(row => row.content)).toContain('数学を60分');
+    expect(a.savedPlan).not.toHaveBeenCalled(); expect(a.savedActuals).not.toHaveBeenCalled();
+  });
+  it('can pause for local-only use when auto-enable fails before the workspace opens', async () => {
+    const a = device(); a.server.setOffline(true);
+    const ref = await mount(a);
+    expect(ref.current!.conversationSync?.status).toBe('error');
+    await act(async () => { await ref.current!.conversationSync!.pause(); });
+    expect(ref.current!.conversationSync?.status).toBe('paused');
+    await act(async () => { expect((await ref.current!.submitTurn('英語を30分')).accepted).toBe(true); });
+    expect(a.server.writes).toBe(0);
+    a.server.setOffline(false);
+    await act(async () => { await ref.current!.conversationSync!.enable(); });
+    await waitSynced(ref);
+    expect(a.server.writes).toBe(1);
+    expect(ref.current!.state.messages.map(row => row.content)).toContain('英語を30分');
   });
   it('shows a locked state rather than opening a second writable browser replica', async () => {
     const a = device(); a.acquired.mockRejectedValue(new Error('conversation-open-in-another-tab'));

@@ -14,6 +14,7 @@ it('clears this account across shared, uid-scoped, legacy, draft and trace store
       `studyplanner.weeklyPlanning.vnext.${uid}.2026-10-26.ai-chat-1.core`, `studyplanner.weeklyPlanning.vnext.${uid}.2026-10-26.ai-chat-1.ui`,
       `studyplanner.durableWeeklyTurn.v1:${uid}`, `studyplanner.durableWeeklyTurn.vnext.v1:${uid}`,
       `studyplanner.activeSession.v1.${uid}`, `studyplanner.activeSession.v1.${uid}.dispatch.timer`, `studyplanner.userPlanningContext.${uid}`,
+      `studyplanner.conversationSync.v1.${uid}`, `studyplanner.conversationSync.paused.v1.${uid}`,
       `studyplanner.weeklyPlanning.trace.stableV5.${uid}::chat`, `study-planner-day-timetable:${uid}`]) local.setItem(key, '{}');
   }
   local.setItem('studyplanner.plans', JSON.stringify([{ userId: 'A' }, { userId: 'B' }]));
@@ -37,6 +38,8 @@ it('clears this account across shared, uid-scoped, legacy, draft and trace store
   for (const key of ['studyplanner.weeklyPlanning.vnext.B.2026-10-26.ai-chat-1.core', 'studyplanner.durableWeeklyTurn.vnext.v1:B']) expect(local.getItem(key), key).toBe('{}');
   expect(local.getItem('studyplanner.activeSession.v1.A.dispatch.timer')).toBeNull();
   expect(local.getItem('studyplanner.activeSession.v1.B.dispatch.timer')).toBe('{}');
+  expect(local.getItem('studyplanner.conversationSync.paused.v1.A')).toBeNull();
+  expect(local.getItem('studyplanner.conversationSync.paused.v1.B')).toBe('{}');
   expect(local.getItem('studyplanner.session')).toBeNull();
   expect(local.getItem('study-planner-theme-mode')).toBe('dark');
   expect(session.getItem('laplance.inquiry-receipt.v1')).toBeNull();
