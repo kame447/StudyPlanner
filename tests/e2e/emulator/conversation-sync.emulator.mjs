@@ -64,14 +64,13 @@ async function inspect(page) {
   });
 }
 
-test('real UI opts in, restores across independent devices and reloads, with no implicit Plan/Actual save', async ({ page, browser, request }, testInfo) => {
+test('default-on UI restores across independent devices and reloads without implicit Plan/Actual save', async ({ page, browser, request }, testInfo) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  await signIn(page); await goToTargetPlannerWeek(page);
-  await expect(sync(page)).toHaveAttribute('data-sync-state', 'disabled');
+  await signIn(page);
+  await expect(sync(page)).toHaveAttribute('data-sync-state', 'synced', { timeout: 20_000 });
+  await goToTargetPlannerWeek(page);
   await message(page, '数学を60分、この条件で予定を作ってください。'); await completePlan(request);
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible();
-  await page.getByRole('button', { name: '端末間同期を有効にする' }).click();
-  await page.getByRole('button', { name: '同意して同期する', exact: true }).click();
   await expect(sync(page)).toHaveAttribute('data-sync-state', 'synced', { timeout: 20_000 });
   const a = await inspect(page);
   expect(a.rows).toHaveLength(1); expect(a.rows[0].pending).toBeNull();
@@ -148,6 +147,14 @@ test('real UI opts in, restores across independent devices and reloads, with no 
     expect((await inspect(other)).rows[0].working.core).toBe(acceptedA.rows[0].working.core);
     await other.screenshot({ path: testInfo.outputPath('mobile-sync.png'), fullPage: true });
   } finally { await second.close(); }
+  await page.getByRole('button', { name: 'この端末の同期を停止' }).click();
+  await expect(sync(page)).toHaveAttribute('data-sync-state', 'paused');
+  await page.reload();
+  await page.locator('.primary-bottom-nav').getByRole('button', { name: 'AI計画', exact: true }).click();
+  await expect(sync(page)).toHaveAttribute('data-sync-state', 'paused');
+  await expect(page.locator('.ai-planning-message-row.user .ai-planning-bubble')).toContainText('数学を60分');
+  await page.getByRole('button', { name: 'この端末の同期を再開' }).click();
+  await expect(sync(page)).toHaveAttribute('data-sync-state', 'synced', { timeout: 20_000 });
   await page.screenshot({ path: testInfo.outputPath('desktop-sync.png'), fullPage: true });
   expect(errors).toEqual([]);
 });
@@ -156,14 +163,11 @@ test('pending edits reach the other device exactly once after reconnect without 
   const firstMessage = '再接続確認の数学を60分予定にしてください。';
   const edit = '地理も30分あります。';
   await signIn(page);
-  await expect(sync(page)).toHaveAttribute('data-sync-state', /disabled|synced/);
+  await expect(sync(page)).toHaveAttribute('data-sync-state', 'synced', { timeout: 20_000 });
   // Synced sessions live in IndexedDB, so a fresh device has no legacy .ui
   // localStorage key for the week helper. Use the hydrated chat index instead.
-  let plannerWeek = null;
-  if (await sync(page).getAttribute('data-sync-state') === 'synced') {
-    const { index } = await inspect(page);
-    plannerWeek = index.chats.find(chat => chat.id === index.activeChatId)?.weekStartDate;
-  }
+  const { index } = await inspect(page);
+  const plannerWeek = index.chats.find(chat => chat.id === index.activeChatId)?.weekStartDate;
   await goToTargetPlannerWeek(page, { plannerWeek });
   // A separate chat keeps this case independent of the preceding conflict case.
   await page.getByLabel('チャット一覧を開く').click();
@@ -171,10 +175,6 @@ test('pending edits reach the other device exactly once after reconnect without 
   await expect(page.locator('.ai-planning-message-row')).toHaveCount(0);
   await message(page, firstMessage); await completePlan(request);
   await expect(page.locator('.ai-planning-plan-card')).toBeVisible();
-  if (await sync(page).getAttribute('data-sync-state') === 'disabled') {
-    await page.getByRole('button', { name: '端末間同期を有効にする' }).click();
-    await page.getByRole('button', { name: '同意して同期する', exact: true }).click();
-  }
   await expect(sync(page)).toHaveAttribute('data-sync-state', 'synced', { timeout: 20_000 });
   await expect.poll(async () => {
     const current = await inspect(page);

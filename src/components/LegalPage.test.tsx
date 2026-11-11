@@ -20,5 +20,8 @@ describe('account deletion disclosures', () => {
     expect(html).toContain('現在、自動削除の期限を設けていません');
     expect(html).toContain('同じ画面から再試行');
     expect(html).toContain('別端末のブラウザ内');
+    expect(html).toContain('初期状態で有効');
+    expect(html).toContain('同期は各端末で一時停止・再開');
+    expect(html).toContain('既存のクラウド上の会話は削除されません');
   });
 });

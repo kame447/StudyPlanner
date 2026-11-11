@@ -1,7 +1,7 @@
 import type { ConversationSyncUi } from '../../application/weeklyPlanningConversationSyncContract';
 import { useEffect, useMemo, useState } from 'react';
 import type { ConversationWorkspace, ConversationWorkspaceLocal, ConversationWorkspaceRemote } from './weeklyPlanningConversationWorkspace';
-import { CONVERSATION_SYNC_POLICY, conversationSyncPreferenceKey } from './weeklyPlanningConversationSyncPolicy';
+import { CONVERSATION_SYNC_POLICY, conversationSyncPausedKey, conversationSyncPreferenceKey } from './weeklyPlanningConversationSyncPolicy';
 
 export interface ConversationSyncDependencies {
   local: ConversationWorkspaceLocal;
@@ -24,7 +24,7 @@ export function useWeeklyPlanningConversationSync(ownerId: string, services: {
     let workspace: ConversationWorkspace | null = null;
     let release: (() => void) | undefined;
     let unwatch: (() => void) | undefined;
-    let mode: 'checking' | 'disabled' | 'loading' | 'locked' | 'error' | 'sync' = services.conversationSync ? 'checking' : 'disabled';
+    let mode: 'checking' | 'disabled' | 'loading' | 'locked' | 'error' | 'sync' | 'paused' = services.conversationSync ? 'checking' : 'disabled';
     let message = '';
     let available = Boolean(services.conversationSync);
     let epoch = 0;
@@ -37,6 +37,13 @@ export function useWeeklyPlanningConversationSync(ownerId: string, services: {
       try { return services.storage.getItem(conversationSyncPreferenceKey(ownerId)) === CONVERSATION_SYNC_POLICY; }
       catch { return true; }
     };
+    const isPaused = () => {
+      try { return services.storage.getItem(conversationSyncPausedKey(ownerId)) === 'paused'; }
+      catch { return false; }
+    };
+    // A new default-on account may start a turn while the first consent request is pending.
+    // Never revoke that in-flight turn merely because the remote marker was written.
+    const initiallyEnabled = hasMarker();
     const valid = (ticket: number) => alive && ticket === generation;
     const load = async (ticket: number) => {
       if (!backend) {
@@ -58,7 +65,7 @@ export function useWeeklyPlanningConversationSync(ownerId: string, services: {
       if (!valid(ticket)) return;
       const next = createConversationWorkspace({ ownerId, local: backend.local, remote: backend.remote,
         legacy: services.storage, legacyKeys: backend.keys, active: () => valid(ticket), busy: () => bound.busy(),
-        online: backend.online, now: services.now, changed: notify,
+        online: backend.online, shouldSync: () => !isPaused(), now: services.now, changed: notify,
         installed: () => { if (valid(ticket)) { mode = 'loading'; epoch++; notify(); } },
       });
       await next.open();
@@ -73,18 +80,18 @@ export function useWeeklyPlanningConversationSync(ownerId: string, services: {
         : '同期の準備ができませんでした。保存済みの内容は変更していません。';
       notify();
     };
-    async function bootstrap(explicitEnable = false) {
+    async function bootstrap() {
       if (opening || !alive || workspace) return;
       const ticket = generation;
       const task = (async () => {
         const dependencies = await load(ticket); if (!dependencies || !valid(ticket)) return;
-        const cached = hasMarker();
-        if (cached && !explicitEnable) { await install(ticket); return; }
-        if (explicitEnable) await dependencies.remote.enable();
-        const enabled = explicitEnable || await dependencies.remote.consent();
-        if (!valid(ticket)) return;
-        if (!enabled) { mode = 'disabled'; notify(); return; }
-        services.storage.setItem(conversationSyncPreferenceKey(ownerId), CONVERSATION_SYNC_POLICY);
+        if (isPaused()) { await install(ticket); return; }
+        if (!hasMarker()) {
+          const alreadyEnabled = await dependencies.remote.consent();
+          if (!alreadyEnabled) await dependencies.remote.enable();
+          if (!valid(ticket)) return;
+          services.storage.setItem(conversationSyncPreferenceKey(ownerId), CONVERSATION_SYNC_POLICY);
+        }
         await install(ticket);
       })().catch(error => { if (valid(ticket)) fail(error); }).finally(() => { if (opening === task) opening = null; });
       opening = task; await task;
@@ -92,11 +99,41 @@ export function useWeeklyPlanningConversationSync(ownerId: string, services: {
     async function observe() {
       if (!alive) return;
       if (enableWhenIdle && !bound.busy()) { enableWhenIdle = false; await bootstrap(); }
-      if (!workspace || bound.busy() || observation || mode !== 'sync' || !workspace.hasWork) return;
+      if (!workspace || bound.busy() || observation || (mode !== 'sync' && mode !== 'paused') || !workspace.hasWork) return;
       observation = true;
-      try { await workspace.persist(); await workspace.synchronize(); }
+      try { await workspace.persist(); if (mode === 'sync') await workspace.synchronize(); }
       catch { /* Workspace publishes the recoverable error and retains the bytes. */ }
       finally { observation = false; notify(); }
+    }
+    function watch() {
+      if (unwatch || isPaused()) return;
+      unwatch = backend?.remote.watch?.(() => { if (!bound.busy() && !isPaused()) void workspace?.synchronize(); },
+        () => { message = '同期接続を確認できません。再試行してください。'; notify(); });
+    }
+    async function pause() {
+      if (!alive || isPaused()) return;
+      if (workspace) await workspace.persist();
+      services.storage.setItem(conversationSyncPausedKey(ownerId), 'paused');
+      unwatch?.(); unwatch = undefined;
+      message = '';
+      if (workspace) { mode = 'paused'; notify(); }
+      else { mode = 'checking'; notify(); await bootstrap(); }
+    }
+    async function resume() {
+      if (!alive) return;
+      if (!isPaused()) { if (!workspace) await bootstrap(); return; }
+      const ticket = generation;
+      const dependencies = await load(ticket);
+      if (!dependencies || !valid(ticket)) return;
+      if (!hasMarker()) {
+        if (!await dependencies.remote.consent()) await dependencies.remote.enable();
+        if (!valid(ticket)) return;
+        services.storage.setItem(conversationSyncPreferenceKey(ownerId), CONVERSATION_SYNC_POLICY);
+      }
+      services.storage.removeItem(conversationSyncPausedKey(ownerId));
+      if (workspace) {
+        mode = 'sync'; message = ''; watch(); await workspace.synchronize(); notify();
+      } else { mode = 'checking'; notify(); await bootstrap(); }
     }
     const transcript = (raw?: string) => {
       if (!raw) return '';
@@ -110,31 +147,30 @@ export function useWeeklyPlanningConversationSync(ownerId: string, services: {
         if (!available) return undefined;
         const view = workspace?.view;
         return { status: mode === 'sync' ? view!.status : mode,
-          message: mode === 'sync' ? view!.message || message : message,
+          message: mode === 'sync' || mode === 'paused' ? view?.message || message : message,
           unpersisted: workspace?.hasUnpersisted ?? false,
           remoteDeleted: view?.conflict?.conflict?.deleted ?? false,
           localText: transcript(view?.conflict?.working?.ui), remoteText: transcript(view?.conflict?.conflict?.payload?.ui),
-          enable: () => bootstrap(true),
-          retry: async () => { if (workspace) { mode = 'sync'; message = ''; await workspace.synchronize(); notify(); } else await bootstrap(); },
+          enable: resume, pause,
+          retry: async () => { if (isPaused()) return; if (workspace) { mode = 'sync'; message = ''; await workspace.synchronize(); notify(); } else await bootstrap(); },
           resolve: async choice => { if (workspace) { await workspace.resolve(choice); notify(); } },
         };
       },
-      permitsEditing: () => !workspace?.installing && !(mode === 'checking' && hasMarker()) && mode !== 'loading' && mode !== 'locked'
+      permitsEditing: () => !workspace?.installing && !(mode === 'checking' && initiallyEnabled && !isPaused()) && mode !== 'loading' && mode !== 'locked'
         && !(mode === 'error' && hasMarker()) && workspace?.view.status !== 'conflict',
       get unpersisted() { return workspace?.hasUnpersisted ?? false; },
       bind(ports: { busy(): boolean }, currentStorage: typeof services.storage) {
         bound = ports;
         if (workspace && mode === 'loading' && currentStorage === workspace.storage) {
-          mode = 'sync'; notify();
-          if (!unwatch) unwatch = backend?.remote.watch?.(() => { if (!bound.busy()) void workspace?.synchronize(); },
-            () => { message = '同期接続を確認できません。再試行してください。'; notify(); });
-          void workspace.synchronize();
+          mode = isPaused() ? 'paused' : 'sync'; notify();
+          if (!isPaused()) { watch(); void workspace.synchronize(); }
         }
       },
       observe,
       async persist() { if (workspace) await workspace.persist(); },
       async beforeApproval(): Promise<boolean> {
-        if (!workspace) return mode === 'disabled' || mode === 'checking';
+        if (!workspace) return mode === 'disabled' || mode === 'checking' || mode === 'paused';
+        if (mode === 'paused') { await workspace.persist(); return true; }
         if (bound.busy() || !backend?.online()) return false;
         return workspace.synchronize();
       },

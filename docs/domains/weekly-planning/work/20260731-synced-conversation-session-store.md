@@ -1,12 +1,20 @@
 # VNext conversation shared session
 
-Status: active / VNext application and UI integrated; production release and index deployment pending
+Status: active / VNext UI integrated, Firestore indexes and Rules deployed; sync default-on update pending integration CI
 Priority: P1 architecture / persistence
-Updated: 2026-11-07
-Tracking: Issue #47
+Updated: 2026-11-12
+Tracking: Issues #47, #1150
 Architecture dependency: Issue #164
-Branch: `feat/issue47-conversation-sync`
-Base: `67ea8b5ce0b2d34327b486ab43414164bcb97aec`
+Current branch: `feat/issue1150-conversation-sync-default-on`
+Current base: `3fcf56d97c68aa9f9b13a047a09ae98c61996743`
+
+## 2026-11-12 更新: 端末間同期を初期ONにする（Issue #1150）
+
+所有者の新たな要件により、初回のデータ利用同意を経たログイン済みアカウントは、別の同期同意ボタンを押さずに自動同期を開始する。未設定なら従来のFirestoreの同期ポリシー文書を作成し、設定済みなら既存の文書を使う。従来のlocalStorage会話は消去せずIndexedDBへ移し、Firestoreのrevision/CAS/認可ルール/180日保持は変更しない。予定・実績の書き込み権限は同期と独立している。
+
+ユーザーはその端末の同期を停止・再開できる。停止中もIndexedDBと送信待ちは保持し、再開時に既存の競合解決フローに戻る。これは端末ごとの送信停止であり、他端末やクラウドの既存本文を削除する操作ではない。この差を同期UI・初回同意画面・プライバシーポリシーに明記する。過去の明示同期同意仕様と未配信との記述は当時の履歴であり、現在の製品仕様を示さない。
+
+同期権限の本番配備障害は #1037 にて復旧済み（Deploy Firestore Rules run 42519998891 success）。#1150 はアプリ実装・ブラウザE2E・統合CI・本番配信の確認待ちで、未完了の段階を完了と報告しない。
 
 ## 2026-11-07 最新チェックポイント（PR #998 継続）
 

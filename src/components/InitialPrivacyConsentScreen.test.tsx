@@ -25,6 +25,13 @@ function renderScreen(overrides: Partial<Parameters<typeof InitialPrivacyConsent
 }
 
 describe('InitialPrivacyConsentScreen', () => {
+  it('discloses default-on conversation sync and the per-device pause before general consent', () => {
+    const { renderer } = renderScreen();
+    const copy = renderer.root.findAllByType('p').map(row => row.children.join('')).join(' ');
+    expect(copy).toContain('端末間同期は初期状態で有効です');
+    expect(copy).toContain('本人のFirebaseアカウント');
+    expect(copy).toContain('停止しても他端末の同期や既存のクラウドデータは削除されず');
+  });
   it('requires explicit confirmation before saving account consent', async () => {
     const { renderer, onAccept } = renderScreen();
     const acceptButton = renderer.root.findAllByType('button').find(
